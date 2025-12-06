@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-from typing import Any
 
 import numpy as np
 
@@ -10,24 +9,35 @@ from src.core.realized_geometry import RealizedGeometry
 
 
 @primitive
-def circle(args: tuple[tuple[str, Any], ...]) -> RealizedGeometry:
+def circle(
+    *,
+    r: float = 1.0,
+    cx: float = 0.0,
+    cy: float = 0.0,
+    segments: int = 64,
+) -> RealizedGeometry:
     """正規化済み引数から円のポリラインを生成する。
 
     Parameters
     ----------
-    args : tuple[tuple[str, Any], ...]
-        (名前, 値) の正規化済み引数タプル。
+    r : float, optional
+        半径。
+    cx : float, optional
+        中心の x 座標。
+    cy : float, optional
+        中心の y 座標。
+    segments : int, optional
+        近似に用いる分割数。
 
     Returns
     -------
     RealizedGeometry
         単一ポリラインとしての円。
     """
-    params = dict(args)
-    r = float(params.get("r", 1.0))
-    cx = float(params.get("cx", 0.0))
-    cy = float(params.get("cy", 0.0))
-    segments = int(params.get("segments", 64))
+    r = float(r)
+    cx = float(cx)
+    cy = float(cy)
+    segments = int(segments)
     if segments < 3:
         raise ValueError("circle の segments は 3 以上である必要がある")
 

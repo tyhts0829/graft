@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Sequence
+from typing import Sequence
 
 import numpy as np
 
@@ -11,7 +11,11 @@ from src.core.realized_geometry import RealizedGeometry
 @effect
 def scale(
     inputs: Sequence[RealizedGeometry],
-    args: tuple[tuple[str, Any], ...],
+    *,
+    s: float | None = None,
+    sx: float | None = None,
+    sy: float | None = None,
+    sz: float = 1.0,
 ) -> RealizedGeometry:
     """正規化済み引数を用いてジオメトリをスケールする。
 
@@ -19,8 +23,14 @@ def scale(
     ----------
     inputs : Sequence[RealizedGeometry]
         スケール対象の実体ジオメトリ列。通常は 1 要素。
-    args : tuple[tuple[str, Any], ...]
-        (名前, 値) の正規化済み引数タプル。
+    s : float or None, optional
+        x, y に共通のスケール係数。sx, sy が指定された場合はそちらを優先する。
+    sx : float or None, optional
+        x 方向スケール。省略時は s を使用し、さらに省略時は 1.0。
+    sy : float or None, optional
+        y 方向スケール。省略時は s を使用し、さらに省略時は 1.0。
+    sz : float, optional
+        z 方向スケール。
 
     Returns
     -------
@@ -33,16 +43,16 @@ def scale(
         return RealizedGeometry(coords=coords, offsets=offsets)
 
     base = inputs[0]
-    params = dict(args)
 
-    sx = float(params.get("sx", params.get("s", 1.0)))
-    sy = float(params.get("sy", params.get("s", 1.0)))
-    sz = float(params.get("sz", 1.0))
+    s_value = 1.0 if s is None else float(s)
+    sx_value = float(sx) if sx is not None else s_value
+    sy_value = float(sy) if sy is not None else s_value
+    sz_value = float(sz)
 
     coords = base.coords.copy()
     coords.setflags(write=True)
-    coords[:, 0] *= sx
-    coords[:, 1] *= sy
-    coords[:, 2] *= sz
+    coords[:, 0] *= sx_value
+    coords[:, 1] *= sy_value
+    coords[:, 2] *= sz_value
 
     return RealizedGeometry(coords=coords, offsets=base.offsets)

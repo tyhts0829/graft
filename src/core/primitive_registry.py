@@ -99,7 +99,7 @@ primitive_registry = PrimitiveRegistry()
 
 
 def primitive(
-    func: PrimitiveFunc | None = None,
+    func: Callable[..., RealizedGeometry] | None = None,
     *,
     overwrite: bool = False,
 ):
@@ -117,12 +117,16 @@ def primitive(
     Examples
     --------
     @primitive
-    def circle(args):
+    def circle(*, r=1.0, cx=0.0, cy=0.0, segments=64):
         ...
     """
 
-    def decorator(f: PrimitiveFunc) -> PrimitiveFunc:
-        primitive_registry.register(f.__name__, f, overwrite=overwrite)
+    def decorator(f: Callable[..., RealizedGeometry]) -> Callable[..., RealizedGeometry]:
+        def wrapper(args: tuple[tuple[str, Any], ...]) -> RealizedGeometry:
+            params: dict[str, Any] = dict(args)
+            return f(**params)
+
+        primitive_registry.register(f.__name__, wrapper, overwrite=overwrite)
         return f
 
     if func is None:

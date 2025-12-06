@@ -207,7 +207,7 @@
 ## 6.1 user_draw の契約
 
 - シグネチャ：user_draw(t: float) -> Geometry | Layer | Sequence[Geometry|Layer]
-- cc は引数ではなく api.cc, api.C から読む
+- cc は引数ではなく api.cc から読む
 
 ## 6.2 戻り値の正規化
 

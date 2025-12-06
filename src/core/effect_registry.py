@@ -102,7 +102,7 @@ effect_registry = EffectRegistry()
 
 
 def effect(
-    func: EffectFunc | None = None,
+    func: Callable[..., RealizedGeometry] | None = None,
     *,
     overwrite: bool = False,
 ):
@@ -120,12 +120,19 @@ def effect(
     Examples
     --------
     @effect
-    def scale(inputs, args):
+    def scale(inputs, *, s=1.0):
         ...
     """
 
-    def decorator(f: EffectFunc) -> EffectFunc:
-        effect_registry.register(f.__name__, f, overwrite=overwrite)
+    def decorator(f: Callable[..., RealizedGeometry]) -> Callable[..., RealizedGeometry]:
+        def wrapper(
+            inputs: Sequence[RealizedGeometry],
+            args: tuple[tuple[str, Any], ...],
+        ) -> RealizedGeometry:
+            params: dict[str, Any] = dict(args)
+            return f(inputs, **params)
+
+        effect_registry.register(f.__name__, wrapper, overwrite=overwrite)
         return f
 
     if func is None:
