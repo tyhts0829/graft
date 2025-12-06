@@ -289,10 +289,6 @@
 - DEFAULT_QUANT_STEP（float 量子化の既定 step）
 - REALIZE_CACHE_MAX_BYTES（実体キャッシュ上限）
 - REALIZE_THREAD_WORKERS（realize 並列度）
-- DRAW_EXEC_MODE
-  - thread（同一プロセス） / process（別プロセス） / main（メインで実行）
-- FRAME_DROP_POLICY
-  - latest_only（最新優先）など
 
 意思決定メモ: 設定は結果を“できるだけ”変えないのが理想だが、性能優先なら「フレームドロップ有無」などは体験を変える。ここは明示的にノブとして意図を持って露出させる。
 
