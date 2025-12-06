@@ -139,7 +139,7 @@
 
 # 4. Primitive / Effect / 合成
 
-## 4.1 レジストリ
+## 4.1 レジストリデコレータ
 
 - PrimitiveRegistry: op_name -> make(args) -> RealizedGeometry
 - EffectRegistry: op_name -> apply(inputs_realized, args) -> RealizedGeometry
