@@ -15,7 +15,7 @@
 
 ## 1. 全体アーキテクチャ案
 
-1. `tools/visualize_cache.py`（仮） のような **開発用ユーティリティモジュール** を `src/` の外に新規追加する。
+1. `tools/cache_check/visualize_cache.py` のような **開発用ユーティリティモジュール** を `src/` の外に新規追加する。
 2. このモジュールの中で `src.core.realize` を import し、以下を行う：
    - `RealizeCache.get` / `realize` などの関数・メソッドを **ラップするモンキーパッチ** を提供する。
    - ラップ内で「CACHE_HIT / INFLIGHT_WAIT / COMPUTE」種別の **イベントログ** を記録する。
@@ -78,27 +78,28 @@
 
 ### 4-1. ユーティリティモジュールの骨組み
 
-- [ ] `tools/visualize_cache.py`（または同等のパス）を新規追加する。
-- [ ] `RealizeEventType`, `RealizeEvent`, `FrameRealizeLog` を定義する。
-- [ ] スレッドローカルに現在の `FrameRealizeLog` を保持する仕組みを用意する。
+- [x] `tools/cache_check/visualize_cache.py` を新規追加する。
+- [x] `RealizeEventType`, `RealizeEvent`, `FrameRealizeLog` を定義する。
+- [x] スレッドローカルに現在の `FrameRealizeLog` を保持する仕組みを用意する。
 
 ### 4-2. realize/inflight のインストルメント
 
-- [ ] `src.core.realize` から `realize`, `realize_cache`, `_inflight` を import する（読み取り専用）。
-- [ ] `RealizeCache.get` に対するラッパ関数を実装し、`CACHE_HIT` を記録する。
-- [ ] `realize` に対するラッパ関数を実装し、`COMPUTE` / `INFLIGHT_WAIT` を記録する。
-- [ ] これらのラップを適用 / 解除する `install_realize_tracer()` / `uninstall_realize_tracer()` を実装する。
-- [ ] `with frame_logging():` のようなコンテキストマネージャで 1 フレーム分のログスコープを張れるようにする。
+- [x] `src.core.realize` から `realize`, `realize_cache`, `_inflight` を import する（読み取り専用）。
+- [x] `RealizeCache.get` に対するラッパ関数を実装し、`CACHE_HIT` を記録する。
+- [x] `realize` に対するラッパ関数を実装し、`COMPUTE` / `INFLIGHT_WAIT` を記録する。
+- [x] これらのラップを適用 / 解除する `install_realize_tracer()` / `uninstall_realize_tracer()` を実装する。
+- [x] `with frame_logging():` のようなコンテキストマネージャで 1 フレーム分のログスコープを張れるようにする。
 
 ### 4-3. DAG エクスポート機能
 
-- [ ] ルート `Geometry` と `FrameRealizeLog` を受け取り、DOT 文字列を構築する関数 `export_geometry_dag_dot(root, log) -> str` を実装する。
-- [ ] （オプション）Graphviz が利用可能な場合に PNG/SVG を生成する `export_geometry_dag_image(...)` を実装する。
-- [ ] ノード色（赤/緑/オレンジ/灰）とラベル表記のルールをドキュメントコメントとして明文化する。
+- [x] ルート `Geometry` と `FrameRealizeLog` を受け取り、DOT 文字列を構築する関数 `export_geometry_dag_dot(root, log) -> str` を実装する。
+- [x] （オプション）Graphviz が利用可能な場合に PNG を生成する `save_geometry_dag_png(...)` を実装する。
+- [x] ノード色（赤/緑/オレンジ/灰）とラベル表記のルールをドキュメントコメントとして明文化する。
+- [x] 画像内に色の意味を示す凡例クラスタ（Legend）を追加する。
 
 ### 4-4. 最小動作確認用スクリプト
 
-- [ ] シンプルなサンプル（`G.circle` + `E.scale` を使った DAG）を 1 フレーム分だけ評価し、DOT あるいは PNG を出す小さなスクリプトを追加する（`examples/visualize_cache_demo.py` などを想定）。
+- [x] シンプルなサンプル（`G.circle` + `E.scale` を使った DAG）を 1 フレーム分だけ評価し、DOT あるいは PNG を出す小さなスクリプトを追加する（`examples/visualize_cache_demo.py` などを想定）。
 - [ ] README か専用の md に「どう呼び出せば可視化できるか」の手順を追記する（例：`install_realize_tracer()` を呼んでから draw を実行、`frame_log` を渡して `export_geometry_dag_*` を呼ぶ）。
 
 ## 5. オープンな論点・要相談事項
@@ -108,9 +109,12 @@
 - [ ] 可視化の出力先フォーマット（PNG/SVG/DOT）の優先順位と、どこまで自動化するか（ファイルパス命名規則など）。
 - [ ] 将来的に「時間軸」を含めたアニメーション（フレーム列）可視化まで広げるかどうか。
 
+### 5-1. 実装してみて分かったメモ
+
+- [ ] `realize` のモンキーパッチは `src.core.realize.realize` を直接呼ぶ経路に対して確実に効く。`from src.core.realize import realize` を先に実行している既存コードは、alias 先の関数オブジェクトが差し替わらないため、必要であれば「トレーサをインストールしてから import する」運用ルールを決めたほうがよい。
+
 ---
 
 この計画に問題なければ、このチェックリストに沿って
 `tools/visualize_cache.py` などの新規モジュールと簡易サンプルスクリプトを実装していきます。
 実装中に新たな論点が出てきた場合は、この md に項目を追記していきます。
-
