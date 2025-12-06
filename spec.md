@@ -12,8 +12,6 @@
   - キャッシュは「正しくヒットする」ことを最優先し、GeometryId を内容署名とする。
   - 不変性は“契約”（破壊的変更は未定義）とし、コピー強制はしない。
 
-意思決定メモ: 生成物（coords/offsets）を持つ“従来の Geometry”と、レシピを持つ“式ノード”を混同すると設計が破綻するため、型名は Geometry のままでも仕様で「レシピ」と定義して固定する。
-
 ⸻
 
 # 1. 公開 API（Python）
@@ -25,7 +23,7 @@
   - 例: G.circle(r=10.0), G.line(p0=(0,0), p1=(10,0))
 - E: effect ファクトリ／パイプラインビルダ
   - E.<effect>(\*\*params) -> EffectBuilder
-  - EffectBuilder(g: Geometry) -> Geometry
+    - EffectBuilder(g: Geometry) -> Geometry
   - E.<effect1>(...).<effect2>(...) -> Callable[[Geometry], Geometry]
 - L: Layer ヘルパ
   - L(geometry, color=None, thickness=None, name=None) -> Layer
@@ -139,18 +137,6 @@
 
 ⸻
 
-## 3.3 「同じレシピを別物として扱う」手段（必要時のみ）
-
-- 原則：同じレシピは同じ ID で良い（共有が利益）。
-- どうしても分離したい場合のみ、予約キー **salt** を許可する：
-  - **salt** は args に含めて署名に影響させる
-  - realize は **salt** を計算には使わない（意味論は変えない）
-- UI での「別々に調整」は、GeometryId ではなく **callsite_key（後述）**で行う。
-
-意思決定メモ: “別物”要件は主に UI/メタの話で、幾何キャッシュに混ぜるべきではない。必要なら salt、通常は callsite で解決する。
-
-⸻
-
 # 4. Primitive / Effect / 合成
 
 ## 4.1 レジストリ
@@ -221,7 +207,7 @@
 ## 6.1 user_draw の契約
 
 - シグネチャ：user_draw(t: float) -> Geometry | Layer | Sequence[Geometry|Layer]
-- cc や C は引数ではなく api.cc, api.C から読む
+- cc は引数ではなく api.cc, api.C から読む
 
 ## 6.2 戻り値の正規化
 
