@@ -61,23 +61,22 @@
 
 ⸻
 
-## 2.2 RealizedGeometry（実体配列）
+## 2.3 Layer（描画属性の付与）【改訂】
 
 - 役割
-  - Geometry を評価した結果である、描画・エクスポート可能な配列。
-- 内部状態
-  - coords: float32 配列 shape (N,3)
-  - offsets: int32 配列 shape (M+1,)
-- 不変条件
-  - offsets[0] == 0
-  - offsets[-1] == len(coords)
-  - offsets は単調非減少
-  - 2D 入力は z=0 補完で常に (N,3)
-- 不変性（契約）
-  - 原則 writeable=False を設定して返す。
-  - 返された配列を書き換えた場合の挙動は未定義。
-
-意思決定メモ: 完全不変を保証するためのコピー強制はしない。性能優先のため「契約+防御柵（writeable=False）」で運用する。
+  - 「何を描くか（Geometry）」と「どう描くか（stroke style）」を束ねるシーン要素である点は不変。
+  - 太線描画（後述）とプレビュー/書き出しの整合のため、線幅の単位系を明示できるようにする。
+- 内部状態（推奨）
+  - geometry: Geometry
+  - color: RGBA | None（None はデフォルトに委譲）
+  - thickness: float | None（None はデフォルトに委譲）
+  - name: str | None
+- スタイル解決
+  - color/thickness が None の場合はランナーのグローバル既定（config や API 引数）を使用する。
+  - thickness が指定されている場合、thickness > 0 を要求し、満たさない場合は ValueError とする（Layer 生成時またはシーン正規化時に検査してよい）。
+- Layer は Geometry とは別（不変）
+  - Layer の color/thickness は GeometryId に影響しない。
+  - 同一 Geometry を色違い・線幅違い・単位違いで複数描く場合でも、realize_cache/描画キャッシュは Geometry 単位で共有される（後述）。
 
 ⸻
 
@@ -200,6 +199,32 @@
 
 意思決定メモ: 並列化で最も無駄が出るのは「同じサブグラフを別スレッドで二重計算」なので、inflight は必須の性能要件。
 
+## 5.4 描画キャッシュ（RenderPrepCache / GpuCache）
+
+5.4.1 RenderPrepCache（CPU 前処理キャッシュ）
+
+- 目的
+  - RealizedGeometry（ポリライン列）を、太線レンダリング向けの「厚み非依存」な頂点属性・インデックスへ変換した結果をキャッシュし、毎フレームの再前処理を避ける。
+- 形
+  - render_prep_cache: GeometryId -> PreparedStroke（後述）
+  - 上限管理は推定バイト数を推奨（頂点属性バッファ＋インデックスの合計）。
+- 永続性
+  - 永続性は保証しない（LRU 等で削除可）。
+  - 削除されても realize_cache から再構築できる。
+
+### 5.4.2 GpuCache（GPU リソースキャッシュ）
+
+- 目的
+  - PreparedStroke を GPU バッファ（VBO/IBO/VAO 等）へアップロードした結果をキャッシュし、描画時のバッファ再生成を避ける。
+- 形
+  - gpu_cache: GeometryId -> GpuStrokeHandle（バッファハンドル群＋頂点数等）
+  - 上限管理は推定 GPU バイト数を推奨。
+- 制約（規範）
+  - GPU リソースの生成・破棄・更新は必ずメインスレッド（GL コンテキスト所有スレッド）で行う。
+  - gpu_cache は renderer の実装都合で随時クリアしてよい（正しさは維持されること）。
+
+意思決定メモ: realize_cache は「CPU 配列の共有」しか解決しない。描画で支配的になるのは前処理とアップロードなので、描画専用キャッシュを GeometryId キーで独立に持つ。
+
 ⸻
 
 # 6. draw の契約とシーン正規化
@@ -226,21 +251,28 @@
 ## 7.1 スレッド/プロセスの役割分担（規範）
 
 - メインスレッド（必須）
-  - ウィンドウイベント、入力（キー/MIDI 受信の取り回し）、OpenGL 描画
+  - ウィンドウイベント、入力（キー/MIDI 受信の取り回し）、OpenGL 描画。
+  - GpuCache の生成・破棄・更新（GL リソース操作は全てここ）。
 - バックグラウンド（推奨）
-  - user_draw(t) の実行（必要に応じて）
-  - realize の事前計算（スレッドプールで並列化）
+  - user_draw(t) の実行（必要に応じて）。
+  - realize の事前計算（スレッドプールで並列化）。
+  - PreparedStroke（CPU 前処理）の生成（スレッドプールで並列化可）。ただし GL は触らない。
+
+意思決定メモ: 「GL を触る境界」を仕様で固定し、ワーカー側は純 CPU 処理に閉じる。これによりデッドロックやコンテキスト競合のクラスのバグを削る。
 
 ## 7.2 推奨パイプライン（同一プロセス内スレッド中心）
 
-- 各フレームで以下を行う：
+- 各フレームで以下を行う（規範）
   1. スナップショット作成：S = {t, cc_snapshot, param_snapshot, palette_snapshot, settings}
   2. user_draw を実行して SceneSpec = list[Layer] を得る（ワーカースレッドでも可）
-  3. SceneSpec に含まれる全 GeometryId を列挙し、realize をスレッドプールで並列実行してキャッシュを温める
-  4. メインスレッドは「最新に完成した SceneSpec」だけを採用して描画（古い計算結果は破棄可）
+  3. SceneSpec に含まれる全 GeometryId を列挙し、realize をスレッドプールで並列実行して realize_cache を温める
+  4. realize 完了したものから順に PreparedStroke を生成し、render_prep_cache を温める（ワーカースレッド可）
+  5. メインスレッドは「最新に完成した SceneSpec」を採用し、必要な GeometryId について GpuCache を補完（未アップロード分のみ）して描画する
+  6. 古い計算結果は破棄可（ただしキャッシュは残してよい）
+- フレーム未完了時の扱い（推奨）
+  - 描画で未準備（realize 未完了 / PreparedStroke 未完了）の Layer はスキップしてよい（設定で「前フレームの同名 Layer を維持」等に拡張可能）。
 
-意思決定メモ: 配列を IPC で運ぶと帯域とコピーが支配的になりがち。まずは同一プロセス内でキャッシュ共有し、realize の並列化で稼ぐ。
-
+意思決定メモ: “CPU 側でできる限りを先に済ませる”と、メインスレッドは「バッファがあれば描く、なければ最小限アップロードして描く」に収束し、入力/ウィンドウ応答性が保ちやすい。
 ⸻
 
 # 8. ランタイムコンテキスト（cc/Parameter の整合性）
@@ -254,16 +286,13 @@
 
 ⸻
 
-# 9. Parameter GUI / param_meta（必要な範囲）
+# 9. Parameter GUI
 
-- param_meta は primitive/effect の引数記述（default/min/max/step/choices 等）を提供する
-- ランタイムは各呼び出し点を識別する callsite_key を生成し、GUI 上のパラメータ ID に用いる
-  - GeometryId は共有され得るため、GUI 識別子に使わない
-- 値解決の優先順位（推奨）
-  - GUI override > 明示引数（コード） > default
-- GUI での step は、署名と実引数の量子化にも流用できる（望ましい）
-
-意思決定メモ: “同じレシピを 2 回呼んだら別々に調整したい”は UI の要件であり、幾何 ID（署名）に混ぜるべきではない。callsite_key で分離する。
+- draw 関数内で呼ばれる primitive や effect の引数は、あるいは他のモジュールから import される関数内の primitive や effect の引数はすべて paraemter_gui でスライダー等で制御できる。
+- gui は主に 3 つの列エリアに分かれる。
+  - 1 列目はラベル列。primitive や effect の関数名に連番がついたもの。scalar #1 など。
+  - 2 列目は制御 UI 列。引数が float ならスライダー。Vec3 なら 3 列スライダー。引数が str ならテキストボックス、いくつかのタイプを表すならラジオボタン。bool ならトグルボタン。
+  - 3 列目は min , max, cc の入力ボックス。これはスライダーの最小値、最大値を制御するものと、cc は数字をいれると PC に繋がれた midi コントローラーのその cc 番号でそのパラメータを制御できるようにする。
 
 ⸻
 
@@ -282,13 +311,20 @@
 
 ⸻
 
-# 11. 主要な設定ノブ（最低限）
+# 11. 主要な設定ノブ【追記（描画系）】
 
-- DEFAULT_QUANT_STEP（float 量子化の既定 step）
-- REALIZE_CACHE_MAX_BYTES（実体キャッシュ上限）
-- REALIZE_THREAD_WORKERS（realize 並列度）
+- 既存（不変）
+  - DEFAULT_QUANT_STEP（float 量子化の既定 step）
+  - REALIZE_CACHE_MAX_BYTES（実体キャッシュ上限）
+  - REALIZE_THREAD_WORKERS（realize 並列度）
+- 描画系（推奨追加）
+  - RENDER_PREP_CACHE_MAX_BYTES（PreparedStroke の CPU キャッシュ上限）
+  - GPU_CACHE_MAX_BYTES（GPU バッファキャッシュ上限）
+  - STROKE_MITER_LIMIT（miter クランプ閾値。未指定なら実装既定）
+  - AA_FEATHER_PX（フェザー幅。未指定なら実装既定）
+  - MSAA_SAMPLES（未指定なら環境既定）
 
-意思決定メモ: 設定は結果を“できるだけ”変えないのが理想だが、性能優先なら「フレームドロップ有無」などは体験を変える。ここは明示的にノブとして意図を持って露出させる。
+意思決定メモ: 描画キャッシュは CPU/GPU の制約が別で、単一ノブにまとめると運用で詰まりやすい。上限を分離して露出し、メモリと描画品質のトレードオフを制御可能にする。
 
 ⸻
 
@@ -311,5 +347,85 @@ L(E.rotate(angle=t)(g), color="#0ff", thickness=0.15),
   - G.circle が Geometry(op="circle", inputs=(), args=(...)) を作り、id は内容署名
   - E.scale が Geometry(op="scale", inputs=(circle,), args=(...)) を作る
   - 描画直前に必要な GeometryId が realize_cache に無ければ realize で生成し、以降は再利用
+
+⸻
+
+# 13. 描画バックエンド（OpenGL：太線ストローク）【追記】
+
+## 13.1 基本方針
+
+- RealizedGeometry は「中心線（ポリライン列）」として扱い、ストロークは三角形で描画する。
+- glLineWidth に依存しない（環境差・上限・コアプロファイル問題を避ける）。
+- 線幅（thickness）は Layer スタイルであり、GeometryId/realize_cache を壊さない。
+
+意思決定メモ: 太線を「線 primitives」で描こうとすると移植性が破綻しやすい。ストロークをメッシュ化（もしくはメッシュ相当の押し出し）して描くのが最も安定する。
+
+## 13.2 PreparedStroke（CPU 前処理結果）の定義
+
+- 目的
+  - 太線押し出しに必要な“厚み非依存”情報を、GeometryId ごとに一度だけ作る。
+- 内部状態（推奨）
+  - attrs: float32 配列 shape (V, K)（頂点属性）
+    - 少なくとも以下の意味情報を含むこと：
+      - curr: 現頂点位置 vec3
+      - prev: 直前の頂点位置 vec3（同一ポリライン内）
+      - next: 直後の頂点位置 vec3（同一ポリライン内）
+      - side: +1 / -1（左右どちらへ押し出すか）
+  - indices: uint32（または int32）配列（トライアングルインデックス）
+  - polyline_ranges（任意）: offsets に対応する範囲情報（デバッグ/検証用）
+- 生成規則（規範）
+  - RealizedGeometry.offsets の区間ごとに独立したポリラインとして処理し、区間を跨いで prev/next を参照してはならない。
+  - 各ポリラインの各点 i について、2 頂点（side=±1）を生成する（V = 2\*N）。
+  - 各セグメント（i→i+1）について 2 三角形（計 6 インデックス）を生成する（端点の扱いは 13.3 のキャップ規則に従う）。
+  - attrs/indices は writeable=False を設定して返してよい（契約不変性）。
+
+## 13.3 ジョイン/キャップ（最小仕様）
+
+- ジョイン（推奨の最小仕様）
+  - miter join を基本とし、鋭角で miter が発散するケースは miter_limit によりクランプ（実装上は bevel 相当）する。
+  - miter_limit は renderer の定数または設定ノブとしてよい。
+- キャップ（推奨の最小仕様）
+  - butt cap（線端をその位置で切る）を基本とする（追加頂点不要）。
+  - square/round cap は将来拡張としてよい（必要になった時点で PreparedStroke にフラグを追加する）。
+
+意思決定メモ: 最初から join/cap の全バリエーションを揃えると前処理が肥大化しやすい。miter + limit + butt で大半の破綻を避けつつ実装を固定化できる。
+
+## 13.4 シェーダ契約（規範）
+
+- 目的
+  - PreparedStroke（中心線＋隣接情報）から、最終画素で所望のストローク幅を得る。
+- ユニフォーム（推奨）
+  - u_viewproj: mat4（ワールド → クリップ）
+  - u_viewport_size: vec2（ピクセル幅・高さ。HiDPI は実ピクセル基準）
+  - u_thickness: float（Layer 解決済み thickness。常にワールド単位）
+  - u_color: vec4（Layer 解決済み RGBA）
+- 押し出し（規範）
+  - ワールド空間（またはビュー空間）で線分方向ベクトルとそれに直交する法線ベクトルを求め、u_thickness をワールド座標系での距離として用いて押し出す。
+  - その後 u_viewproj によりクリップ空間へ変換する。
+
+## 13.5 アンチエイリアス（推奨）
+
+- MSAA が有効な環境では MSAA を使用する（ウィンドウ/FBO 設定）。
+- 追加で、フラグメント側に 1px 程度のフェザーを入れてエッジのギザを抑える実装を推奨する（導関数 fwidth 等を用いた解析的なスムージング）。
+  - ただし AA の有無は見た目の問題であり、幾何（realize）やキャッシュの正しさに影響してはならない。
+
+## 13.6 描画順序とブレンド（規範）
+
+- Layer の並び順を描画順とする（後勝ち）。
+- アルファブレンドを使用する場合、premultiplied alpha を推奨する（色解決側で統一してよい）。
+
+⸻
+
+# 14. 座標系・厚み単位【追記】
+
+- 座標系（規範）
+  - RealizedGeometry.coords は「ワールド座標」とみなし、プレビュー/書き出しはいずれもワールド → デバイスの変換（カメラ/ビューポート）を経て最終座標系へ写像する。
+  - 2D 入力は z=0 補完済みであるため、レンダラは基本的に x,y を主に用い、z は将来拡張（深度/ソート）に使用してよい。
+- 厚みの単位（規範）
+  - thickness は常にワールド座標系での距離として解釈する。
+  - プレビューと書き出しの双方で同じ解釈を用いる。
+  - スクリーンピクセル固定の線幅モードはサポートしない（必要になった場合は別機能として追加する）。
+
+意思決定メモ: 線幅は見た目と出力整合の中心で、曖昧さが残るとバグではなく「期待値差」で破綻する。単位を明文化し、既定値の適用規則も固定する。
 
 ⸻

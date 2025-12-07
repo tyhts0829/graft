@@ -1,3 +1,4 @@
 __pycache__
 tools/cache_check/*.png
 tools/cache_check/*.dot
+.pytest_cache/
