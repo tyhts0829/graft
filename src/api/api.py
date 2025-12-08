@@ -211,5 +211,4 @@ E = EffectNamespace()
 """effect 適用パイプラインを構築する公開名前空間。"""
 
 
-__all__ = ["E", "G", "EffectBuilder"]
-
+__all__ = ["E", "G"]

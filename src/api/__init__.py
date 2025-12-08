@@ -1,9 +1,10 @@
-# src/api/__init__.py
-# 公開 API パッケージのエントリポイント。G/E 名前空間を再エクスポートする。
+# どこで: `src/api/__init__.py`。
+# 何を: 公開 API パッケージのエントリポイントとして G/E/run を再エクスポートする。
+# なぜ: ユーザーコードからシンプルに API を import できるようにするため。
 
 from __future__ import annotations
 
-from .api import E, G, EffectBuilder
+from .api import E, G
+from .run import run
 
-__all__ = ["E", "G", "EffectBuilder"]
-
+__all__ = ["E", "G", "run"]
