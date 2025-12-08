@@ -34,8 +34,8 @@
 - `src/api/run.py`: 公開エントリ。ユーザーから見えるのは G/E/run だけに留める。
 - `src/render/render_settings.py`（新規）: 背景色・線色・線幅・解像度などを束ねる dataclass `RenderSettings`。内部利用のみ。
 - `src/render/index_buffer.py`（新規）: `_build_line_indices` を移動。Pure なテスト対象。
-- `src/render/preview_renderer.py`（新規）: ModernGL コンテキスト、シェーダ、メッシュの生成と `render_frame` メソッドを担当。
-- `src/app/preview_window.py`（新規）: pyglet ウィンドウ生成とイベント登録を担当し、外部から `on_draw`/`on_resize`/`on_close` コールバックを受け取る薄いラッパ。
+- `src/render/draw_renderer.py`（新規）: ModernGL コンテキスト、シェーダ、メッシュの生成と `render_frame` メソッドを担当するリアルタイム描画専用レンダラー。
+- `src/app/draw_window.py`（新規）: pyglet ウィンドウ生成とイベント配線を担う“実行時フレームワーク”側の窓口。`on_draw`/`on_resize`/`on_close` を外部から受け取るだけの薄いラッパ。
 - `tests/api/test_preview_indices.py` など（新規）: インデックス生成とレンダラー初期化の単体テスト用。
 
 ### 4.1 Parameter GUI 連携の方針（ランナー側の責務）
@@ -57,10 +57,10 @@
 
 ## 6. オープン事項（要確認）
 
-- `RenderSettings` の正確な配置: 現案は `src/render/render_settings.py`（ユーザー公開しない前提）。`src/runtime` 配下に置く案もあるが、描画専用である点を踏まえ要最終決定。
-- `app` 名前空間を新設してよいか、それとも `src/render/window.py` など既存階層に収めるか。
-- Parameter GUI との橋渡し API（GUI からの state read/write）の設計は保留。描画周りの分割後に再検討する。
-- 並列実行時の GUI 制約: DearPyGui はメインスレッド専用（メインスレッドで window loop/描画を動かし、ワーカースレッドは計算のみ）。pyglet との共存方針を決める必要あり（イベントループ統合 or どちらかに寄せる）。
+- `RenderSettings` の正確な配置: 現案は `src/render/render_settings.py`（ユーザー公開しない前提）。描画専用である点から render 配下で良さそうだが最終決定は後続。
+- `app` 名前空間の範囲: `draw_window.py` を app に置く方針で合意。Parameter GUI や MIDI 入力など「実行時フレームワーク」（入力→ParamStore 反映、イベントループ管理）は同じく app 配下に置く想定。
+- Parameter GUI との橋渡し API（GUI からの state read/write）の設計は保留。描画分離後に再検討する。
+- 並列実行時の GUI 制約: DearPyGui はメインスレッド専用。pyglet との共存方針（イベントループ統合 or どちらかを主ループにしてもう片方を駆動）を設計する必要あり。
 
 ## 7. 非ゴール
 
