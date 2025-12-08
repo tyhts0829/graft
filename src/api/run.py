@@ -80,8 +80,7 @@ def run(
         nonlocal closed
         closed = True
         unschedule_tick(tick)
-        renderer.release()
-        window.close()
+        pyglet.app.exit()
 
     def tick(dt: float) -> None:
         if closed or window.has_exit:
@@ -96,4 +95,8 @@ def run(
 
     window.push_handlers(on_draw=on_draw, on_close=on_close, on_resize=on_resize)
     schedule_tick(tick, fps=60.0)
-    pyglet.app.run()
+    try:
+        pyglet.app.run()
+    finally:
+        renderer.release()
+        window.close()

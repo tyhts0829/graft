@@ -12,19 +12,12 @@ from api import E, G, run
 from core.geometry import Geometry
 
 
-def draw(t: float):
+def draw(t: float) -> Geometry:
     NX = 10
     NY = 10
     # 画面にNX×NY個の円を描く
-    circles = []
-    for ix in range(NX):
-        for iy in range(NY):
-            cx = 300.0 * (ix + 0.5) / NX
-            cy = 300.0 * (iy + 0.5) / NY
-            r = 20.0 + 10.0 * t
-            c = G.circle(r=r, cx=cx, cy=cy, segments=80)
-            circles.append(c)
-    return circles
+    c = G.circle(r=10.0 + t, cx=150, cy=150, segments=160)
+    return c
 
 
 if __name__ == "__main__":
