@@ -366,6 +366,50 @@ L(E.rotate(angle=t)(g), color="#0ff", thickness=0.15),
 - Layer の並び順を描画順とする（後勝ち）。
 - アルファブレンドを使用する場合、premultiplied alpha を推奨する（色解決側で統一してよい）。
 
+## 13.3 LineMesh（VBO/IBO 管理）【実装契約】
+
+- 実装: `src/render/line_mesh.py` の `LineMesh(ctx, program, initial_reserve=8*1024*1024)` を使用する。`ctx` は ModernGL コンテキスト、`program` は後述のシェーダ。
+- `upload(vertices, indices)` の入力
+  - `vertices`: float32, shape (N, 3)。座標系はワールド（mm）。`RealizedGeometry.coords` をそのまま渡す。
+  - `indices`: uint32, shape (M,)。偶数長で、`GL_LINES` で解釈される 2 要素単位の線分列。ポリライン切り替えを明示したい場合は `LineMesh.PRIMITIVE_RESTART_INDEX (=0xFFFFFFFF)` を差し込んでよい（ctx.primitive_restart は `__init__` で有効化済み）。
+- バッファ拡張は `upload` 内で自動。再確保時は VAO を貼り替えるため、呼び出し側は `vao` を作り直す必要なし。
+- 描画は `vao.render(mode=ctx.LINES, vertices=index_count)` を基本とする。`index_count` は直近の `upload` で更新される。
+- リソース解放は `release()` で VBO/IBO/VAO を破棄する（ウィンドウ終了時に必須）。
+
+## 13.4 シェーダ契約（`src/render/shader.py`）
+
+- `Shader.create_shader(ctx)` が返す `program` を前提とする。
+- 頂点属性
+  - `in_vert: vec3` … ワールド座標（mm）。Z はそのまま渡し、直交射影で XY のみ使用。
+- ユニフォーム
+  - `projection: mat4` … `utils.build_projection(canvas_w, canvas_h)` の結果（ModernGL 向けに転置済み）。
+  - `line_thickness: float` … クリップ空間での線幅（全幅）。ワールド厚み `t_world` を `t_clip = t_world * (2.0 / canvas_width_mm)` で変換して渡す（現行シェーダは XY 同倍率を仮定）。
+  - `color: vec4` … premultiplied alpha を推奨。未指定はデフォルト黒。
+- パイプライン
+  - VS: `projection * vec4(in_vert.xy, 0, 1)` で NDC へ。
+  - GS: `layout(lines)` 入力を線分ごとに 4 頂点へ展開し、厚み方向オフセット `offset = normalize(p1 - p0).perp * line_thickness / 2` で太線化。
+  - FS: 単色出力（必要に応じて AA フェザー処理を追加してよい）。
+
+## 13.5 射影行列と厚み解釈（`src/render/utils.py`）
+
+- `build_projection(canvas_width, canvas_height)` は「キャンバス寸法（mm）を基準とする正射影」を返す。X は左→右で [-1,1]、Y は上→下で [-1,1] へ線形マッピング（ModernGL のカラム優先に合わせ転置済み）。
+- 厚みの扱い
+  - thickness はワールド長（mm）で指定し、`line_thickness` ユニフォームへ渡す時に前述の `t_clip` へ変換する。
+  - キャンバスの X/Y スケールが異なる場合でも、現行シェーダは等方厚みを仮定する。非等方補正が必要になったら、GS へ `viewport_size` を追加し、CPU 側で軸別スケールを計算する。
+
+## 13.6 最小パイプライン（`main.py` → 画面描画）
+
+- 目的: 現行の `main.py`（Geometry を生成し realize まで行う）を実際に描画する最小経路を固定する。
+- 手順（1 フレーム分）
+  1. GL 初期化: `ctx = moderngl.create_standalone_context()`（あるいはウィンドウ付きコンテキスト）。`program = Shader.create_shader(ctx)`、`mesh = LineMesh(ctx, program)` を用意。
+  2. シーン取得: `geom = ...`（`main.py` の G/E 呼び出し）、`realized = realize(geom)` で `RealizedGeometry(coords, offsets)` を得る。
+  3. インデックス生成: 各ポリライン区間 `[o_i, o_{i+1})` について `(k, k+1)` を列挙し uint32 配列 `indices` を作る。ポリライン間を切りたい場合は `PRIMITIVE_RESTART_INDEX` を差し込む。
+  4. GPU 転送: `mesh.upload(vertices=realized.coords, indices=indices)`。
+  5. ユニフォーム設定: `program["projection"].write(build_projection(canvas_w, canvas_h).tobytes())`; `program["line_thickness"].value = thickness_world * (2.0 / canvas_w)`（Layer.thickness が None の場合は既定値を使用）; `program["color"].value = (r,g,b,a)`。
+  6. 描画: `ctx.clear()` の後 `mesh.vao.render(mode=ctx.LINES, vertices=mesh.index_count)` を呼ぶ。ブレンド有効時は premultiplied alpha 設定を合わせる。
+  7. 終了処理: ウィンドウの swap/present。終了時に `mesh.release()`。
+- レイヤーが複数ある場合は 3–6 を Layer 順に繰り返す。GeometryId が同じなら `realize` 結果とアップロード済みバッファを共有してよい。
+
 ⸻
 
 # 14. 座標系・厚み単位【追記】
