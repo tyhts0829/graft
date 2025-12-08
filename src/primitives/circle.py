@@ -1,3 +1,9 @@
+"""
+どこで: `src/primitives/circle.py`。円プリミティブの実体生成。
+何を: 中心・半径・分割数から円ポリラインを構築する。
+なぜ: プレビューとエクスポートで再利用できる基本図形を提供するため。
+"""
+
 from __future__ import annotations
 
 import math
@@ -27,12 +33,12 @@ def circle(
     cy : float, optional
         中心の y 座標。
     segments : int, optional
-        近似に用いる分割数。
+        近似に用いる分割数（線分数）。
 
     Returns
     -------
     RealizedGeometry
-        単一ポリラインとしての円。
+        開始点を終端に重ねた閉じたポリラインとしての円。
     """
     r = float(r)
     cx = float(cx)
@@ -54,5 +60,7 @@ def circle(
         np.float32,
         copy=False,
     )
+    # 先頭頂点を終端に複製してポリラインを閉じる。
+    coords = np.concatenate([coords, coords[:1]], axis=0)
     offsets = np.array([0, coords.shape[0]], dtype=np.int32)
     return RealizedGeometry(coords=coords, offsets=offsets)
