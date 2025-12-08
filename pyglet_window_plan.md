@@ -34,14 +34,14 @@
 
 ## 3. 実装タスクチェックリスト
 
-- [ ] 依存確認: `pyglet`, `moderngl` のインストール有無を確認し、必要なら追加の承認を得る。
-- [ ] API 整備: `src/api/run.py`（または同等）にランナー関数を実装し、`api.__init__` に `run` を公開する。
-- [ ] ウィンドウ初期化: pyglet で GL4.1 Core / ダブルバッファ / 可変サイズウィンドウを作成し、リサイズ時にビューポート更新を入れる。
-- [ ] コンテキスト準備: pyglet ウィンドウから ModernGL コンテキストを生成し、`Shader` と `LineMesh` を初期化。
-- [ ] インデックス生成ヘルパ: `RealizedGeometry.offsets` から `uint32` インデックス + `PRIMITIVE_RESTART` を作る関数を追加。
-- [ ] フレームループ: `clock.schedule_interval` で更新しつつ `draw(t)` → `realize` → `upload` → `render` の流れを `on_draw` に実装。
-- [ ] スタイル適用: `run` の引数として背景色・線色・線幅・キャンバス寸法を受け、`projection` と `line_thickness` 設定に反映（`line_thickness` は clip 空間ベースで最終線幅）。
-- [ ] 終了処理: `on_close` で `mesh.release()` を呼び、コンテキスト/ウィンドウを安全に破棄。
+- [x] 依存確認: `pyglet`, `moderngl` のインストール有無を確認し、必要なら追加の承認を得る。
+- [x] API 整備: `src/api/run.py`（または同等）にランナー関数を実装し、`api.__init__` に `run` を公開する。
+- [x] ウィンドウ初期化: pyglet で GL4.1 Core / ダブルバッファ / 可変サイズウィンドウを作成し、リサイズ時にビューポート更新を入れる。
+- [x] コンテキスト準備: pyglet ウィンドウから ModernGL コンテキストを生成し、`Shader` と `LineMesh` を初期化。
+- [x] インデックス生成ヘルパ: `RealizedGeometry.offsets` から `uint32` インデックス + `PRIMITIVE_RESTART` を作る関数を追加。
+- [x] フレームループ: `clock.schedule_interval` で更新しつつ `draw(t)` → `realize` → `upload` → `render` の流れを `on_draw` に実装。
+- [x] スタイル適用: `run` の引数として背景色・線色・線幅・キャンバス寸法を受け、`projection` と `line_thickness` 設定に反映（`line_thickness` は clip 空間ベースで最終線幅）。
+- [x] 終了処理: `on_close` で `mesh.release()` を呼び、コンテキスト/ウィンドウを安全に破棄。
 
 ## 4. 動作確認項目
 

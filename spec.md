@@ -22,8 +22,7 @@
   - G.<name>(\*\*params) -> Geometry
   - 例: G.circle(r=10.0), G.line(p0=(0,0), p1=(10,0))
 - E: effect ファクトリ／パイプラインビルダ
-  - E.<effect>(\*\*params) -> EffectBuilder
-    - EffectBuilder(g: Geometry) -> Geometry
+  - E.<effect>(\*\*params) -> Callable[[Geometry], Geometry]（返り値の builder 型は非公開）
   - E.<effect1>(...).<effect2>(...) -> Callable[[Geometry], Geometry]
 - L: Layer ヘルパ
   - L(geometry, color=None, thickness=None, name=None) -> Layer
