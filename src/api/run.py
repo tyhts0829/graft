@@ -1,6 +1,6 @@
 """
 どこで: `src/api/run.py`。公開 API のランナー実装。
-何を: pyglet + ModernGL を使い、`draw(t)` が返す Geometry をウィンドウに描画する最小ランナーを提供する。
+何を: pyglet + ModernGL を使い、`draw(t)` が返す Geometry をウィンドウに描画するランナーを提供する。
 なぜ: `main.py` を実行して実際に線をプレビューできる経路を用意するため。
 """
 
@@ -9,33 +9,14 @@ from __future__ import annotations
 import time
 from typing import Callable
 
-import moderngl
-import numpy as np
 import pyglet
 
 from src.core.geometry import Geometry
 from src.core.realize import realize
-from src.render.line_mesh import LineMesh
-from src.render.shader import Shader
-from src.render import utils as render_utils
-
-
-def _build_line_indices(offsets: np.ndarray) -> np.ndarray:
-    """RealizedGeometry.offsets から GL_LINES 用インデックス配列を生成する。"""
-    indices: list[int] = []
-    for i in range(len(offsets) - 1):
-        start = int(offsets[i])
-        end = int(offsets[i + 1])
-        if end - start < 2:
-            continue
-        for k in range(start, end - 1):
-            indices.append(k)
-            indices.append(k + 1)
-        if i < len(offsets) - 2:
-            indices.append(LineMesh.PRIMITIVE_RESTART_INDEX)
-    if not indices:
-        return np.zeros((0,), dtype=np.uint32)
-    return np.asarray(indices, dtype=np.uint32)
+from src.app.draw_window import create_draw_window, schedule_tick, unschedule_tick
+from src.render.draw_renderer import DrawRenderer
+from src.render.index_buffer import build_line_indices
+from src.render.render_settings import RenderSettings
 
 
 def run(
@@ -65,18 +46,16 @@ def run(
         キャンバス寸法（任意単位）。投影行列生成とウィンドウサイズ決定に使用。
     """
 
-    canvas_w, canvas_h = canvas_size
-    window = pyglet.window.Window(
-        width=int(canvas_w * render_scale),
-        height=int(canvas_h * render_scale),
-        resizable=True,
-        caption="Graft Preview",
+    settings = RenderSettings(
+        background_color=background_color,
+        line_thickness=line_thickness,
+        line_color=line_color,
+        render_scale=render_scale,
+        canvas_size=canvas_size,
     )
 
-    window.switch_to()
-    mgl_ctx = moderngl.create_context(require=410)
-    program = Shader.create_shader(mgl_ctx)
-    mesh = LineMesh(mgl_ctx, program)
+    window = create_draw_window(settings)
+    renderer = DrawRenderer(window, settings)
 
     start_time = time.perf_counter()
     closed = False
@@ -86,34 +65,22 @@ def run(
         geometry = draw(t)
         realized = realize(geometry)
 
-        indices = _build_line_indices(realized.offsets)
-        if indices.size == 0:
-            return
-
-        mesh.upload(vertices=realized.coords, indices=indices)
-
-        projection = render_utils.build_projection(float(canvas_w), float(canvas_h))
-        program["projection"].write(projection.tobytes())
-        program["line_thickness"].value = float(line_thickness)
-        program["color"].value = line_color
-
-        mesh.vao.render(mode=mgl_ctx.LINES, vertices=mesh.index_count)
+        indices = build_line_indices(realized.offsets)
+        renderer.render(realized, indices, settings)
 
     def on_draw() -> None:
-        mgl_ctx.viewport = (0, 0, window.width, window.height)
-        mgl_ctx.clear(*background_color)
+        renderer.viewport(window.width, window.height)
+        renderer.clear(settings.background_color)
         render_frame()
 
     def on_resize(width: int, height: int) -> None:
-        mgl_ctx.viewport = (0, 0, width, height)
+        renderer.viewport(width, height)
 
     def on_close() -> None:
         nonlocal closed
         closed = True
-        pyglet.clock.unschedule(tick)
-        mesh.release()
-        program.release()
-        mgl_ctx.release()
+        unschedule_tick(tick)
+        renderer.release()
         window.close()
 
     def tick(dt: float) -> None:
@@ -128,5 +95,5 @@ def run(
         window.flip()
 
     window.push_handlers(on_draw=on_draw, on_close=on_close, on_resize=on_resize)
-    pyglet.clock.schedule_interval(tick, 1 / 60.0)
+    schedule_tick(tick, fps=60.0)
     pyglet.app.run()
