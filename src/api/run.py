@@ -1,6 +1,6 @@
 """
 どこで: `src/api/run.py`。公開 API のランナー実装。
-何を: pyglet + ModernGL を使い、`draw(t)` が返す Geometry をウィンドウに描画するランナーを提供する。
+何を: pyglet + ModernGL を使い、`draw(t)` が返す Geometry/Layer/シーンをウィンドウに描画するランナーを提供する。
 なぜ: `main.py` を実行して実際に線をプレビューできる経路を用意するため。
 """
 
@@ -12,34 +12,35 @@ from typing import Callable
 import pyglet
 
 from src.app.draw_window import create_draw_window, schedule_tick, unschedule_tick
-from src.core.geometry import Geometry
 from src.core.realize import realize
 from src.render.draw_renderer import DrawRenderer
 from src.render.index_buffer import build_line_indices
+from src.render.layer import LayerStyleDefaults, resolve_layer_style
 from src.render.render_settings import RenderSettings
+from src.render.scene import SceneItem, normalize_scene
 
 
 def run(
-    draw: Callable[[float], Geometry],
+    draw: Callable[[float], SceneItem],
     *,
     background_color: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0),
     line_thickness: float = 0.01,
-    line_color: tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0),
+    line_color: tuple[float, float, float] = (0.0, 0.0, 0.0),
     render_scale: float = 1.0,
     canvas_size: tuple[int, int] = (800, 800),
 ) -> None:
-    """pyglet ウィンドウを生成し `draw(t)` の Geometry をリアルタイム描画する。
+    """pyglet ウィンドウを生成し `draw(t)` のシーンをリアルタイム描画する。
 
     Parameters
     ----------
-    draw : Callable[[float], Geometry]
-        フレーム経過秒 t を受け取り Geometry を返すコールバック。
+    draw : Callable[[float], SceneItem]
+        フレーム経過秒 t を受け取り Geometry / Layer / それらの列を返すコールバック。
     background_color : tuple[float, float, float, float]
         背景色 RGBA。既定は白。
     line_thickness : float
-        プレビュー用線幅（クリップ空間の最終幅）。Layer.thickness 未指定時の基準値。
-    line_color : tuple[float, float, float, float]
-        線色 RGBA。既定は黒。
+        プレビュー用線幅（ワールド単位）。Layer.thickness 未指定時の基準値。
+    line_color : tuple[float, float, float]
+        線色 RGB。既定は黒。
     render_scale : float
         キャンバス寸法に掛けるピクセル倍率。高精細プレビュー用。
     canvas_size : tuple[int, int]
@@ -59,6 +60,7 @@ def run(
         canvas_size=canvas_size,
     )
 
+    defaults = LayerStyleDefaults(color=line_color, thickness=line_thickness)
     window = create_draw_window(settings)
     renderer = DrawRenderer(window, settings)
 
@@ -66,14 +68,22 @@ def run(
     closed = False
 
     def render_frame() -> None:
-        """現在時刻に応じた Geometry を生成しレンダリングする。"""
+        """現在時刻に応じたシーンを生成しレンダリングする。"""
 
         t = time.perf_counter() - start_time
-        geometry = draw(t)
-        realized = realize(geometry)
+        scene = draw(t)
+        layers = normalize_scene(scene)
 
-        indices = build_line_indices(realized.offsets)
-        renderer.render(realized, indices, settings)
+        for layer in layers:
+            resolved = resolve_layer_style(layer, defaults)
+            realized = realize(resolved.layer.geometry)
+            indices = build_line_indices(realized.offsets)
+            renderer.render(
+                realized,
+                indices,
+                color=resolved.color,
+                thickness=resolved.thickness,
+            )
 
     def on_draw() -> None:
         """描画イベントごとにビューポートと背景を整えて描画する。"""

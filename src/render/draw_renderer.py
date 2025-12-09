@@ -37,7 +37,9 @@ class DrawRenderer:
         self,
         realized: RealizedGeometry,
         indices: np.ndarray,
-        settings: RenderSettings,
+        *,
+        color: tuple[float, float, float],
+        thickness: float,
     ) -> None:
         """RealizedGeometry をライン描画する。"""
         if indices.size == 0:
@@ -50,8 +52,8 @@ class DrawRenderer:
             float(self._canvas_h),
         )
         self.program["projection"].write(projection.tobytes())
-        self.program["line_thickness"].value = float(settings.line_thickness)
-        self.program["color"].value = settings.line_color
+        self.program["line_thickness"].value = float(thickness)
+        self.program["color"].value = (*color, 1.0)
 
         self.mesh.vao.render(mode=self.ctx.LINES, vertices=self.mesh.index_count)
 

@@ -1,20 +1,20 @@
 # src/api/api.py
-# ルート api パッケージとして公開する G/E 名前空間 API の実装モジュール。
+# ルート api パッケージとして公開する G/E/L 名前空間 API の実装モジュール。
 # Geometry レシピ DAG を直接扱わずに、primitive/effect 名から Geometry を組み立てるための薄いファサードを提供する。
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Tuple
+from typing import Any, Callable, Sequence, Tuple
 
 from src.core.effect_registry import effect_registry
 from src.core.geometry import Geometry
 from src.core.primitive_registry import primitive_registry
+from src.effects import scale as _effect_scale  # noqa: F401
 
 # primitive/effect 実装モジュールをインポートしてレジストリに登録させる。
 from src.primitives import circle as _primitive_circle  # noqa: F401
-from src.effects import scale as _effect_scale  # noqa: F401
-
+from src.render.layer import Layer
 
 GeometryFactory = Callable[..., Geometry]
 
@@ -211,4 +211,69 @@ E = EffectNamespace()
 """effect 適用パイプラインを構築する公開名前空間。"""
 
 
-__all__ = ["E", "G"]
+class LayerHelper:
+    """Geometry にスタイルを付けて Layer のリストを生成するヘルパ。"""
+
+    def __call__(
+        self,
+        geometry_or_list: Geometry | Sequence[Geometry],
+        *,
+        color: tuple[float, float, float] | None = None,
+        thickness: float | None = None,
+        name: str | None = None,
+    ) -> list[Layer]:
+        """単体/複数の Geometry から Layer を生成する。
+
+        Parameters
+        ----------
+        geometry_or_list : Geometry or Sequence[Geometry]
+            入力 Geometry または Geometry の列。
+        color : tuple[float, float, float] or None, optional
+            RGB 色。None の場合は既定値に委譲。
+        thickness : float or None, optional
+            線幅。None の場合は既定値に委譲。0 以下は拒否。
+        name : str or None, optional
+            Layer 名（任意）。
+
+        Returns
+        -------
+        list[Layer]
+            生成された Layer のリスト。
+
+        Raises
+        ------
+        TypeError
+            Geometry 以外が渡された場合。
+        ValueError
+            thickness が 0 以下の場合。
+        """
+        if thickness is not None and thickness <= 0:
+            raise ValueError("thickness は正の値である必要がある")
+
+        # geometry_or_list を Geometry のリストに正規化する。
+        geometries: list[Geometry]
+        if isinstance(geometry_or_list, Geometry):
+            geometries = [geometry_or_list]
+        elif isinstance(geometry_or_list, Sequence):
+            geometries = []
+            for g in geometry_or_list:
+                if not isinstance(g, Geometry):
+                    raise TypeError(
+                        f"L には Geometry だけを渡してください: {type(g)!r}"
+                    )
+                geometries.append(g)
+        else:
+            raise TypeError(
+                f"L は Geometry またはその列のみを受け付けます: {type(geometry_or_list)!r}"
+            )
+
+        return [
+            Layer(geometry=g, color=color, thickness=thickness, name=name)
+            for g in geometries
+        ]
+
+
+L = LayerHelper()
+"""Geometry を Layer 化する公開ヘルパ。"""
+
+__all__ = ["E", "G", "L"]

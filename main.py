@@ -8,16 +8,16 @@ import sys
 
 sys.path.append("src")
 
-from api import E, G, run
+from api import E, G, L, run
 from core.geometry import Geometry
 
 
-def draw(t: float) -> Geometry:
+def draw(t: float):
     NX = 10
     NY = 10
     # 画面にNX×NY個の円を描く
     c = G.circle(r=10.0 + t, cx=150, cy=150, segments=160)
-    return c
+    return L(c, color=(0.2, 0.2, 0.2), thickness=0.001 + t * 0.01)
 
 
 if __name__ == "__main__":
@@ -25,7 +25,7 @@ if __name__ == "__main__":
         draw,
         background_color=(1.0, 1.0, 1.0, 1.0),
         line_thickness=0.0015,
-        line_color=(0.0, 0.0, 0.0, 1.0),
+        line_color=(0.0, 0.0, 0.0),
         render_scale=2.0,
         canvas_size=(300, 300),
     )

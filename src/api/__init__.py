@@ -4,7 +4,14 @@
 
 from __future__ import annotations
 
-from .api import E, G
-from .run import run
+from .api import E, G, L
 
-__all__ = ["E", "G", "run"]
+__all__ = ["E", "G", "L", "run"]
+
+
+def run(*args, **kwargs):
+    """公開 run API へのラッパ（遅延インポートで GUI 依存を後回しにする）。"""
+
+    from .run import run as _run
+
+    return _run(*args, **kwargs)
