@@ -5,18 +5,21 @@
 なぜ: Geometry と描画スタイルを分離し、ユーザー draw の戻り値を Layer 列へ揃える基盤を整えることで、描画/エクスポートを一貫化するため。
 
 ## 0. ゴールとスコープ
+
 - `spec.md` 2.3, 6.1–6.2, 7.2 の要件に従い、Layer モデルと `L` ヘルパ、Scene 正規化、スタイル解決を段階的に導入する手順を明文化する。
 - ランナー (`run`) が `Geometry | Layer | Sequence[...]` を受け取り `list[Layer]` に一本化できるようにする。
-- RenderSettings から描画既定値（LayerStyleDefaults）を `Layer` の欠損スタイルへ適用する Contract を決める。
+- RenderSettings から描画既定値（LayerStyleDefaults）を `Layer` の欠損スタイルへ適用する Contract を決める。色指定は RGB のみ（透過なし）。
 - GPU/キャッシュ層の実装は本計画の外とし、Layer 生成と正規化に直接必要な部分のみ扱う。
 
 ## 1. 現状整理（2025-12-08 時点）
+
 - `src/api/run.py` は `draw(t) -> Geometry` を前提に `realize` → `build_line_indices` で即描画しており、複数 Geometry や Layer スタイルに未対応。
 - `Layer` データクラスや `L` ヘルパは未実装。`render` 配下にも Layer 専用モジュールが存在しない。
 - シーン正規化ヘルパやスタイル既定値適用の仕組みがなく、`line_color`/`line_thickness` はグローバル設定として run 内で直接使用している。
 - テストは Geometry とキャッシュ周りのみで、Layer／シーンの挙動を保証するテストが無い。
 
 ## 2. 実装アーキテクチャ方針
+
 - `src/render/layer.py` に `Layer`, `LayerStyleDefaults`, `ResolvedLayer` と `resolve_layer_style` を定義し、Renderer 以外の層でも共有する。
 - `src/render/scene.py` へ `normalize_scene` とヘルパ（たとえば `_iter_layers`）を置き、ユーザー draw の戻り値を flatten して `list[Layer]` を返す純粋関数にする。
 - `src/api/api.py` へ `LayerHelper`（`L`) を追加し、単体/複数 Geometry をどちらでも受け取り常に `list[Layer]` を返す公開 API を提供する（`L(...)` と `L.of([...], **style)` を統合し、`L` の入力形態だけで使い分け可能にする）。
@@ -26,19 +29,22 @@
 ## 3. タスク分解
 
 -### 3-1. Layer モデル (`src/render/layer.py`)
-- [ ] `Layer` を `@dataclass(frozen=True, slots=True)` で定義（`geometry`, `color`, `thickness`, `name`）。RGBA は `tuple[float, float, float, float] | None`。
-- [ ] `LayerStyleDefaults` を定義し、`line_color` と `line_thickness`（必要なら `color_space` 拡張も視野）を保持する。
+
+- [ ] `Layer` を `@dataclass(frozen=True, slots=True)` で定義（`geometry`, `color`, `thickness`, `name`）。色は RGB (`tuple[float, float, float] | None`) とし、alpha は扱わない。
+- [ ] `LayerStyleDefaults` を定義し、`line_color`(RGB) と `line_thickness` を保持する。
 - [ ] `ResolvedLayer` を定義し、`Layer` + 解決済みスタイル（None を埋めた color/thickness）を保持。
 - [ ] `resolve_layer_style(layer: Layer, defaults: LayerStyleDefaults) -> ResolvedLayer` を実装し、`thickness is not None and thickness <= 0` の場合は `ValueError`。`None` は defaults で埋める。
 - [ ] NumPy スタイル docstring と型ヒントを追加し、`spec.md 2.3` のルール（Layer が GeometryId に影響しないこと等）をコメントで明記。
 
 -### 3-2. Layer ヘルパ API (`src/api/api.py` or 新設モジュール)
-- [ ] `LayerHelper` クラスを追加し、`__call__(geometry_or_list, *, color=None, thickness=None, name=None)` で単体/複数 Geometry のいずれも受け取り、常に `list[Layer]` を返すようにする（`L(g)` でも `L([g1, g2], color=...)` でも同一挙動）。
+
+- [ ] `LayerHelper` クラスを追加し、`__call__(geometry_or_list, *, color: tuple[float, float, float] | None = None, thickness=None, name=None)` で単体/複数 Geometry のいずれも受け取り、常に `list[Layer]` を返すようにする（`L(g)` でも `L([g1, g2], color=...)` でも同一挙動）。
 - [ ] `L.of` は `__call__` の糖衣として残す/廃止するかを決め、残す場合も内部で `__call__` を利用して挙動を統一する（ユーザー視点での API 一本化を優先）。
 - [ ] `Geometry` 以外が渡された場合のバリデーション（TypeError）と `thickness <= 0` の即時拒否を行う。
 - [ ] API ドキュメント文字列を `spec.md 1.1` の G/E/L 説明と整合させ、`__all__` に `L` を追加。`src/api/__init__.py` も更新。
 
 ### 3-3. Scene 正規化 (`src/render/scene.py`)
+
 - [ ] `SceneItem = Geometry | Layer | Sequence[Geometry | Layer]` 型エイリアスを定義し、`normalize_scene(scene: SceneItem) -> list[Layer]` を実装。
 - [ ] Sequence flatten 時に `str`, `bytes`, `Geometry` を誤って展開しないよう、`collections.abc.Sequence` + 明示的除外で実装。
 - [ ] 入力 `Layer` はそのまま返し、`Geometry` は `Layer(geometry=g, color=None, thickness=None, name=None)` に包む。
@@ -46,6 +52,7 @@
 - [ ] docstring で `spec.md 6.2` の正規化ルールとエラー条件（未知型で `TypeError`）を規定。
 
 ### 3-4. ランナー統合 (`src/api/run.py`)
+
 - [ ] `draw` の型を `Callable[[float], SceneItem]` に拡張し、`normalize_scene` を通して `layers` を得る。
 - [ ] `RenderSettings` から `LayerStyleDefaults` を構築して `resolve_layer_style` を各 Layer に適用、描画順序を保持。
 - [ ] 複数 Layer への対応として `realize`/`build_line_indices` をループ化。`geometry.id` をキーにキャッシュへつながる余地をコメントしておく（実装は別タスク）。
@@ -53,18 +60,21 @@
 - [ ] 暫定的に 1 Layer ずつレンダリングし、既存の `DrawRenderer.render` が単体 Geometry を前提にしているならラッパ関数（仮 `render_layer(layer, settings)`）で橋渡しする計画を記載。
 
 ### 3-5. テストと検証
+
 - [ ] `tests/test_layer.py`（仮）を追加し、`Layer` バリデーションと `resolve_layer_style` の挙動をカバー。
 - [ ] `tests/test_scene.py`（または既存ファイル）で `normalize_scene` の入力/出力パターン、順序維持、ネスト flatten、無効値エラーを確認。
 - [ ] `tests/api/test_layer_helper.py` を追加し、`L(...)` と `L.of(...)` の API をスモークテスト。
-- [ ] `run` の戻り値型拡張に関しては統合テストを後続に回しつつ、`DrawRenderer` をスタブ化したユニットテスト（`pytest`）で Scene 正規化→resolve までの経路を検証する案を作る。
+- [ ] `run` の戻り値型拡張に関しては統合テストを後続に回しつつ、`DrawRenderer` をスタブ化したユニットテスト（`pytest`）で Scene 正規化 →resolve までの経路を検証する案を作る。
 
 ## 4. リスク・未決事項
+
 - RenderSettings の `line_color/line_thickness` をそのまま defaults に使うが、将来的にパレットや単位系（ワールド単位 vs 画面単位）が増える想定があるため、`LayerStyleDefaults` にフィールド追加できる余白を持たせる。
-- `normalize_scene` で巨大/無限再帰にならないよう、Python の Sequence と `Layer`/`Geometry` の型判定順序に注意（先に exact type 判定→Sequence 判定）。
+- `normalize_scene` で巨大/無限再帰にならないよう、Python の Sequence と `Layer`/`Geometry` の型判定順序に注意（先に exact type 判定 →Sequence 判定）。
 - `L.of` がジェネレータ入力を受けた場合の 1 回消費など、API の落とし穴を docstring で明記する必要がある。
 - ランナー側の複数 Layer 描画では、`DrawRenderer` が単一 `RealizedGeometry` に最適化されているため、暫定の for-loop で性能を許容しつつ後続タスクで RenderPrepCache へ接続する計画を別途立てる。
 
 ## 5. 進行管理チェックリスト
+
 - [ ] Layer モデル (`Layer`, `LayerStyleDefaults`, `ResolvedLayer`, `resolve_layer_style`).
 - [ ] 公開 Layer ヘルパ (`L`, `LayerHelper`, docstring, export)。
 - [ ] Scene 正規化 (`normalize_scene`, `SceneItem` 型, 入力バリデーション)。
