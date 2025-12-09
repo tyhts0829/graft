@@ -8,11 +8,11 @@ import moderngl
 import numpy as np
 from pyglet.window import Window
 
-from src.core.realize import RealizedGeometry
+from src.core.realized_geometry import RealizedGeometry
+from src.render import utils as render_utils
 from src.render.line_mesh import LineMesh
 from src.render.render_settings import RenderSettings
 from src.render.shader import Shader
-from src.render import utils as render_utils
 
 
 class DrawRenderer:

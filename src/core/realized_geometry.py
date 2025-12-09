@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 import numpy as np
 
@@ -106,4 +105,3 @@ def concat_realized_geometries(*geometries: RealizedGeometry) -> RealizedGeometr
 
     new_offsets_array = np.asarray(new_offsets, dtype=np.int32)
     return RealizedGeometry(coords=total_coords, offsets=new_offsets_array)
-
