@@ -8,7 +8,7 @@
 
 - `src/api/api.py` に `PrimitiveNamespace`/`EffectBuilder`/`EffectNamespace`/`LayerHelper` と公開ハンドル `G`, `E`, `L` が同居している。
 - primitive/effect の登録はレジストリ経由だが、`__getattr__` の例外メッセージや Geometry 生成ロジックがモジュール内に直書きされ再利用しづらい。
-- `tests/api/test_layer_helper.py` などは `src.api.api` から直接 `L` を import しており、分割後は import 先を書き換える必要がある。
+- 変更前は `tests/api/test_layer_helper.py` が `src.api.api` を直接 import していたが、分割対応で新パスへ置き換え予定（今回の実装で実施）。
 
 ## 1. 目標
 
@@ -29,16 +29,16 @@
 ## 3. タスク分解チェックリスト
 
 - [ ] 現行 API の挙動確認メモを追加（例外メッセージ、TypeError/ValueError 条件）。
-- [ ] 新モジュール雛形を作成（各ファイルにヘッダ、NumPy スタイル docstring、`__all__` を整備）。
-- [ ] `PrimitiveNamespace` を `primitives.py` へ移動し、型エイリアスを使わずシグネチャに直接型を記述する。
-- [ ] `EffectBuilder`/`EffectNamespace` を `effects.py` へ移動し、型エイリアスを設けず現行挙動を保つテストを追加。
-- [ ] `LayerHelper` を `layers.py` へ移動し、`__call__` の入力正規化とバリデーション挙動を保持するテストを追加。
-- [ ] `src/api/api.py` を削除し、参照先をすべて新モジュールに書き換える。
-- [ ] `src/api/__init__.py` を新モジュール re-export に更新し、`__all__` と docstring を確認。
-- [ ] 既存テストとドキュメントの import を新パスに追従させる（互換パスは残さない）。
+- [x] 新モジュール雛形を作成（各ファイルにヘッダ、NumPy スタイル docstring、`__all__` を整備）。
+- [x] `PrimitiveNamespace` を `primitives.py` へ移動し、型エイリアスを使わずシグネチャに直接型を記述する。
+- [x] `EffectBuilder`/`EffectNamespace` を `effects.py` へ移動し、型エイリアスを設けず現行挙動を保つテストを追加。
+- [x] `LayerHelper` を `layers.py` へ移動し、`__call__` の入力正規化とバリデーション挙動を保持するテストを追加。
+- [x] `src/api/api.py` を削除し、参照先をすべて新モジュールに書き換える。
+- [x] `src/api/__init__.py` を新モジュール re-export に更新し、`__all__` と docstring を確認。
+- [x] 既存テストとドキュメントの import を新パスに追従させる（互換パスは残さない）。
 - [ ] ドキュメント（README/spec/plan）に新しい import パスを追記。
-- [ ] 影響調査: 他モジュールが `EffectBuilder` などへ直接依存していないか `rg` で確認し、必要に応じて import を修正。
-- [ ] 最小限のテスト実行で動作確認（例: `pytest -q tests/api/test_layer_helper.py`）。
+- [x] 影響調査: 他モジュールが `EffectBuilder` などへ直接依存していないか `rg` で確認し、必要に応じて import を修正。
+- [x] 最小限のテスト実行で動作確認（例: `pytest -q tests/api/test_layer_helper.py`）。
 
 ## 4. 決めたいこと・質問
 

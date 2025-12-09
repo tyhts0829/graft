@@ -1,10 +1,12 @@
 # どこで: `src/api/__init__.py`。
-# 何を: 公開 API パッケージのエントリポイントとして G/E/run を再エクスポートする。
+# 何を: 公開 API パッケージのエントリポイントとして G/E/L/run を再エクスポートする。
 # なぜ: ユーザーコードからシンプルに API を import できるようにするため。
 
 from __future__ import annotations
 
-from .api import E, G, L
+from .effects import E
+from .layers import L
+from .primitives import G
 
 __all__ = ["E", "G", "L", "run"]
 

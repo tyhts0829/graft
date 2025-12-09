@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.api.api import L
+from src.api import L
 from src.core.geometry import Geometry
 
 
