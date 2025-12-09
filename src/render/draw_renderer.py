@@ -33,7 +33,7 @@ class DrawRenderer:
         """背景色でクリアする。"""
         self.ctx.clear(*color)
 
-    def render(
+    def render_layer(
         self,
         realized: RealizedGeometry,
         indices: np.ndarray,

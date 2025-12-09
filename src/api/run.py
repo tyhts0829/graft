@@ -12,12 +12,11 @@ from typing import Callable
 import pyglet
 
 from src.app.draw_window import create_draw_window, schedule_tick, unschedule_tick
-from src.core.realize import realize
 from src.render.draw_renderer import DrawRenderer
-from src.render.index_buffer import build_line_indices
-from src.render.layer import LayerStyleDefaults, resolve_layer_style
+from src.render.frame_pipeline import render_scene
+from src.render.layer import LayerStyleDefaults
 from src.render.render_settings import RenderSettings
-from src.render.scene import SceneItem, normalize_scene
+from src.render.scene import SceneItem
 
 
 def run(
@@ -71,19 +70,7 @@ def run(
         """現在時刻に応じたシーンを生成しレンダリングする。"""
 
         t = time.perf_counter() - start_time
-        scene = draw(t)
-        layers = normalize_scene(scene)
-
-        for layer in layers:
-            resolved = resolve_layer_style(layer, defaults)
-            realized = realize(resolved.layer.geometry)
-            indices = build_line_indices(realized.offsets)
-            renderer.render(
-                realized,
-                indices,
-                color=resolved.color,
-                thickness=resolved.thickness,
-            )
+        render_scene(draw, t, defaults, renderer)
 
     def on_draw() -> None:
         """描画イベントごとにビューポートと背景を整えて描画する。"""

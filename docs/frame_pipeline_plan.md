@@ -9,14 +9,16 @@
 - フレーム処理を `render/frame_pipeline.py` の 1 関数に集約し、依存を `api/run.py → frame_pipeline → render/* → core/*` の一方向に固定する。
 - Renderer は「1 レイヤー描画」API を提供し、pipeline からは GL 依存を隠蔽する。
 - pipeline をスタブ化して pytest 可能にし、GUI/GL なしで CPU ロジックを検証できるようにする。
+- parameter_spec のコンテキスト固定（`param_snapshot` / `cc_snapshot` / `discovery_sink`）を run 側に残し、pipeline 呼び出し前にセットするフックを明示する。
 
 ## 1. 依存方向のルール
 - `api/run.py` は `render/frame_pipeline.py` を呼ぶだけ。逆依存は禁止。
 - `frame_pipeline.py` は `render/scene.py`, `render/layer.py`, `core/realize.py`, `render/index_buffer.py` と `DrawRenderer` への依存のみ。`app` 層は触らない。
 - `DrawRenderer` は GL/pyglet 依存を内包し、`render_layer(realized, indices, *, color, thickness)` のような最小 API を提供。
+- `parameter_spec` で求められるスナップショット設定 (`param_snapshot` 等) は `run` 内のフレーム開始ステップで実施し、その後に `render_scene` を呼び出す。
 
 ## 2. タスク分解
-- [ ] `src/render/frame_pipeline.py` 新設。
+- [x] `src/render/frame_pipeline.py` 新設。
   - `render_scene(draw, t, defaults, renderer)` を定義し、以下を直列に実行:
     1. `scene = draw(t)`
     2. `layers = normalize_scene(scene)`
@@ -25,8 +27,9 @@
     5. `indices = build_line_indices(realized.offsets)`
     6. `renderer.render_layer(realized, indices, color=resolved.color, thickness=resolved.thickness)`
   - 返り値は None。未使用の値は返さず、責務は副作用に限定。
-- [ ] `DrawRenderer` に `render_layer` 薄いラッパを追加し、既存 `render` を内部呼び出しにまとめるか、`render` を `render_layer` にリネームして単一 API にする。
-- [ ] `src/api/run.py` を簡素化。
+  - 呼び出し前提: run 側で `param_snapshot` / `cc_snapshot` / `discovery_sink` のセットアップ済みであること（parameter_spec 8–9 の要件を満たす）。
+- [x] `DrawRenderer` に `render_layer` 薄いラッパを追加し、既存 `render` を内部呼び出しにまとめるか、`render` を `render_layer` にリネームして単一 API にする。
+- [x] `src/api/run.py` を簡素化。
   - `render_frame` 内部ロジックを廃し、`render_scene(draw, t, defaults, renderer)` を呼ぶだけにする。
   - `defaults = LayerStyleDefaults(...)` 生成と renderer/window の初期化のみを保持。
 - [ ] テスト追加。
