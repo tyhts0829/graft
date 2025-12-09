@@ -11,9 +11,9 @@ from typing import Callable
 
 import pyglet
 
+from src.app.draw_window import create_draw_window, schedule_tick, unschedule_tick
 from src.core.geometry import Geometry
 from src.core.realize import realize
-from src.app.draw_window import create_draw_window, schedule_tick, unschedule_tick
 from src.render.draw_renderer import DrawRenderer
 from src.render.index_buffer import build_line_indices
 from src.render.render_settings import RenderSettings
@@ -28,22 +28,27 @@ def run(
     render_scale: float = 1.0,
     canvas_size: tuple[int, int] = (800, 800),
 ) -> None:
-    """`draw(t)` で生成される Geometry を pyglet ウィンドウへ描画する。
+    """pyglet ウィンドウを生成し `draw(t)` の Geometry をリアルタイム描画する。
 
     Parameters
     ----------
     draw : Callable[[float], Geometry]
-        フレーム時刻 t を受け取り Geometry を返すコールバック。
+        フレーム経過秒 t を受け取り Geometry を返すコールバック。
     background_color : tuple[float, float, float, float]
         背景色 RGBA。既定は白。
     line_thickness : float
-        プレビュー用の線幅（クリップ空間での最終幅）。Layer.thickness 未指定時の基準値。
+        プレビュー用線幅（クリップ空間の最終幅）。Layer.thickness 未指定時の基準値。
     line_color : tuple[float, float, float, float]
         線色 RGBA。既定は黒。
     render_scale : float
         キャンバス寸法に掛けるピクセル倍率。高精細プレビュー用。
     canvas_size : tuple[int, int]
         キャンバス寸法（任意単位）。投影行列生成とウィンドウサイズ決定に使用。
+
+    Returns
+    -------
+    None
+        pyglet イベントループ終了後に制御を返す。
     """
 
     settings = RenderSettings(
@@ -61,6 +66,8 @@ def run(
     closed = False
 
     def render_frame() -> None:
+        """現在時刻に応じた Geometry を生成しレンダリングする。"""
+
         t = time.perf_counter() - start_time
         geometry = draw(t)
         realized = realize(geometry)
@@ -69,20 +76,28 @@ def run(
         renderer.render(realized, indices, settings)
 
     def on_draw() -> None:
+        """描画イベントごとにビューポートと背景を整えて描画する。"""
+
         renderer.viewport(window.width, window.height)
         renderer.clear(settings.background_color)
         render_frame()
 
     def on_resize(width: int, height: int) -> None:
+        """ウィンドウサイズ変更のたびにビューポートを更新する。"""
+
         renderer.viewport(width, height)
 
     def on_close() -> None:
+        """ウィンドウクローズ時にループを停止しリソースを解放する。"""
+
         nonlocal closed
         closed = True
         unschedule_tick(tick)
         pyglet.app.exit()
 
     def tick(dt: float) -> None:
+        """pyglet スケジューラから呼ばれフレーム更新を駆動する。"""
+
         if closed or window.has_exit:
             return
         window.switch_to()
@@ -93,10 +108,12 @@ def run(
             raise
         window.flip()
 
+    # pyglet イベントをローカルハンドラへ束ねる
     window.push_handlers(on_draw=on_draw, on_close=on_close, on_resize=on_resize)
     schedule_tick(tick, fps=60.0)
     try:
         pyglet.app.run()
     finally:
+        # イベントループ終了時は明示的に GPU / Window 資源を解放する
         renderer.release()
         window.close()
