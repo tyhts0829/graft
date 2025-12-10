@@ -63,8 +63,8 @@ def resolve_params(
             state = ParamState(
                 override=False,
                 ui_value=base_value,
-                min=arg_meta.ui_min,
-                max=arg_meta.ui_max,
+                ui_min=arg_meta.ui_min,
+                ui_max=arg_meta.ui_max,
                 cc=None,
             )
         effective, source = _choose_value(base_value, state, arg_meta)

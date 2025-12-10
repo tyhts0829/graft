@@ -14,6 +14,6 @@ class ParamState:
 
     override: bool = False
     ui_value: Any = None
-    min: Any = None
-    max: Any = None
+    ui_min: Any = None
+    ui_max: Any = None
     cc: int | None = None

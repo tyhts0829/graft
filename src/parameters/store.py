@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 
 from .frame_params import FrameParamRecord
 from .key import ParameterKey
@@ -29,8 +29,8 @@ class ParamStore:
             state = ParamState(
                 override=False,
                 ui_value=base_value,
-                min=meta_ui_min,
-                max=meta_ui_max,
+                ui_min=meta_ui_min,
+                ui_max=meta_ui_max,
                 cc=None,
             )
             self._states[key] = state
@@ -62,11 +62,11 @@ class ParamStore:
                 meta_ui_min=rec.meta.ui_min,
                 meta_ui_max=rec.meta.ui_max,
             )
-            # meta 更新（min/max が指定されている場合のみ上書き）
+            # meta 更新（ui_min/ui_max が指定されている場合のみ上書き）
             if rec.meta.ui_min is not None:
-                state.min = rec.meta.ui_min
+                state.ui_min = rec.meta.ui_min
             if rec.meta.ui_max is not None:
-                state.max = rec.meta.ui_max
+                state.ui_max = rec.meta.ui_max
             # cc/ui_value/override はここでは変更しない
 
     def to_json(self) -> str:
@@ -78,8 +78,8 @@ class ParamStore:
                     "arg": k.arg,
                     "override": v.override,
                     "ui_value": v.ui_value,
-                    "min": v.min,
-                    "max": v.max,
+                    "ui_min": v.ui_min,
+                    "ui_max": v.ui_max,
                     "cc": v.cc,
                 }
                 for k, v in self._states.items()
@@ -97,8 +97,8 @@ class ParamStore:
             state = ParamState(
                 override=item.get("override", False),
                 ui_value=item.get("ui_value"),
-                min=item.get("min"),
-                max=item.get("max"),
+                ui_min=item.get("ui_min"),
+                ui_max=item.get("ui_max"),
                 cc=item.get("cc"),
             )
             store._states[key] = state

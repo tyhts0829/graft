@@ -9,7 +9,7 @@
 
 実装は thread-local / contextvars などでよい。G/E の呼び出しは内部で param_snapshot を参照して引数を解決し、discovery_sink に発見情報を書き込む。
 
-意思決定メモ: parameter_gui をグローバル可変で読ませると、同一 draw 内で min/max/override が途中で変わり得て決定性と整合性が崩れる。cc と同様にスナップショットを“呼び出し単位で固定”することで、API を増やさずに安全な並列化が可能になる。
+意思決定メモ: parameter_gui をグローバル可変で読ませると、同一 draw 内で ui_min/ui_max/override が途中で変わり得て決定性と整合性が崩れる。cc と同様にスナップショットを“呼び出し単位で固定”することで、API を増やさずに安全な並列化が可能になる。
 
 ⸻
 
@@ -57,12 +57,12 @@
 • primitive / effect の登録側（@geometry / @effect）は param_meta を提供できる。
 • param_meta の役割（推奨）
 • GUI 生成のための型情報（float / bool / str / enum / vecN 等）
-• 既定の min/max（スライダー範囲）
+• 既定の ui_min/ui_max（スライダー範囲）
 • step（量子化ステップ。署名と計算で同一に適用）
 • 表示名や並び順などの補助（任意）
 • meta が無い場合のフォールバック（推奨）
 • 正規化で許容される型（int/float/bool/str/None/Enum/tuple/list/dict）から UI 型を推定する。
-• float 系の min/max は、base 値から推奨レンジを自動生成する（設定ノブで調整可能）。
+• float 系の ui_min/ui_max は、base 値から推奨レンジを自動生成する（設定ノブで調整可能）。
 • このフォールバックは利便性のためのものであり、安定運用には meta 提供を推奨する。
 
 意思決定メモ: 「すべての引数を GUI で制御できる」という体験を守るには推定が必要だが、正確な範囲・step はドメイン知識がないと破綻しやすい。meta を第一級にしつつ、最低限の推定で穴を埋める。
@@ -74,8 +74,8 @@
 • ParamState の最小構成（規範）
 • override: bool（GUI 手動値を使うか）
 • ui_value: Any（手動値。型は meta に従う）
-• min: Any（スライダー最小。float/vecN の場合に使用）
-• max: Any（スライダー最大。float/vecN の場合に使用）
+• ui_min: Any（スライダー最小。float/vecN の場合に使用）
+• ui_max: Any（スライダー最大。float/vecN の場合に使用）
 • cc: int | None（MIDI CC 番号。None は未割当）
 • last_seen_frame: int（最後に draw 中で出現したフレーム番号。運用用）
 • 永続化（推奨）
@@ -99,13 +99,13 @@
 • base_value: Any（ユーザーコードが渡した値）
 • effective_value: Any（解決後の値。量子化済み）
 • source: str（“base” / “gui” / “cc”）
-• meta_summary: dict（型・既定 min/max/step 等）
+• meta_summary: dict（型・既定 ui_min/ui_max/step 等）
 • ランナーによるマージ（規範）
 • draw 終了後、ランナーは DiscoveryBuffer をメインスレッドで master ParamStore にマージする。
 • 新規 ParameterKey を見つけた場合、ParamState を生成して既定値を設定する：
 • override=False
 • ui_value=base_value（型に従い正規化）
-• min/max=meta 既定（無ければフォールバックで生成）
+• ui_min/ui_max=meta 既定（無ければフォールバックで生成）
 • cc=None
 • 既存 ParameterKey は last_seen_frame を更新する。
 • 今フレーム見えなかった ParameterKey は削除せず保持し、必要なら GUI で非表示/グレー表示にする。
@@ -123,10 +123,10 @@
 • param_meta（型・範囲・step）
 • 解決規則（規範） 1. ParamState.cc が設定されている場合、CC 制御を優先する：
 • u = cc_snapshot[cc]（0..1、未定義は 0.0）
-• effective = map_cc(u, min, max, meta)（型に応じた写像） 2. そうでなく ParamState.override が True の場合、effective = ui_value 3. それ以外は effective = base_value 4. effective を型検証し、必要なら clamp/離散化を行う（型規則は meta に従う） 5. float を含む場合は step を用いて量子化し、署名と計算に同一の effective を渡す
+• effective = map_cc(u, ui_min, ui_max, meta)（型に応じた写像） 2. そうでなく ParamState.override が True の場合、effective = ui_value 3. それ以外は effective = base_value 4. effective を型検証し、必要なら clamp/離散化を行う（型規則は meta に従う） 5. float を含む場合は step を用いて量子化し、署名と計算に同一の effective を渡す
 • CC 写像（推奨）
-• float: min..max を線形補間
-• vecN: 各成分を線形補間（min/max は成分ごと、またはスカラなら全成分に適用）
+• float: ui_min..ui_max を線形補間
+• vecN: 各成分を線形補間（ui_min/ui_max は成分ごと、またはスカラなら全成分に適用）
 • bool: u >= 0.5 を True
 • enum: index = round(u\*(n-1))（範囲に clamp）
 • str: CC 制御は未対応（禁止してよい）
@@ -155,8 +155,8 @@
 • 2 列目（制御 UI 列）
 • meta 型に応じた UI を表示する（float=スライダー、vecN=成分スライダー、str=テキスト、enum=ラジオ/ドロップダウン、bool=トグル）。
 • override の有効/無効を切り替える UI（例：BASE/GUI トグル）を必須とする。
-• 3 列目（min/max/cc 入力列）
-• min/max はスライダーのレンジとして使用する。
+• 3 列目（ui_min/ui_max/cc 入力列）
+• ui_min/ui_max はスライダーのレンジとして使用する。
 • cc は MIDI CC 番号を設定する。設定時は CC 制御が優先される。
 • ordinal（# の連番）の決め方（規範）
 • op ごとに、初めて観測した site_id の順に 1,2,3… を割り当てる。
@@ -181,7 +181,7 @@
 9.10 例外・ログ（GUI 入力の扱い）
 • GUI 入力はユーザーコードと異なり、運用上は「落とす」より「安全に無効化」を優先してよい（推奨）。
 • 具体方針（推奨）
-• min/max の不正（min>=max、型不一致）はその項目を無視し、最後の有効値または meta 既定にフォールバックし、HUD/ログに警告を出す。
+• ui_min/ui_max の不正（ui_min>=ui_max、型不一致）はその項目を無視し、最後の有効値または meta 既定にフォールバックし、HUD/ログに警告を出す。
 • cc の不正（範囲外、非整数）は無視して警告。
 • ui_value の型不一致やパース失敗は override を一時無効化して警告（または前回値を保持）。
 
@@ -198,7 +198,7 @@
 
 実装は thread-local / contextvars などでよい。G/E の呼び出しは内部で param_snapshot を参照して引数を解決し、discovery_sink に発見情報を書き込む。
 
-意思決定メモ: parameter_gui をグローバル可変で読ませると、同一 draw 内で min/max/override が途中で変わり得て決定性と整合性が崩れる。cc と同様にスナップショットを“呼び出し単位で固定”することで、API を増やさずに安全な並列化が可能になる。
+意思決定メモ: parameter_gui をグローバル可変で読ませると、同一 draw 内で ui_min/ui_max/override が途中で変わり得て決定性と整合性が崩れる。cc と同様にスナップショットを“呼び出し単位で固定”することで、API を増やさずに安全な並列化が可能になる。
 
 ⸻
 
@@ -246,12 +246,12 @@
 • primitive / effect の登録側（@geometry / @effect）は param_meta を提供できる。
 • param_meta の役割（推奨）
 • GUI 生成のための型情報（float / bool / str / enum / vecN 等）
-• 既定の min/max（スライダー範囲）
+• 既定の ui_min/ui_max（スライダー範囲）
 • step（量子化ステップ。署名と計算で同一に適用）
 • 表示名や並び順などの補助（任意）
 • meta が無い場合のフォールバック（推奨）
 • 正規化で許容される型（int/float/bool/str/None/Enum/tuple/list/dict）から UI 型を推定する。
-• float 系の min/max は、base 値から推奨レンジを自動生成する（設定ノブで調整可能）。
+• float 系の ui_min/ui_max は、base 値から推奨レンジを自動生成する（設定ノブで調整可能）。
 • このフォールバックは利便性のためのものであり、安定運用には meta 提供を推奨する。
 
 意思決定メモ: 「すべての引数を GUI で制御できる」という体験を守るには推定が必要だが、正確な範囲・step はドメイン知識がないと破綻しやすい。meta を第一級にしつつ、最低限の推定で穴を埋める。
@@ -263,8 +263,8 @@
 • ParamState の最小構成（規範）
 • override: bool（GUI 手動値を使うか）
 • ui_value: Any（手動値。型は meta に従う）
-• min: Any（スライダー最小。float/vecN の場合に使用）
-• max: Any（スライダー最大。float/vecN の場合に使用）
+• ui_min: Any（スライダー最小。float/vecN の場合に使用）
+• ui_max: Any（スライダー最大。float/vecN の場合に使用）
 • cc: int | None（MIDI CC 番号。None は未割当）
 • last_seen_frame: int（最後に draw 中で出現したフレーム番号。運用用）
 • 永続化（推奨）
@@ -288,13 +288,13 @@
 • base_value: Any（ユーザーコードが渡した値）
 • effective_value: Any（解決後の値。量子化済み）
 • source: str（“base” / “gui” / “cc”）
-• meta_summary: dict（型・既定 min/max/step 等）
+• meta_summary: dict（型・既定 ui_min/ui_max/step 等）
 • ランナーによるマージ（規範）
 • draw 終了後、ランナーは DiscoveryBuffer をメインスレッドで master ParamStore にマージする。
 • 新規 ParameterKey を見つけた場合、ParamState を生成して既定値を設定する：
 • override=False
 • ui_value=base_value（型に従い正規化）
-• min/max=meta 既定（無ければフォールバックで生成）
+• ui_min/ui_max=meta 既定（無ければフォールバックで生成）
 • cc=None
 • 既存 ParameterKey は last_seen_frame を更新する。
 • 今フレーム見えなかった ParameterKey は削除せず保持し、必要なら GUI で非表示/グレー表示にする。
@@ -312,10 +312,10 @@
 • param_meta（型・範囲・step）
 • 解決規則（規範） 1. ParamState.cc が設定されている場合、CC 制御を優先する：
 • u = cc_snapshot[cc]（0..1、未定義は 0.0）
-• effective = map_cc(u, min, max, meta)（型に応じた写像） 2. そうでなく ParamState.override が True の場合、effective = ui_value 3. それ以外は effective = base_value 4. effective を型検証し、必要なら clamp/離散化を行う（型規則は meta に従う） 5. float を含む場合は step を用いて量子化し、署名と計算に同一の effective を渡す
+• effective = map_cc(u, ui_min, ui_max, meta)（型に応じた写像） 2. そうでなく ParamState.override が True の場合、effective = ui_value 3. それ以外は effective = base_value 4. effective を型検証し、必要なら clamp/離散化を行う（型規則は meta に従う） 5. float を含む場合は step を用いて量子化し、署名と計算に同一の effective を渡す
 • CC 写像（推奨）
 • float: min..max を線形補間
-• vecN: 各成分を線形補間（min/max は成分ごと、またはスカラなら全成分に適用）
+• vecN: 各成分を線形補間（ui_min/ui_max は成分ごと、またはスカラなら全成分に適用）
 • bool: u >= 0.5 を True
 • enum: index = round(u\*(n-1))（範囲に clamp）
 • str: CC 制御は未対応（禁止してよい）
@@ -344,8 +344,8 @@
 • 2 列目（制御 UI 列）
 • meta 型に応じた UI を表示する（float=スライダー、vecN=成分スライダー、str=テキスト、enum=ラジオ/ドロップダウン、bool=トグル）。
 • override の有効/無効を切り替える UI（例：BASE/GUI トグル）を必須とする。
-• 3 列目（min/max/cc 入力列）
-• min/max はスライダーのレンジとして使用する。
+• 3 列目（ui_min/ui_max/cc 入力列）
+• ui_min/ui_max はスライダーのレンジとして使用する。
 • cc は MIDI CC 番号を設定する。設定時は CC 制御が優先される。
 • ordinal（# の連番）の決め方（規範）
 • op ごとに、初めて観測した site_id の順に 1,2,3… を割り当てる。
@@ -370,7 +370,7 @@
 9.10 例外・ログ（GUI 入力の扱い）
 • GUI 入力はユーザーコードと異なり、運用上は「落とす」より「安全に無効化」を優先してよい（推奨）。
 • 具体方針（推奨）
-• min/max の不正（min>=max、型不一致）はその項目を無視し、最後の有効値または meta 既定にフォールバックし、HUD/ログに警告を出す。
+• ui_min/ui_max の不正（ui_min>=ui_max、型不一致）はその項目を無視し、最後の有効値または meta 既定にフォールバックし、HUD/ログに警告を出す。
 • cc の不正（範囲外、非整数）は無視して警告。
 • ui_value の型不一致やパース失敗は override を一時無効化して警告（または前回値を保持）。
 

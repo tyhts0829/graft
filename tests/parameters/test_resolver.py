@@ -6,7 +6,7 @@ from src.parameters import ParameterKey, ParamMeta, ParamState, ParamStore, para
 def test_override_priority_and_quantize():
     store = ParamStore()
     key = ParameterKey(op="circle", site_id="s1", arg="r")
-    store._states[key] = ParamState(override=True, ui_value=0.26, min=0.0, max=1.0, cc=None)  # type: ignore[attr-defined]
+    store._states[key] = ParamState(override=True, ui_value=0.26, ui_min=0.0, ui_max=1.0, cc=None)  # type: ignore[attr-defined]
     store.get_ordinal("circle", "s1")
 
     meta = {"r": ParamMeta(kind="float", ui_min=0.0, ui_max=1.0, step=0.1)}

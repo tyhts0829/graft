@@ -6,7 +6,7 @@
 
 ## 0. ゴール
 
-- Parameter GUI ウィンドウが 3 列（ラベル / 値コントロール / min-max-cc）で全パラメータを表示し、override 切替と値更新ができる。
+- Parameter GUI ウィンドウが 3 列（ラベル / 値コントロール / ui_min-ui_max-cc）で全パラメータを表示し、override 切替と値更新ができる。
 - GUI 操作が ParamStore に即時反映され、次フレームの param_snapshot で有効になる（描画を止めずに更新）。
 - DearPyGui と pyglet のイベントループを同一スレッドで回し、閉じる/終了時に双方のリソースをクリーンアップできる。
 
@@ -27,8 +27,8 @@
 ## 3. タスク分解（チェックリスト）
 
 - [ ] ParamStore に ParamMeta 永続化を追加し、key/state/meta/ordinal を返す `iter_descriptors()` を用意。`snapshot()` / `merge_frame_params()` の更新と既存テスト調整を行う。
-- [ ] ViewModel ヘルパ（純粋関数）を追加し、ParamStore から `ParameterRow`（label/op/arg/kind/ui_value/min/max/step/choices/cc/override/ordinal/last_seen）を生成。並び順・型判定のユニットテストを作成。
-- [ ] UI 更新ユーティリティを設計し、ユーザー入力を型変換・妥当化して ParamStore に反映する処理を DPG 非依存で実装。min>=max や型不一致時のフォールバック挙動もテストする。
+- [ ] ViewModel ヘルパ（純粋関数）を追加し、ParamStore から `ParameterRow`（label/op/arg/kind/ui_value/ui_min/ui_max/step/choices/cc/override/ordinal/last_seen）を生成。並び順・型判定のユニットテストを作成。
+- [ ] UI 更新ユーティリティを設計し、ユーザー入力を型変換・妥当化して ParamStore に反映する処理を DPG 非依存で実装。ui_min>=ui_max や型不一致時のフォールバック挙動もテストする。
 - [ ] `src/app/parameter_gui.py`: DearPyGui のセットアップ/破棄と 3 列テーブル生成。各 kind に応じたウィジェット生成とコールバック配線、行の追加/更新/非表示管理、override・cc 表示を実装。
 - [ ] `api/run.py`: `parameter_gui` オプション（デフォルト要確認）を追加し、ParamStore を共有した ParameterGUI を初期化。tick 内で GUI フレームを回し、終了時に teardown する。
 - [ ] UX 微調整: override/cc 状態の色分けまたはアイコン表示、最近出現していないパラメータのグレーアウトなど最小限のフィードバックを追加。
