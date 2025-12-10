@@ -26,12 +26,22 @@
   - concat の offsets/coords が正しく結合されること。
   - 既存単体ケースが壊れないこと。
 - [ ] ドキュメント: `parameter_gui_plan` には変更不要。`render_batch_plan.md` を完了としてチェック（このファイル）。
+- [ ] Uniform 最適化: 射影行列と line_thickness/color の設定をフレーム/Layer 単位にまとめ、Geometry ごとに書き直さないようにする。
+- [ ] IBO/VBO 再利用: offsets 署名をキーに IBO をキャッシュし、同一署名の Layer では VBO のみ更新するパスを追加する（Freeze 相当）。
 
 ## 3. リスク・留意点
 - Geometry concat で `GeometryId` を再計算する必要がある（inputs/args 依存なので、concat ヘルパで blake2b を再利用）。
 - offsets が 32bit int のままで十分か確認（小規模なら問題なし）。
 - Layer 内のスタイル統一を前提にしているため、今後 Layer に per-Geometry の style を入れる設計に変える場合は再検討が必要。
 - realize_cache は concat 後 GeometryId 単位で動くので、キャッシュ効果はむしろ向上する見込み。
+
+## 5. この前提（Layer内は同じ色・太さ）で効く追加ポイント
+1) Layer内バッチ描画  
+   - 色・太さが同一なら Geometry を concat して 1 回の `render_layer` で描ける。アップロード/ドロー回数が Layer 数に圧縮される。
+2) Uniform 設定回数の削減  
+   - Layer 内では色・線幅を一度だけ設定すればよく、Geometry ごとの Uniform 更新が不要になる。
+3) バッファ再利用の粒度向上  
+   - offsets 署名が Layer 単位になり、IBO 再利用や VBO-only 更新の最適化が効きやすくなる。
 
 ## 4. 完了定義
 - Layer 内 Geometry を concat し、`render_layer` 呼び出しが Layer 数に比例する実装になっている。
