@@ -75,7 +75,13 @@
 - [ ] `src/api/primitives.py` / `src/api/effects.py`: Geometry 生成前に `resolve_params(op, params, meta, param_snapshot, frame_params)` を呼ぶようにし、ParameterKey を各引数に紐づけて記録。
 - [ ] `src/api/run.py`: フレーム開始時に `parameter_context(frame_no, store, cc_snapshot=None)` をセットし、終了後に `frame_params` を store へマージするフックを追加。フレーム番号管理を run 内部に持たせる。
 - [ ] `src/app/parameter_gui.py`（骨組み）: ParamStore を受け取り GUI へ渡すための `get_rows()` / `apply_ui_update()` のような薄い I/O 層を定義（DearPyGui 実装は TODO に留める）。
-- [ ] テスト: `tests/parameters/test_site_id.py`, `tests/parameters/test_resolver.py`, `tests/parameters/test_frame_params.py` を追加し、site_id の安定性、override 優先、マージ結果を検証（MIDI はスキップ）。
+- [ ] テスト: `tests/parameters/test_site_id.py`, `tests/parameters/test_resolver.py`, `tests/parameters/test_frame_params.py` を追加し、以下を検証（MIDI はスキップ）:
+  - site_id の安定性（同一行で一致、行移動で変化）。
+  - 優先度と量子化（override > base、step 量子化、min/max clamp、型不一致フォールバック）。
+  - frame_params ↔ ParamStore のマージ（新規キー初期化、既存キー保持、meta 更新の扱い）。
+  - contextvars の隔離（フレーム間で snapshot/バッファが漏れない、スレッド分離）。
+  - ParamStore の JSON 保存/読込で ordinal/override/ui_value/min/max/cc が保持されること。
+  - ダミー primitive を通じて resolve→Geometry.create に meta.step が反映されること。
 
 ## 4. 後続/非ゴール
 - MIDI/CC 入力の購読と `cc_snapshot` 更新（mido 統合、スレッド安全キュー）。
