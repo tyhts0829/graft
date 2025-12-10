@@ -39,7 +39,9 @@ def render_scene(
 
     for layer in layers:
         resolved = resolve_layer_style(layer, defaults)
-        realized = realize(resolved.layer.geometry)
+        geometry = resolved.layer.geometry
+        # Geometry は L 側で concat 済みのためそのまま扱う
+        realized = realize(geometry)
         indices = build_line_indices(realized.offsets)
         renderer.render_layer(
             realized=realized,

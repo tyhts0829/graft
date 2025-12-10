@@ -82,11 +82,6 @@ def run(
         renderer.clear(settings.background_color)
         render_frame()
 
-    def on_resize(width: int, height: int) -> None:
-        """ウィンドウサイズ変更のたびにビューポートを更新する。"""
-
-        renderer.viewport(width, height)
-
     def on_close() -> None:
         """ウィンドウクローズ時にループを停止しリソースを解放する。"""
 
@@ -109,7 +104,7 @@ def run(
         window.flip()
 
     # pyglet イベントをローカルハンドラへ束ねる
-    window.push_handlers(on_draw=on_draw, on_close=on_close, on_resize=on_resize)
+    window.push_handlers(on_draw=on_draw, on_close=on_close)
     schedule_tick(tick, fps=60.0)
     try:
         pyglet.app.run()

@@ -19,14 +19,14 @@
 
 ## 2. タスク分解（チェックリスト）
 - [ ] `src/render/geometry_batch.py`（新規）: Geometry の列を 1 つにまとめるヘルパを実装。inputs/args を結合し、id は再計算する。
-- [ ] `frame_pipeline.py`: Layer ごとに Geometry をまとめる前処理を追加し、まとめた Geometry だけを realize する。
+- [x] `frame_pipeline.py`: Layer ごとに Geometry をまとめる前処理を追加し、まとめた Geometry だけを realize する。
 - [x] `api/layers.py`: L(...) でリストを受け取ったときに Layer 1 つに複数 Geometry をまとめ（concat）て返すよう変更。
 - [ ] テスト: `tests/render/test_batching.py` を追加し、
   - 複数 Geometry を含む Layer を渡したときに `render_layer` 呼び出しが 1 回になること（モック renderer で検証）。
   - concat の offsets/coords が正しく結合されること。
   - 既存単体ケースが壊れないこと。
 - [ ] ドキュメント: `parameter_gui_plan` には変更不要。`render_batch_plan.md` を完了としてチェック（このファイル）。
-- [ ] Uniform 最適化: 射影行列と line_thickness/color の設定をフレーム/Layer 単位にまとめ、Geometry ごとに書き直さないようにする。
+- [x] Uniform 最適化: 射影行列と line_thickness/color の設定をフレーム/Layer 単位にまとめ、Geometry ごとに書き直さないようにする。
 - [ ] IBO/VBO 再利用: offsets 署名をキーに IBO をキャッシュし、同一署名の Layer では VBO のみ更新するパスを追加する（Freeze 相当）。
 
 ## 3. リスク・留意点

@@ -16,7 +16,7 @@ def create_draw_window(settings: RenderSettings) -> Window:
     window = pyglet.window.Window(
         width=int(canvas_w * settings.render_scale),
         height=int(canvas_h * settings.render_scale),
-        resizable=True,
+        resizable=False,
         caption="Graft",
     )
     return window

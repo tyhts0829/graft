@@ -24,6 +24,12 @@ class DrawRenderer:
         self.program = Shader.create_shader(self.ctx)
         self.mesh = LineMesh(self.ctx, self.program)
         self._canvas_w, self._canvas_h = settings.canvas_size
+        # 射影行列はキャンバス寸法にのみ依存するため初期化時に一度設定する。
+        projection = render_utils.build_projection(
+            float(self._canvas_w),
+            float(self._canvas_h),
+        )
+        self.program["projection"].write(projection.tobytes())
 
     def viewport(self, width: int, height: int) -> None:
         """ビューポートをウィンドウサイズに合わせて更新する。"""
@@ -47,11 +53,6 @@ class DrawRenderer:
 
         self.mesh.upload(vertices=realized.coords, indices=indices)
 
-        projection = render_utils.build_projection(
-            float(self._canvas_w),
-            float(self._canvas_h),
-        )
-        self.program["projection"].write(projection.tobytes())
         self.program["line_thickness"].value = float(thickness)
         self.program["color"].value = (*color, 1.0)
 
