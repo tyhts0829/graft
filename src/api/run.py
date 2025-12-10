@@ -17,6 +17,7 @@ from src.render.frame_pipeline import render_scene
 from src.render.layer import LayerStyleDefaults
 from src.render.render_settings import RenderSettings
 from src.render.scene import SceneItem
+from src.parameters import ParamStore, parameter_context
 
 
 def run(
@@ -62,6 +63,7 @@ def run(
     defaults = LayerStyleDefaults(color=line_color, thickness=line_thickness)
     window = create_draw_window(settings)
     renderer = DrawRenderer(window, settings)
+    param_store = ParamStore()
 
     start_time = time.perf_counter()
     closed = False
@@ -70,7 +72,8 @@ def run(
         """現在時刻に応じたシーンを生成しレンダリングする。"""
 
         t = time.perf_counter() - start_time
-        render_scene(draw, t, defaults, renderer)
+        with parameter_context(param_store, cc_snapshot=None):
+            render_scene(draw, t, defaults, renderer)
 
     def on_draw() -> None:
         """描画イベントごとにビューポートと背景を整えて描画する。"""

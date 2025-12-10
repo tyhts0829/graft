@@ -9,6 +9,11 @@ from typing import Any, Callable, Tuple
 
 from src.core.effect_registry import effect_registry
 from src.core.geometry import Geometry
+from src.parameters import (
+    caller_site_id,
+    current_frame_params,
+    resolve_params,
+)
 
 # effect 実装モジュールをインポートしてレジストリに登録させる。
 from src.effects import scale as _effect_scale  # noqa: F401
@@ -20,7 +25,7 @@ class EffectBuilder:
 
     Parameters
     ----------
-    steps : tuple[tuple[str, dict[str, Any]], ...]
+    steps : tuple[tuple[str, dict[str, Any], str], ...]
         適用する effect 名とパラメータの列。
 
     Notes
@@ -29,7 +34,7 @@ class EffectBuilder:
     Geometry に対する effect パイプラインを構築する。
     """
 
-    steps: Tuple[Tuple[str, dict[str, Any]], ...]
+    steps: Tuple[Tuple[str, dict[str, Any], str], ...]
 
     def __call__(self, geometry: Geometry) -> Geometry:
         """保持している effect 列を Geometry に適用する。
@@ -45,8 +50,19 @@ class EffectBuilder:
             すべての effect を適用した Geometry。
         """
         result = geometry
-        for op, params in self.steps:
-            result = Geometry.create(op=op, inputs=(result,), params=params)
+        for op, params, site_id in self.steps:
+            meta = effect_registry.get_meta(op)
+            if current_frame_params() is not None:
+                resolved, param_steps = resolve_params(
+                    op=op,
+                    params=params,
+                    meta=meta,
+                    site_id=site_id,
+                )
+            else:
+                resolved = params
+                param_steps = {}
+            result = Geometry.create(op=op, inputs=(result,), params=resolved, param_steps=param_steps)
         return result
 
     def __getattr__(self, name: str) -> Callable[..., "EffectBuilder"]:
@@ -87,7 +103,8 @@ class EffectBuilder:
                 既存の steps に 1 つ追加したビルダ。
             """
 
-            new_steps = self.steps + ((name, dict(params)),)
+            site_id = caller_site_id(skip=1)
+            new_steps = self.steps + ((name, dict(params), site_id),)
             return EffectBuilder(steps=new_steps)
 
         return factory
@@ -141,7 +158,8 @@ class EffectNamespace:
                 1 つの effect を保持するビルダ。
             """
 
-            return EffectBuilder(steps=((name, dict(params)),))
+            site_id = caller_site_id(skip=1)
+            return EffectBuilder(steps=((name, dict(params), site_id),))
 
         return factory
 

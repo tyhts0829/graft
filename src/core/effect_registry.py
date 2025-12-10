@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Any, Callable, Mapping, Sequence
 
 from src.core.realized_geometry import RealizedGeometry
+from src.parameters.meta import ParamMeta
 
 EffectFunc = Callable[
     [Sequence[RealizedGeometry], tuple[tuple[str, Any], ...]],
@@ -27,6 +28,7 @@ class EffectRegistry:
     def __init__(self) -> None:
         """空のレジストリを初期化する。"""
         self._items: dict[str, EffectFunc] = {}
+        self._meta: dict[str, dict[str, ParamMeta]] = {}
 
     def register(
         self,
@@ -34,6 +36,7 @@ class EffectRegistry:
         func: EffectFunc | None = None,
         *,
         overwrite: bool = False,
+        meta: dict[str, ParamMeta] | None = None,
     ):
         """effect を登録する（関数またはデコレータとして使用可能）。
 
@@ -54,7 +57,7 @@ class EffectRegistry:
         if func is None:
             # デコレータとして使用された場合。
             def decorator(f: EffectFunc) -> EffectFunc:
-                self.register(name, f, overwrite=overwrite)
+                self.register(name, f, overwrite=overwrite, meta=meta)
                 return f
 
             return decorator
@@ -62,6 +65,8 @@ class EffectRegistry:
         if not overwrite and name in self._items:
             raise ValueError(f"effect '{name}' は既に登録されている")
         self._items[name] = func
+        if meta is not None:
+            self._meta[name] = meta
         return func
 
     def get(self, name: str) -> EffectFunc:
@@ -96,6 +101,10 @@ class EffectRegistry:
         """登録済みエントリの (name, func) ビューを返す。"""
         return self._items.items()
 
+    def get_meta(self, name: str) -> dict[str, ParamMeta]:
+        """op 名に対応する ParamMeta 辞書を取得する。"""
+        return dict(self._meta.get(name, {}))
+
 
 effect_registry = EffectRegistry()
 """グローバルな effect レジストリインスタンス。"""
@@ -105,6 +114,7 @@ def effect(
     func: Callable[..., RealizedGeometry] | None = None,
     *,
     overwrite: bool = False,
+    meta: dict[str, ParamMeta] | None = None,
 ):
     """グローバル effect レジストリ用デコレータ。
 
@@ -132,7 +142,7 @@ def effect(
             params: dict[str, Any] = dict(args)
             return f(inputs, **params)
 
-        effect_registry.register(f.__name__, wrapper, overwrite=overwrite)
+        effect_registry.register(f.__name__, wrapper, overwrite=overwrite, meta=meta)
         return f
 
     if func is None:

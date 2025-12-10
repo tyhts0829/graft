@@ -17,8 +17,8 @@ CANVAS_HEIGHT = 300
 
 
 def draw(t: float):
-    NX = 10
-    NY = 10
+    NX = 20
+    NY = 20
     WHITE_SPACE = 10
     # 画面にNX×NY個の円を描く
     circles = []

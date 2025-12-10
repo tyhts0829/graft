@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 from src.core.geometry import Geometry
 from src.core.primitive_registry import primitive_registry
+from src.parameters import current_param_snapshot, current_frame_params, caller_site_id, resolve_params
 
 # primitive 実装モジュールをインポートしてレジストリに登録させる。
 from src.primitives import circle as _primitive_circle  # noqa: F401
@@ -61,7 +62,23 @@ class PrimitiveNamespace:
                 生成された Geometry ノード。
             """
 
-            return Geometry.create(op=name, params=params)
+            site_id = caller_site_id(skip=1)
+
+            # meta を取得（未登録は空）
+            meta = primitive_registry.get_meta(name)
+            # コンテキストが無ければ素通し
+            if current_param_snapshot() and current_frame_params() is not None:
+                resolved, param_steps = resolve_params(
+                    op=name,
+                    params=params,
+                    meta=meta,
+                    site_id=site_id,
+                )
+            else:
+                resolved = params
+                param_steps = {}
+
+            return Geometry.create(op=name, params=resolved, param_steps=param_steps)
 
         return factory
 

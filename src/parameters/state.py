@@ -1,0 +1,19 @@
+# どこで: `src/parameters/state.py`。
+# 何を: ParamState を定義する。
+# なぜ: GUI 側からの設定と既定値を保持し、snapshot の単位にするため。
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass
+class ParamState:
+    """単一 ParameterKey に紐づく GUI 状態。"""
+
+    override: bool = False
+    ui_value: Any = None
+    min: Any = None
+    max: Any = None
+    cc: int | None = None
