@@ -21,10 +21,14 @@ def test_L_returns_list_for_single_geometry() -> None:
 def test_L_applies_common_style_to_multiple_geometries() -> None:
     g1, g2 = _g("circle"), _g("circle")
     layers = L([g1, g2], color=(1.0, 0.0, 0.0), thickness=0.02, name="foo")
-    assert len(layers) == 2
-    assert all(layer.color == (1.0, 0.0, 0.0) for layer in layers)
-    assert all(layer.thickness == 0.02 for layer in layers)
-    assert all(layer.name == "foo" for layer in layers)
+    assert len(layers) == 1
+    layer = layers[0]
+    assert layer.color == (1.0, 0.0, 0.0)
+    assert layer.thickness == 0.02
+    assert layer.name == "foo"
+    assert layer.geometry.op == "concat"
+    # concat inputs should be preserved
+    assert len(layer.geometry.inputs) == 2
 
 
 def test_L_rejects_non_geometry_inputs() -> None:
@@ -35,3 +39,8 @@ def test_L_rejects_non_geometry_inputs() -> None:
 def test_L_rejects_non_positive_thickness() -> None:
     with pytest.raises(ValueError):
         L(_g(), thickness=0.0)
+
+
+def test_L_rejects_empty_list() -> None:
+    with pytest.raises(ValueError):
+        L([])

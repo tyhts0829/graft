@@ -66,10 +66,16 @@ class LayerHelper:
                 f"L は Geometry またはその列のみを受け付けます: {type(geometry_or_list)!r}"
             )
 
-        return [
-            Layer(geometry=g, color=color, thickness=thickness, name=name)
-            for g in geometries
-        ]
+        if not geometries:
+            raise ValueError("L に空の Geometry リストは渡せません")
+
+        # 複数 Geometry は concat で 1 Layer にまとめる。
+        if len(geometries) == 1:
+            geometry = geometries[0]
+        else:
+            geometry = Geometry.create(op="concat", inputs=tuple(geometries), params={})
+
+        return [Layer(geometry=geometry, color=color, thickness=thickness, name=name)]
 
 
 L = LayerHelper()

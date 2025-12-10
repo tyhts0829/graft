@@ -20,7 +20,7 @@
 ## 2. タスク分解（チェックリスト）
 - [ ] `src/render/geometry_batch.py`（新規）: Geometry の列を 1 つにまとめるヘルパを実装。inputs/args を結合し、id は再計算する。
 - [ ] `frame_pipeline.py`: Layer ごとに Geometry をまとめる前処理を追加し、まとめた Geometry だけを realize する。
-- [ ] `api/layers.py`: L(...) でリストを受け取ったときに Layer 1 つに複数 Geometry を保持できるよう型注釈と説明を確認（実装は既にリスト→複数 Layer だが、ここで「concat する」ため Layer 内に Geometry のリストを許容する形に整理）。
+- [x] `api/layers.py`: L(...) でリストを受け取ったときに Layer 1 つに複数 Geometry をまとめ（concat）て返すよう変更。
 - [ ] テスト: `tests/render/test_batching.py` を追加し、
   - 複数 Geometry を含む Layer を渡したときに `render_layer` 呼び出しが 1 回になること（モック renderer で検証）。
   - concat の offsets/coords が正しく結合されること。
