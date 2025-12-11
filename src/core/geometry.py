@@ -15,7 +15,7 @@ GeometryId = str
 DEFAULT_SCHEMA_VERSION = 1
 
 
-def _canonicalize_value(value: Any) -> Any:
+def _normalize_value(value: Any) -> Any:
     """引数値を内容署名用に正規化する。
 
     Parameters
@@ -53,16 +53,16 @@ def _canonicalize_value(value: Any) -> Any:
     if isinstance(value, Enum):
         return f"{value.__class__.__name__}.{value.name}"
     if isinstance(value, (list, tuple)):
-        return tuple(_canonicalize_value(v) for v in value)
+        return tuple(_normalize_value(v) for v in value)
     if isinstance(value, dict):
         return tuple(
-            (str(k), _canonicalize_value(v))
+            (str(k), _normalize_value(v))
             for k, v in sorted(value.items(), key=lambda item: str(item[0]))
         )
     raise TypeError(f"正規化できない引数型: {type(value)!r}")
 
 
-def canonicalize_args(params: Mapping[str, Any]) -> Tuple[Tuple[str, Any], ...]:
+def normalize_args(params: Mapping[str, Any]) -> Tuple[Tuple[str, Any], ...]:
     """パラメータ辞書を Geometry 用の正規化済み引数タプルに変換する。
 
     Parameters
@@ -78,7 +78,7 @@ def canonicalize_args(params: Mapping[str, Any]) -> Tuple[Tuple[str, Any], ...]:
     items: list[tuple[str, Any]] = []
     for name in sorted(params.keys()):
         raw_value = params[name]
-        canonical = _canonicalize_value(raw_value)
+        canonical = _normalize_value(raw_value)
         items.append((str(name), canonical))
     return tuple(items)
 
@@ -221,7 +221,7 @@ class Geometry:
         if params is None:
             params = {}
 
-        normalized_args = canonicalize_args(
+        normalized_args = normalize_args(
             params,
         )
         inputs_tuple = tuple(inputs_seq)

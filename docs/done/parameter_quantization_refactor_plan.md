@@ -15,7 +15,7 @@
 
 - [x] **量子化責務の単一点化**: `resolve_params` でのみ量子化する実装に改修し、Geometry 側の再量子化を廃止。`_quantize` をグローバル step に固定する。
 - [x] **ParamMeta / 推定ロジック整理**: `ParamMeta` から `step` を除去し、`infer_meta_from_value` も対応させる。primitive/effect の meta 定義から step 記述を削除。
-- [x] **Geometry 正規化の分岐追加**: `canonicalize_args` に量子化済み入力をそのまま通すオプションを追加し、Geometry.create 呼び出し側を更新。
+- [x] **Geometry 正規化の分岐追加**: `normalize_args` に量子化済み入力をそのまま通すオプションを追加し、Geometry.create 呼び出し側を更新。
 - [x] **整数パラメータの扱い**: int 系は量子化ではなく明示的な `int()` キャストのみで処理することを明文化・実装。override/CC から float が来ても int に確定させる。
 - [x] **DEFAULT_QUANT_STEP の再設定**: 1e-3 への変更可否を決め、決めた値を `core/geometry.py` と resolver のグローバル step に同期させる。
 - [x] **GUI スライダー刻み**: per-param step 廃止後の UI 刻みを定義（float は DEFAULT_QUANT_STEP、int は 1、vec は要素ごとに同値）。`docs/parameter_gui_impl_plan.md` の論点を更新。
@@ -26,4 +26,4 @@
 ## 補足・未決事項
 
 - DEFAULT_QUANT_STEP は 1e-3 に設定済み。運用上問題があれば再調整する。
-- 互換性は不要という前提で、Geometry.create / canonicalize_args は量子化フラグなしのシンプルなシグネチャに整理済み。
+- 互換性は不要という前提で、Geometry.create / normalize_args は量子化フラグなしのシンプルなシグネチャに整理済み。

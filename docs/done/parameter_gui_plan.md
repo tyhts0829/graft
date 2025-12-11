@@ -25,7 +25,7 @@
 - base_value: ユーザーコードが `G` / `E` に渡した元の引数値（デフォルト引数が使われた場合はその値）。
 - ui_value: GUI で手動設定された値。`override=True` のときにのみ候補として使われる。
 - effective_value: 「CC > GUI override > base」の優先順位で決め、型検証・量子化後に Geometry 生成へ渡す最終値。
-- 正規化（canonicalize/normalize）: ParamMeta に従い値の型をそろえ、Geometry.create に渡す前の決定値を作る処理（量子化は含まない）。署名計算と実計算に同一の値を使うための前段（UI レンジによるクランプは行わない）。
+- 正規化（normalize）: ParamMeta に従い値の型をそろえ、Geometry.create に渡す前の決定値を作る処理（量子化は含まない）。署名計算と実計算に同一の値を使うための前段（UI レンジによるクランプは行わない）。
 - ParamMeta: UI 型・ui_min/ui_max などのメタ情報（ui_min/ui_max はスライダーの初期レンジであり実値をクランプしない）。**組み込み primitive/effect では必須**（未定義なら例外）。ユーザーが自作 primitive/effect を登録する場合のみ、未指定なら推定フォールバックで補う。
 - ParamState: 各 ParameterKey に紐づく状態（override, ui_value, ui_min, ui_max, cc）。GUI の保存・復元単位。ui_min/ui_max は UI レンジとしてのみ利用する。
 - ParamStore: `dict[ParameterKey, ParamState]` を保持する永続ストア。序数 `ordinal`（op ごとに初出順）も管理し、JSON で保存/復元可能。
