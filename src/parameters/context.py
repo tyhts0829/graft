@@ -6,15 +6,23 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
-from typing import Any, Iterator
+from typing import Iterator
 
 from .frame_params import FrameParamsBuffer
 from .store import ParamStore
 
-_param_snapshot_var: contextvars.ContextVar[dict] = contextvars.ContextVar("param_snapshot", default={})
-_frame_params_var: contextvars.ContextVar[FrameParamsBuffer | None] = contextvars.ContextVar("frame_params", default=None)
-_cc_snapshot_var: contextvars.ContextVar[dict | None] = contextvars.ContextVar("cc_snapshot", default=None)
-_store_var: contextvars.ContextVar[ParamStore | None] = contextvars.ContextVar("param_store", default=None)
+_param_snapshot_var: contextvars.ContextVar[dict] = contextvars.ContextVar(
+    "param_snapshot", default={}
+)
+_frame_params_var: contextvars.ContextVar[FrameParamsBuffer | None] = (
+    contextvars.ContextVar("frame_params", default=None)
+)
+_cc_snapshot_var: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
+    "cc_snapshot", default=None
+)
+_store_var: contextvars.ContextVar[ParamStore | None] = contextvars.ContextVar(
+    "param_store", default=None
+)
 
 
 def current_param_snapshot() -> dict:
@@ -30,7 +38,9 @@ def current_cc_snapshot() -> dict | None:
 
 
 @contextlib.contextmanager
-def parameter_context(store: ParamStore, cc_snapshot: dict | None = None) -> Iterator[None]:
+def parameter_context(
+    store: ParamStore, cc_snapshot: dict | None = None
+) -> Iterator[None]:
     """フレーム境界で param_snapshot / frame_params を固定するコンテキストマネージャ。"""
 
     snapshot = store.snapshot()
