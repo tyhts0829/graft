@@ -13,7 +13,6 @@ from typing import Any, Mapping, Sequence, Tuple
 GeometryId = str
 
 DEFAULT_SCHEMA_VERSION = 1
-DEFAULT_QUANT_STEP = 1e-3
 
 
 def _canonicalize_value(value: Any) -> Any:

@@ -6,12 +6,13 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable
 
-from src.core.geometry import DEFAULT_QUANT_STEP
 from .context import current_cc_snapshot, current_frame_params, current_param_snapshot
 from .frame_params import FrameParamsBuffer
 from .key import ParameterKey
 from .meta import ParamMeta, infer_meta_from_value
 from .state import ParamState
+
+DEFAULT_QUANT_STEP = 1e-3
 
 
 def _quantize(value: Any, meta: ParamMeta) -> Any:
@@ -42,7 +43,9 @@ def _quantize(value: Any, meta: ParamMeta) -> Any:
     return value
 
 
-def _choose_value(base_value: Any, state: ParamState, meta: ParamMeta) -> tuple[Any, str]:
+def _choose_value(
+    base_value: Any, state: ParamState, meta: ParamMeta
+) -> tuple[Any, str]:
     cc_snapshot = current_cc_snapshot()
     if state.cc is not None and cc_snapshot is not None and state.cc in cc_snapshot:
         v = cc_snapshot[state.cc]
