@@ -17,13 +17,13 @@
 - [ ] ウィジェットディスパッチ設計  
   - 対象: `parameter_gui.py` 内の kind→ウィジェット生成関数マップ。  
   - 内容: kind ごとの UI 方針を固定し、共通インターフェース（生成・値取得・更新）を定義する。  
-    - float: `add_slider_float`（ui_min/ui_max 必須）。ui_min>=ui_max であれば例外。  
-    - int: `add_slider_int`（ui_min/ui_max 必須）。ui_min>=ui_max であれば例外。  
+    - float: `add_slider_float`（ui_min/ui_max を DPG の `min_value`/`max_value` に渡す）。ui_min>=ui_max は例外。  
+    - int: `add_slider_int`（同上）。ui_min>=ui_max は例外。  
     - bool: `add_checkbox`。  
     - string: `add_input_text`。  
     - choice: `add_combo`（choices 必須。空/None は例外）。  
-    - vec3: `add_slider_float3`（サポート無しなら例外）。  
-    - rgb: `add_color_picker3`（または `add_slider_int3`）。サポート無しなら例外。  
+    - vec3: `add_slider_floatx(size=3)` を使用（2.1.1 で公式サポートあり）。  
+    - rgb: `add_color_picker(no_alpha=True)` を第一候補（内部は RGBA、値の get/set で先頭3要素を使用）。スライダー方式なら `add_slider_intx(size=3)` を選択肢に入れる。  
     - 未知 kind: 例外を投げて検知させる。  
     - ユーザー定義 primitive/effect: meta 無しなら GUI 非表示、meta 不正は例外。  
 - [ ] 行の追加/更新/非表示管理  
