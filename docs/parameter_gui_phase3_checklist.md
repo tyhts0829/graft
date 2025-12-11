@@ -12,7 +12,7 @@
 
 ## チェックリスト（具体的な変更対象・内容）
 
-- [ ] 現状確認
+- [x] 現状確認
   - 対象: `docs/parameter_gui_impl_plan.md` フェーズ 3 要件、既存の `parameter_gui.py` の有無（未実装想定）。
   - 内容: 必要なウィジェット構成（3 列: label / control / cc&override）とイベントループ統合ポイントをメモ。
 - [ ] UI レイアウト構築
@@ -30,7 +30,7 @@
     - rgb: `add_color_picker(no_alpha=True)` を第一候補（内部は RGBA、値の get/set で先頭 3 要素を使用）。スライダー方式なら `add_slider_intx(size=3)` を選択肢に入れる。
     - 未知 kind: 例外を投げて検知させる。
     - ユーザー定義 primitive/effect: meta 無しなら GUI 非表示、meta 不正は例外。
-- [ ] 行の追加/更新/非表示管理
+- [ ] 行の追加/更新/非表示管理  
   - 対象: `parameter_gui.py` 内のロジック。
   - 内容: `rows_from_snapshot` の出力を使い、既存行は更新、新規は追加。widget_id 命名規約を統一（未観測の扱いは今回なし）。
 - [ ] ヘッダ行・ラベリング  
