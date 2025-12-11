@@ -1,6 +1,7 @@
 # どこで: docs/parameter_gui_phase3_label_namespace.md
 
 # 何を: G/E に name 指定でサブ名前空間を返し、primitive/effect へラベルを付与する現行方針の計画。
+
 # なぜ: `.label()` なしで Layer と同じ書式（G(name=...), E(name=...)）でラベルを付けられるようにするため。
 
 ## 方針
@@ -8,7 +9,7 @@
 - `PrimitiveNamespace.__call__(name: str | None)` を追加し、name を保持するラッパ（サブ名前空間）を返す。
   - `G.circle(...)` は現行どおり（name=None）。
   - `G(name="foo").circle(...)` と書いたとき、最初の primitive 呼び出しで (op, site_id) に label="foo" を ParamStore へ記録する。
-- `EffectNamespace.__call__(name: str | None)` を追加し、返す `EffectBuilder` にチェーン名を設定。
+- `EffectNamespace.__call__(name: str | None)` を追加し、返す `EffectBuilder` にチェーン名を設定（旧 `.label()` メソッドは廃止）。
   - `E.scale(...)` は現行どおり（name=None）。
   - `E(name="chain1").scale(...).translate(...)` のチェーンヘッダに "chain1" を表示。
 - ラベルは上書き可（最終値採用）。name が None/空ならデフォルト（primitive: op 名、effect: effect#N）。
@@ -22,7 +23,7 @@
 - [ ] `src/api/effects.py`
   - `EffectNamespace.__call__(self, name: str | None = None) -> EffectBuilder` を実装し、Builder に chain 名をセット。
   - `EffectBuilder` は steps を増やしても chain 名を保持し、最初の適用で ParamStore に label を保存。
-  - 既存 `label()` メソッドは互換として残すか検討（残すなら上書き可ポリシーに揃える）。
+- `.label()` チェーン方式は廃止し、name=... 指定を唯一のラベル付与手段とする。
 - [ ] ParamStore / snapshot
   - ラベル永続化は未実装。`set_label` 等を追加し、snapshot に label を含める。
 - [ ] View / GUI ヘッダ
@@ -35,7 +36,6 @@
     - name=None ではラベル未設定。
 - [ ] ドキュメント更新
   - `docs/parameter_gui_impl_plan.md` / `docs/parameter_gui_phase3_checklist.md` に name 付きサブ名前空間の使い方を追記。
-  - `.label()` との優先度/推奨パスを明記（name=... を推奨、.label は互換）。
 
 ## 例外・警告ポリシー
 
