@@ -33,11 +33,11 @@
 - [ ] 行の追加/更新/非表示管理
   - 対象: `parameter_gui.py` 内のロジック。
   - 内容: `rows_from_snapshot` の出力を使い、既存行は更新、新規は追加。widget_id 命名規約を統一（未観測の扱いは今回なし）。
-- [ ] ヘッダ行・ラベリング
-  - 対象: `parameter_gui.py`。
-  - 構造（表示順）:
-    - Style ヘッダ
-      - 行: background_color
+- [ ] ヘッダ行・ラベリング  
+  - 対象: `parameter_gui.py`。  
+  - 構造（表示順）:  
+    - Style ヘッダ  
+      - 行: background_color  
       - 行: global_thickness
       - 行: global_line_color
       - Layer セクション: L(name) ごとに thickness 行 + color 行
@@ -45,9 +45,13 @@
     - Effect チェーンヘッダ: デフォルト `effect#N`。`label(name=...)` があれば上書き。
   - ルール:
     - `label(name=...)` は primitive / effect チェーン内どこからでも呼べる。最後に呼ばれたものを採用。複数回呼びは例外。
-    - 同名が複数ある場合は末尾に `#1`, `#2` を自動付与。
-    - name は長さ上限を設け、超過時はトリム。
-    - ラベル情報は ParamStore に永続化。
+    - 同名が複数ある場合は末尾に `#1`, `#2` を自動付与。  
+    - name は長さ上限を設け、超過時はトリム。  
+    - ラベル情報は ParamStore に永続化。  
+  - 追加タスク（未実装）:  
+    - G/E の name 指定（`G(name=...)`, `E(name=...)`）でラベルを設定する経路を実装。  
+    - snapshot にラベルを含め、GUI ヘッダで重複時の連番付与を行う。  
+    - 現状コードにはラベル機能が存在しないため、上記をフェーズ3で実装する。  
 - [ ] コールバック配線
   - 対象: `parameter_gui.py`。
   - 内容: ウィジェット変更時に `update_state_from_ui` を呼び、状態を ParamStore に反映。エラー時はログ/色でフィードバック。override トグル・cc 入力もここで処理。
