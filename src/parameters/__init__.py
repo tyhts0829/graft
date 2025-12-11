@@ -9,6 +9,7 @@ from .state import ParamState
 from .store import ParamStore
 from .frame_params import FrameParamsBuffer, FrameParamRecord
 from .resolver import resolve_params
+from .view import ParameterRow, rows_from_snapshot, normalize_input, update_state_from_ui
 
 __all__ = [
     "parameter_context",
@@ -25,4 +26,8 @@ __all__ = [
     "FrameParamsBuffer",
     "FrameParamRecord",
     "resolve_params",
+    "ParameterRow",
+    "rows_from_snapshot",
+    "normalize_input",
+    "update_state_from_ui",
 ]

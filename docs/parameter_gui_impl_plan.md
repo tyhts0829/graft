@@ -46,8 +46,8 @@
 - チェックポイント CP1（ユーザー）：`snapshot()` で meta/ordinal が含まれること、既存シナリオでパラメータ値が変わらないことを確認。
 
 **フェーズ2: ViewModel + 変換ユーティリティ**
-- [ ] ViewModel ヘルパ（純粋関数）を追加し、ParamStore から `ParameterRow`（label/op/arg/kind/ui_value/ui_min/ui_max/choices/cc/override/ordinal/last_seen）を生成。並び順・型判定のユニットテストを作成。
-- [ ] UI 更新ユーティリティを設計し、ユーザー入力を型変換・妥当化して ParamStore に反映する処理を DPG 非依存で実装。ui_min>=ui_max や型不一致時のフォールバック挙動もテストする。
+- [x] ViewModel ヘルパ（純粋関数）を追加し、ParamStore から `ParameterRow`（label/op/arg/kind/ui_value/ui_min/ui_max/choices/cc_key/override/ordinal）を生成。並び順のユニットテストを作成。
+- [x] UI 更新ユーティリティを設計し、ユーザー入力を型変換・妥当化して ParamStore に反映する処理を DPG 非依存で実装。kind=string/choice/rgb などもカバーし、エラー時の挙動をテスト。
 - チェックポイント CP2（ユーザー）：ViewModel/変換ユーティリティのテスト結果共有。サンプル ParamStore 入力に対し期待行が得られるかを一緒に確認。
 
 **フェーズ3: GUI 骨格（DPG なし依存部の先行）**
