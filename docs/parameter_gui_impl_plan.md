@@ -35,16 +35,32 @@
 - bool: override トグルと二重にならないよう、override は別列に置き、値は checkbox 単独に限定する。
 - 共通 UI 品質: DPG なしで型変換/妥当性をテストできるよう、UI 生成関数は DPG 呼び出し前に変換関数を注入する。値が UI から逸脱した場合のログ/警告ポリシーを決める。
 
-## 3. タスク分解（チェックリスト）
+## 3. 実装フェーズ（ユーザーチェックポイントあり）
 
+各フェーズ完了ごとにいったん共有し、指定のチェックポイントであなたが挙動確認する前提で進める。
+
+**フェーズ1: ParamStore/Meta 基盤**
 - [ ] ParamStore に ParamMeta 永続化を追加し、key/state/meta/ordinal を返す `iter_descriptors()` を用意。`snapshot()` / `merge_frame_params()` の更新と既存テスト調整を行う。
+- チェックポイント CP1（ユーザー）：`snapshot()` で meta/ordinal が含まれること、既存シナリオでパラメータ値が変わらないことを確認。
+
+**フェーズ2: ViewModel + 変換ユーティリティ**
 - [ ] ViewModel ヘルパ（純粋関数）を追加し、ParamStore から `ParameterRow`（label/op/arg/kind/ui_value/ui_min/ui_max/choices/cc/override/ordinal/last_seen）を生成。並び順・型判定のユニットテストを作成。
 - [ ] UI 更新ユーティリティを設計し、ユーザー入力を型変換・妥当化して ParamStore に反映する処理を DPG 非依存で実装。ui_min>=ui_max や型不一致時のフォールバック挙動もテストする。
+- チェックポイント CP2（ユーザー）：ViewModel/変換ユーティリティのテスト結果共有。サンプル ParamStore 入力に対し期待行が得られるかを一緒に確認。
+
+**フェーズ3: GUI 骨格（DPG なし依存部の先行）**
 - [ ] `src/app/parameter_gui.py`: DearPyGui のセットアップ/破棄と 3 列テーブル生成。各 kind に応じたウィジェット生成とコールバック配線、行の追加/更新/非表示管理、override・cc 表示を実装。
+- チェックポイント CP3（ユーザー）：最小パラメータセットで GUI ウィンドウを開き、3 列表示と override トグルの動作を手元で確認。
+
+**フェーズ4: ランナー統合**
 - [ ] `api/run.py`: `parameter_gui` オプション（デフォルト要確認）を追加し、ParamStore を共有した ParameterGUI を初期化。tick 内で GUI フレームを回し、終了時に teardown する。
+- チェックポイント CP4（ユーザー）：描画を止めずに GUI 変更が次フレームへ反映されること、GUI を閉じても描画が継続することを確認。
+
+**フェーズ5: UX 仕上げと周辺更新**
 - [ ] UX 微調整: override/cc 状態の色分けまたはアイコン表示、最近出現していないパラメータのグレーアウトなど最小限のフィードバックを追加。
 - [ ] ドキュメント: README に GUI 起動方法（オプション名、依存ライブラリ、制約）を追記し、parameter_spec に GUI 実装の反映があれば補足する。
 - [ ] テスト: view-model / 更新ユーティリティの単体テストを `tests/app/test_parameter_gui_view.py` 等に追加。DPG 依存の統合テストはスキップか軽いスモークのみとする。
+- チェックポイント CP5（ユーザー）：UX 仕上げとドキュメントの内容を確認し、終端の挙動が期待通りかを再度起動してチェック。
 
 ## 4. リスク・要確認
 
