@@ -13,7 +13,7 @@
   - 内容: 必要なウィジェット構成（3列: label / control / cc&override）とイベントループ統合ポイントをメモ。
 - [ ] UI レイアウト構築  
   - 対象: 新規 `src/app/parameter_gui.py`。  
-  - 内容: DPG コンテキスト生成/破棄、メインウィンドウ作成、3列テーブル（label, control, cc/override）を構築。  
+  - 内容: DPG コンテキスト生成/破棄、メインウィンドウ作成、3列テーブル（1: label, 2: control, 3: ui_min入力・ui_max入力・cc_key入力・overrideトグル）を構築。  
 - [ ] ウィジェットディスパッチ設計  
   - 対象: `parameter_gui.py` 内の kind→ウィジェット生成関数マップ。  
   - 内容: kind ごとの UI 方針を固定し、共通インターフェース（生成・値取得・更新）を定義する。  
