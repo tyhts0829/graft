@@ -10,10 +10,10 @@ from src.parameters.meta import ParamMeta
 
 
 scale_meta = {
-    "s": ParamMeta(kind="float", ui_min=0.0, ui_max=10.0, step=0.01),
-    "sx": ParamMeta(kind="float", ui_min=0.0, ui_max=10.0, step=0.01),
-    "sy": ParamMeta(kind="float", ui_min=0.0, ui_max=10.0, step=0.01),
-    "sz": ParamMeta(kind="float", ui_min=0.0, ui_max=10.0, step=0.01),
+    "s": ParamMeta(kind="float", ui_min=0.0, ui_max=10.0),
+    "sx": ParamMeta(kind="float", ui_min=0.0, ui_max=10.0),
+    "sy": ParamMeta(kind="float", ui_min=0.0, ui_max=10.0),
+    "sz": ParamMeta(kind="float", ui_min=0.0, ui_max=10.0),
 }
 
 

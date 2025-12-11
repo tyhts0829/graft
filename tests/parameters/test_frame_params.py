@@ -3,7 +3,7 @@ from src.parameters import ParamMeta, ParamStore, parameter_context, resolve_par
 
 def test_merge_creates_state_and_ordinal():
     store = ParamStore()
-    meta = {"r": ParamMeta(kind="float", ui_min=0.0, ui_max=1.0, step=0.1)}
+    meta = {"r": ParamMeta(kind="float", ui_min=0.0, ui_max=1.0)}
     params = {"r": 0.5}
 
     with parameter_context(store=store, cc_snapshot=None):

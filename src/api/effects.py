@@ -53,7 +53,7 @@ class EffectBuilder:
         for op, params, site_id in self.steps:
             meta = effect_registry.get_meta(op)
             if current_frame_params() is not None:
-                resolved, param_steps = resolve_params(
+                resolved = resolve_params(
                     op=op,
                     params=params,
                     meta=meta,
@@ -61,8 +61,7 @@ class EffectBuilder:
                 )
             else:
                 resolved = params
-                param_steps = {}
-            result = Geometry.create(op=op, inputs=(result,), params=resolved, param_steps=param_steps)
+            result = Geometry.create(op=op, inputs=(result,), params=resolved)
         return result
 
     def __getattr__(self, name: str) -> Callable[..., "EffectBuilder"]:

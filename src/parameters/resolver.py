@@ -4,8 +4,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Iterable
 
+from src.core.geometry import DEFAULT_QUANT_STEP
 from .context import current_cc_snapshot, current_frame_params, current_param_snapshot
 from .frame_params import FrameParamsBuffer
 from .key import ParameterKey
@@ -14,16 +15,30 @@ from .state import ParamState
 
 
 def _quantize(value: Any, meta: ParamMeta) -> Any:
-    if meta.kind in ("float", "int") and meta.step:
-        step = float(meta.step)
+    """量子化を一元的に行う唯一の関数（Geometry 側では再量子化しない）。"""
+    if meta.kind == "float":
         try:
             v = float(value)
         except Exception:
             return value
-        q = round(v / step) * step
-        if meta.kind == "int":
-            return int(q)
+        q = round(v / DEFAULT_QUANT_STEP) * DEFAULT_QUANT_STEP
         return q
+    if meta.kind == "int":
+        try:
+            return int(value)
+        except Exception:
+            return value
+    if meta.kind.startswith("vec") and isinstance(value, Iterable):
+        quantized = []
+        for v in value:
+            try:
+                fv = float(v)
+            except Exception:
+                quantized.append(v)
+                continue
+            q = round(fv / DEFAULT_QUANT_STEP) * DEFAULT_QUANT_STEP
+            quantized.append(q)
+        return tuple(quantized)
     return value
 
 
@@ -47,13 +62,12 @@ def resolve_params(
     params: Dict[str, Any],
     meta: Dict[str, ParamMeta],
     site_id: str,
-) -> tuple[Dict[str, Any], Dict[str, float]]:
-    """引数辞書を解決し、Geometry.create 用の値と step マップを返す。"""
+) -> Dict[str, Any]:
+    """引数辞書を解決し、Geometry.create 用の値を返す。"""
 
     param_snapshot = current_param_snapshot()
     frame_params: FrameParamsBuffer | None = current_frame_params()
     resolved: Dict[str, Any] = {}
-    param_steps: Dict[str, float] = {}
 
     for arg, base_value in params.items():
         key = ParameterKey(op=op, site_id=site_id, arg=arg)
@@ -70,11 +84,6 @@ def resolve_params(
         effective, source = _choose_value(base_value, state, arg_meta)
         effective = _quantize(effective, arg_meta)
         resolved[arg] = effective
-        if arg_meta.step is not None:
-            try:
-                param_steps[arg] = float(arg_meta.step)
-            except Exception:
-                pass
 
         if frame_params is not None:
             frame_params.record(
@@ -85,4 +94,4 @@ def resolve_params(
                 source=source,
             )
 
-    return resolved, param_steps
+    return resolved

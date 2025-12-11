@@ -17,11 +17,11 @@ from src.core.realized_geometry import RealizedGeometry
 
 circle_meta = {
     # 半径は非負。UI スライダーの推奨レンジのみを設定。
-    "r": ParamMeta(kind="float", ui_min=0.0, ui_max=100.0, step=0.01),
+    "r": ParamMeta(kind="float", ui_min=0.0, ui_max=100.0),
     # 位置はキャンバスサイズに依存するため UI では広めに設定。
-    "cx": ParamMeta(kind="float", ui_min=-500.0, ui_max=500.0, step=0.01),
-    "cy": ParamMeta(kind="float", ui_min=-500.0, ui_max=500.0, step=0.01),
-    "segments": ParamMeta(kind="int", ui_min=3, ui_max=512, step=1),
+    "cx": ParamMeta(kind="float", ui_min=-500.0, ui_max=500.0),
+    "cy": ParamMeta(kind="float", ui_min=-500.0, ui_max=500.0),
+    "segments": ParamMeta(kind="int", ui_min=3, ui_max=512),
 }
 
 

@@ -13,50 +13,16 @@ from typing import Any, Mapping, Sequence, Tuple
 GeometryId = str
 
 DEFAULT_SCHEMA_VERSION = 1
-DEFAULT_QUANT_STEP = 1e-6
+DEFAULT_QUANT_STEP = 1e-3
 
 
-def _quantize_float(value: float, step: float) -> float:
-    """浮動小数点値を量子化して 0.0/-0.0 を正規化する。
-
-    Parameters
-    ----------
-    value : float
-        入力値。
-    step : float
-        量子化幅。
-
-    Returns
-    -------
-    float
-        量子化後の値。
-
-    Raises
-    ------
-    ValueError
-        NaN や無限大が渡された場合。
-    """
-    if not isfinite(value):
-        raise ValueError("非有限の float は Geometry 引数に使用できない")
-    if value == 0.0:
-        value = 0.0
-    if step <= 0.0:
-        raise ValueError("量子化 step は正の値である必要がある")
-    q = round(value / step) * step
-    if q == 0.0:
-        q = 0.0
-    return q
-
-
-def _canonicalize_value(value: Any, step: float) -> Any:
+def _canonicalize_value(value: Any) -> Any:
     """引数値を内容署名用に正規化する。
 
     Parameters
     ----------
     value : Any
         元の値。
-    step : float
-        float の量子化幅。
 
     Returns
     -------
@@ -75,50 +41,45 @@ def _canonicalize_value(value: Any, step: float) -> Any:
     if isinstance(value, bool):
         return value
     if isinstance(value, (int, float)):
-        return _quantize_float(float(value), step)
+        v = float(value)
+        if not isfinite(v):
+            raise ValueError("非有限の float は Geometry 引数に使用できない")
+        if v == 0.0:
+            v = 0.0
+        if isinstance(value, int):
+            return int(v)
+        return v
     if isinstance(value, str):
         return value
     if isinstance(value, Enum):
         return f"{value.__class__.__name__}.{value.name}"
     if isinstance(value, (list, tuple)):
-        return tuple(_canonicalize_value(v, step) for v in value)
+        return tuple(_canonicalize_value(v) for v in value)
     if isinstance(value, dict):
         return tuple(
-            (str(k), _canonicalize_value(v, step))
+            (str(k), _canonicalize_value(v))
             for k, v in sorted(value.items(), key=lambda item: str(item[0]))
         )
     raise TypeError(f"正規化できない引数型: {type(value)!r}")
 
 
-def canonicalize_args(
-    params: Mapping[str, Any],
-    *,
-    default_step: float = DEFAULT_QUANT_STEP,
-    param_steps: Mapping[str, float] | None = None,
-) -> Tuple[Tuple[str, Any], ...]:
+def canonicalize_args(params: Mapping[str, Any]) -> Tuple[Tuple[str, Any], ...]:
     """パラメータ辞書を Geometry 用の正規化済み引数タプルに変換する。
 
     Parameters
     ----------
     params : Mapping[str, Any]
         元の引数辞書。
-    default_step : float, optional
-        既定の float 量子化幅。
-    param_steps : Mapping[str, float] or None, optional
-        パラメータ名ごとの量子化幅の上書き指定。
 
     Returns
     -------
     tuple[tuple[str, Any], ...]
         キーでソートされた (名前, 正規化値) のタプル列。
     """
-    if param_steps is None:
-        param_steps = {}
     items: list[tuple[str, Any]] = []
     for name in sorted(params.keys()):
         raw_value = params[name]
-        step = float(param_steps.get(name, default_step))
-        canonical = _canonicalize_value(raw_value, step)
+        canonical = _canonicalize_value(raw_value)
         items.append((str(name), canonical))
     return tuple(items)
 
@@ -235,8 +196,6 @@ class Geometry:
         inputs: Sequence["Geometry"] | None = None,
         params: Mapping[str, Any] | None = None,
         schema_version: int = DEFAULT_SCHEMA_VERSION,
-        default_step: float = DEFAULT_QUANT_STEP,
-        param_steps: Mapping[str, float] | None = None,
     ) -> "Geometry":
         """演算子名とパラメータから Geometry ノードを生成する。
 
@@ -250,10 +209,6 @@ class Geometry:
             元の引数辞書。None の場合は空辞書とみなす。
         schema_version : int, optional
             署名スキーマのバージョン。
-        default_step : float, optional
-            既定の float 量子化幅。
-        param_steps : Mapping[str, float] or None, optional
-            パラメータ名ごとの量子化幅の上書き指定。
 
         Returns
         -------
@@ -269,8 +224,6 @@ class Geometry:
 
         normalized_args = canonicalize_args(
             params,
-            default_step=default_step,
-            param_steps=param_steps,
         )
         inputs_tuple = tuple(inputs_seq)
         geometry_id = compute_geometry_id(
@@ -285,4 +238,3 @@ class Geometry:
             inputs=inputs_tuple,
             args=normalized_args,
         )
-

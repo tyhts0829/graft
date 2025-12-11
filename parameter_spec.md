@@ -58,14 +58,13 @@
 • param_meta の役割（推奨）
 • GUI 生成のための型情報（float / bool / str / enum / vecN 等）
 • 既定の ui_min/ui_max（スライダー範囲）
-• step（量子化ステップ。署名と計算で同一に適用）
 • 表示名や並び順などの補助（任意）
 • meta が無い場合のフォールバック（推奨）
 • 正規化で許容される型（int/float/bool/str/None/Enum/tuple/list/dict）から UI 型を推定する。
 • float 系の ui_min/ui_max は、base 値から推奨レンジを自動生成する（設定ノブで調整可能）。
 • このフォールバックは利便性のためのものであり、安定運用には meta 提供を推奨する。
 
-意思決定メモ: 「すべての引数を GUI で制御できる」という体験を守るには推定が必要だが、正確な範囲・step はドメイン知識がないと破綻しやすい。meta を第一級にしつつ、最低限の推定で穴を埋める。
+意思決定メモ: 「すべての引数を GUI で制御できる」という体験を守るには推定が必要だが、正確な範囲はドメイン知識がないと破綻しやすい。meta を第一級にしつつ、最低限の推定で穴を埋める。
 
 ⸻
 
@@ -99,7 +98,7 @@
 • base_value: Any（ユーザーコードが渡した値）
 • effective_value: Any（解決後の値。量子化済み）
 • source: str（“base” / “gui” / “cc”）
-• meta_summary: dict（型・既定 ui_min/ui_max/step 等）
+• meta_summary: dict（型・既定 ui_min/ui_max 等）
 • ランナーによるマージ（規範）
 • draw 終了後、ランナーは DiscoveryBuffer をメインスレッドで master ParamStore にマージする。
 • 新規 ParameterKey を見つけた場合、ParamState を生成して既定値を設定する：
@@ -120,10 +119,10 @@
 • base_value: user code から渡された値（式評価後）
 • ParamState（スナップショットから取得）
 • cc_snapshot（スナップショット）
-• param_meta（型・範囲・step）
+• param_meta（型・範囲）
 • 解決規則（規範） 1. ParamState.cc が設定されている場合、CC 制御を優先する：
 • u = cc_snapshot[cc]（0..1、未定義は 0.0）
-• effective = map_cc(u, ui_min, ui_max, meta)（型に応じた写像） 2. そうでなく ParamState.override が True の場合、effective = ui_value 3. それ以外は effective = base_value 4. effective を型検証し、必要なら clamp/離散化を行う（型規則は meta に従う） 5. float を含む場合は step を用いて量子化し、署名と計算に同一の effective を渡す
+• effective = map_cc(u, ui_min, ui_max, meta)（型に応じた写像） 2. そうでなく ParamState.override が True の場合、effective = ui_value 3. それ以外は effective = base_value 4. effective を型検証し、必要なら clamp/離散化を行う（型規則は meta に従う） 5. float を含む場合はグローバル DEFAULT_QUANT_STEP で量子化し、署名と計算に同一の effective を渡す
 • CC 写像（推奨）
 • float: ui_min..ui_max を線形補間
 • vecN: 各成分を線形補間（ui_min/ui_max は成分ごと、またはスカラなら全成分に適用）
@@ -247,14 +246,13 @@
 • param_meta の役割（推奨）
 • GUI 生成のための型情報（float / bool / str / enum / vecN 等）
 • 既定の ui_min/ui_max（スライダー範囲）
-• step（量子化ステップ。署名と計算で同一に適用）
 • 表示名や並び順などの補助（任意）
 • meta が無い場合のフォールバック（推奨）
 • 正規化で許容される型（int/float/bool/str/None/Enum/tuple/list/dict）から UI 型を推定する。
 • float 系の ui_min/ui_max は、base 値から推奨レンジを自動生成する（設定ノブで調整可能）。
 • このフォールバックは利便性のためのものであり、安定運用には meta 提供を推奨する。
 
-意思決定メモ: 「すべての引数を GUI で制御できる」という体験を守るには推定が必要だが、正確な範囲・step はドメイン知識がないと破綻しやすい。meta を第一級にしつつ、最低限の推定で穴を埋める。
+意思決定メモ: 「すべての引数を GUI で制御できる」という体験を守るには推定が必要だが、正確な範囲はドメイン知識がないと破綻しやすい。meta を第一級にしつつ、最低限の推定で穴を埋める。
 
 ⸻
 
@@ -288,7 +286,7 @@
 • base_value: Any（ユーザーコードが渡した値）
 • effective_value: Any（解決後の値。量子化済み）
 • source: str（“base” / “gui” / “cc”）
-• meta_summary: dict（型・既定 ui_min/ui_max/step 等）
+• meta_summary: dict（型・既定 ui_min/ui_max 等）
 • ランナーによるマージ（規範）
 • draw 終了後、ランナーは DiscoveryBuffer をメインスレッドで master ParamStore にマージする。
 • 新規 ParameterKey を見つけた場合、ParamState を生成して既定値を設定する：
@@ -309,10 +307,10 @@
 • base_value: user code から渡された値（式評価後）
 • ParamState（スナップショットから取得）
 • cc_snapshot（スナップショット）
-• param_meta（型・範囲・step）
+• param_meta（型・範囲）
 • 解決規則（規範） 1. ParamState.cc が設定されている場合、CC 制御を優先する：
 • u = cc_snapshot[cc]（0..1、未定義は 0.0）
-• effective = map_cc(u, ui_min, ui_max, meta)（型に応じた写像） 2. そうでなく ParamState.override が True の場合、effective = ui_value 3. それ以外は effective = base_value 4. effective を型検証し、必要なら clamp/離散化を行う（型規則は meta に従う） 5. float を含む場合は step を用いて量子化し、署名と計算に同一の effective を渡す
+• effective = map_cc(u, ui_min, ui_max, meta)（型に応じた写像） 2. そうでなく ParamState.override が True の場合、effective = ui_value 3. それ以外は effective = base_value 4. effective を型検証し、必要なら clamp/離散化を行う（型規則は meta に従う） 5. float を含む場合はグローバル DEFAULT_QUANT_STEP で量子化し、署名と計算に同一の effective を渡す
 • CC 写像（推奨）
 • float: min..max を線形補間
 • vecN: 各成分を線形補間（ui_min/ui_max は成分ごと、またはスカラなら全成分に適用）

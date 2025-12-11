@@ -19,7 +19,7 @@
 
 ## 2. 設計方針
 
-- データ経路: ParamStore に ParamMeta（kind/step/choices/ui_min/ui_max）を保持し、`ParameterRow` ビューに射影 → DPG ウィジェットを生成/更新。UI 変更は型変換・検証して ParamStore を更新する。
+- データ経路: ParamStore に ParamMeta（kind/choices/ui_min/ui_max）を保持し、`ParameterRow` ビューに射影 → DPG ウィジェットを生成/更新。UI 変更は型変換・検証して ParamStore を更新する。
 - イベントループ: pyglet の tick 内で `render_dearpygui_frame()` を呼ぶポーリング方式とし、追加スレッドは持たない。閉じる/例外時の teardown を明確化。
 - UI: op ごとの ordinal をラベルに使い、arg 名を補助表示。kind に応じて slider / checkbox / input_text / combo / vec3 スライダーを使い、override トグルと cc 入力を併置する。
 - ライフサイクル: run 起動時に ParameterGUI を初期化し、閉じる動作（GUI/描画ウィンドウ双方）に合わせてクリーンアップする。GUI を閉じても描画は継続させる方針で検討。
@@ -28,16 +28,17 @@
 ### 2.1 kind ごとの論点メモ
 
 - 共通: widget_id の命名規約を統一し、非表示/更新処理を単純化。未知 kind は `input_text` + 警告ログにフォールバック。
-- float / int: ui_min/ui_max/step が壊れているときのデフォルト値（例: min=0, max=1, step=0.01）を決めて、検証エラー時はその範囲にクランプ。
+- float: ui_min/ui_max が壊れているときのデフォルト値（例: min=0, max=1）を決めて、検証エラー時はその範囲にクランプ。量子化刻みとスライダー刻みはグローバル step（1e-3）に従う。
+- int: スライダー刻みは 1 固定。override で float が入った場合は int() で確定。
 - choice / enum: choices 未指定時の挙動（読み取り専用テキストに落とす等）と、現値が choices 外にある場合の扱い（警告 + 先頭値に差し替えなど）を定義。
-- vec*: スカラーと同一の min/max/step を全要素に適用するか、要素長ごとに分岐するかを決める。DPG の vec スライダーで表現できない長さはタプル入力にフォールバック。
+- vec*: スカラーと同一の min/max を全要素に適用するか、要素長ごとに分岐するかを決める。スライダー刻みは全成分でグローバル step（1e-3）を共用。DPG の vec スライダーで表現できない長さはタプル入力にフォールバック。
 - bool: override トグルと二重にならないよう、override は別列に置き、値は checkbox 単独に限定する。
 - 共通 UI 品質: DPG なしで型変換/妥当性をテストできるよう、UI 生成関数は DPG 呼び出し前に変換関数を注入する。値が UI から逸脱した場合のログ/警告ポリシーを決める。
 
 ## 3. タスク分解（チェックリスト）
 
 - [ ] ParamStore に ParamMeta 永続化を追加し、key/state/meta/ordinal を返す `iter_descriptors()` を用意。`snapshot()` / `merge_frame_params()` の更新と既存テスト調整を行う。
-- [ ] ViewModel ヘルパ（純粋関数）を追加し、ParamStore から `ParameterRow`（label/op/arg/kind/ui_value/ui_min/ui_max/step/choices/cc/override/ordinal/last_seen）を生成。並び順・型判定のユニットテストを作成。
+- [ ] ViewModel ヘルパ（純粋関数）を追加し、ParamStore から `ParameterRow`（label/op/arg/kind/ui_value/ui_min/ui_max/choices/cc/override/ordinal/last_seen）を生成。並び順・型判定のユニットテストを作成。
 - [ ] UI 更新ユーティリティを設計し、ユーザー入力を型変換・妥当化して ParamStore に反映する処理を DPG 非依存で実装。ui_min>=ui_max や型不一致時のフォールバック挙動もテストする。
 - [ ] `src/app/parameter_gui.py`: DearPyGui のセットアップ/破棄と 3 列テーブル生成。各 kind に応じたウィジェット生成とコールバック配線、行の追加/更新/非表示管理、override・cc 表示を実装。
 - [ ] `api/run.py`: `parameter_gui` オプション（デフォルト要確認）を追加し、ParamStore を共有した ParameterGUI を初期化。tick 内で GUI フレームを回し、終了時に teardown する。

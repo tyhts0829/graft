@@ -13,7 +13,7 @@
 
 ## 1. 現状整理（2025-12-10 時点）
 - `G` / `E` は単純に Geometry を生成するだけで、callsite 情報や meta を持たない。
-- `Geometry.create` は default_step=1e-6 で正規化するのみで、パラメータ解決フックがない。
+- `Geometry.create` は値の正規化と検証のみで、量子化は行わない（量子化は resolver 側で一度だけ実施）。
 - `run` と `render_scene` はフレームごとのパラメータコンテキストを意識していない。
 - ParamStore/GUI/MIDI 関連モジュールは未実装。
 
@@ -25,8 +25,8 @@
 - base_value: ユーザーコードが `G` / `E` に渡した元の引数値（デフォルト引数が使われた場合はその値）。
 - ui_value: GUI で手動設定された値。`override=True` のときにのみ候補として使われる。
 - effective_value: 「CC > GUI override > base」の優先順位で決め、型検証・量子化後に Geometry 生成へ渡す最終値。
-- 正規化（canonicalize/normalize）: ParamMeta に従い値の型をそろえ、必要に応じて step 量子化を行い、Geometry.create に渡す前の決定値を作る処理。署名計算と実計算に同一の値を使うための前段（UI レンジによるクランプは行わない）。
-- ParamMeta: UI 型・ui_min/ui_max・step などのメタ情報（ui_min/ui_max はスライダーの初期レンジであり実値をクランプしない）。**組み込み primitive/effect では必須**（未定義なら例外）。ユーザーが自作 primitive/effect を登録する場合のみ、未指定なら推定フォールバックで補う。
+- 正規化（canonicalize/normalize）: ParamMeta に従い値の型をそろえ、Geometry.create に渡す前の決定値を作る処理（量子化は含まない）。署名計算と実計算に同一の値を使うための前段（UI レンジによるクランプは行わない）。
+- ParamMeta: UI 型・ui_min/ui_max などのメタ情報（ui_min/ui_max はスライダーの初期レンジであり実値をクランプしない）。**組み込み primitive/effect では必須**（未定義なら例外）。ユーザーが自作 primitive/effect を登録する場合のみ、未指定なら推定フォールバックで補う。
 - ParamState: 各 ParameterKey に紐づく状態（override, ui_value, ui_min, ui_max, cc）。GUI の保存・復元単位。ui_min/ui_max は UI レンジとしてのみ利用する。
 - ParamStore: `dict[ParameterKey, ParamState]` を保持する永続ストア。序数 `ordinal`（op ごとに初出順）も管理し、JSON で保存/復元可能。
 - ordinal: 同一 op 内で最初に観測した順に 1,2,3… を付与し、GUI の行ラベルに使う。
@@ -46,7 +46,7 @@
 - **ParamState/ParamStore**: `dataclass ParamState`（override/ui_value/ui_min/ui_max/cc）。`ParamStore` は `dict[ParameterKey, ParamState]` を管理し、JSON で保存/復元できる API を持たせる。
 - **frame_params**: draw 開始時に生成し contextvar に載せ、G/E で `record(key, base, effective, source, meta)` を push するだけのシンプルなバッファにする。draw 終了後に ParamStore へマージする。
 - **コンテキスト固定**: `with parameter_context(frame_no, store, cc_snapshot=None)` のようなコンテキストマネージャを用意し、`param_snapshot` と `frame_params` を contextvars にセット。`cc_snapshot` はダミー dict を渡すか None を許容（MIDI 後回し）。
-- **値解決**: `resolve_arg(key, base_value, meta, snapshot)` で「CC > override > base」優先を実装。ただし Phase 1 は CC 未対応のため `cc` は常に未割当扱いとし、override True のときだけ GUI 値を採用する。量子化/型検証/クランプは meta に従い、`Geometry.create` に渡す前に正規化済み値を作る。param_steps を meta.step から渡して canonicalize と計算を一致させる。
+- **値解決**: `resolve_arg(key, base_value, meta, snapshot)` で「CC > override > base」優先を実装。ただし Phase 1 は CC 未対応のため `cc` は常に未割当扱いとし、override True のときだけ GUI 値を採用する。量子化/型検証/クランプは meta に従い、`Geometry.create` に渡す前に正規化済み値を作る。量子化幅はグローバル値を用い、resolver で一度だけ適用する。
 - **GUI 供給 API**: `ParameterViewModel` を返す関数を用意（ラベル/arg/display_name/ui_min/ui_max/ui_value/override/cc/ordinal）。ordinal は op ごとに site_id 初出順で `ParamStore` が保持する。
 - **例外処理**: GUI 由来の不正値は clamp または override 無効化で握り、警告イベントを返す hook を用意する（ロギングは後続 UI で表示）。
 
@@ -71,17 +71,17 @@
 - [x] `meta.py`: ParamMeta 定義と推定ロジック。primitive/effect デコレータで meta 登録を受け付けるよう `primitive_registry` / `effect_registry` を拡張。
 - [x] `state.py` / `store.py`: ParamState と ParamStore（JSON load/save、ordinal 管理）を実装。
 - [x] `frame_params.py`: FrameParamRecord/frame_params バッファ（meta を含む）と ParamStore へのマージ処理を実装。
-- [x] `resolver.py`: base→override 優先で値を決め、meta.step を `Geometry.create` に反映させるフックを提供。CC は未実装扱いでスキップ。
+- [x] `resolver.py`: base→override 優先で値を決め、グローバル step を `Geometry.create` に反映させるフックを提供。CC は未実装扱いでスキップ。
 - [x] `src/api/primitives.py` / `src/api/effects.py`: Geometry 生成前に `resolve_params(op, params, meta, param_snapshot, frame_params)` を呼ぶようにし、ParameterKey を各引数に紐づけて記録。
 - [x] `src/api/run.py`: フレーム開始時に `parameter_context(frame_no, store, cc_snapshot=None)` をセットし、終了後に `frame_params` を store へマージするフックを追加。フレーム番号管理を run 内部に持たせる。
 - [ ] `src/app/parameter_gui.py`（骨組み）: ParamStore を受け取り GUI へ渡すための `get_rows()` / `apply_ui_update()` のような薄い I/O 層を定義（DearPyGui 実装は TODO に留める）。
 - [x] テスト: `tests/parameters/test_site_id.py`, `tests/parameters/test_resolver.py`, `tests/parameters/test_frame_params.py` を追加し、以下を検証（MIDI はスキップ）:
   - site_id の安定性（同一行で一致、行移動で変化）。
-  - 優先度と量子化（override > base、step 量子化、UI レンジによるクランプなし、型不一致フォールバック）。
+  - 優先度と量子化（override > base、グローバル step 量子化、UI レンジによるクランプなし、型不一致フォールバック）。
   - frame_params ↔ ParamStore のマージ（新規キー初期化、既存キー保持、meta 更新の扱い）。
   - contextvars の隔離（フレーム間で snapshot/バッファが漏れない、スレッド分離）。
   - ParamStore の JSON 保存/読込で ordinal/override/ui_value/ui_min/ui_max/cc が保持されること。
-  - ダミー primitive を通じて resolve→Geometry.create に meta.step が反映されること。
+  - ダミー primitive を通じて resolve→Geometry.create で量子化幅が一貫して伝搬すること（量子化は resolver で一度だけ）。
 
 ## 4. 後続/非ゴール
 - MIDI/CC 入力の購読と `cc_snapshot` 更新（mido 統合、スレッド安全キュー）。
@@ -92,5 +92,5 @@
 ## 5. リスク・要確認
 - site_id 生成のコストが多量の G/E 呼び出しでボトルネックにならないか（必要なら LRU キャッシュを検討）。
 - contextvars と pyglet イベントループのスレッドモデル整合（描画スレッドが 1 本なら問題なし）。
-- meta 推定のレンジ/step が不適切だと GUI 体験を損なう可能性があるため、テストで代表値を押さえる。
-- Geometry.create の量子化幅を meta 経由で変える際、既存ジオメトリ ID と互換性が崩れる点を周知（キャッシュ破棄を想定）。
+- meta 推定のレンジが不適切だと GUI 体験を損なう可能性があるため、テストで代表値を押さえる。
+- Geometry.create では量子化を行わないため、量子化幅を変える場合は resolver 側の設定のみで制御する。

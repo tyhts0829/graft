@@ -68,7 +68,7 @@ class PrimitiveNamespace:
             meta = primitive_registry.get_meta(name)
             # コンテキストが無ければ素通し
             if current_param_snapshot() and current_frame_params() is not None:
-                resolved, param_steps = resolve_params(
+                resolved = resolve_params(
                     op=name,
                     params=params,
                     meta=meta,
@@ -76,9 +76,7 @@ class PrimitiveNamespace:
                 )
             else:
                 resolved = params
-                param_steps = {}
-
-            return Geometry.create(op=name, params=resolved, param_steps=param_steps)
+            return Geometry.create(op=name, params=resolved)
 
         return factory
 

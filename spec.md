@@ -125,11 +125,8 @@
   - NaN/inf は ValueError（ノード生成時）
   - -0.0 は +0.0 に正規化
   - 量子化（任意だが推奨）
-    - step により q = round(x/step)\*step を採用（丸め規則は Python round に従う）
-    - 署名に入れる値と実計算に渡す値は一致させる
-  - step の解決
-    - param_meta.step があればそれを優先
-    - 無ければ DEFAULT_QUANT_STEP（設定/環境変数）を使用
+    - q = round(x/DEFAULT_QUANT_STEP)\*DEFAULT_QUANT_STEP を採用（丸め規則は Python round に従う）
+    - 署名に入れる値と実計算に渡す値は一致させる（量子化は resolver で一度だけ実施し、Geometry では再量子化しない）
 
 意思決定メモ: 署名と実引数がズレると「同じ ID で違う実体」が発生して即破綻するため、量子化は“署名と計算で同一”を仕様として固定する。
 
