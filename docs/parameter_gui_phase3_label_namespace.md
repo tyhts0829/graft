@@ -16,19 +16,19 @@
 
 ## 変更タスク
 
-- [ ] `src/api/primitives.py`
+- [x] `src/api/primitives.py`
   - `PrimitiveNamespace.__call__(self, name: str | None = None) -> PrimitiveNamespace` を実装し、内部に name を保持。
   - factory 呼び出し時に name があれば ParamStore.set_label(op, site_id, name) を実行（上書き可）。
   - 既存 `label` キーワードは削除。
-- [ ] `src/api/effects.py`
+- [x] `src/api/effects.py`
   - `EffectNamespace.__call__(self, name: str | None = None) -> EffectBuilder` を実装し、Builder に chain 名をセット。
   - `EffectBuilder` は steps を増やしても chain 名を保持し、最初の適用で ParamStore に label を保存。
   - `.label()` チェーン方式は廃止し、name=... 指定を唯一のラベル付与手段とする。
-- [ ] ParamStore / snapshot
-  - ラベル永続化は未実装。`set_label` 等を追加し、snapshot に label を含める。
+- [x] ParamStore / snapshot
+  - ラベル永続化を実装し、snapshot に label を含める。
 - [ ] View / GUI ヘッダ
   - snapshot から label を取り、重複時は `name#1` 付与。name 未指定はデフォルト（primitive: op、effect: effect#ordinal）。
-- [ ] テスト
+- [x] テスト
   - `tests/parameters/test_label_namespace.py` を追加。
     - `G(name="foo").circle()` で label が保存される。
     - `E(name="chain").scale()` で chain ヘッダに label が保存される。

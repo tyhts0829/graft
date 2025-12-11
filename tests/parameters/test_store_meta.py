@@ -16,7 +16,7 @@ def test_snapshot_includes_meta_state_and_ordinal():
 
     snap = store.snapshot()
     assert key in snap
-    meta, state, ordinal = snap[key]
+    meta, state, ordinal, label = snap[key]
     assert meta.kind == "float"
     assert meta.ui_min == 0.0
     assert state.ui_value == 0.5
@@ -49,7 +49,7 @@ def test_json_roundtrip_preserves_meta_and_state():
     loaded = ParamStore.from_json(payload)
 
     snap = loaded.snapshot()
-    meta, state, ordinal = snap[key]
+    meta, state, ordinal, label = snap[key]
     assert meta.kind == "float"
     assert meta.ui_min == -1.0
     assert meta.ui_max == 1.0

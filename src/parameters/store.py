@@ -12,6 +12,7 @@ from .key import ParameterKey
 from .meta import ParamMeta
 from .state import ParamState
 
+MAX_LABEL_LENGTH = 64
 
 class ParamStore:
     """ParameterKey -> ParamState を保持する永続ストア。"""
@@ -19,6 +20,7 @@ class ParamStore:
     def __init__(self) -> None:
         self._states: Dict[ParameterKey, ParamState] = {}
         self._meta: Dict[ParameterKey, ParamMeta] = {}
+        self._labels: Dict[tuple[str, str], str] = {}
         # op ごとの site_id -> ordinal
         self._ordinals: Dict[str, Dict[str, int]] = {}
 
@@ -53,18 +55,19 @@ class ParamStore:
         mapping = self._ordinals.get(op, {})
         return mapping.get(site_id, self._assign_ordinal(op, site_id))
 
-    def snapshot(self) -> dict[ParameterKey, Tuple[ParamMeta, ParamState, int]]:
-        """(key -> (meta, state, ordinal)) のスナップショットを返す。"""
+    def snapshot(self) -> dict[ParameterKey, Tuple[ParamMeta, ParamState, int, str | None]]:
+        """(key -> (meta, state, ordinal, label)) のスナップショットを返す。"""
 
-        result: dict[ParameterKey, Tuple[ParamMeta, ParamState, int]] = {}
+        result: dict[ParameterKey, Tuple[ParamMeta, ParamState, int, str | None]] = {}
         for key, state in self._states.items():
             meta = self._meta.get(key)
             if meta is None:
                 # meta を持たないキーはスナップショットに含めない（実質的に GUI 対象外）
                 continue
+            label = self._labels.get((key.op, key.site_id))
             # ParamState はミュータブルなのでコピーを返す
             state_copy = ParamState(**vars(state))
-            result[key] = (meta, state_copy, self.get_ordinal(key.op, key.site_id))
+            result[key] = (meta, state_copy, self.get_ordinal(key.op, key.site_id), label)
         return result
 
     def store_frame_params(self, records: list[FrameParamRecord]) -> None:
@@ -105,6 +108,10 @@ class ParamStore:
                 }
                 for k, m in self._meta.items()
             ],
+            "labels": [
+                {"op": op, "site_id": site_id, "label": label}
+                for (op, site_id), label in self._labels.items()
+            ],
             "ordinals": self._ordinals,
         }
         return json.dumps(data)
@@ -132,6 +139,8 @@ class ParamStore:
                 choices=item.get("choices"),
             )
             store._meta[key] = meta
+        for item in obj.get("labels", []):
+            store._labels[(item["op"], item["site_id"])] = item["label"]
         store._ordinals = obj.get("ordinals", {})
         return store
 
@@ -142,3 +151,16 @@ class ParamStore:
     def meta_items(self) -> Iterable[Tuple[ParameterKey, ParamMeta]]:
         """(ParameterKey, ParamMeta) のイテレータを返す。"""
         return self._meta.items()
+
+    def set_label(self, op: str, site_id: str, label: str) -> None:
+        """ヘッダ表示用のラベルを設定（上書き可）。"""
+        self._labels[(op, site_id)] = self._trim_label(label)
+
+    def get_label(self, op: str, site_id: str) -> str | None:
+        return self._labels.get((op, site_id))
+
+    @staticmethod
+    def _trim_label(label: str) -> str:
+        if len(label) <= MAX_LABEL_LENGTH:
+            return label
+        return label[:MAX_LABEL_LENGTH]

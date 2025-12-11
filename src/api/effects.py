@@ -12,6 +12,7 @@ from src.core.geometry import Geometry
 from src.parameters import (
     caller_site_id,
     current_frame_params,
+    current_param_store,
     resolve_params,
 )
 
@@ -35,6 +36,7 @@ class EffectBuilder:
     """
 
     steps: Tuple[Tuple[str, dict[str, Any], str], ...]
+    label_name: str | None = None
 
     def __call__(self, geometry: Geometry) -> Geometry:
         """保持している effect 列を Geometry に適用する。
@@ -61,6 +63,11 @@ class EffectBuilder:
                 )
             else:
                 resolved = params
+            if self.label_name is not None:
+                store = current_param_store()
+                if store is None:
+                    raise RuntimeError("ParamStore が利用できないコンテキストで name 指定は使えません")
+                store.set_label(op, site_id, self.label_name)
             result = Geometry.create(op=op, inputs=(result,), params=resolved)
         return result
 
@@ -104,7 +111,7 @@ class EffectBuilder:
 
             site_id = caller_site_id(skip=1)
             new_steps = self.steps + ((name, dict(params), site_id),)
-            return EffectBuilder(steps=new_steps)
+            return EffectBuilder(steps=new_steps, label_name=self.label_name)
 
         return factory
 
@@ -158,9 +165,16 @@ class EffectNamespace:
             """
 
             site_id = caller_site_id(skip=1)
-            return EffectBuilder(steps=((name, dict(params), site_id),))
+            return EffectBuilder(steps=((name, dict(params), site_id),), label_name=self._pending_label)
 
         return factory
+
+    def __call__(self, name: str | None = None) -> "EffectNamespace":
+        ns = EffectNamespace()
+        ns._pending_label = name  # type: ignore[attr-defined]
+        return ns
+
+    _pending_label: str | None = None
 
 
 E = EffectNamespace()

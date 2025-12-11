@@ -8,7 +8,7 @@ from typing import Any, Callable
 
 from src.core.geometry import Geometry
 from src.core.primitive_registry import primitive_registry
-from src.parameters import current_param_snapshot, current_frame_params, caller_site_id, resolve_params
+from src.parameters import current_param_snapshot, current_frame_params, caller_site_id, resolve_params, current_param_store
 
 # primitive 実装モジュールをインポートしてレジストリに登録させる。
 from src.primitives import circle as _primitive_circle  # noqa: F401
@@ -64,10 +64,16 @@ class PrimitiveNamespace:
 
             site_id = caller_site_id(skip=1)
 
+            store = current_param_store()
+            if self._pending_label is not None:
+                if store is None:
+                    raise RuntimeError("ParamStore が利用できないコンテキストで name 指定は使えません")
+                store.set_label(name, site_id, self._pending_label)
+
             # meta を取得（未登録は空）
             meta = primitive_registry.get_meta(name)
-            # コンテキストが無ければ素通し
-            if current_param_snapshot() and current_frame_params() is not None:
+            # フレームコンテキストがあれば解決処理を通す
+            if current_frame_params() is not None:
                 resolved = resolve_params(
                     op=name,
                     params=params,
@@ -79,6 +85,13 @@ class PrimitiveNamespace:
             return Geometry.create(op=name, params=resolved)
 
         return factory
+
+    def __call__(self, name: str | None = None) -> "PrimitiveNamespace":
+        ns = PrimitiveNamespace()
+        ns._pending_label = name  # type: ignore[attr-defined]
+        return ns
+
+    _pending_label: str | None = None
 
 
 G = PrimitiveNamespace()

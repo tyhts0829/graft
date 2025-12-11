@@ -37,6 +37,11 @@ def current_cc_snapshot() -> dict | None:
     return _cc_snapshot_var.get()
 
 
+def current_param_store() -> ParamStore | None:
+    """現在の ParamStore を返す（GUI/label 設定用）。"""
+    return _store_var.get()
+
+
 @contextlib.contextmanager
 def parameter_context(
     store: ParamStore, cc_snapshot: dict | None = None

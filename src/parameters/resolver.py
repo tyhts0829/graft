@@ -76,7 +76,7 @@ def resolve_params(
         key = ParameterKey(op=op, site_id=site_id, arg=arg)
         snapshot_entry = param_snapshot.get(key)  # type: ignore[arg-type]
         if snapshot_entry is not None:
-            snapshot_meta, state, _ordinal = snapshot_entry
+            snapshot_meta, state, _ordinal, _label = snapshot_entry
             arg_meta = snapshot_meta
         else:
             arg_meta = meta.get(arg) or infer_meta_from_value(base_value)

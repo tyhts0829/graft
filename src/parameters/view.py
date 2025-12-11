@@ -31,12 +31,12 @@ class ParameterRow:
 
 
 def rows_from_snapshot(
-    snapshot: dict[ParameterKey, Tuple[ParamMeta, ParamState, int]]
+    snapshot: dict[ParameterKey, Tuple[ParamMeta, ParamState, int, str | None]]
 ) -> list[ParameterRow]:
     """Snapshot から ParameterRow を生成し、op→ordinal→arg の順で並べる。"""
 
     rows: List[ParameterRow] = []
-    for key, (meta, state, ordinal) in snapshot.items():
+    for key, (meta, state, ordinal, _label) in snapshot.items():
         rows.append(
             ParameterRow(
                 label=f"{ordinal}:{key.arg}",

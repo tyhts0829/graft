@@ -9,16 +9,19 @@ def test_rows_sorted_by_op_and_ordinal():
             ParamMeta(kind="float", ui_min=0, ui_max=1),
             ParamState(ui_value=0.1, override=False, cc_key=None),
             2,
+            None,
         ),
         ParameterKey("a", "s0", "y"): (
             ParamMeta(kind="int", ui_min=0, ui_max=10),
             ParamState(ui_value=5, override=True, cc_key=1),
             1,
+            None,
         ),
         ParameterKey("a", "s0", "x"): (
             ParamMeta(kind="float", ui_min=-1, ui_max=1),
             ParamState(ui_value=0.0, override=False, cc_key=None),
             2,
+            None,
         ),
     }
 
