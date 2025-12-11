@@ -23,8 +23,8 @@
   - 内容: int/float/vec3/bool/string/choice/rgb などへの型変換と検証、ui_min/ui_max が壊れている場合の扱い、choices 外の値の補正（先頭に差し替え等）。  
   - テスト: `tests/parameters/test_parameter_normalize.py` で各 kind の変換・エラー補正を確認。
 - [ ] ParamStore 連携ヘルパ  
-  - 対象: `src/parameters/store.py` または `view.py` に `apply_ui_update(store, key, new_value, *, meta)` を実装。  
-  - 内容: 変換後の値を `ParamState.ui_value` に保存し、override の切替と cc_key 設定の更新ロジックを定義。  
+  - 対象: `src/parameters/store.py` または `view.py` に `update_state_from_ui(store, key, ui_input_value, *, meta)` を実装。  
+  - 内容: 入力値を `normalize_input` で整形して `ParamState.ui_value` に保存し、override の切替と cc_key 設定の更新ロジックを定義。  
   - テスト: `tests/parameters/test_parameter_updates.py`（仮）で override 切替と値更新を確認。
 - [ ] ドキュメント更新  
   - 対象: `docs/parameter_gui_impl_plan.md` フェーズ2項を完了に合わせて反映。  
