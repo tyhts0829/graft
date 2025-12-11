@@ -33,7 +33,7 @@
 - frame_params（フレーム内バッファ）: `draw(t)` 実行中に G/E が呼ばれるたび、ParameterKey と base/ParamMeta を記録し、値解決後に effective と source（`"base"` / `"gui"` / `"cc"`）を追記する一時ログ。フレーム終了後に ParamStore へマージする。
 - マージ: frame_params のログを ParamStore に反映する処理。未登録の ParameterKey は新規に ParamState を作成し、`override=False`・`ui_value=base_value`（正規化後）・`ui_min/ui_max=ParamMeta.ui_min/ui_max` で初期化し、既存キーは上書きせず保持する。GUI 側はこの結果をもとに行を生成・更新する。
 - cc_snapshot: フレーム開始時点の MIDI CC 値スナップショット。Phase 1 では空/Noneで、CC が割り当てられても実際の値は使用しない（将来拡張用）。
-- cc_value: `ParamState.cc` が指す CC 番号に対して `cc_snapshot` から取り出した 0..1 の値。Phase 1 では未使用だが将来の CC 制御で effective_value を決める入力になる。
+- cc_key: `ParamState.cc_key` が指す CC 番号に対して `cc_snapshot` から取り出した 0..1 の値。Phase 1 では未使用だが将来の CC 制御で effective_value を決める入力になる。
 
 ### モジュール配置（決定）
 - `src/parameters/`: パラメータ解決の中核（context, key, meta, state, store, frame_params, resolver, viewmodel）。  

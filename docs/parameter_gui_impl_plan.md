@@ -40,7 +40,7 @@
 各フェーズ完了ごとにいったん共有し、指定のチェックポイントであなたが挙動確認する前提で進める。
 
 **フェーズ1: ParamStore/Meta 基盤**
-- [ ] ParamStore に ParamMeta 永続化を追加し、key/state/meta/ordinal を返す `iter_descriptors()` を用意。`snapshot()` / `merge_frame_params()` の更新と既存テスト調整を行う。
+- [x] ParamStore に ParamMeta 永続化を追加し、key/state/meta/ordinal を返す `snapshot()` に置換。`store_frame_params()` への更新と既存テスト調整を行う。
 - チェックポイント CP1（ユーザー）：`snapshot()` で meta/ordinal が含まれること、既存シナリオでパラメータ値が変わらないことを確認。
 
 **フェーズ2: ViewModel + 変換ユーティリティ**

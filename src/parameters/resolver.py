@@ -47,8 +47,8 @@ def _choose_value(
     base_value: Any, state: ParamState, meta: ParamMeta
 ) -> tuple[Any, str]:
     cc_snapshot = current_cc_snapshot()
-    if state.cc is not None and cc_snapshot is not None and state.cc in cc_snapshot:
-        v = cc_snapshot[state.cc]
+    if state.cc_key is not None and cc_snapshot is not None and state.cc_key in cc_snapshot:
+        v = cc_snapshot[state.cc_key]
         # 0..1 を min..max に線形写像
         lo = meta.ui_min if meta.ui_min is not None else 0.0
         hi = meta.ui_max if meta.ui_max is not None else 1.0
@@ -74,15 +74,16 @@ def resolve_params(
 
     for arg, base_value in params.items():
         key = ParameterKey(op=op, site_id=site_id, arg=arg)
-        arg_meta = meta.get(arg) or infer_meta_from_value(base_value)
-        state: ParamState | None = param_snapshot.get(key)  # type: ignore[arg-type]
-        if state is None:
+        snapshot_entry = param_snapshot.get(key)  # type: ignore[arg-type]
+        if snapshot_entry is not None:
+            snapshot_meta, state, _ordinal = snapshot_entry
+            arg_meta = snapshot_meta
+        else:
+            arg_meta = meta.get(arg) or infer_meta_from_value(base_value)
             state = ParamState(
                 override=False,
                 ui_value=base_value,
-                ui_min=arg_meta.ui_min,
-                ui_max=arg_meta.ui_max,
-                cc=None,
+                cc_key=None,
             )
         effective, source = _choose_value(base_value, state, arg_meta)
         effective = _quantize(effective, arg_meta)

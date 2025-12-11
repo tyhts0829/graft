@@ -53,8 +53,8 @@ def parameter_context(
     try:
         yield
     finally:
-        # フレーム終了時に frame_params を ParamStore へマージ
-        store.merge_frame_params(frame_params.records)
+        # フレーム終了時に frame_params を ParamStore へ保存
+        store.store_frame_params(frame_params.records)
         _param_snapshot_var.reset(t1)
         _frame_params_var.reset(t2)
         _cc_snapshot_var.reset(t3)

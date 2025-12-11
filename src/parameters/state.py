@@ -10,10 +10,8 @@ from typing import Any
 
 @dataclass
 class ParamState:
-    """単一 ParameterKey に紐づく GUI 状態。"""
+    """単一 ParameterKey に紐づく GUI 状態（レンジ情報は保持しない）。"""
 
     override: bool = False
     ui_value: Any = None
-    ui_min: Any = None
-    ui_max: Any = None
-    cc: int | None = None
+    cc_key: int | None = None
