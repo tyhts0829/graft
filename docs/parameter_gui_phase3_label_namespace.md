@@ -19,11 +19,11 @@
 - [ ] `src/api/primitives.py`
   - `PrimitiveNamespace.__call__(self, name: str | None = None) -> PrimitiveNamespace` を実装し、内部に name を保持。
   - factory 呼び出し時に name があれば ParamStore.set_label(op, site_id, name) を実行（上書き可）。
-  - 既存 `label` キーワードは削除または非推奨にする。
+  - 既存 `label` キーワードは削除。
 - [ ] `src/api/effects.py`
   - `EffectNamespace.__call__(self, name: str | None = None) -> EffectBuilder` を実装し、Builder に chain 名をセット。
   - `EffectBuilder` は steps を増やしても chain 名を保持し、最初の適用で ParamStore に label を保存。
-- `.label()` チェーン方式は廃止し、name=... 指定を唯一のラベル付与手段とする。
+  - `.label()` チェーン方式は廃止し、name=... 指定を唯一のラベル付与手段とする。
 - [ ] ParamStore / snapshot
   - ラベル永続化は未実装。`set_label` 等を追加し、snapshot に label を含める。
 - [ ] View / GUI ヘッダ
