@@ -1,3 +1,9 @@
+from __future__ import annotations
+
+# どこで: `src/render/utils.py`。
+# 何を: 描画で使う小さなユーティリティ（投影行列生成）を提供する。
+# なぜ: renderer 初期化等で共有し、座標系の定義を一箇所に集約するため。
+
 import numpy as np
 
 

@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from collections.abc import ItemsView
 from typing import Any, Callable, Mapping, Sequence
 
 from src.core.realized_geometry import RealizedGeometry
@@ -97,7 +98,7 @@ class EffectRegistry:
         """辞書風に effect を取得するショートカット。"""
         return self.get(name)
 
-    def items(self) -> Mapping[str, EffectFunc].items:  # type: ignore[valid-type]
+    def items(self) -> ItemsView[str, EffectFunc]:
         """登録済みエントリの (name, func) ビューを返す。"""
         return self._items.items()
 

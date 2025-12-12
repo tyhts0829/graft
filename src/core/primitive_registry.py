@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from collections.abc import ItemsView
 from typing import Any, Callable, Mapping
 
 from src.core.realized_geometry import RealizedGeometry
@@ -94,7 +95,7 @@ class PrimitiveRegistry:
         """辞書風に primitive を取得するショートカット。"""
         return self.get(name)
 
-    def items(self) -> Mapping[str, PrimitiveFunc].items:  # type: ignore[valid-type]
+    def items(self) -> ItemsView[str, PrimitiveFunc]:
         """登録済みエントリの (name, func) ビューを返す。"""
         return self._items.items()
 
