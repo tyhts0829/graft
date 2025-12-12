@@ -118,10 +118,20 @@ def widget_vec3_slider(row: ParameterRow) -> tuple[bool, tuple[float, float, flo
     return changed, _as_float3(out)
 
 
+def widget_bool_checkbox(row: ParameterRow) -> tuple[bool, bool]:
+    """kind=bool のチェックボックスを描画し、(changed, value) を返す。"""
+
+    import imgui
+
+    clicked, state = imgui.checkbox("##value", bool(row.ui_value))
+    return clicked, bool(state)
+
+
 _KIND_TO_WIDGET: dict[str, WidgetFn] = {
     "float": widget_float_slider,
     "int": widget_int_slider,
     "vec3": widget_vec3_slider,
+    "bool": widget_bool_checkbox,
 }
 
 
@@ -215,71 +225,76 @@ def render_parameter_row_3cols(row: ParameterRow) -> tuple[bool, ParameterRow]:
         # --- Column 3: meta（ui_min/ui_max/cc_key/override を横並びに配置）---
         imgui.table_set_column_index(2)
 
-        cc_display = -1 if cc_key is None else int(cc_key)
-
-        if row.kind == "int":
-            # input_int は int のみ受けるので、表示用も int で扱う。
-            min_display_i = -10 if ui_min is None else int(ui_min)
-            max_display_i = 10 if ui_max is None else int(ui_max)
-
-            imgui.push_item_width(UI_MIN_MAX_WIDTH)
-            changed_min, min_display_i = imgui.input_int(
-                "##ui_min", int(min_display_i), 0, 0
-            )
-            imgui.pop_item_width()
-
-            imgui.same_line(0.0, WIDTH_SPACER)
-            imgui.push_item_width(UI_MIN_MAX_WIDTH)
-            changed_max, max_display_i = imgui.input_int(
-                "##ui_max", int(max_display_i), 0, 0
-            )
-            imgui.pop_item_width()
+        # bool は meta（ui_min/ui_max/cc/override）を使わないので、3列目は空にする。
+        if row.kind == "bool":
+            pass
         else:
-            # float/vec3 は float レンジとして扱う。
-            min_display = -1.0 if ui_min is None else float(ui_min)
-            max_display = 1.0 if ui_max is None else float(ui_max)
+            cc_display = -1 if cc_key is None else int(cc_key)
 
-            imgui.push_item_width(UI_MIN_MAX_WIDTH)
-            changed_min, min_display = imgui.input_float(
-                "##ui_min", float(min_display), 0.0, 0.0, "%.1f"
-            )
-            imgui.pop_item_width()
+            if row.kind == "int":
+                # input_int は int のみ受けるので、表示用も int で扱う。
+                min_display_i = -10 if ui_min is None else int(ui_min)
+                max_display_i = 10 if ui_max is None else int(ui_max)
 
+                imgui.push_item_width(UI_MIN_MAX_WIDTH)
+                changed_min, min_display_i = imgui.input_int(
+                    "##ui_min", int(min_display_i), 0, 0
+                )
+                imgui.pop_item_width()
+
+                imgui.same_line(0.0, WIDTH_SPACER)
+                imgui.push_item_width(UI_MIN_MAX_WIDTH)
+                changed_max, max_display_i = imgui.input_int(
+                    "##ui_max", int(max_display_i), 0, 0
+                )
+                imgui.pop_item_width()
+
+            else:
+                # float/vec3 は float レンジとして扱う。
+                min_display = -1.0 if ui_min is None else float(ui_min)
+                max_display = 1.0 if ui_max is None else float(ui_max)
+
+                imgui.push_item_width(UI_MIN_MAX_WIDTH)
+                changed_min, min_display = imgui.input_float(
+                    "##ui_min", float(min_display), 0.0, 0.0, "%.1f"
+                )
+                imgui.pop_item_width()
+
+                imgui.same_line(0.0, WIDTH_SPACER)
+                imgui.push_item_width(UI_MIN_MAX_WIDTH)
+                changed_max, max_display = imgui.input_float(
+                    "##ui_max", float(max_display), 0.0, 0.0, "%.1f"
+                )
+                imgui.pop_item_width()
+
+            # cc_key（負の値は None として扱う）
             imgui.same_line(0.0, WIDTH_SPACER)
-            imgui.push_item_width(UI_MIN_MAX_WIDTH)
-            changed_max, max_display = imgui.input_float(
-                "##ui_max", float(max_display), 0.0, 0.0, "%.1f"
-            )
+            imgui.push_item_width(CC_KEY_WIDTH)
+            changed_cc, cc_display = imgui.input_int("##cc_key", int(cc_display), 0, 0)
             imgui.pop_item_width()
 
-        # cc_key（負の値は None として扱う）
-        imgui.same_line(0.0, WIDTH_SPACER)
-        imgui.push_item_width(CC_KEY_WIDTH)
-        changed_cc, cc_display = imgui.input_int("##cc_key", int(cc_display), 0, 0)
-        imgui.pop_item_width()
+            # override（checkbox の戻り値は clicked, state。clicked を changed として扱う）
+            imgui.same_line(0.0, WIDTH_SPACER)
+            clicked_override, override = imgui.checkbox("##override", bool(override))
 
-        # override（checkbox の戻り値は clicked, state。clicked を changed として扱う）
-        imgui.same_line(0.0, WIDTH_SPACER)
-        clicked_override, override = imgui.checkbox("##override", bool(override))
-
-        # 変更があった項目のみ、row のフィールドへ反映する。
-        if changed_min:
-            changed_any = True
-            if row.kind == "int":
-                ui_min = int(min_display_i)
-            else:
-                ui_min = float(min_display)
-        if changed_max:
-            changed_any = True
-            if row.kind == "int":
-                ui_max = int(max_display_i)
-            else:
-                ui_max = float(max_display)
-        if changed_cc:
-            changed_any = True
-            cc_key = None if cc_display < 0 else int(cc_display)
-        if clicked_override:
-            changed_any = True
+            # 変更があった項目のみ、row のフィールドへ反映する。
+            if changed_min:
+                changed_any = True
+                if row.kind == "int":
+                    ui_min = int(min_display_i)
+                else:
+                    ui_min = float(min_display)
+            if changed_max:
+                changed_any = True
+                if row.kind == "int":
+                    ui_max = int(max_display_i)
+                else:
+                    ui_max = float(max_display)
+            if changed_cc:
+                changed_any = True
+                cc_key = None if cc_display < 0 else int(cc_display)
+            if clicked_override:
+                changed_any = True
     finally:
         # push_id と必ず対になるよう finally で pop_id する。
         imgui.pop_id()
