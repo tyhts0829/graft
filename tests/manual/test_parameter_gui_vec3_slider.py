@@ -1,7 +1,7 @@
 """
 どこで: tests/manual/test_parameter_gui_vec3_slider.py。
 何を: `src/app/parameter_gui.py` の vec3 スライダーを 1 行だけ表示する手動スモーク。
-なぜ: kind=vec3 のディスパッチと 3 列テーブルの挙動を 1 行ずつデバッグ確認するため。
+なぜ: kind=vec3 のディスパッチとテーブルの挙動を 1 行ずつデバッグ確認するため。
 """
 
 from __future__ import annotations
@@ -147,7 +147,7 @@ def main() -> None:
                 flags=imgui_mod.WINDOW_NO_RESIZE | imgui_mod.WINDOW_NO_COLLAPSE,
             )
 
-            _, rows = render_parameter_table([row], column_weights=(0.20, 0.55, 0.25))
+            _, rows = render_parameter_table([row])
             row = rows[0]
             imgui_mod.end()
             imgui_mod.render()

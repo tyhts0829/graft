@@ -15,10 +15,10 @@
 
 - [x] 現状確認
   - 対象: `docs/parameter_gui_impl_plan.md` フェーズ 3 要件、既存の `parameter_gui.py` の有無（未実装想定）。
-  - 内容: 必要なウィジェット構成（3 列: label / control / cc&override）とイベントループ統合ポイントをメモ。
+  - 内容: 必要なウィジェット構成（4 列: label / control / min-max / cc&override）とイベントループ統合ポイントをメモ。
 - [ ] UI レイアウト構築
   - 対象: 新規 `src/app/parameter_gui.py`。
-  - 内容: imgui コンテキスト生成/破棄、`imgui.integrations.pyglet.create_renderer(window)` の初期化、メインウィンドウ（pyglet 側で既存 window を使う想定）と 3 列テーブル（1: label, 2: control, 3: ui_min 入力・ui_max 入力・cc_key 入力・override トグル）を構築。`imgui.begin_table` の戻り値（opened）を確認し、true のときのみ行を追加して最後に `imgui.end_table()`。Style セクションを先頭に配置する（背景色・グローバル thickness・グローバル line_color の 3 行、続いて Layer（L(name)）ごとに thickness 行 + color 行）。Layer で未指定の thickness/color はグローバルを適用する。
+  - 内容: imgui コンテキスト生成/破棄、`imgui.integrations.pyglet.create_renderer(window)` の初期化、メインウィンドウ（pyglet 側で既存 window を使う想定）と 4 列テーブル（1: label, 2: control, 3: min-max, 4: cc_key/override）を構築。`imgui.begin_table` の戻り値（opened）を確認し、true のときのみ行を追加して最後に `imgui.end_table()`。Style セクションを先頭に配置する（背景色・グローバル thickness・グローバル line_color の 3 行、続いて Layer（L(name)）ごとに thickness 行 + color 行）。Layer で未指定の thickness/color はグローバルを適用する。
 - [ ] ウィジェットディスパッチ設計
   - 対象: `parameter_gui.py` 内の kind→ ウィジェット生成関数マップ。
   - 内容: kind ごとの UI 方針を固定し、共通インターフェース（生成・値取得・更新）を定義する。
@@ -74,4 +74,4 @@
   - 対象: `docs/parameter_gui_impl_plan.md` フェーズ 3 の進捗を反映。
   - 内容: 実装した I/F（例: `ParameterGUI.tick()`/`close()`）を記載。
 - [ ] 確認ポイント CP3
-  - 内容: 最小パラメータセットで GUI ウィンドウを開き、3 列表示と override トグルが動くことをユーザーに確認してもらう。
+  - 内容: 最小パラメータセットで GUI ウィンドウを開き、4 列表示と override トグルが動くことをユーザーに確認してもらう。

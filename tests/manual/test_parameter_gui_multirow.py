@@ -1,6 +1,6 @@
 """
 どこで: tests/manual/test_parameter_gui_multirow.py。
-何を: bool / choice / float / int / vec3 の 5 行を 1 つの 3 列テーブルに表示する手動スモーク。
+何を: bool / choice / float / int / vec3 の 5 行を 1 つの 4 列テーブルに表示する手動スモーク。
 なぜ: 実際の GUI に近い「複数行」のレイアウト崩れや ID 衝突を早期に検知するため。
 """
 
@@ -201,7 +201,7 @@ def main() -> None:
                 flags=imgui_mod.WINDOW_NO_RESIZE | imgui_mod.WINDOW_NO_COLLAPSE,
             )
 
-            _, rows = render_parameter_table(rows, column_weights=(0.20, 0.55, 0.25))
+            _, rows = render_parameter_table(rows)
 
             if imgui_mod.button("Quit"):
                 stop_loop()

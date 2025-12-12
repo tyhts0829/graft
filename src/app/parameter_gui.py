@@ -190,14 +190,15 @@ def widget_registry() -> dict[str, WidgetFn]:
     return dict(_KIND_TO_WIDGET)
 
 
-def render_parameter_row_3cols(row: ParameterRow) -> tuple[bool, ParameterRow]:
-    """1 行（1 key）を 3 列テーブルとして描画し、更新後の row を返す。
+def render_parameter_row_4cols(row: ParameterRow) -> tuple[bool, ParameterRow]:
+    """1 行（1 key）を 4 列テーブルとして描画し、更新後の row を返す。
 
     Columns
     -------
     1. label : op#ordinal
     2. control : kind に応じたウィジェット
-    3. meta : ui_min/ui_max/cc_key/override
+    3. min-max : ui_min/ui_max
+    4. cc override : cc_key/override
 
     Returns
     -------
@@ -219,8 +220,6 @@ def render_parameter_row_3cols(row: ParameterRow) -> tuple[bool, ParameterRow]:
     cc_key = row.cc_key
     override = row.override
 
-    # 幅定数
-    UI_MIN_MAX_WIDTH = 50
     CC_KEY_WIDTH = 30
     WIDTH_SPACER = 4
 
@@ -244,63 +243,50 @@ def render_parameter_row_3cols(row: ParameterRow) -> tuple[bool, ParameterRow]:
             changed_any = True
             ui_value = value
 
-        # --- Column 3: meta（ui_min/ui_max/cc_key/override を横並びに配置）---
+        # --- Column 3: min-max（ui_min/ui_max）---
         imgui.table_set_column_index(2)
+        if row.kind in {"float", "vec3"}:
+            min_display = -1.0 if ui_min is None else float(ui_min)
+            max_display = 1.0 if ui_max is None else float(ui_max)
+            imgui.set_next_item_width(-1)
+            changed_range, min_display, max_display = imgui.drag_float_range2(
+                "##ui_range",
+                float(min_display),
+                float(max_display),
+                0.01,
+                0.0,
+                0.0,
+                "%.1f",
+                None,
+            )
+            if changed_range:
+                changed_any = True
+                ui_min = float(min_display)
+                ui_max = float(max_display)
+        elif row.kind == "int":
+            min_display_i = -10 if ui_min is None else int(ui_min)
+            max_display_i = 10 if ui_max is None else int(ui_max)
+            imgui.set_next_item_width(-1)
+            changed_range, min_display_i, max_display_i = imgui.drag_int_range2(
+                "##ui_range", int(min_display_i), int(max_display_i), 1.0, 0, 0
+            )
+            if changed_range:
+                changed_any = True
+                ui_min = int(min_display_i)
+                ui_max = int(max_display_i)
 
-        # boolとchoice は meta（ui_min/ui_max/cc/override）を使わないので、3列目は空にする。
-        if row.kind == "bool" or row.kind == "choice":
-            pass
-        else:
+        # --- Column 4: cc override（cc_key/override）---
+        imgui.table_set_column_index(3)
+        if row.kind in {"float", "vec3", "int"}:
             cc_display = -1 if cc_key is None else int(cc_key)
 
-            if row.kind == "int":
-                # input_int は int のみ受けるので、表示用も int で扱う。
-                min_display_i = -10 if ui_min is None else int(ui_min)
-                max_display_i = 10 if ui_max is None else int(ui_max)
-
-                imgui.push_item_width((UI_MIN_MAX_WIDTH * 2) + WIDTH_SPACER)
-                changed_range, min_display_i, max_display_i = imgui.drag_int_range2(
-                    "##ui_range", int(min_display_i), int(max_display_i), 1.0, 0, 0
-                )
-                imgui.pop_item_width()
-
-            else:
-                # float/vec3 は float レンジとして扱う。
-                min_display = -1.0 if ui_min is None else float(ui_min)
-                max_display = 1.0 if ui_max is None else float(ui_max)
-
-                imgui.push_item_width((UI_MIN_MAX_WIDTH * 2) + WIDTH_SPACER)
-                changed_range, min_display, max_display = imgui.drag_float_range2(
-                    "##ui_range",
-                    float(min_display),
-                    float(max_display),
-                    0.01,
-                    0.0,
-                    0.0,
-                    "%.1f",
-                    None,
-                )
-                imgui.pop_item_width()
-
-            # cc_key（負の値は None として扱う）
-            imgui.same_line(0.0, WIDTH_SPACER)
             imgui.push_item_width(CC_KEY_WIDTH)
             changed_cc, cc_display = imgui.input_int("##cc_key", int(cc_display), 0, 0)
             imgui.pop_item_width()
 
-            # override（checkbox の戻り値は clicked, state。clicked を changed として扱う）
             imgui.same_line(0.0, WIDTH_SPACER)
             clicked_override, override = imgui.checkbox("##override", bool(override))
 
-            # 変更があった項目のみ、row のフィールドへ反映する。
-            if changed_range:
-                changed_any = True
-                if row.kind == "int":
-                    ui_min = int(min_display_i)
-                    ui_max = int(max_display_i)
-                else:
-                    ui_min = float(min_display)
-                    ui_max = float(max_display)
             if changed_cc:
                 changed_any = True
                 cc_key = None if cc_display < 0 else int(cc_display)
@@ -338,20 +324,25 @@ def render_parameter_row_3cols(row: ParameterRow) -> tuple[bool, ParameterRow]:
 def render_parameter_table(
     rows: list[ParameterRow],
     *,
-    column_weights: tuple[float, float, float] = (0.20, 0.55, 0.25),
+    column_weights: tuple[float, float, float, float] = (0.20, 0.8, 0.15, 0.10),
 ) -> tuple[bool, list[ParameterRow]]:
-    """ParameterRow の列を 3 列テーブルとして描画し、更新後の rows を返す。"""
+    """ParameterRow の列を 4 列テーブルとして描画し、更新後の rows を返す。"""
 
     import imgui
 
-    label_weight, control_weight, meta_weight = column_weights
-    if label_weight <= 0.0 or control_weight <= 0.0 or meta_weight <= 0.0:
+    label_weight, control_weight, range_weight, meta_weight = column_weights
+    if (
+        label_weight <= 0.0
+        or control_weight <= 0.0
+        or range_weight <= 0.0
+        or meta_weight <= 0.0
+    ):
         raise ValueError(f"column_weights must be > 0: {column_weights}")
 
     changed_any = False
     updated_rows: list[ParameterRow] = []
 
-    table = imgui.begin_table("##parameters", 3, imgui.TABLE_SIZING_STRETCH_PROP)
+    table = imgui.begin_table("##parameters", 4, imgui.TABLE_SIZING_STRETCH_PROP)
     opened = getattr(table, "opened", table)
     if not opened:
         return False, rows
@@ -364,7 +355,12 @@ def render_parameter_table(
             "control", imgui.TABLE_COLUMN_WIDTH_STRETCH, float(control_weight)
         )
         imgui.table_setup_column(
-            "min, max, cc, override",
+            "min-max",
+            imgui.TABLE_COLUMN_WIDTH_STRETCH,
+            float(range_weight),
+        )
+        imgui.table_setup_column(
+            "cc",
             imgui.TABLE_COLUMN_WIDTH_STRETCH,
             float(meta_weight),
         )
@@ -372,7 +368,7 @@ def render_parameter_table(
         imgui.table_next_row(0, 1)
 
         for row in rows:
-            row_changed, updated = render_parameter_row_3cols(row)
+            row_changed, updated = render_parameter_row_4cols(row)
             changed_any = changed_any or row_changed
             updated_rows.append(updated)
     finally:

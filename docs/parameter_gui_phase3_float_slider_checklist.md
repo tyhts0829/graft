@@ -8,7 +8,7 @@
 
 - 対象 kind: `float` のみ（他 kind は未対応のまま例外）
 - UI backend: pyimgui（`imgui.slider_float`）
-- テスト: `tests/manual` の手動スモークのみ（デフォルトは skip）
+- テスト: `tests/manual` の手動スモークのみ（スクリプト実行）
 
 ## チェックリスト
 
@@ -24,7 +24,7 @@
 - [x] 手動スモーク（`tests/manual`）を追加/更新
   - [x] 単一ウィンドウで `ParameterRow(kind="float")` 1 行だけ描画する最小ループを用意
   - [x] `widget registry` 経由で float スライダーが動くことを確認
-  - [x] 実行は `RUN_GUI_TEST=1` のときのみ（CI/通常 `pytest` では skip）
+  - [x] pytest ではなく `python tests/manual/<file>.py` で実行
 - [ ] ドキュメントを最小更新
   - [ ] `docs/parameter_gui_phase3_checklist.md` の該当項目の進捗に反映（必要な場合のみ）
 
@@ -33,4 +33,4 @@
 - [x] `ui_min/ui_max` が `None` の float はどう扱う？
   - 決定: `-1.0..1.0` にフォールバック
 - [x] スライダーの表示ラベルは何を使う？
-  - 決定: 3列テーブルの label 列に `op#ordinal` を表示し、slider の visible label は空（`##id`）。
+  - 決定: 4列テーブルの label 列に `op#ordinal` を表示し、slider の visible label は空（`##id`）。
