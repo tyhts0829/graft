@@ -6,33 +6,35 @@
 
 from __future__ import annotations
 
-import os
+import sys
 import time
+import warnings
+from pathlib import Path
 from types import ModuleType
 from typing import Any, Callable
 
-import pytest
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-pytestmark = [
-    pytest.mark.filterwarnings(
-        "ignore:distutils Version classes are deprecated:DeprecationWarning"
-    )
-]
+warnings.filterwarnings(
+    "ignore",
+    message="distutils Version classes are deprecated",
+    category=DeprecationWarning,
+)
 
 
 def _import_gui_modules() -> tuple[ModuleType, ModuleType]:
-    """pyglet と imgui を読み込み、失敗時はスキップする。"""
+    """pyglet と imgui を読み込み、失敗時は終了する。"""
 
     try:
         import imgui
         import pyglet
-    except Exception as exc:  # pragma: no cover - スキップ経路のみ
-        pytest.skip(f"pyglet または pyimgui を import できない: {exc}")
+    except Exception as exc:
+        raise SystemExit(f"pyglet または pyimgui を import できない: {exc}")
     return pyglet, imgui
 
 
 def _require_display(pyglet_mod: ModuleType) -> None:
-    """最小ウィンドウが作れない環境では早期にスキップする。"""
+    """最小ウィンドウが作れない環境では早期に終了する。"""
 
     try:
         test_window = pyglet_mod.window.Window(
@@ -42,8 +44,8 @@ def _require_display(pyglet_mod: ModuleType) -> None:
             caption="display probe",
             config=None,
         )
-    except Exception as exc:  # pragma: no cover - スキップ経路のみ
-        pytest.skip(f"ディスプレイが取得できないためスキップ: {exc}")
+    except Exception as exc:
+        raise SystemExit(f"ディスプレイが取得できないため終了: {exc}")
     else:
         test_window.close()
 
@@ -57,20 +59,16 @@ def _create_renderer(imgui_pyglet: ModuleType, gui_window) -> object:
     return imgui_pyglet.PygletRenderer(gui_window)
 
 
-@pytest.mark.skipif(
-    os.environ.get("RUN_GUI_TEST") != "1",
-    reason="手動 GUI スモークは RUN_GUI_TEST=1 を指定したときだけ実行する。",
-)
-def test_parameter_gui_int_slider_smoke() -> None:
-    """int スライダーが描画でき、値が更新できることを短時間確認する。"""
+def main() -> None:
+    """int スライダーが描画でき、値が更新できることを確認する。"""
 
     pyglet_mod, imgui_mod = _import_gui_modules()
     pyglet_mod.options["vsync"] = True
     _require_display(pyglet_mod)
     try:
         from imgui.integrations import pyglet as imgui_pyglet
-    except Exception as exc:  # pragma: no cover - スキップ経路のみ
-        pytest.skip(f"pyimgui の pyglet 統合を初期化できない: {exc}")
+    except Exception as exc:
+        raise SystemExit(f"pyimgui の pyglet 統合を初期化できない: {exc}")
 
     from src.app.parameter_gui import render_parameter_table
     from src.parameters.view import ParameterRow
@@ -110,8 +108,7 @@ def test_parameter_gui_int_slider_smoke() -> None:
         override=True,
         ordinal=1,
     )
-    start = time.monotonic()
-    prev_time = start
+    prev_time = time.monotonic()
 
     def stop_loop(*_: object) -> None:
         nonlocal running
@@ -119,9 +116,8 @@ def test_parameter_gui_int_slider_smoke() -> None:
 
     window.push_handlers(on_close=stop_loop)
 
-    timeout = 60
     try:
-        while running and (time.monotonic() - start) < timeout:
+        while running:
             now = time.monotonic()
             dt = now - prev_time
             prev_time = now
@@ -170,4 +166,6 @@ def test_parameter_gui_int_slider_smoke() -> None:
         imgui_mod.destroy_context(gui_context)
         window.close()
 
-    assert frames > 0
+
+if __name__ == "__main__":
+    main()
