@@ -152,7 +152,7 @@ def test_parameter_gui_float_slider_smoke() -> None:
                 flags=imgui_mod.WINDOW_NO_RESIZE | imgui_mod.WINDOW_NO_COLLAPSE,
             )
 
-            _, rows = render_parameter_table([row])
+            _, rows = render_parameter_table([row], column_weights=(0.20, 0.55, 0.25))
             row = rows[0]
             imgui_mod.end()
             imgui_mod.render()

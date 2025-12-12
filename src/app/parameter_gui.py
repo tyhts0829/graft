@@ -186,9 +186,12 @@ def render_parameter_row_3cols(row: ParameterRow) -> tuple[bool, ParameterRow]:
 
         # cc_key（負の値は None として扱う）
         imgui.same_line()
-        imgui.push_item_width(60)
+        imgui.push_item_width(30)
         changed_cc, cc_display = imgui.input_int(
-            label="##cc_key", value=int(cc_display)
+            label="##cc_key",
+            value=int(cc_display),
+            step=0,
+            step_fast=0,
         )
         imgui.pop_item_width()
 
@@ -235,21 +238,47 @@ def render_parameter_row_3cols(row: ParameterRow) -> tuple[bool, ParameterRow]:
     return changed_any, updated
 
 
-def render_parameter_table(rows: list[ParameterRow]) -> tuple[bool, list[ParameterRow]]:
+def render_parameter_table(
+    rows: list[ParameterRow],
+    *,
+    column_weights: tuple[float, float, float] = (0.20, 0.55, 0.25),
+) -> tuple[bool, list[ParameterRow]]:
     """ParameterRow の列を 3 列テーブルとして描画し、更新後の rows を返す。"""
 
     import imgui
 
+    label_weight, control_weight, meta_weight = column_weights
+    if label_weight <= 0.0 or control_weight <= 0.0 or meta_weight <= 0.0:
+        raise ValueError(f"column_weights must be > 0: {column_weights}")
+
     changed_any = False
     updated_rows: list[ParameterRow] = []
 
-    if not imgui.begin_table("##parameters", 3):
+    table = imgui.begin_table(
+        "##parameters",
+        3,
+        flags=imgui.TABLE_SIZING_STRETCH_PROP,
+    )
+    opened = getattr(table, "opened", table)
+    if not opened:
         return False, rows
 
     try:
-        imgui.table_setup_column("label")
-        imgui.table_setup_column("control")
-        imgui.table_setup_column("min, max, cc, override")
+        imgui.table_setup_column(
+            label="label",
+            flags=imgui.TABLE_COLUMN_WIDTH_STRETCH,
+            init_width_or_weight=float(label_weight),
+        )
+        imgui.table_setup_column(
+            label="control",
+            flags=imgui.TABLE_COLUMN_WIDTH_STRETCH,
+            init_width_or_weight=float(control_weight),
+        )
+        imgui.table_setup_column(
+            label="min, max, cc, override",
+            flags=imgui.TABLE_COLUMN_WIDTH_STRETCH,
+            init_width_or_weight=float(meta_weight),
+        )
         imgui.table_headers_row()
 
         for row in rows:

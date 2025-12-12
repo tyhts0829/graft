@@ -12,19 +12,17 @@
 
 ## チェックリスト
 
-- [ ] `src/app/parameter_gui.py` の API を更新
-  - [ ] `render_parameter_table(rows, *, column_weights=(...))` を追加/変更
-  - [ ] `begin_table(..., flags=imgui.TABLE_SIZING_STRETCH_PROP)` を指定
-  - [ ] `table_setup_column(..., flags=imgui.TABLE_COLUMN_WIDTH_STRETCH, init_width_or_weight=weight)` を 3 列分設定
-- [ ] `tests/manual/test_parameter_gui_float_slider.py` を更新
-  - [ ] `render_parameter_table([row], column_weights=(...))` のように呼ぶ
-  - [ ] まずは仮の比率で動くことだけ確認（例: `(0.20, 0.55, 0.25)`）
-- [ ] 実装後にチェックリストを更新
+- [x] `src/app/parameter_gui.py` の API を更新
+  - [x] `render_parameter_table(rows, *, column_weights=(...))` を追加
+  - [x] `begin_table(..., flags=imgui.TABLE_SIZING_STRETCH_PROP)` を指定
+  - [x] `table_setup_column(..., flags=imgui.TABLE_COLUMN_WIDTH_STRETCH, init_width_or_weight=weight)` を 3 列分設定
+- [x] `tests/manual/test_parameter_gui_float_slider.py` を更新
+  - [x] `render_parameter_table([row], column_weights=(0.20, 0.55, 0.25))` として明示
+- [x] 実装後にチェックリストを更新
 
 ## 確認したい点（あなたに決めてほしい）
 
 - [ ] 既定の比率をどうする？
-  - 案A: `(0.20, 0.55, 0.25)`（control を太め）
+  - 案A: `(0.20, 0.55, 0.25)`（control を太め） ← 採用
   - 案B: `(0.25, 0.50, 0.25)`（均等寄り）
   - 案C: あなた指定（数値3つ）
-
