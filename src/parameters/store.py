@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Iterable, Tuple
+from typing import Any, Iterable
 
 from .frame_params import FrameParamRecord
 from .key import ParameterKey
@@ -14,15 +14,16 @@ from .state import ParamState
 
 MAX_LABEL_LENGTH = 64
 
+
 class ParamStore:
     """ParameterKey -> ParamState を保持する永続ストア。"""
 
     def __init__(self) -> None:
-        self._states: Dict[ParameterKey, ParamState] = {}
-        self._meta: Dict[ParameterKey, ParamMeta] = {}
-        self._labels: Dict[tuple[str, str], str] = {}
+        self._states: dict[ParameterKey, ParamState] = {}
+        self._meta: dict[ParameterKey, ParamMeta] = {}
+        self._labels: dict[tuple[str, str], str] = {}
         # op ごとの site_id -> ordinal
-        self._ordinals: Dict[str, Dict[str, int]] = {}
+        self._ordinals: dict[str, dict[str, int]] = {}
 
     def get_state(self, key: ParameterKey) -> ParamState | None:
         """登録済みの ParamState を返す。未登録なら None。"""
@@ -55,10 +56,12 @@ class ParamStore:
         mapping = self._ordinals.get(op, {})
         return mapping.get(site_id, self._assign_ordinal(op, site_id))
 
-    def snapshot(self) -> dict[ParameterKey, Tuple[ParamMeta, ParamState, int, str | None]]:
+    def snapshot(
+        self,
+    ) -> dict[ParameterKey, tuple[ParamMeta, ParamState, int, str | None]]:
         """(key -> (meta, state, ordinal, label)) のスナップショットを返す。"""
 
-        result: dict[ParameterKey, Tuple[ParamMeta, ParamState, int, str | None]] = {}
+        result: dict[ParameterKey, tuple[ParamMeta, ParamState, int, str | None]] = {}
         for key, state in self._states.items():
             meta = self._meta.get(key)
             if meta is None:
@@ -67,7 +70,12 @@ class ParamStore:
             label = self._labels.get((key.op, key.site_id))
             # ParamState はミュータブルなのでコピーを返す
             state_copy = ParamState(**vars(state))
-            result[key] = (meta, state_copy, self.get_ordinal(key.op, key.site_id), label)
+            result[key] = (
+                meta,
+                state_copy,
+                self.get_ordinal(key.op, key.site_id),
+                label,
+            )
         return result
 
     def store_frame_params(self, records: list[FrameParamRecord]) -> None:
@@ -144,11 +152,11 @@ class ParamStore:
         store._ordinals = obj.get("ordinals", {})
         return store
 
-    def ordinals(self) -> Dict[str, Dict[str, int]]:
+    def ordinals(self) -> dict[str, dict[str, int]]:
         """op ごとの ordinal マップを返す。"""
         return self._ordinals
 
-    def meta_items(self) -> Iterable[Tuple[ParameterKey, ParamMeta]]:
+    def meta_items(self) -> Iterable[tuple[ParameterKey, ParamMeta]]:
         """(ParameterKey, ParamMeta) のイテレータを返す。"""
         return self._meta.items()
 

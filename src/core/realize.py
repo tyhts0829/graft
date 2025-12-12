@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
-from typing import Dict, MutableMapping
+from typing import MutableMapping
 
 from src.core.effect_registry import effect_registry
 from src.core.geometry import Geometry, GeometryId
@@ -38,7 +38,7 @@ class RealizeCache:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._items: Dict[GeometryId, RealizedGeometry] = {}
+        self._items: dict[GeometryId, RealizedGeometry] = {}
 
     def get(self, key: GeometryId) -> RealizedGeometry | None:
         """キャッシュから値を取得する。見つからなければ None を返す。"""
@@ -146,4 +146,3 @@ def realize(geometry: Geometry) -> RealizedGeometry:
 
     assert result is not None
     return result
-

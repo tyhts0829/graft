@@ -5,19 +5,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Tuple
+from typing import Any, Callable
 
 from src.core.effect_registry import effect_registry
 from src.core.geometry import Geometry
+
+# effect 実装モジュールをインポートしてレジストリに登録させる。
+from src.effects import scale as _effect_scale  # noqa: F401
 from src.parameters import (
     caller_site_id,
     current_frame_params,
     current_param_store,
     resolve_params,
 )
-
-# effect 実装モジュールをインポートしてレジストリに登録させる。
-from src.effects import scale as _effect_scale  # noqa: F401
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,7 +35,7 @@ class EffectBuilder:
     Geometry に対する effect パイプラインを構築する。
     """
 
-    steps: Tuple[Tuple[str, dict[str, Any], str], ...]
+    steps: tuple[tuple[str, dict[str, Any], str], ...]
     label_name: str | None = None
 
     def __call__(self, geometry: Geometry) -> Geometry:
@@ -66,7 +66,9 @@ class EffectBuilder:
             if self.label_name is not None:
                 store = current_param_store()
                 if store is None:
-                    raise RuntimeError("ParamStore が利用できないコンテキストで name 指定は使えません")
+                    raise RuntimeError(
+                        "ParamStore が利用できないコンテキストで name 指定は使えません"
+                    )
                 store.set_label(op, site_id, self.label_name)
             result = Geometry.create(op=op, inputs=(result,), params=resolved)
         return result
@@ -165,7 +167,9 @@ class EffectNamespace:
             """
 
             site_id = caller_site_id(skip=1)
-            return EffectBuilder(steps=((name, dict(params), site_id),), label_name=self._pending_label)
+            return EffectBuilder(
+                steps=((name, dict(params), site_id),), label_name=self._pending_label
+            )
 
         return factory
 

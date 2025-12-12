@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable
+from typing import Any, Iterable
 
 from .context import current_cc_snapshot, current_frame_params, current_param_snapshot
 from .frame_params import FrameParamsBuffer
@@ -47,7 +47,11 @@ def _choose_value(
     base_value: Any, state: ParamState, meta: ParamMeta
 ) -> tuple[Any, str]:
     cc_snapshot = current_cc_snapshot()
-    if state.cc_key is not None and cc_snapshot is not None and state.cc_key in cc_snapshot:
+    if (
+        state.cc_key is not None
+        and cc_snapshot is not None
+        and state.cc_key in cc_snapshot
+    ):
         v = cc_snapshot[state.cc_key]
         # 0..1 を min..max に線形写像
         lo = meta.ui_min if meta.ui_min is not None else 0.0
@@ -62,15 +66,15 @@ def _choose_value(
 def resolve_params(
     *,
     op: str,
-    params: Dict[str, Any],
-    meta: Dict[str, ParamMeta],
+    params: dict[str, Any],
+    meta: dict[str, ParamMeta],
     site_id: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """引数辞書を解決し、Geometry.create 用の値を返す。"""
 
     param_snapshot = current_param_snapshot()
     frame_params: FrameParamsBuffer | None = current_frame_params()
-    resolved: Dict[str, Any] = {}
+    resolved: dict[str, Any] = {}
 
     for arg, base_value in params.items():
         key = ParameterKey(op=op, site_id=site_id, arg=arg)

@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Iterable, List, Sequence, Tuple
+from typing import Any, Iterable, Sequence
 
 from .key import ParameterKey
 from .meta import ParamMeta
@@ -31,11 +31,11 @@ class ParameterRow:
 
 
 def rows_from_snapshot(
-    snapshot: dict[ParameterKey, Tuple[ParamMeta, ParamState, int, str | None]]
+    snapshot: dict[ParameterKey, tuple[ParamMeta, ParamState, int, str | None]],
 ) -> list[ParameterRow]:
     """Snapshot から ParameterRow を生成し、op→ordinal→arg の順で並べる。"""
 
-    rows: List[ParameterRow] = []
+    rows: list[ParameterRow] = []
     for key, (meta, state, ordinal, _label) in snapshot.items():
         rows.append(
             ParameterRow(
@@ -56,7 +56,7 @@ def rows_from_snapshot(
     return rows
 
 
-def _as_iterable3(value: Any) -> Tuple[Iterable[Any], str | None]:
+def _as_iterable3(value: Any) -> tuple[Iterable[Any], str | None]:
     try:
         seq = list(value)
     except Exception:
@@ -66,7 +66,7 @@ def _as_iterable3(value: Any) -> Tuple[Iterable[Any], str | None]:
     return seq, None
 
 
-def normalize_input(value: Any, meta: ParamMeta) -> Tuple[Any | None, str | None]:
+def normalize_input(value: Any, meta: ParamMeta) -> tuple[Any | None, str | None]:
     """kind に応じて UI 入力を正規化し、(正規化値, エラー種別) を返す。"""
 
     kind = meta.kind
@@ -147,7 +147,7 @@ def update_state_from_ui(
     meta: ParamMeta,
     override: bool | None = None,
     cc_key: int | None = None,
-) -> Tuple[bool, str | None]:
+) -> tuple[bool, str | None]:
     """UI から渡された入力を正規化し、対応する ParamState に反映する。
 
     Returns
@@ -161,7 +161,9 @@ def update_state_from_ui(
     if err and normalized is None:
         return False, err
 
-    state = store.ensure_state(key, base_value=ui_input_value if normalized is None else normalized)
+    state = store.ensure_state(
+        key, base_value=ui_input_value if normalized is None else normalized
+    )
     if normalized is not None:
         state.ui_value = normalized
     if override is not None:

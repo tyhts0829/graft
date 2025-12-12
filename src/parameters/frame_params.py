@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, List
+from typing import Any
 
 from .key import ParameterKey
 from .meta import ParamMeta
@@ -26,7 +26,7 @@ class FrameParamsBuffer:
     """フレーム内のパラメータ観測を蓄積する単純なバッファ。"""
 
     def __init__(self) -> None:
-        self._records: List[FrameParamRecord] = []
+        self._records: list[FrameParamRecord] = []
 
     def record(
         self,

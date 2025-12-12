@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from enum import Enum
 from hashlib import blake2b
 from math import isfinite
-from typing import Any, Mapping, Sequence, Tuple
+from typing import Any, Mapping, Sequence
 
 GeometryId = str
 
@@ -62,7 +62,7 @@ def _normalize_value(value: Any) -> Any:
     raise TypeError(f"正規化できない引数型: {type(value)!r}")
 
 
-def normalize_args(params: Mapping[str, Any]) -> Tuple[Tuple[str, Any], ...]:
+def normalize_args(params: Mapping[str, Any]) -> tuple[tuple[str, Any], ...]:
     """パラメータ辞書を Geometry 用の正規化済み引数タプルに変換する。
 
     Parameters
@@ -120,7 +120,7 @@ def _update_hash_with_value(hasher: blake2b, value: Any) -> None:
 def compute_geometry_id(
     op: str,
     inputs: Sequence["Geometry"],
-    args: Tuple[Tuple[str, Any], ...],
+    args: tuple[tuple[str, Any], ...],
     *,
     schema_version: int = DEFAULT_SCHEMA_VERSION,
 ) -> GeometryId:
@@ -185,7 +185,7 @@ class Geometry:
     id: GeometryId
     op: str
     inputs: tuple["Geometry", ...]
-    args: Tuple[Tuple[str, Any], ...]
+    args: tuple[tuple[str, Any], ...]
 
     @classmethod
     def create(
