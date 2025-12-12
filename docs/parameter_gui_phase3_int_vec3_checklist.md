@@ -1,0 +1,30 @@
+# どこで: docs/parameter_gui_phase3_int_vec3_checklist.md
+
+# 何を: `src/app/parameter_gui.py` の kind ディスパッチに `int` と `vec3` を追加し、手動スモークで確認できるようにする。
+
+# なぜ: 3 列テーブル（label / control / meta）の骨格は維持したまま、kind ごとの差分を widget 関数に閉じ込めて拡張したいから。
+
+## 決定事項
+
+- int の `ui_min/ui_max` が `None` のときは `-10..10` にフォールバック
+- vec3 の `ui_min/ui_max` が `None` のときは `-1.0..1.0` にフォールバック（float と同じ）
+- slider の visible label は空（`##value`）。label 列に `op#ordinal` を表示
+
+## チェックリスト
+
+- [x] `src/app/parameter_gui.py` の widget を追加
+  - [x] `widget_int_slider`（`imgui.slider_int("##value", ...)`）
+  - [x] `widget_vec3_slider`（`imgui.slider_float3("##value", ...)`）
+  - [x] `_KIND_TO_WIDGET` に `int` / `vec3` を登録
+- [x] `src/app/parameter_gui.py` の range/validation を追加
+  - [x] `int` 用レンジ関数（`ui_min>=ui_max` は例外）
+  - [x] `vec3` は float と同一レンジで検証（`ui_min>=ui_max` は例外）
+- [x] `render_parameter_row_3cols` の meta 入力を kind で分岐
+  - [x] `int`: `ui_min/ui_max` を `input_int`
+  - [x] `float/vec3`: `ui_min/ui_max` を `input_float`
+  - [x] `cc_key` と `override` は共通
+- [x] 手動スモークを追加（`tests/manual`）
+  - [x] `tests/manual/test_parameter_gui_int_slider.py`
+  - [x] `tests/manual/test_parameter_gui_vec3_slider.py`
+  - [x] どちらも `RUN_GUI_TEST=1` のときだけ実行
+- [x] チェックリスト更新（完了チェック）

@@ -35,6 +35,31 @@ def _float_slider_range(row: ParameterRow) -> tuple[float, float]:
     return min_value, max_value
 
 
+def _int_slider_range(row: ParameterRow) -> tuple[int, int]:
+    """int スライダーのレンジ (min, max) を返す。
+
+    ui_min/ui_max が None の場合は -10..10 にフォールバックする。
+    """
+
+    min_value = -10 if row.ui_min is None else int(row.ui_min)
+    max_value = 10 if row.ui_max is None else int(row.ui_max)
+    if min_value >= max_value:
+        raise ValueError(
+            f"ui_min must be < ui_max for int slider: {min_value} >= {max_value}"
+        )
+    return min_value, max_value
+
+
+def _as_float3(value: Any) -> tuple[float, float, float]:
+    try:
+        x, y, z = value  # type: ignore[misc]
+    except Exception as exc:
+        raise ValueError(
+            f"vec3 ui_value must be a length-3 sequence: {value!r}"
+        ) from exc
+    return float(x), float(y), float(z)
+
+
 def widget_float_slider(row: ParameterRow) -> tuple[bool, float]:
     """kind=float のスライダーを描画し、(changed, value) を返す。
 
@@ -61,15 +86,42 @@ def widget_float_slider(row: ParameterRow) -> tuple[bool, float]:
     value = float(row.ui_value)
     min_value, max_value = _float_slider_range(row)
     return imgui.slider_float(
-        label="##value",
-        value=value,
-        min_value=min_value,
-        max_value=max_value,
+        "##value", float(value), float(min_value), float(max_value)
     )
+
+
+def widget_int_slider(row: ParameterRow) -> tuple[bool, int]:
+    """kind=int のスライダーを描画し、(changed, value) を返す。"""
+
+    import imgui
+
+    value = int(row.ui_value)
+    min_value, max_value = _int_slider_range(row)
+    return imgui.slider_int("##value", int(value), int(min_value), int(max_value))
+
+
+def widget_vec3_slider(row: ParameterRow) -> tuple[bool, tuple[float, float, float]]:
+    """kind=vec3 のスライダーを描画し、(changed, value) を返す。"""
+
+    import imgui
+
+    value0, value1, value2 = _as_float3(row.ui_value)
+    min_value, max_value = _float_slider_range(row)
+    changed, out = imgui.slider_float3(
+        "##value",
+        float(value0),
+        float(value1),
+        float(value2),
+        float(min_value),
+        float(max_value),
+    )
+    return changed, _as_float3(out)
 
 
 _KIND_TO_WIDGET: dict[str, WidgetFn] = {
     "float": widget_float_slider,
+    "int": widget_int_slider,
+    "vec3": widget_vec3_slider,
 }
 
 
@@ -158,56 +210,68 @@ def render_parameter_row_3cols(row: ParameterRow) -> tuple[bool, ParameterRow]:
         # --- Column 3: meta（ui_min/ui_max/cc_key/override を横並びに配置）---
         imgui.table_set_column_index(2)
 
-        # 入力ウィジェットに渡す表示用の値へ変換する（None のときは既定レンジに寄せる）。
-        min_display = -1.0 if ui_min is None else float(ui_min)
-        max_display = 1.0 if ui_max is None else float(ui_max)
         cc_display = -1 if cc_key is None else int(cc_key)
 
-        # ui_min
-        # imgui.text("min")
-        imgui.same_line()
-        imgui.push_item_width(60)
-        changed_min, min_display = imgui.input_float(
-            label="##ui_min",
-            value=float(min_display),
-            format="%.1f",
-        )
-        imgui.pop_item_width()
+        if row.kind == "int":
+            # input_int は int のみ受けるので、表示用も int で扱う。
+            min_display_i = -10 if ui_min is None else int(ui_min)
+            max_display_i = 10 if ui_max is None else int(ui_max)
 
-        # ui_max
-        imgui.same_line()
-        imgui.push_item_width(60)
-        changed_max, max_display = imgui.input_float(
-            label="##ui_max",
-            value=float(max_display),
-            format="%.1f",
-        )
-        imgui.pop_item_width()
+            imgui.same_line()
+            imgui.push_item_width(60)
+            changed_min, min_display_i = imgui.input_int(
+                "##ui_min", int(min_display_i), 0, 0
+            )
+            imgui.pop_item_width()
+
+            imgui.same_line()
+            imgui.push_item_width(60)
+            changed_max, max_display_i = imgui.input_int(
+                "##ui_max", int(max_display_i), 0, 0
+            )
+            imgui.pop_item_width()
+        else:
+            # float/vec3 は float レンジとして扱う。
+            min_display = -1.0 if ui_min is None else float(ui_min)
+            max_display = 1.0 if ui_max is None else float(ui_max)
+
+            imgui.same_line()
+            imgui.push_item_width(60)
+            changed_min, min_display = imgui.input_float(
+                "##ui_min", float(min_display), 0.0, 0.0, "%.1f"
+            )
+            imgui.pop_item_width()
+
+            imgui.same_line()
+            imgui.push_item_width(60)
+            changed_max, max_display = imgui.input_float(
+                "##ui_max", float(max_display), 0.0, 0.0, "%.1f"
+            )
+            imgui.pop_item_width()
 
         # cc_key（負の値は None として扱う）
         imgui.same_line()
         imgui.push_item_width(30)
-        changed_cc, cc_display = imgui.input_int(
-            label="##cc_key",
-            value=int(cc_display),
-            step=0,
-            step_fast=0,
-        )
+        changed_cc, cc_display = imgui.input_int("##cc_key", int(cc_display), 0, 0)
         imgui.pop_item_width()
 
         # override（checkbox の戻り値は clicked, state。clicked を changed として扱う）
         imgui.same_line()
-        clicked_override, override = imgui.checkbox(
-            label="##override", state=bool(override)
-        )
+        clicked_override, override = imgui.checkbox("##override", bool(override))
 
         # 変更があった項目のみ、row のフィールドへ反映する。
         if changed_min:
             changed_any = True
-            ui_min = float(min_display)
+            if row.kind == "int":
+                ui_min = int(min_display_i)
+            else:
+                ui_min = float(min_display)
         if changed_max:
             changed_any = True
-            ui_max = float(max_display)
+            if row.kind == "int":
+                ui_max = int(max_display_i)
+            else:
+                ui_max = float(max_display)
         if changed_cc:
             changed_any = True
             cc_key = None if cc_display < 0 else int(cc_display)
@@ -235,6 +299,10 @@ def render_parameter_row_3cols(row: ParameterRow) -> tuple[bool, ParameterRow]:
     # ここで例外にしておくと、ui_min/ui_max の不整合を早期に検知できる。
     if updated.kind == "float":
         _float_slider_range(updated)
+    if updated.kind == "int":
+        _int_slider_range(updated)
+    if updated.kind == "vec3":
+        _float_slider_range(updated)
     return changed_any, updated
 
 
@@ -254,30 +322,22 @@ def render_parameter_table(
     changed_any = False
     updated_rows: list[ParameterRow] = []
 
-    table = imgui.begin_table(
-        "##parameters",
-        3,
-        flags=imgui.TABLE_SIZING_STRETCH_PROP,
-    )
+    table = imgui.begin_table("##parameters", 3, imgui.TABLE_SIZING_STRETCH_PROP)
     opened = getattr(table, "opened", table)
     if not opened:
         return False, rows
 
     try:
         imgui.table_setup_column(
-            label="label",
-            flags=imgui.TABLE_COLUMN_WIDTH_STRETCH,
-            init_width_or_weight=float(label_weight),
+            "label", imgui.TABLE_COLUMN_WIDTH_STRETCH, float(label_weight)
         )
         imgui.table_setup_column(
-            label="control",
-            flags=imgui.TABLE_COLUMN_WIDTH_STRETCH,
-            init_width_or_weight=float(control_weight),
+            "control", imgui.TABLE_COLUMN_WIDTH_STRETCH, float(control_weight)
         )
         imgui.table_setup_column(
-            label="min, max, cc, override",
-            flags=imgui.TABLE_COLUMN_WIDTH_STRETCH,
-            init_width_or_weight=float(meta_weight),
+            "min, max, cc, override",
+            imgui.TABLE_COLUMN_WIDTH_STRETCH,
+            float(meta_weight),
         )
         imgui.table_headers_row()
 

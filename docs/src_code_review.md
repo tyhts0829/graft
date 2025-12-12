@@ -42,11 +42,6 @@ Geometry（不変 DAG）→ realize（評価）→ render（描画）という�
 
 ## 優先度高めの改善提案（品質/保守性）
 
-### 4) `src/**/__pycache__/*.pyc` がリポジトリに存在
-
-- `src/` 配下に複数 Python バージョンの `.pyc` があり、かつ存在しないモジュール名の `.pyc` も含まれている（例: `geometry_registry` や `debug_renderer` 等）。
-- これがあると「実際のソース」と「過去の実行結果」が混ざり、レビュー/デバッグのノイズになるため、削除 + `.gitignore` で再発防止が望ましい。
-
 ### 6) Render の線幅単位が設計コメントとズレる可能性
 
 - `src/api/run.py` は `line_thickness` を「ワールド単位」と説明しているが、`src/render/shader.py` のジオメトリシェーダは clip space 上で `line_thickness` をそのまま加算している。
@@ -56,11 +51,6 @@ Geometry（不変 DAG）→ realize（評価）→ render（描画）という�
 
 - `src/render/line_mesh.py` は resize の有無に関係なく毎回 `simple_vertex_array()` を呼んでおり、アップロード頻度が高いと無駄が出やすい。
 - 「バッファを差し替えた時だけ VAO を張り直す」にすると意図と実装が一致する。
-
-## 中優先度の改善提案（スタイル/型/表現）
-
-- `src/core/*_registry.py` の `items()` の戻り値注釈に `type: ignore` があり、mypy/ruff 的にも気持ち悪い。`collections.abc.ItemsView` 等で素直に表現できる。
-- `src/render/utils.py` は他ファイルに比べてヘッダ/説明が薄いので、同じ形式（どこで/何を/なぜ）に揃えると統一感が出る。
 
 ## 次に確認したいこと（質問）
 
