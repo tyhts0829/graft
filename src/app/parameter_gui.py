@@ -358,6 +358,7 @@ def render_parameter_table(
             float(meta_weight),
         )
         imgui.table_headers_row()
+        imgui.table_next_row(0, 1)
 
         for row in rows:
             row_changed, updated = render_parameter_row_3cols(row)
