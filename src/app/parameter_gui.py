@@ -127,11 +127,41 @@ def widget_bool_checkbox(row: ParameterRow) -> tuple[bool, bool]:
     return clicked, bool(state)
 
 
+def widget_choice_radio(row: ParameterRow) -> tuple[bool, str]:
+    """kind=choice のラジオボタン群を描画し、(changed, value) を返す。"""
+
+    import imgui
+
+    if row.choices is None or not list(row.choices):
+        raise ValueError("choice requires non-empty choices")
+
+    choices = [str(x) for x in row.choices]
+    current_value = str(row.ui_value)
+    changed_any = False
+    try:
+        selected_index = choices.index(current_value)
+    except ValueError:
+        # choices 外の値は先頭へ丸める（normalize_input の方針に合わせる）
+        selected_index = 0
+        changed_any = True
+
+    for i, choice in enumerate(choices):
+        clicked = imgui.radio_button(f"{choice}##{i}", i == selected_index)
+        if clicked:
+            selected_index = i
+            changed_any = True
+        if i != len(choices) - 1:
+            imgui.same_line(0.0, 6.0)
+
+    return changed_any, choices[int(selected_index)]
+
+
 _KIND_TO_WIDGET: dict[str, WidgetFn] = {
     "float": widget_float_slider,
     "int": widget_int_slider,
     "vec3": widget_vec3_slider,
     "bool": widget_bool_checkbox,
+    "choice": widget_choice_radio,
 }
 
 
@@ -226,7 +256,7 @@ def render_parameter_row_3cols(row: ParameterRow) -> tuple[bool, ParameterRow]:
         imgui.table_set_column_index(2)
 
         # bool は meta（ui_min/ui_max/cc/override）を使わないので、3列目は空にする。
-        if row.kind == "bool":
+        if row.kind == "bool" or row.kind == "choice":
             pass
         else:
             cc_display = -1 if cc_key is None else int(cc_key)

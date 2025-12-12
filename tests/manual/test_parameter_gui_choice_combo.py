@@ -1,7 +1,7 @@
 """
-どこで: tests/manual/test_parameter_gui_multirow.py。
-何を: bool / choice / float / int / vec3 の 5 行を 1 つの 3 列テーブルに表示する手動スモーク。
-なぜ: 実際の GUI に近い「複数行」のレイアウト崩れや ID 衝突を早期に検知するため。
+どこで: tests/manual/test_parameter_gui_choice_combo.py。
+何を: `src/app/parameter_gui.py` の choice ラジオボタンを 1 行だけ表示する手動スモーク。
+なぜ: kind=choice のディスパッチと 3 列テーブルの挙動を 1 行ずつデバッグ確認するため。
 """
 
 from __future__ import annotations
@@ -61,8 +61,8 @@ def _create_renderer(imgui_pyglet: ModuleType, gui_window) -> object:
     os.environ.get("RUN_GUI_TEST") != "1",
     reason="手動 GUI スモークは RUN_GUI_TEST=1 を指定したときだけ実行する。",
 )
-def test_parameter_gui_multirow_smoke() -> None:
-    """複数行のテーブルが描画でき、操作しても落ちないことを短時間確認する。"""
+def test_parameter_gui_choice_combo_smoke() -> None:
+    """choice ラジオボタンが描画でき、値が更新できることを短時間確認する。"""
 
     pyglet_mod, imgui_mod = _import_gui_modules()
     pyglet_mod.options["vsync"] = True
@@ -82,8 +82,8 @@ def test_parameter_gui_multirow_smoke() -> None:
     gl_cfg = pyglet_mod.gl.Config(double_buffer=True, sample_buffers=1, samples=4)
     window = pyglet_mod.window.Window(
         width=800,
-        height=380,
-        caption="parameter gui smoke (multirow)",
+        height=240,
+        caption="parameter gui smoke (choice combo)",
         resizable=False,
         vsync=True,
         config=gl_cfg,
@@ -97,73 +97,19 @@ def test_parameter_gui_multirow_smoke() -> None:
 
     running = True
     frames = 0
-    rows = [
-        ParameterRow(
-            label="1:enabled",
-            op="demo",
-            arg="enabled",
-            kind="bool",
-            ui_value=False,
-            ui_min=None,
-            ui_max=None,
-            choices=None,
-            cc_key=None,
-            override=True,
-            ordinal=1,
-        ),
-        ParameterRow(
-            label="2:mode",
-            op="demo",
-            arg="mode",
-            kind="choice",
-            ui_value="green",
-            ui_min=None,
-            ui_max=None,
-            choices=["red", "green", "blue"],
-            cc_key=None,
-            override=True,
-            ordinal=2,
-        ),
-        ParameterRow(
-            label="3:gain",
-            op="demo",
-            arg="gain",
-            kind="float",
-            ui_value=0.0,
-            ui_min=None,
-            ui_max=None,
-            choices=None,
-            cc_key=None,
-            override=True,
-            ordinal=3,
-        ),
-        ParameterRow(
-            label="4:count",
-            op="demo",
-            arg="count",
-            kind="int",
-            ui_value=0,
-            ui_min=None,
-            ui_max=None,
-            choices=None,
-            cc_key=None,
-            override=True,
-            ordinal=4,
-        ),
-        ParameterRow(
-            label="5:offset",
-            op="demo",
-            arg="offset",
-            kind="vec3",
-            ui_value=(0.0, 0.0, 0.0),
-            ui_min=None,
-            ui_max=None,
-            choices=None,
-            cc_key=None,
-            override=True,
-            ordinal=5,
-        ),
-    ]
+    row = ParameterRow(
+        label="1:color",
+        op="demo",
+        arg="color",
+        kind="choice",
+        ui_value="green",
+        ui_min=None,
+        ui_max=None,
+        choices=["red", "green", "blue"],
+        cc_key=None,
+        override=True,
+        ordinal=1,
+    )
     start = time.monotonic()
     prev_time = start
 
@@ -205,10 +151,9 @@ def test_parameter_gui_multirow_smoke() -> None:
                 flags=imgui_mod.WINDOW_NO_RESIZE | imgui_mod.WINDOW_NO_COLLAPSE,
             )
 
-            _, rows = render_parameter_table(rows, column_weights=(0.20, 0.55, 0.25))
+            _, rows = render_parameter_table([row], column_weights=(0.20, 0.55, 0.25))
+            row = rows[0]
 
-            if imgui_mod.button("Quit"):
-                stop_loop()
             imgui_mod.end()
             imgui_mod.render()
 
