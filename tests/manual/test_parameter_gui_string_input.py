@@ -1,7 +1,7 @@
 """
-どこで: tests/manual/test_parameter_gui_multirow.py。
-何を: bool / choice / string / float / int / vec3 の 6 行を 1 つの 4 列テーブルに表示する手動スモーク。
-なぜ: 実際の GUI に近い「複数行」のレイアウト崩れや ID 衝突を早期に検知するため。
+どこで: tests/manual/test_parameter_gui_string_input.py。
+何を: `src/app/parameter_gui.py` の string 入力を 1 行だけ表示する手動スモーク。
+なぜ: kind=string のディスパッチとテーブルの挙動を 1 行ずつデバッグ確認するため。
 """
 
 from __future__ import annotations
@@ -60,7 +60,7 @@ def _create_renderer(imgui_pyglet: ModuleType, gui_window) -> object:
 
 
 def main() -> None:
-    """複数行のテーブルが描画でき、操作しても落ちないことを確認する。"""
+    """string 入力が描画でき、値が更新できることを確認する。"""
 
     pyglet_mod, imgui_mod = _import_gui_modules()
     pyglet_mod.options["vsync"] = True
@@ -80,8 +80,8 @@ def main() -> None:
     gl_cfg = pyglet_mod.gl.Config(double_buffer=True, sample_buffers=1, samples=4)
     window = pyglet_mod.window.Window(
         width=800,
-        height=440,
-        caption="parameter gui smoke (multirow)",
+        height=240,
+        caption="parameter gui smoke (string input)",
         resizable=False,
         vsync=True,
         config=gl_cfg,
@@ -94,87 +94,19 @@ def main() -> None:
         font_texture()
 
     running = True
-    frames = 0
-    rows = [
-        ParameterRow(
-            label="1:enabled",
-            op="demo",
-            arg="enabled",
-            kind="bool",
-            ui_value=False,
-            ui_min=None,
-            ui_max=None,
-            choices=None,
-            cc_key=None,
-            override=True,
-            ordinal=1,
-        ),
-        ParameterRow(
-            label="2:mode",
-            op="demo",
-            arg="mode",
-            kind="choice",
-            ui_value="green",
-            ui_min=None,
-            ui_max=None,
-            choices=["red", "green", "blue"],
-            cc_key=None,
-            override=True,
-            ordinal=2,
-        ),
-        ParameterRow(
-            label="3:text",
-            op="demo",
-            arg="text",
-            kind="string",
-            ui_value="hello",
-            ui_min=None,
-            ui_max=None,
-            choices=None,
-            cc_key=None,
-            override=True,
-            ordinal=3,
-        ),
-        ParameterRow(
-            label="4:gain",
-            op="demo",
-            arg="gain",
-            kind="float",
-            ui_value=0.0,
-            ui_min=None,
-            ui_max=None,
-            choices=None,
-            cc_key=None,
-            override=True,
-            ordinal=4,
-        ),
-        ParameterRow(
-            label="5:count",
-            op="demo",
-            arg="count",
-            kind="int",
-            ui_value=0,
-            ui_min=None,
-            ui_max=None,
-            choices=None,
-            cc_key=None,
-            override=True,
-            ordinal=5,
-        ),
-        ParameterRow(
-            label="6:offset",
-            op="demo",
-            arg="offset",
-            kind="vec3",
-            ui_value=(0.0, 0.0, 0.0),
-            ui_min=None,
-            ui_max=None,
-            choices=None,
-            cc_key=None,
-            override=True,
-            ordinal=6,
-        ),
-    ]
+    row = ParameterRow(
+        label="1:text",
+        op="demo",
+        arg="text",
+        kind="string",
+        ui_value="hello",
+        ui_min=None,
+        ui_max=None,
+        choices=None,
+        cc_key=None,
+        override=True,
+        ordinal=1,
+    )
     prev_time = time.monotonic()
 
     def stop_loop(*_: object) -> None:
@@ -214,10 +146,8 @@ def main() -> None:
                 flags=imgui_mod.WINDOW_NO_RESIZE | imgui_mod.WINDOW_NO_COLLAPSE,
             )
 
-            _, rows = render_parameter_table(rows)
-
-            if imgui_mod.button("Quit"):
-                stop_loop()
+            _, rows = render_parameter_table([row])
+            row = rows[0]
             imgui_mod.end()
             imgui_mod.render()
 
@@ -226,7 +156,6 @@ def main() -> None:
             renderer.render(imgui_mod.get_draw_data())
             window.flip()
 
-            frames += 1
             time.sleep(1 / 60)
     finally:
         shutdown = getattr(renderer, "shutdown", None)
@@ -238,3 +167,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

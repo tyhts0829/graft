@@ -119,6 +119,15 @@ def widget_bool_checkbox(row: ParameterRow) -> tuple[bool, bool]:
     return clicked, bool(state)
 
 
+def widget_string_input(row: ParameterRow) -> tuple[bool, str]:
+    """kind=string のテキスト入力を描画し、(changed, value) を返す。"""
+
+    import imgui
+
+    value = "" if row.ui_value is None else str(row.ui_value)
+    return imgui.input_text("##value", value)
+
+
 def widget_choice_radio(row: ParameterRow) -> tuple[bool, str]:
     """kind=choice のラジオボタン群を描画し、(changed, value) を返す。"""
 
@@ -153,6 +162,7 @@ _KIND_TO_WIDGET: dict[str, WidgetFn] = {
     "int": widget_int_slider,
     "vec3": widget_vec3_slider,
     "bool": widget_bool_checkbox,
+    "string": widget_string_input,
     "choice": widget_choice_radio,
 }
 
