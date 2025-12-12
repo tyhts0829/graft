@@ -28,9 +28,9 @@
   - [x] `RUN_GUI_TEST=1` がなくても実行されるようにする
 - [x] 通常実行用のエントリポイントを追加
   - [x] 各ファイルに `if __name__ == "__main__": main()` を追加
-- [ ] 共通ランナーの導入（任意）
-  - [ ] 重複している pyglet/imgui 初期化・ループ・Retina 対応コードを `tests/manual/_runner.py` に集約
-  - [ ] 各スクリプトは「UI を描く関数」だけを渡す構造にする
+- [x] 共通ランナーの導入（任意）
+  - [x] 重複している pyglet/imgui 初期化・ループ・Retina 対応コードを `tests/manual/_runner.py` に集約
+  - [x] 各スクリプトは「UI を描く関数」だけを渡す構造にする
 - [x] 最小検証
   - [x] `python -m py_compile` で全ファイルが構文的に壊れていないことを確認
 
