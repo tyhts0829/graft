@@ -28,10 +28,6 @@ def _float_slider_range(row: ParameterRow) -> tuple[float, float]:
 
     min_value = -1.0 if row.ui_min is None else float(row.ui_min)
     max_value = 1.0 if row.ui_max is None else float(row.ui_max)
-    if min_value >= max_value:
-        raise ValueError(
-            f"ui_min must be < ui_max for float slider: {min_value} >= {max_value}"
-        )
     return min_value, max_value
 
 
@@ -43,10 +39,6 @@ def _int_slider_range(row: ParameterRow) -> tuple[int, int]:
 
     min_value = -10 if row.ui_min is None else int(row.ui_min)
     max_value = 10 if row.ui_max is None else int(row.ui_max)
-    if min_value >= max_value:
-        raise ValueError(
-            f"ui_min must be < ui_max for int slider: {min_value} >= {max_value}"
-        )
     return min_value, max_value
 
 
@@ -228,8 +220,8 @@ def render_parameter_row_3cols(row: ParameterRow) -> tuple[bool, ParameterRow]:
     override = row.override
 
     # 幅定数
-    UI_MIN_MAX_WIDTH = 64
-    CC_KEY_WIDTH = 34
+    UI_MIN_MAX_WIDTH = 50
+    CC_KEY_WIDTH = 30
     WIDTH_SPACER = 4
 
     # テーブル内のウィジェット ID が行ごとに衝突しないよう、push_id でスコープを切る。
@@ -255,7 +247,7 @@ def render_parameter_row_3cols(row: ParameterRow) -> tuple[bool, ParameterRow]:
         # --- Column 3: meta（ui_min/ui_max/cc_key/override を横並びに配置）---
         imgui.table_set_column_index(2)
 
-        # bool は meta（ui_min/ui_max/cc/override）を使わないので、3列目は空にする。
+        # boolとchoice は meta（ui_min/ui_max/cc/override）を使わないので、3列目は空にする。
         if row.kind == "bool" or row.kind == "choice":
             pass
         else:
@@ -266,16 +258,9 @@ def render_parameter_row_3cols(row: ParameterRow) -> tuple[bool, ParameterRow]:
                 min_display_i = -10 if ui_min is None else int(ui_min)
                 max_display_i = 10 if ui_max is None else int(ui_max)
 
-                imgui.push_item_width(UI_MIN_MAX_WIDTH)
-                changed_min, min_display_i = imgui.input_int(
-                    "##ui_min", int(min_display_i), 0, 0
-                )
-                imgui.pop_item_width()
-
-                imgui.same_line(0.0, WIDTH_SPACER)
-                imgui.push_item_width(UI_MIN_MAX_WIDTH)
-                changed_max, max_display_i = imgui.input_int(
-                    "##ui_max", int(max_display_i), 0, 0
+                imgui.push_item_width((UI_MIN_MAX_WIDTH * 2) + WIDTH_SPACER)
+                changed_range, min_display_i, max_display_i = imgui.drag_int_range2(
+                    "##ui_range", int(min_display_i), int(max_display_i), 1.0, 0, 0
                 )
                 imgui.pop_item_width()
 
@@ -284,16 +269,16 @@ def render_parameter_row_3cols(row: ParameterRow) -> tuple[bool, ParameterRow]:
                 min_display = -1.0 if ui_min is None else float(ui_min)
                 max_display = 1.0 if ui_max is None else float(ui_max)
 
-                imgui.push_item_width(UI_MIN_MAX_WIDTH)
-                changed_min, min_display = imgui.input_float(
-                    "##ui_min", float(min_display), 0.0, 0.0, "%.1f"
-                )
-                imgui.pop_item_width()
-
-                imgui.same_line(0.0, WIDTH_SPACER)
-                imgui.push_item_width(UI_MIN_MAX_WIDTH)
-                changed_max, max_display = imgui.input_float(
-                    "##ui_max", float(max_display), 0.0, 0.0, "%.1f"
+                imgui.push_item_width((UI_MIN_MAX_WIDTH * 2) + WIDTH_SPACER)
+                changed_range, min_display, max_display = imgui.drag_float_range2(
+                    "##ui_range",
+                    float(min_display),
+                    float(max_display),
+                    0.01,
+                    0.0,
+                    0.0,
+                    "%.1f",
+                    None,
                 )
                 imgui.pop_item_width()
 
@@ -308,17 +293,13 @@ def render_parameter_row_3cols(row: ParameterRow) -> tuple[bool, ParameterRow]:
             clicked_override, override = imgui.checkbox("##override", bool(override))
 
             # 変更があった項目のみ、row のフィールドへ反映する。
-            if changed_min:
+            if changed_range:
                 changed_any = True
                 if row.kind == "int":
                     ui_min = int(min_display_i)
-                else:
-                    ui_min = float(min_display)
-            if changed_max:
-                changed_any = True
-                if row.kind == "int":
                     ui_max = int(max_display_i)
                 else:
+                    ui_min = float(min_display)
                     ui_max = float(max_display)
             if changed_cc:
                 changed_any = True
