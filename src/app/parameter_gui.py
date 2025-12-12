@@ -187,6 +187,11 @@ def render_parameter_row_3cols(row: ParameterRow) -> tuple[bool, ParameterRow]:
     cc_key = row.cc_key
     override = row.override
 
+    # 幅定数
+    UI_MIN_MAX_WIDTH = 64
+    CC_KEY_WIDTH = 34
+    WIDTH_SPACER = 4
+
     # テーブル内のウィジェット ID が行ごとに衝突しないよう、push_id でスコープを切る。
     # ここで `row.arg` まで含めているのは、同じ op#ordinal でも arg が異なる可能性があるため。
     imgui.push_id(_row_id(row))
@@ -217,15 +222,14 @@ def render_parameter_row_3cols(row: ParameterRow) -> tuple[bool, ParameterRow]:
             min_display_i = -10 if ui_min is None else int(ui_min)
             max_display_i = 10 if ui_max is None else int(ui_max)
 
-            imgui.same_line()
-            imgui.push_item_width(60)
+            imgui.push_item_width(UI_MIN_MAX_WIDTH)
             changed_min, min_display_i = imgui.input_int(
                 "##ui_min", int(min_display_i), 0, 0
             )
             imgui.pop_item_width()
 
-            imgui.same_line()
-            imgui.push_item_width(60)
+            imgui.same_line(0.0, WIDTH_SPACER)
+            imgui.push_item_width(UI_MIN_MAX_WIDTH)
             changed_max, max_display_i = imgui.input_int(
                 "##ui_max", int(max_display_i), 0, 0
             )
@@ -235,28 +239,27 @@ def render_parameter_row_3cols(row: ParameterRow) -> tuple[bool, ParameterRow]:
             min_display = -1.0 if ui_min is None else float(ui_min)
             max_display = 1.0 if ui_max is None else float(ui_max)
 
-            imgui.same_line()
-            imgui.push_item_width(60)
+            imgui.push_item_width(UI_MIN_MAX_WIDTH)
             changed_min, min_display = imgui.input_float(
                 "##ui_min", float(min_display), 0.0, 0.0, "%.1f"
             )
             imgui.pop_item_width()
 
-            imgui.same_line()
-            imgui.push_item_width(60)
+            imgui.same_line(0.0, WIDTH_SPACER)
+            imgui.push_item_width(UI_MIN_MAX_WIDTH)
             changed_max, max_display = imgui.input_float(
                 "##ui_max", float(max_display), 0.0, 0.0, "%.1f"
             )
             imgui.pop_item_width()
 
         # cc_key（負の値は None として扱う）
-        imgui.same_line()
-        imgui.push_item_width(30)
+        imgui.same_line(0.0, WIDTH_SPACER)
+        imgui.push_item_width(CC_KEY_WIDTH)
         changed_cc, cc_display = imgui.input_int("##cc_key", int(cc_display), 0, 0)
         imgui.pop_item_width()
 
         # override（checkbox の戻り値は clicked, state。clicked を changed として扱う）
-        imgui.same_line()
+        imgui.same_line(0.0, WIDTH_SPACER)
         clicked_override, override = imgui.checkbox("##override", bool(override))
 
         # 変更があった項目のみ、row のフィールドへ反映する。
