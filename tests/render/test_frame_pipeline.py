@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List
+from typing import list
 
 import numpy as np
 
@@ -14,7 +14,7 @@ from src.render.layer import Layer, LayerStyleDefaults
 
 @dataclass
 class StubRenderer:
-    calls: List[tuple] = field(default_factory=list)
+    calls: list[tuple] = field(default_factory=list)
 
     def render_layer(self, realized, indices, *, color, thickness) -> None:
         self.calls.append((realized, indices, color, thickness))
