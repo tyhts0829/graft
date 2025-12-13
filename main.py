@@ -17,7 +17,9 @@ CANVAS_HEIGHT = 300
 
 
 def draw(t: float):
-    return G.circle(cx=150 + t * 5)
+    scl = E.scale()
+    ccl = G.circle(cx=150 + t * 5)
+    return L(scl(ccl))
 
 
 if __name__ == "__main__":
