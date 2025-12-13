@@ -9,19 +9,25 @@
 - Parameter GUI に以下の順で「ヘッダ行」を表示できる。
   1. Style（background/global_thickness/global_line_color）
   2. Layer（L(name) ごとに thickness/color）
-  3. Primitive（op 名 or ラベル）
-  4. Effect チェーン（effect#N or ラベル）
-- ラベルは ParamStore に永続化され、GUI は snapshot から取り出して表示する。
-- 同名が衝突した場合は GUI 表示名を `name#1`, `name#2` のように自動付与して区別する。
+  3. Primitive（`G(name=...)` の name をヘッダ行に表示）
+  4. Effect チェーン（`E(name=...)` の name をヘッダ行に表示）
+- 1 つの G / 1 つの Effect チェーンのパラメータが大量に並んでも「どこに紐づくか」見失わないこと。
+- 行ラベル（テーブル 1 列目）は以下の形式で統一する。
+  - Primitive の各パラメータ行: `"{op}#{ordinal} {arg}"`（例: `polygon#1 n_sides`）
+  - Effect の各パラメータ行: `"{op}#{step_ordinal} {arg}"`（例: `scale#1 auto_center`）
+    - `step_ordinal` は “同一チェーン内での同一 op の出現回数” で採番する
+      （例: `E.scale().rotate().scale()` → `scale#1`, `rotate#1`, `scale#2`）
+- 同名ヘッダ（例: `G(name="A")` が複数）は GUI 表示専用に `name#1`, `name#2` で衝突回避する（永続化ラベル自体は変えない）。
 
 ## 現状確認（すでに出来ている/出来ていない）
 
 - ラベル永続化（出来ている）
   - `G(name=...)` / `E(name=...)` が `ParamStore.set_label(op, site_id, name)` に保存する。
   - `ParamStore.snapshot()` は各 ParameterKey に対応する `label` を返す。
-- GUI が label を表示に使う（出来ていない）
-  - `rows_from_snapshot()` が snapshot の label を捨てている（`_label`）。
-  - GUI の表示ラベルは `op#ordinal` 固定。
+- GUI のラベリング（出来ていない）
+  - ヘッダ行（Primitive / Effect チェーン）の概念がまだない。
+  - 1 列目は `op#ordinal` 固定で、`arg` が見えない（`polygon#1 n_sides` になっていない）。
+  - snapshot の `label`（= `G/E(name=...)`）を GUI 表示に使っていない。
 - Style / Layer セクション（出来ていない）
   - background/global thickness/global line_color は ParamStore とは別系統（run/settings/defaults）。
   - Layer の一覧（L(name)）は ParamStore に観測されていない。
@@ -33,43 +39,48 @@
 
 ## 実装順序（“素直にできる”→“設計追加が必要”）
 
-### Phase 1（最小・素直）: ParamStore の label を GUI の Primitive/Effect(ステップ) 表示に反映 + 重複連番
+### Phase 1（最小・素直）: Primitive のヘッダ行 + 行ラベルを `polygon#1 n_sides` 形式へ
 
-- [ ] 表示ルールの確定
-  - [ ] ラベル付与 API は現行の `G(name=...)` / `E(name=...)` を採用（`label(name=...)` は作らない）
-  - [ ] 「複数回 label 呼びは例外」扱いにするか決める；現行の `G(name=...)` / `E(name=...)` を採用するので複数回呼びはおきない。
-    - 現状は「最後勝ち（上書き可）」で実装/テスト済みなので、例外化するなら破壊的変更になる；例外化しない。
-- [ ] GUI が snapshot.label を取り出して使えるようにする
-  - [ ] 方式 A: `rows_from_snapshot()` を拡張して label を ParameterRow に載せる（view 側で責務を持つ）；方式 A を採用
-  - [ ] 方式 B: `render_store_parameter_table()` が snapshot を見て header 表示名を計算する（GUI 側で責務を持つ）
-  - [ ] どちらか一方に寄せ、二重計算は避ける
-- [ ] 重複名の自動付与（`name#1`, `name#2`）
-  - [ ] “衝突解消”は表示専用（永続化は元の label のまま）にする
-  - [ ] 同じ op で複数 site がある場合も視認できるよう、未指定時のデフォルト名に ordinal を混ぜるか検討；未指定時も混ぜて。
+- [ ] Primitive グルーピング単位を確定する（`(op, site_id)` → `op#ordinal`）
+- [ ] テーブル描画側で「ヘッダ行」を挿入できるようにする
+  - [ ] `rows_from_snapshot()` は “パラメータ行だけ” を返し、ヘッダ行の挿入は GUI 層でやる（責務を分離）
+  - [ ] (op, ordinal) が変わったタイミングで 1 行だけヘッダ行を描画する
+- [ ] ヘッダ表示名を snapshot の `label` から解決する
+  - [ ] `G(name=...)` がある場合はそれを使う
+  - [ ] 無い場合のフォールバックを決める（例: `polygon#1`）；ない場合は primitive 名で。
+  - [ ] 同名衝突は表示専用に `name#1/#2` を付与（永続化ラベルは変更しない）
+- [ ] パラメータ行の 1 列目を `"{op}#{ordinal} {arg}"` に変更する（例: `polygon#1 n_sides`）
 - [ ] テスト（最小）
-  - [ ] 表示名重複の連番付与をユニットテストで担保（純粋関数に切り出すのが楽）
+  - [ ] 「ヘッダ名の衝突解消」と「行ラベル整形」を純粋関数に切り出してユニットテストする
 
 完了条件:
 
-- GUI に「Primitive ヘッダ」相当の見出し（label or op）が出る（まずは table 内の group header でも可）。
-- 同名ラベル衝突時に `#1/#2` で区別できる。
+- Primitive ごとに 1 行のヘッダ行が出て、直下の行ラベルが `polygon#1 n_sides` 形式になっている。
+- 同名ヘッダ衝突時に `#1/#2` で区別できる（表示専用）。
 
-### Phase 2（設計追加・中）: Effect “チェーン” ヘッダ（effect#N or ラベル）を正しく出す
+### Phase 2（設計追加・中）: Effect チェーンのヘッダ行 + `scale#1 auto_center`（チェーン内採番）
 
-- [ ] チェーン境界を復元できるデータを追加する
-  - [ ] `EffectBuilder` に chain_id を導入（例: “最初の step の site_id” を chain_id とする）
-  - [ ] 観測レコード（FrameParamRecord）へ chain_id を載せる（key とは別フィールド）
-  - [ ] ParamStore が chain_id の ordinal（N）を安定に割り当てられるようにする（`effect#N` の N）
-- [ ] チェーンのラベル永続化
-  - [ ] `E(name=...)` が「各ステップ」ではなく「チェーン」へ label を保存できるようにする
-    - 例: `set_label("__effect_chain__", chain_id, name)` のような別名前空間を持つ
-- [ ] GUI 側で chain_id ごとにグルーピングし、チェーンヘッダ → 各ステップのパラメータ、の順で表示する
+- [ ] チェーン境界と “ステップ順序” を復元できるデータを追加する
+  - [ ] `EffectBuilder` に `chain_id` を導入する（例: “builder 生成時の site_id” を chain_id にする）
+  - [ ] 観測レコード（FrameParamRecord）へ `chain_id` と `step_index`（steps 内の順序）を載せる
+  - [ ] ParamStore が (op, site_id) → (chain_id, step_index) を参照できるように保持/公開する
+- [ ] チェーンヘッダ表示名の解決
+  - [ ] `E(name=...)` がある場合はその name をチェーン名として表示する
+  - [ ] 無い場合は `effect#N`（N は chain ごとの ordinal）を表示する
+  - [ ] 同名衝突は表示専用に `name#1/#2` を付与する
+- [ ] チェーン内の “同一 op 連番” を計算する
+  - [ ] steps の順序に従い、op ごとにカウントして `scale#1/scale#2` を決める
+  - [ ] パラメータ行の 1 列目を `"{op}#{step_ordinal} {arg}"` にする（例: `scale#1 auto_center`）
+- [ ] GUI 側で「チェーンヘッダ → ステップ群」の順に並べて表示する
 - [ ] テスト（最小）
-  - [ ] `E(name="chain").scale(...).rotate(...)(g)` で “チェーンヘッダが 1 回だけ出る” ことを担保
+  - [ ] `E(name="xf").scale().rotate().scale()(g)` で
+    - チェーンヘッダが 1 回だけ出る
+    - `scale#1`, `rotate#1`, `scale#2` の採番になる
+    - 行ラベルが `"{op}#{n} {arg}"` になる
 
 完了条件:
 
-- “チェーン”が GUI 上でまとまって見える（デフォルト名 `effect#N` も安定）。
+- Effect チェーンが GUI 上でまとまって見え、チェーン内採番（`scale#1`, `scale#2`）が安定している。
 
 ### Phase 3（設計追加・大）: Style ヘッダ（background/global_thickness/global_line_color）を GUI で編集できるようにする
 
