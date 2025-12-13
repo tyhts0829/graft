@@ -1,0 +1,189 @@
+# どこで: `src/app/parameter_gui/widgets.py`。
+# 何を: ParameterRow.kind を pyimgui の値ウィジェットへ対応付けて描画する。
+# なぜ: kind ごとの UI 実装を閉じ込め、テーブル描画から分離するため。
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any
+
+from src.parameters.view import ParameterRow
+
+WidgetFn = Callable[[ParameterRow], tuple[bool, Any]]
+
+
+def _float_slider_range(row: ParameterRow) -> tuple[float, float]:
+    """float スライダーのレンジ (min, max) を返す。
+
+    ui_min/ui_max が None の場合は -1.0..1.0 にフォールバックする。
+    """
+
+    min_value = -1.0 if row.ui_min is None else float(row.ui_min)
+    max_value = 1.0 if row.ui_max is None else float(row.ui_max)
+    return min_value, max_value
+
+
+def _int_slider_range(row: ParameterRow) -> tuple[int, int]:
+    """int スライダーのレンジ (min, max) を返す。
+
+    ui_min/ui_max が None の場合は -10..10 にフォールバックする。
+    """
+
+    min_value = -10 if row.ui_min is None else int(row.ui_min)
+    max_value = 10 if row.ui_max is None else int(row.ui_max)
+    return min_value, max_value
+
+
+def _as_float3(value: Any) -> tuple[float, float, float]:
+    """値を長さ 3 の float タプル `(x, y, z)` に変換して返す。"""
+
+    try:
+        x, y, z = value  # type: ignore[misc]
+    except Exception as exc:
+        raise ValueError(
+            f"vec3 ui_value must be a length-3 sequence: {value!r}"
+        ) from exc
+    return float(x), float(y), float(z)
+
+
+def widget_float_slider(row: ParameterRow) -> tuple[bool, float]:
+    """kind=float のスライダーを描画し、(changed, value) を返す。
+
+    Parameters
+    ----------
+    row : ParameterRow
+        kind=float の行モデル。
+
+    Returns
+    -------
+    changed : bool
+        値が変更された場合 True。
+    value : float
+        変更後の値。
+    """
+
+    import imgui  # type: ignore[import-untyped]
+
+    value = float(row.ui_value)
+    min_value, max_value = _float_slider_range(row)
+    return imgui.slider_float(
+        "##value", float(value), float(min_value), float(max_value)
+    )
+
+
+def widget_int_slider(row: ParameterRow) -> tuple[bool, int]:
+    """kind=int のスライダーを描画し、(changed, value) を返す。"""
+
+    import imgui  # type: ignore[import-untyped]
+
+    value = int(row.ui_value)
+    min_value, max_value = _int_slider_range(row)
+    return imgui.slider_int("##value", int(value), int(min_value), int(max_value))
+
+
+def widget_vec3_slider(row: ParameterRow) -> tuple[bool, tuple[float, float, float]]:
+    """kind=vec3 のスライダーを描画し、(changed, value) を返す。"""
+
+    import imgui  # type: ignore[import-untyped]
+
+    value0, value1, value2 = _as_float3(row.ui_value)
+    min_value, max_value = _float_slider_range(row)
+    changed, out = imgui.slider_float3(
+        "##value",
+        float(value0),
+        float(value1),
+        float(value2),
+        float(min_value),
+        float(max_value),
+    )
+    return changed, _as_float3(out)
+
+
+def widget_bool_checkbox(row: ParameterRow) -> tuple[bool, bool]:
+    """kind=bool のチェックボックスを描画し、(changed, value) を返す。"""
+
+    import imgui  # type: ignore[import-untyped]
+
+    clicked, state = imgui.checkbox("##value", bool(row.ui_value))
+    return clicked, bool(state)
+
+
+def widget_string_input(row: ParameterRow) -> tuple[bool, str]:
+    """kind=string のテキスト入力を描画し、(changed, value) を返す。"""
+
+    import imgui  # type: ignore[import-untyped]
+
+    value = "" if row.ui_value is None else str(row.ui_value)
+    return imgui.input_text("##value", value)
+
+
+def widget_choice_radio(row: ParameterRow) -> tuple[bool, str]:
+    """kind=choice のラジオボタン群を描画し、(changed, value) を返す。"""
+
+    import imgui  # type: ignore[import-untyped]
+
+    if row.choices is None or not list(row.choices):
+        raise ValueError("choice requires non-empty choices")
+
+    choices = [str(x) for x in row.choices]
+    current_value = str(row.ui_value)
+    changed_any = False
+    try:
+        selected_index = choices.index(current_value)
+    except ValueError:
+        # choices 外の値は先頭へ丸める（normalize_input の方針に合わせる）
+        selected_index = 0
+        changed_any = True
+
+    for i, choice in enumerate(choices):
+        clicked = imgui.radio_button(f"{choice}##{i}", i == selected_index)
+        if clicked:
+            selected_index = i
+            changed_any = True
+        if i != len(choices) - 1:
+            imgui.same_line(0.0, 6.0)
+
+    return changed_any, choices[int(selected_index)]
+
+
+_KIND_TO_WIDGET: dict[str, WidgetFn] = {
+    "float": widget_float_slider,
+    "int": widget_int_slider,
+    "vec3": widget_vec3_slider,
+    "bool": widget_bool_checkbox,
+    "string": widget_string_input,
+    "choice": widget_choice_radio,
+}
+
+
+def render_value_widget(row: ParameterRow) -> tuple[bool, Any]:
+    """row.kind に応じたウィジェットを描画し、(changed, value) を返す。
+
+    Parameters
+    ----------
+    row : ParameterRow
+        GUI 行モデル。
+
+    Returns
+    -------
+    changed : bool
+        値が変更された場合 True。
+    value : Any
+        変更後の値。
+
+    Raises
+    ------
+    ValueError
+        未知 kind の場合。
+    """
+
+    fn = _KIND_TO_WIDGET.get(row.kind)
+    if fn is None:
+        raise ValueError(f"unknown kind: {row.kind}")
+    return fn(row)
+
+
+def widget_registry() -> dict[str, WidgetFn]:
+    """kind→widget 関数マップのコピーを返す。"""
+
+    return dict(_KIND_TO_WIDGET)

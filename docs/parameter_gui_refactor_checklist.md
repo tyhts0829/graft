@@ -52,16 +52,17 @@
 
 ## 実施チェックリスト（案A 前提）
 
-- [ ] `src/app/parameter_gui.py` の公開/内部 I/F を棚卸し（import 元の調査）
-- [ ] `src/app/parameter_gui/` を新設し、モジュール分割方針を確定
-- [ ] `widgets.py` へ移動（kind→widget / range 変換 / `render_value_widget`）
-- [ ] `table.py` へ移動（row/table 描画、列ごとの UI）
-- [ ] `store_bridge.py` へ移動（store 反映ロジック。外部公開しない）
-- [ ] `pyglet_backend.py` へ移動（renderer 作成、IO 同期、window 生成）
-- [ ] `gui.py` へ移動（`ParameterGUI`）
-- [ ] `src/app/parameter_gui/__init__.py` に公開 API を集約（`ParameterGUI`, `create_parameter_gui_window`, `render_parameter_table`）
-- [ ] `tests/manual/test_parameter_gui_*.py` の import が通ることを確認（必要なら更新）
-- [ ] `ruff` / `mypy` を対象限定で実行して崩れを直す（可能なら）
+- [x] `src/app/parameter_gui.py` の公開/内部 I/F を棚卸し（import 元の調査）
+- [x] `src/app/parameter_gui/` を新設し、モジュール分割方針を確定
+- [x] `widgets.py` へ移動（kind→widget / range 変換 / `render_value_widget`）
+- [x] `table.py` へ移動（row/table 描画、列ごとの UI）
+- [x] `store_bridge.py` へ移動（store 反映ロジック。外部公開しない）
+- [x] `pyglet_backend.py` へ移動（renderer 作成、IO 同期、window 生成）
+- [x] `gui.py` へ移動（`ParameterGUI`）
+- [x] `src/app/parameter_gui/__init__.py` に公開 API を集約（`ParameterGUI`, `create_parameter_gui_window`, `render_parameter_table`）
+- [x] `tests/manual/test_parameter_gui_*.py` の import が通ることを確認（必要なら更新）
+- [ ] `ruff` を対象限定で実行して崩れを直す（環境に無ければスキップ）
+- [x] `mypy` を対象限定で実行して崩れを直す
 
 ## ついでに直すと良さそう（任意・事前確認したい）
 
@@ -71,4 +72,4 @@
 
 ---
 
-次アクション: 上の方針を前提に、実施チェックリストに沿って実装に着手する。
+状態: 実施チェックリストは完了。任意項目は未着手。
