@@ -17,7 +17,7 @@ from src.parameters.meta import ParamMeta
 scale_meta = {
     "auto_center": ParamMeta(kind="bool"),
     "pivot": ParamMeta(kind="vec3", ui_min=-500.0, ui_max=500.0),
-    "scale": ParamMeta(kind="vec3", ui_min=1.0, ui_max=500.0),
+    "scale": ParamMeta(kind="vec3", ui_min=1.0, ui_max=10.0),
 }
 
 
