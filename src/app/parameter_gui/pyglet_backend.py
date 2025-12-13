@@ -6,6 +6,9 @@ from __future__ import annotations
 
 from typing import Any
 
+DEFAULT_WINDOW_WIDTH = 800
+DEFAULT_WINDOW_HEIGHT = 800
+
 
 def _create_imgui_pyglet_renderer(imgui_pyglet_mod: Any, gui_window: Any) -> Any:
     """pyglet 用の ImGui renderer を作成する。"""
@@ -36,8 +39,8 @@ def _sync_imgui_io_for_window(imgui_mod: Any, gui_window: Any, *, dt: float) -> 
 
 def create_parameter_gui_window(
     *,
-    width: int = 800,
-    height: int = 480,
+    width: int = DEFAULT_WINDOW_WIDTH,
+    height: int = DEFAULT_WINDOW_HEIGHT,
     caption: str = "Parameter GUI",
     vsync: bool = True,
 ) -> Any:
