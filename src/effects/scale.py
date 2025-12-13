@@ -1,7 +1,7 @@
 """
 どこで: `src/effects/scale.py`。スケール effect の実体変換。
-何を: RealizedGeometry の座標配列へスケールを適用する。
-なぜ: effect チェーンと Parameter GUI の最小例として使うため。
+何を: RealizedGeometry の座標配列にスケールを適用する。
+なぜ: effect チェーンの基本変換として、拡大縮小操作を提供するため。
 """
 
 from __future__ import annotations
@@ -15,10 +15,9 @@ from src.core.realized_geometry import RealizedGeometry
 from src.parameters.meta import ParamMeta
 
 scale_meta = {
-    "s": ParamMeta(kind="float", ui_min=0.0, ui_max=10.0),
-    "sx": ParamMeta(kind="float", ui_min=0.0, ui_max=10.0),
-    "sy": ParamMeta(kind="float", ui_min=0.0, ui_max=10.0),
-    "sz": ParamMeta(kind="float", ui_min=0.0, ui_max=10.0),
+    "auto_center": ParamMeta(kind="bool"),
+    "pivot": ParamMeta(kind="vec3", ui_min=-500.0, ui_max=500.0),
+    "scale": ParamMeta(kind="vec3", ui_min=1.0, ui_max=500.0),
 }
 
 
@@ -26,25 +25,22 @@ scale_meta = {
 def scale(
     inputs: Sequence[RealizedGeometry],
     *,
-    s: float = 1.0,
-    sx: float = 1.0,
-    sy: float = 1.0,
-    sz: float = 1.0,
+    auto_center: bool = True,
+    pivot: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
 ) -> RealizedGeometry:
-    """正規化済み引数を用いてジオメトリをスケールする。
+    """スケール変換を適用（auto_center 対応）。
 
     Parameters
     ----------
     inputs : Sequence[RealizedGeometry]
         スケール対象の実体ジオメトリ列。通常は 1 要素。
-    s : float, optional
-        全軸に掛ける共通スケール係数。
-    sx : float, optional
-        x 方向の追加スケール係数（最終的な係数は `s * sx`）。
-    sy : float, optional
-        y 方向の追加スケール係数（最終的な係数は `s * sy`）。
-    sz : float, optional
-        z 方向の追加スケール係数（最終的な係数は `s * sz`）。
+    auto_center : bool, default True
+        True なら平均座標を中心に使用。False なら `pivot` を使用。
+    pivot : tuple[float, float, float], default (0.0,0.0,0.0)
+        変換の中心（`auto_center=False` のとき有効）。
+    scale : tuple[float, float, float], default (1.0,1.0,1.0)
+        各軸の倍率。
 
     Returns
     -------
@@ -57,16 +53,22 @@ def scale(
         return RealizedGeometry(coords=coords, offsets=offsets)
 
     base = inputs[0]
+    if base.coords.shape[0] == 0:
+        return base
 
-    s_value = float(s)
-    sx_value = float(sx)
-    sy_value = float(sy)
-    sz_value = float(sz)
+    sx, sy, sz = float(scale[0]), float(scale[1]), float(scale[2])
 
-    coords = base.coords.copy()
-    coords.setflags(write=True)
-    coords[:, 0] *= s_value * sx_value
-    coords[:, 1] *= s_value * sy_value
-    coords[:, 2] *= s_value * sz_value
+    # 中心を決定（auto_center 優先）
+    if auto_center:
+        center = base.coords.astype(np.float64, copy=False).mean(axis=0)
+    else:
+        center = np.array(
+            [float(pivot[0]), float(pivot[1]), float(pivot[2])],
+            dtype=np.float64,
+        )
 
+    shifted = base.coords.astype(np.float64, copy=False) - center
+    factors = np.array([sx, sy, sz], dtype=np.float64)
+    scaled = shifted * factors + center
+    coords = scaled.astype(np.float32, copy=False)
     return RealizedGeometry(coords=coords, offsets=base.offsets)

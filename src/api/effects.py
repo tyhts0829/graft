@@ -152,7 +152,7 @@ class EffectNamespace:
     ----------
     <name> : Callable[..., EffectBuilder]
         登録済み effect 名ごとのビルダファクトリ。
-        例: E.scale(s=2.0)(g) -> Geometry(op="scale", inputs=(g,), params=...)
+        例: E.scale(scale=(2.0, 2.0, 2.0))(g) -> Geometry(op="scale", inputs=(g,), params=...)
     """
 
     def __getattr__(self, name: str) -> Callable[..., EffectBuilder]:

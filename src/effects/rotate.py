@@ -16,7 +16,7 @@ from src.parameters.meta import ParamMeta
 
 rotate_meta = {
     "auto_center": ParamMeta(kind="bool"),
-    "pivot": ParamMeta(kind="vec3", ui_min=-180.0, ui_max=180.0),
+    "pivot": ParamMeta(kind="vec3", ui_min=-500.0, ui_max=500.0),
     "rotation": ParamMeta(kind="vec3", ui_min=-180.0, ui_max=180.0),
 }
 

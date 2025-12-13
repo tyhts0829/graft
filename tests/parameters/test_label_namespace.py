@@ -25,7 +25,7 @@ def test_effect_name_sets_label():
 
     with parameter_context(store=store):
         # 単一 step でも chain 名が保存されることを確認
-        builder = E(name="chain1").scale(s=2.0)
+        builder = E(name="chain1").scale(scale=(2.0, 2.0, 2.0))
         builder(G.circle(r=1.0))
 
     snap = store.snapshot()

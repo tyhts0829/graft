@@ -41,9 +41,9 @@ def main() -> None:
     concat = Geometry.create(op="concat", inputs=(base1, base2), params={})
 
     # フレーム 1, 2: 同じスケール係数。
-    scaled_v1 = E.scale(s=1.5)(concat)
+    scaled_v1 = E.scale(scale=(1.5, 1.5, 1.5))(concat)
     # フレーム 3: スケール係数を変えて別 GeometryId にする。
-    scaled_v2 = E.scale(s=0.75)(concat)
+    scaled_v2 = E.scale(scale=(0.75, 0.75, 0.75))(concat)
 
     # 3 フレーム分のログを別々に収集する。
     frame_logs: list[FrameRealizeLog] = []
