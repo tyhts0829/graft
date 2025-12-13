@@ -35,9 +35,9 @@ class DrawRenderer:
         """ビューポートをウィンドウサイズに合わせて更新する。"""
         self.ctx.viewport = (0, 0, int(width), int(height))
 
-    def clear(self, color: tuple[float, float, float, float]) -> None:
+    def clear(self, color: tuple[float, float, float]) -> None:
         """背景色でクリアする。"""
-        self.ctx.clear(*color)
+        self.ctx.clear(*color, 1.0)
 
     def render_layer(
         self,

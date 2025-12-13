@@ -21,7 +21,7 @@ from src.render.scene import SceneItem
 def run(
     draw: Callable[[float], SceneItem],
     *,
-    background_color: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0),
+    background_color: tuple[float, float, float] = (1.0, 1.0, 1.0),
     line_thickness: float = 0.01,
     line_color: tuple[float, float, float] = (0.0, 0.0, 0.0),
     render_scale: float = 1.0,
@@ -34,8 +34,8 @@ def run(
     ----------
     draw : Callable[[float], SceneItem]
         フレーム経過秒 t を受け取り Geometry / Layer / それらの列を返すコールバック。
-    background_color : tuple[float, float, float, float]
-        背景色 RGBA。既定は白。
+    background_color : tuple[float, float, float]
+        背景色 RGB。alpha は 1.0 固定。既定は白。
     line_thickness : float
         プレビュー用線幅（ワールド単位）。Layer.thickness 未指定時の基準値。
     line_color : tuple[float, float, float]

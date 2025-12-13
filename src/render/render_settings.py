@@ -11,7 +11,7 @@ from dataclasses import dataclass
 class RenderSettings:
     """リアルタイム描画に用いる設定値の集合。"""
 
-    background_color: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
+    background_color: tuple[float, float, float] = (1.0, 1.0, 1.0)
     line_thickness: float = 0.01
     line_color: tuple[float, float, float] = (0.0, 0.0, 0.0)
     render_scale: float = 1.0

@@ -86,7 +86,7 @@
 - [ ] Style を保持する場所を決める（ParamStore に統合するか、別ストアを作るか）
   - [ ] まずは ParamStore へ統合する案（特殊 op/site_id/arg で表現）を第一候補にする
 - [ ] 型/kind を揃える
-  - [ ] background_color（RGBA）をどう表現するか決める（vec4 kind を追加 or RGB+alpha 分割など）
+  - [ ] background_color（RGB）をどう表現するか決める（vec3/ rgb kind 追加など）
   - [ ] global_line_color（RGB）をどう表現するか決める（vec3/ rgb kind 追加など）
 - [ ] run/render への反映経路を追加
   - [ ] GUI 値で `renderer.clear(background_color)` を上書きできる
@@ -124,5 +124,4 @@
 ## 事前確認したいポイント（決めないと実装が分岐する）
 
 - 「複数回 label 指定」は例外にする？それとも現状どおり「最後勝ち」で良い？
-- background_color は RGBA 1 行にする？（vec4 kind 追加が必要） それとも RGB+alpha に分ける？
 - Layer の識別は name ベースに寄せる？それとも callsite_id ベースで安定識別する？
