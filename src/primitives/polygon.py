@@ -14,12 +14,11 @@ from src.core.primitive_registry import primitive
 from src.core.realized_geometry import RealizedGeometry
 from src.parameters.meta import ParamMeta
 
-
 polygon_meta = {
-    "n_sides": ParamMeta(kind="int", ui_min=3, ui_max=512),
+    "n_sides": ParamMeta(kind="int", ui_min=3, ui_max=128),
     "phase": ParamMeta(kind="float", ui_min=0.0, ui_max=360.0),
     "center": ParamMeta(kind="vec3", ui_min=-500.0, ui_max=500.0),
-    "scale": ParamMeta(kind="vec3", ui_min=-10.0, ui_max=10.0),
+    "scale": ParamMeta(kind="vec3", ui_min=0, ui_max=200.0),
 }
 
 
@@ -58,11 +57,15 @@ def polygon(
     try:
         cx, cy, cz = center
     except Exception as exc:
-        raise ValueError("polygon の center は長さ 3 のシーケンスである必要がある") from exc
+        raise ValueError(
+            "polygon の center は長さ 3 のシーケンスである必要がある"
+        ) from exc
     try:
         sx, sy, sz = scale
     except Exception as exc:
-        raise ValueError("polygon の scale は長さ 3 のシーケンスである必要がある") from exc
+        raise ValueError(
+            "polygon の scale は長さ 3 のシーケンスである必要がある"
+        ) from exc
 
     angles = np.linspace(
         0.0,
