@@ -11,7 +11,7 @@
 - `ui_value` は文字列として保持し、表示用に index へ変換する
   - `ui_value` が choices に無い場合は先頭に丸めて `(changed=True, value=choices[0])` を返す
 - choice の min-max 列は空（`ui_min/ui_max` は使用しない）
-- choice の cc / override 列は `cc_key` と `override` を表示する
+- choice の cc / override 列は `cc_key` と `override` を表示しない
 
 ## チェックリスト
 

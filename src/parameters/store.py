@@ -29,6 +29,14 @@ class ParamStore:
         """登録済みの ParamState を返す。未登録なら None。"""
         return self._states.get(key)
 
+    def get_meta(self, key: ParameterKey) -> ParamMeta | None:
+        """登録済みの ParamMeta を返す。未登録なら None。"""
+        return self._meta.get(key)
+
+    def set_meta(self, key: ParameterKey, meta: ParamMeta) -> None:
+        """ParamMeta を上書き保存する。"""
+        self._meta[key] = meta
+
     def ensure_state(self, key: ParameterKey, *, base_value: Any) -> ParamState:
         """ParamState を確保し、無ければ base_value で初期化して返す。"""
         state = self._states.get(key)
@@ -86,8 +94,9 @@ class ParamStore:
                 rec.key,
                 base_value=rec.base,
             )
-            # 最新 meta を保存（破壊的に置き換え）
-            self._meta[rec.key] = rec.meta
+            # meta は初出時に確定し、以後は保持する（GUI 側で編集できるようにする）
+            if rec.key not in self._meta or self._meta[rec.key].kind != rec.meta.kind:
+                self._meta[rec.key] = rec.meta
             # cc/ui_value/override はここでは変更しない
 
     def to_json(self) -> str:
@@ -131,10 +140,18 @@ class ParamStore:
         store = cls()
         for item in obj.get("states", []):
             key = ParameterKey(op=item["op"], site_id=item["site_id"], arg=item["arg"])
+            raw_cc = item.get("cc_key")
+            if isinstance(raw_cc, list) and len(raw_cc) == 3:
+                cc_tuple = tuple(None if v is None else int(v) for v in raw_cc)
+                cc_key = None if cc_tuple == (None, None, None) else cc_tuple
+            elif raw_cc is None:
+                cc_key = None
+            else:
+                cc_key = int(raw_cc)
             state = ParamState(
                 override=item.get("override", False),
                 ui_value=item.get("ui_value"),
-                cc_key=item.get("cc_key"),
+                cc_key=cc_key,
             )
             store._states[key] = state
 

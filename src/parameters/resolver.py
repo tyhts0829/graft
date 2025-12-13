@@ -47,17 +47,56 @@ def _choose_value(
     base_value: Any, state: ParamState, meta: ParamMeta
 ) -> tuple[Any, str]:
     cc_snapshot = current_cc_snapshot()
-    if (
-        state.cc_key is not None
-        and cc_snapshot is not None
-        and state.cc_key in cc_snapshot
-    ):
-        v = cc_snapshot[state.cc_key]
-        # 0..1 を min..max に線形写像
-        lo = meta.ui_min if meta.ui_min is not None else 0.0
-        hi = meta.ui_max if meta.ui_max is not None else 1.0
-        effective = lo + (hi - lo) * float(v)
-        return effective, "cc"
+    if cc_snapshot is not None and state.cc_key is not None:
+        if isinstance(state.cc_key, int) and state.cc_key in cc_snapshot:
+            v = float(cc_snapshot[state.cc_key])
+            if meta.kind in {"float", "int"}:
+                # 0..1 を min..max に線形写像
+                lo = float(meta.ui_min) if meta.ui_min is not None else 0.0
+                hi = float(meta.ui_max) if meta.ui_max is not None else 1.0
+                effective = lo + (hi - lo) * v
+                return effective, "cc"
+            if meta.kind == "choice" and meta.choices is not None and list(meta.choices):
+                # 0..1 を choices の index に写像
+                choices = list(meta.choices)
+                idx = min(len(choices) - 1, int(v * len(choices)))
+                return str(choices[int(idx)]), "cc"
+
+        if meta.kind == "vec3" and isinstance(state.cc_key, tuple):
+            lo = float(meta.ui_min) if meta.ui_min is not None else 0.0
+            hi = float(meta.ui_max) if meta.ui_max is not None else 1.0
+
+            try:
+                bx, by, bz = base_value
+                ux, uy, uz = state.ui_value
+            except Exception:
+                # 想定外の値が来た場合は CC 適用を諦め、通常の経路へフォールバックする。
+                pass
+            else:
+                out: list[Any] = []
+                used_cc = False
+                for cc, b, u in zip(
+                    state.cc_key, (bx, by, bz), (ux, uy, uz), strict=True
+                ):
+                    if cc is not None and cc in cc_snapshot:
+                        used_cc = True
+                        v = float(cc_snapshot[cc])
+                        out.append(lo + (hi - lo) * v)
+                    elif state.override:
+                        out.append(u)
+                    else:
+                        out.append(b)
+
+                if used_cc:
+                    return tuple(out), "cc"
+                if state.override:
+                    return tuple(out), "gui"
+                return tuple(out), "base"
+
+    if meta.kind == "bool":
+        # bool は override トグルを持たない。ui_value を常に採用する。
+        # ui_value は初期状態では base_value と一致するため、実質的に base を踏襲する。
+        return bool(state.ui_value), "gui"
     if state.override:
         return state.ui_value, "gui"
     return base_value, "base"

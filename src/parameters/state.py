@@ -14,4 +14,4 @@ class ParamState:
 
     override: bool = False
     ui_value: Any = None
-    cc_key: int | None = None
+    cc_key: int | tuple[int | None, int | None, int | None] | None = None

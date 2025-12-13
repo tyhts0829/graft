@@ -17,12 +17,12 @@
   - [x] `widget_vec3_slider`（`imgui.slider_float3("##value", ...)`）
   - [x] `_KIND_TO_WIDGET` に `int` / `vec3` を登録
 - [x] `src/app/parameter_gui.py` の range/validation を追加
-  - [x] `int` 用レンジ関数（`ui_min>=ui_max` は例外）
-  - [x] `vec3` は float と同一レンジで検証（`ui_min>=ui_max` は例外）
+  - [x] `int` 用レンジ関数（meta 由来のデフォルトが `ui_min > ui_max` は例外。GUI の min-max 入力では例外にしない）
+  - [x] `vec3` は float と同一レンジで扱う（meta 由来のデフォルトが `ui_min > ui_max` は例外。GUI の min-max 入力では例外にしない）
 - [x] `render_parameter_row_4cols` の min-max 入力を kind で分岐
   - [x] `int`: `imgui.drag_int_range2`
   - [x] `float/vec3`: `imgui.drag_float_range2`
-  - [x] `cc_key` と `override` は（bool 以外で）共通
+  - [x] `cc_key` と `override` は `float/int/vec3` のみ表示し、`bool/string/choice` は空
 - [x] 手動スモークを追加（`tests/manual`）
   - [x] `tests/manual/test_parameter_gui_int_slider.py`
   - [x] `tests/manual/test_parameter_gui_vec3_slider.py`

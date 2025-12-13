@@ -20,7 +20,7 @@
   - [x] widget 関数の返り値を `(changed, value)` に統一
 - [x] float スライダー（kind=`float`）の widget 関数を実装
   - [x] `imgui.slider_float` を使用し `ui_min/ui_max` を `min_value/max_value` に渡す
-  - [x] `ui_min >= ui_max` は `ValueError`（早期に検知できる形）にする
+  - [x] meta 由来のデフォルトが `ui_min > ui_max` は例外にする（GUI の min-max 入力では例外にしない）
 - [x] 手動スモーク（`tests/manual`）を追加/更新
   - [x] 単一ウィンドウで `ParameterRow(kind="float")` 1 行だけ描画する最小ループを用意
   - [x] `widget registry` 経由で float スライダーが動くことを確認

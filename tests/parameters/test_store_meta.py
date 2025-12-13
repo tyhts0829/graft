@@ -56,3 +56,22 @@ def test_json_roundtrip_preserves_meta_and_state():
     assert state.override is True
     assert state.ui_value == 0.1
     assert ordinal == 1
+
+
+def test_json_roundtrip_preserves_vec3_cc_key_tuple():
+    store = ParamStore()
+    key = ParameterKey(op="scale", site_id="site-v", arg="p")
+    record = FrameParamRecord(
+        key=key,
+        base=(0.0, 0.0, 0.0),
+        meta=ParamMeta(kind="vec3", ui_min=-1.0, ui_max=1.0),
+    )
+    store.store_frame_params([record])
+    store._states[key].cc_key = (1, None, 3)  # type: ignore[attr-defined]
+
+    payload = store.to_json()
+    loaded = ParamStore.from_json(payload)
+
+    snap = loaded.snapshot()
+    _meta, state, _ordinal, _label = snap[key]
+    assert state.cc_key == (1, None, 3)

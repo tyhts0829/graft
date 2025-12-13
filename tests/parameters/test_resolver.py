@@ -50,3 +50,23 @@ def test_vec_quantized_per_component():
         resolved = resolve_params(op="scale", params=params, meta=meta, site_id="sv")
 
     assert resolved["p"] == pytest.approx((1.235, -0.001, 0.5))
+
+
+def test_vec3_cc_applies_per_component():
+    store = ParamStore()
+    key = ParameterKey(op="scale", site_id="sv2", arg="p")
+    store._states[key] = ParamState(  # type: ignore[attr-defined]
+        override=False,
+        ui_value=(0.0, 0.0, 0.0),
+        cc_key=(10, 11, 12),
+    )
+    store._meta[key] = ParamMeta(kind="vec3", ui_min=-1.0, ui_max=1.0)  # type: ignore[attr-defined]
+    store.get_ordinal("scale", "sv2")
+
+    meta = {"p": ParamMeta(kind="vec3", ui_min=-1.0, ui_max=1.0)}
+    params = {"p": (0.0, 0.0, 0.0)}
+
+    with parameter_context(store=store, cc_snapshot={10: 0.0, 11: 0.5, 12: 1.0}):
+        resolved = resolve_params(op="scale", params=params, meta=meta, site_id="sv2")
+
+    assert resolved["p"] == pytest.approx((-1.0, 0.0, 1.0))

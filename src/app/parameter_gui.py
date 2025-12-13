@@ -7,16 +7,24 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from src.parameters.view import ParameterRow
+from src.parameters.key import ParameterKey
+from src.parameters.meta import ParamMeta
+from src.parameters.store import ParamStore
+from src.parameters.view import ParameterRow, rows_from_snapshot, update_state_from_ui
 
 WidgetFn = Callable[[ParameterRow], tuple[bool, Any]]
+COLUMN_WEIGHTS_DEFAULT = (0.20, 0.60, 0.15, 0.20)
 
 
 def _row_visible_label(row: ParameterRow) -> str:
+    """行の表示ラベル（`op#ordinal`）を返す。"""
+
     return f"{row.op}#{row.ordinal}"
 
 
 def _row_id(row: ParameterRow) -> str:
+    """ImGui の `push_id()` 用に、行の安定 ID を返す。"""
+
     return f"{row.op}#{row.ordinal}:{row.arg}"
 
 
@@ -43,6 +51,8 @@ def _int_slider_range(row: ParameterRow) -> tuple[int, int]:
 
 
 def _as_float3(value: Any) -> tuple[float, float, float]:
+    """値を長さ 3 の float タプル `(x, y, z)` に変換して返す。"""
+
     try:
         x, y, z = value  # type: ignore[misc]
     except Exception as exc:
@@ -66,11 +76,6 @@ def widget_float_slider(row: ParameterRow) -> tuple[bool, float]:
         値が変更された場合 True。
     value : float
         変更後の値。
-
-    Raises
-    ------
-    ValueError
-        ui_min >= ui_max の場合。
     """
 
     import imgui
@@ -255,18 +260,19 @@ def render_parameter_row_4cols(row: ParameterRow) -> tuple[bool, ParameterRow]:
 
         # --- Column 3: min-max（ui_min/ui_max）---
         imgui.table_set_column_index(2)
+        # min-max スライダーは float/vec3/int のみ表示可能。
         if row.kind in {"float", "vec3"}:
             min_display = -1.0 if ui_min is None else float(ui_min)
             max_display = 1.0 if ui_max is None else float(ui_max)
             imgui.set_next_item_width(-1)
             changed_range, min_display, max_display = imgui.drag_float_range2(
                 "##ui_range",
-                float(min_display),
-                float(max_display),
-                0.01,
-                0.0,
-                0.0,
-                "%.1f",
+                float(min_display),  # current_min
+                float(max_display),  # current_max
+                0.1,  # speed
+                0.0,  # min_value
+                0.0,  # max_value
+                "%.1f",  # format
                 None,
             )
             if changed_range:
@@ -278,7 +284,12 @@ def render_parameter_row_4cols(row: ParameterRow) -> tuple[bool, ParameterRow]:
             max_display_i = 10 if ui_max is None else int(ui_max)
             imgui.set_next_item_width(-1)
             changed_range, min_display_i, max_display_i = imgui.drag_int_range2(
-                "##ui_range", int(min_display_i), int(max_display_i), 1.0, 0, 0
+                "##ui_range",
+                int(min_display_i),  # current_min
+                int(max_display_i),  # current_max
+                0.1,  # speed
+                0,  # min_value
+                0,  # max_value
             )
             if changed_range:
                 changed_any = True
@@ -287,10 +298,30 @@ def render_parameter_row_4cols(row: ParameterRow) -> tuple[bool, ParameterRow]:
 
         # --- Column 4: cc override（cc_key/override）---
         imgui.table_set_column_index(3)
-        if row.kind in {"float", "vec3", "int"}:
-            cc_display = -1 if cc_key is None else int(cc_key)
+        if row.kind in {"bool", "string", "choice"}:
+            pass
+        elif row.kind == "vec3":
+            if isinstance(cc_key, tuple):
+                a, b, c = cc_key
+                v0 = -1 if a is None else int(a)
+                v1 = -1 if b is None else int(b)
+                v2 = -1 if c is None else int(c)
+            else:
+                v0, v1, v2 = -1, -1, -1
 
-            imgui.push_item_width(CC_KEY_WIDTH)
+            changed_cc, out = imgui.input_int3("##cc_key", int(v0), int(v1), int(v2))
+            if changed_cc:
+                changed_any = True
+                cc_tuple = tuple(None if v < 0 else int(v) for v in out)
+                cc_key = None if cc_tuple == (None, None, None) else cc_tuple
+            imgui.same_line(0.0, WIDTH_SPACER)
+            clicked_override, override = imgui.checkbox("##override", bool(override))
+            if clicked_override:
+                changed_any = True
+        else:
+            cc_display = -1 if not isinstance(cc_key, int) else int(cc_key)
+
+            imgui.push_item_width(CC_KEY_WIDTH * 0.88)
             changed_cc, cc_display = imgui.input_int("##cc_key", int(cc_display), 0, 0)
             imgui.pop_item_width()
 
@@ -321,20 +352,13 @@ def render_parameter_row_4cols(row: ParameterRow) -> tuple[bool, ParameterRow]:
         ordinal=row.ordinal,
     )
 
-    # ここで例外にしておくと、ui_min/ui_max の不整合を早期に検知できる。
-    if updated.kind == "float":
-        _float_slider_range(updated)
-    if updated.kind == "int":
-        _int_slider_range(updated)
-    if updated.kind == "vec3":
-        _float_slider_range(updated)
     return changed_any, updated
 
 
 def render_parameter_table(
     rows: list[ParameterRow],
     *,
-    column_weights: tuple[float, float, float, float] = (0.20, 0.8, 0.15, 0.10),
+    column_weights: tuple[float, float, float, float] = COLUMN_WEIGHTS_DEFAULT,
 ) -> tuple[bool, list[ParameterRow]]:
     """ParameterRow の列を 4 列テーブルとして描画し、更新後の rows を返す。"""
 
@@ -385,3 +409,217 @@ def render_parameter_table(
         imgui.end_table()
 
     return changed_any, updated_rows
+
+
+def _row_identity(row: ParameterRow) -> tuple[str, int, str]:
+    """store snapshot と突き合わせるための行識別子（op, ordinal, arg）を返す。"""
+
+    return row.op, int(row.ordinal), row.arg
+
+
+def _apply_updated_rows_to_store(
+    store: ParamStore,
+    snapshot: dict[ParameterKey, tuple[ParamMeta, object, int, str | None]],
+    rows_before: list[ParameterRow],
+    rows_after: list[ParameterRow],
+) -> None:
+    """rows の変更を ParamStore に反映する。
+
+    - ui_min/ui_max の変更は meta に反映する
+    - ui_value/override/cc_key の変更は `update_state_from_ui` 経由で反映する
+    """
+
+    entry_by_identity: dict[tuple[str, int, str], tuple[ParameterKey, ParamMeta]] = {}
+    for key, (meta, _state, ordinal, _label) in snapshot.items():
+        entry_by_identity[(key.op, int(ordinal), key.arg)] = (key, meta)
+
+    for before, after in zip(rows_before, rows_after, strict=True):
+        key, meta = entry_by_identity[_row_identity(before)]
+        effective_meta = meta
+
+        if after.ui_min != before.ui_min or after.ui_max != before.ui_max:
+            effective_meta = ParamMeta(
+                kind=meta.kind,
+                ui_min=after.ui_min,
+                ui_max=after.ui_max,
+                choices=meta.choices,
+            )
+            store.set_meta(key, effective_meta)
+
+        if (
+            after.ui_value != before.ui_value
+            or after.override != before.override
+            or after.cc_key != before.cc_key
+        ):
+            update_state_from_ui(
+                store,
+                key,
+                after.ui_value,
+                meta=effective_meta,
+                override=after.override,
+                cc_key=after.cc_key,
+            )
+
+
+def render_store_parameter_table(
+    store: ParamStore,
+    *,
+    column_weights: tuple[float, float, float, float] = COLUMN_WEIGHTS_DEFAULT,
+) -> bool:
+    """ParamStore の snapshot を 4 列テーブルとして描画し、変更を store に反映する。"""
+
+    snapshot = store.snapshot()
+    rows_before = rows_from_snapshot(snapshot)
+    changed, rows_after = render_parameter_table(
+        rows_before, column_weights=column_weights
+    )
+    if changed:
+        _apply_updated_rows_to_store(store, snapshot, rows_before, rows_after)
+    return changed
+
+
+def _create_imgui_pyglet_renderer(imgui_pyglet_mod: Any, gui_window: Any) -> object:
+    """pyglet 用の ImGui renderer を作成する。"""
+
+    factory = getattr(imgui_pyglet_mod, "create_renderer", None)
+    if callable(factory):
+        return factory(gui_window)
+    renderer_type = getattr(imgui_pyglet_mod, "PygletRenderer", None)
+    if renderer_type is None:
+        raise RuntimeError("imgui.integrations.pyglet renderer is unavailable")
+    return renderer_type(gui_window)
+
+
+def _sync_imgui_io_for_window(imgui_mod: Any, gui_window: Any, *, dt: float) -> None:
+    """ImGui IO をウィンドウ状態（サイズ/Retina スケール/Δt）に同期する。"""
+
+    io = imgui_mod.get_io()
+    io.delta_time = max(float(dt), 1e-4)
+
+    fb_w, fb_h = gui_window.get_framebuffer_size()
+    win_w, win_h = gui_window.width, gui_window.height
+    io.display_size = (float(win_w), float(win_h))
+    io.display_fb_scale = (
+        float(fb_w) / float(max(1, win_w)),
+        float(fb_h) / float(max(1, win_h)),
+    )
+
+
+def create_parameter_gui_window(
+    *,
+    width: int = 800,
+    height: int = 480,
+    caption: str = "Parameter GUI",
+    vsync: bool = True,
+) -> Any:
+    """Parameter GUI 用の pyglet ウィンドウを生成する。"""
+
+    import pyglet
+
+    gl_cfg = pyglet.gl.Config(double_buffer=True, sample_buffers=1, samples=4)
+    return pyglet.window.Window(
+        width=int(width),
+        height=int(height),
+        caption=str(caption),
+        resizable=False,
+        vsync=bool(vsync),
+        config=gl_cfg,
+    )
+
+
+class ParameterGUI:
+    """pyimgui で ParamStore を編集するための最小 GUI。
+
+    `draw_frame()` を呼ぶことで 1 フレーム分の UI を描画する。
+    """
+
+    def __init__(
+        self,
+        gui_window: Any,
+        *,
+        store: ParamStore,
+        title: str = "Parameters",
+        column_weights: tuple[float, float, float, float] = COLUMN_WEIGHTS_DEFAULT,
+    ) -> None:
+        """GUI の初期化（ImGui コンテキスト / renderer 作成）。"""
+
+        import imgui
+
+        try:
+            from imgui.integrations import pyglet as imgui_pyglet
+        except Exception as exc:
+            raise RuntimeError(f"imgui.integrations.pyglet を import できない: {exc}")
+
+        self._window = gui_window
+        self._store = store
+        self._title = str(title)
+        self._column_weights = column_weights
+
+        self._imgui = imgui
+        self._context = imgui.create_context()
+        imgui.style_colors_dark()
+        imgui.set_current_context(self._context)
+
+        self._renderer = _create_imgui_pyglet_renderer(imgui_pyglet, gui_window)
+        refresh_font = getattr(self._renderer, "refresh_font_texture", None)
+        if callable(refresh_font):
+            refresh_font()
+
+        import time
+
+        self._prev_time = time.monotonic()
+        self._closed = False
+
+    def draw_frame(self) -> bool:
+        """1 フレーム分の GUI を描画し、変更があれば store に反映する。"""
+
+        if self._closed:
+            return False
+
+        import time
+
+        now = time.monotonic()
+        dt = now - self._prev_time
+        self._prev_time = now
+
+        imgui = self._imgui
+        imgui.set_current_context(self._context)
+
+        self._window.switch_to()
+        self._renderer.process_inputs()
+        imgui.new_frame()
+        _sync_imgui_io_for_window(imgui, self._window, dt=dt)
+
+        imgui.set_next_window_position(0, 0)
+        imgui.set_next_window_size(self._window.width, self._window.height)
+        imgui.begin(
+            self._title,
+            flags=imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_COLLAPSE,
+        )
+        changed = render_store_parameter_table(
+            self._store,
+            column_weights=self._column_weights,
+        )
+        imgui.end()
+        imgui.render()
+
+        import pyglet
+
+        pyglet.gl.glClearColor(0.12, 0.12, 0.12, 1.0)
+        self._window.clear()
+        self._renderer.render(imgui.get_draw_data())
+        self._window.flip()
+        return changed
+
+    def close(self) -> None:
+        """GUI を終了し、コンテキストとウィンドウを破棄する。"""
+
+        if self._closed:
+            return
+        self._closed = True
+
+        shutdown = getattr(self._renderer, "shutdown", None)
+        if callable(shutdown):
+            shutdown()
+        self._imgui.destroy_context(self._context)
+        self._window.close()
