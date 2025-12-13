@@ -12,6 +12,7 @@ from src.core.geometry import Geometry
 
 # effect 実装モジュールをインポートしてレジストリに登録させる。
 from src.effects import scale as _effect_scale  # noqa: F401
+from src.effects import rotate as _effect_rotate  # noqa: F401
 from src.parameters import (
     caller_site_id,
     current_frame_params,

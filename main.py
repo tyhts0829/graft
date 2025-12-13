@@ -17,9 +17,9 @@ CANVAS_HEIGHT = 300
 
 
 def draw(t: float):
-    scl = E.scale()
-    ccl = G.circle(cx=150 + t * 5)
-    return L(scl(ccl))
+    scl = E.rotate()
+    ply = G.polygon()
+    return L(scl(ply))
 
 
 if __name__ == "__main__":

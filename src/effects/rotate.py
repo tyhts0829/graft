@@ -1,76 +1,92 @@
 """
-rotate エフェクト（回転）
-
-- 中心の選択（auto_center or pivot）に基づき、XYZ 各軸の回転角を適用。
-- 実装は `Geometry.rotate` に委譲し、新規インスタンスを返す純関数。
-
-パラメータ:
-- auto_center: True ならジオメトリの平均座標を中心に使用。False なら `pivot` を使用。
-- pivot: 回転中心（Vec3）。`auto_center=False` のときのみ有効。
-- rotation: (rx, ry, rz) [deg]（右手系）。
+どこで: `src/effects/rotate.py`。回転 effect の実体変換。
+何を: RealizedGeometry の座標配列に XYZ 回転を適用する。
+なぜ: effect チェーンの基本変換として、回転操作を提供するため。
 """
 
 from __future__ import annotations
 
+from typing import Sequence
+
 import numpy as np
 
-from common.types import Vec3
-from engine.core.geometry import Geometry
+from src.core.effect_registry import effect
+from src.core.realized_geometry import RealizedGeometry
+from src.parameters.meta import ParamMeta
 
-from .registry import effect
-
-PARAM_META = {
-    "auto_center": {"type": "bool"},
-    "pivot": {
-        "type": "vec3",
-        "min": (-300.0, -300.0, -300.0),
-        "max": (300.0, 300.0, 300.0),
-    },
-    "rotation": {
-        "type": "vec3",
-        "min": (-180.0, -180.0, -180.0),
-        "max": (180.0, 180.0, 180.0),
-    },
+rotate_meta = {
+    "auto_center": ParamMeta(kind="bool"),
+    "pivot": ParamMeta(kind="vec3", ui_min=-300.0, ui_max=300.0),
+    "rotation": ParamMeta(kind="vec3", ui_min=-180.0, ui_max=180.0),
 }
 
 
-@effect()
+@effect(meta=rotate_meta)
 def rotate(
-    g: Geometry,
+    inputs: Sequence[RealizedGeometry],
     *,
     auto_center: bool = True,
-    pivot: Vec3 = (0.0, 0.0, 0.0),
-    rotation: Vec3 = (0.0, 0.0, 0.0),
-) -> Geometry:
-    """回転（auto_center 対応）。
+    pivot: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    rotation: tuple[float, float, float] = (0.0, 0.0, 0.0),
+) -> RealizedGeometry:
+    """回転（auto_center / pivot 対応、degree 入力）。
 
     Parameters
     ----------
-    g : Geometry
-        入力ジオメトリ。
+    inputs : Sequence[RealizedGeometry]
+        回転対象の実体ジオメトリ列。通常は 1 要素。
     auto_center : bool, default True
-        True なら平均座標を中心に使用。False なら `pivot` を使用。
+        True なら頂点の平均座標を中心に使用。False なら `pivot` を使用。
     pivot : tuple[float, float, float], default (0.0,0.0,0.0)
         回転の中心（`auto_center=False` のとき有効）。
     rotation : tuple[float, float, float], default (0.0, 0.0, 0.0)
         各軸の回転角 [deg]（rx, ry, rz）。
+
+    Returns
+    -------
+    RealizedGeometry
+        回転後の実体ジオメトリ。
     """
-    # 角度を degree で受け取り radian に変換
+    if not inputs:
+        coords = np.zeros((0, 3), dtype=np.float32)
+        offsets = np.zeros((1,), dtype=np.int32)
+        return RealizedGeometry(coords=coords, offsets=offsets)
+
+    base = inputs[0]
+    if base.coords.shape[0] == 0:
+        return base
+
     rx_deg, ry_deg, rz_deg = float(rotation[0]), float(rotation[1]), float(rotation[2])
-    rx, ry, rz = np.deg2rad([rx_deg, ry_deg, rz_deg])
+    rx, ry, rz = np.deg2rad([rx_deg, ry_deg, rz_deg]).astype(np.float64)
 
-    # 中心を決定（auto_center 優先）
     if auto_center:
-        coords, offsets = g.as_arrays(copy=False)
-        if coords.shape[0] == 0:
-            # 空ジオメトリは no-op（Geometry.rotate と整合）
-            return Geometry(coords.copy(), offsets.copy())
-        center = tuple(coords.mean(axis=0).astype(np.float32))  # type: ignore[assignment]
+        center = base.coords.astype(np.float64, copy=False).mean(axis=0)
     else:
-        cx, cy, cz = pivot
-        center = (cx, cy, cz)
+        center = np.array(
+            [float(pivot[0]), float(pivot[1]), float(pivot[2])],
+            dtype=np.float64,
+        )
 
-    return g.rotate(x=rx, y=ry, z=rz, center=center)
+    cx, sx = np.cos(rx), np.sin(rx)
+    cy, sy = np.cos(ry), np.sin(ry)
+    cz, sz = np.cos(rz), np.sin(rz)
 
+    rx_mat = np.array(
+        [[1.0, 0.0, 0.0], [0.0, cx, -sx], [0.0, sx, cx]],
+        dtype=np.float64,
+    )
+    ry_mat = np.array(
+        [[cy, 0.0, sy], [0.0, 1.0, 0.0], [-sy, 0.0, cy]],
+        dtype=np.float64,
+    )
+    rz_mat = np.array(
+        [[cz, -sz, 0.0], [sz, cz, 0.0], [0.0, 0.0, 1.0]],
+        dtype=np.float64,
+    )
+    # 適用順序: x → y → z（row-vector のため転置で適用）
+    rot = rz_mat @ ry_mat @ rx_mat
 
-rotate.__param_meta__ = PARAM_META
+    shifted = base.coords.astype(np.float64, copy=False) - center
+    rotated = shifted @ rot.T + center
+    coords = rotated.astype(np.float32, copy=False)
+    return RealizedGeometry(coords=coords, offsets=base.offsets)
