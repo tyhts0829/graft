@@ -12,7 +12,8 @@
 ## 方針
 
 - `src/api/run.py` の `run()` が生成する `ParamStore` を GUI と描画で共有する。
-- GUI は別ウィンドウ（pyglet window）として生成し、手動ループ内で `ParameterGUI.draw_frame()` を毎フレーム呼ぶ。
+- GUI は別ウィンドウ（pyglet window）として生成し、`MultiWindowLoop` で両ウィンドウを同一ループで回す。
+  - `draw_frame()` は描画のみ（`flip()` はループ側で一元化）に寄せ、画面更新の競合を避ける。
 - 公開 API の互換ラッパは増やさず、必要な最小の引数追加のみで済ませる。
 
 ## 方針（確定）
@@ -26,16 +27,13 @@
 - [x] `src/api/run.py` に `parameter_gui: bool`（既定 True）を追加する
 - [x] `src/api/run.py` で `ParamStore()` を GUI と描画で共有する
 - [x] `parameter_gui=True` のときだけ GUI を初期化する
-  - `from src.app.parameter_gui import ParameterGUI, create_parameter_gui_window`
-  - `gui_window = create_parameter_gui_window(...)`
-  - `param_gui = ParameterGUI(gui_window, store=param_store, ...)`
-- [x] `run()` 内ループに GUI 1 フレーム描画を追加する
-  - `param_gui.draw_frame()` を呼ぶ
-  - 例外時は finally で teardown する
-- [x] close/teardown を一元化する
-  - 描画 window / GUI window の `on_close` を同じ終了経路（フラグでループ停止）に束ねる
-  - `renderer.release()` / `window.close()` / `param_gui.close()` / `gui_window.close()` の呼び順を整理
-  - 二重 close を許容する簡易ガード（フラグ）を入れる
+  - `from src.app.runtime.parameter_gui_system import ParameterGUIWindowSystem`
+  - `gui = ParameterGUIWindowSystem(store=param_store)`
+- [x] `MultiWindowLoop` へ GUI を統合する
+  - `tasks = [WindowTask(draw_window.window, draw_window.draw_frame), WindowTask(gui.window, gui.draw_frame)]`
+  - `loop = MultiWindowLoop(tasks, fps=60.0)`
+- [x] close/teardown を一元化する（`run()` の `finally`）
+  - `for system in reversed(systems): system.close()`
 - [x] `main.py` は更新しない（`parameter_gui` 既定 ON のため）
 - [ ] 動作確認（手動）
   - `python main.py` を実行し、GUI で `circle.r` を動かして半径が変わる
