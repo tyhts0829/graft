@@ -62,29 +62,53 @@ class PrimitiveNamespace:
                 生成された Geometry ノード。
             """
 
+            # site_id は「呼び出し箇所」を識別するための安定 ID。
+            # 同じ行（同じ呼び出し箇所）からの呼び出しであれば、フレームが変わっても同一になる。
             site_id = caller_site_id(skip=1)
 
+            # ParamStore が利用できるコンテキスト（parameter_context）内なら、
+            # G(name="...") のラベル情報を (op, site_id) に紐づけて保存する。
+            # GUI 側でヘッダ表示に利用する想定。
             store = current_param_store()
             if self._pending_label is not None:
                 if store is None:
                     raise RuntimeError("ParamStore が利用できないコンテキストで name 指定は使えません")
                 store.set_label(name, site_id, self._pending_label)
 
-            # meta を取得（未登録は空）
+            # meta: GUI 表示対象や UI レンジなどの情報（組み込み primitive は meta ありを前提）。
+            # defaults: meta に含まれる引数について、関数シグネチャから抽出した安全なデフォルト値。
+            # これにより、G.circle() のように kwargs を省略しても ParamStore にキーが観測され、
+            # GUI が空になりにくい。
             meta = primitive_registry.get_meta(name)
             defaults = primitive_registry.get_defaults(name)
+
+            # explicit_args: ユーザーがこの呼び出しで「明示的に渡した」kwargs のキー集合。
+            # 初回観測時の override 初期値を
+            #   - 明示引数: override=False（コードの base を優先）
+            #   - 省略引数: override=True（GUI の ui_value を優先）
+            # とするポリシーに利用する。
+            explicit_args = set(params.keys())
+
+            # base_params は「デフォルト補完 → ユーザー指定で上書き」の順で作る。
+            # 省略した引数は defaults が入り、明示した引数は params が勝つ。
             base_params = dict(defaults)
             base_params.update(params)
-            # フレームコンテキストがあれば解決処理を通す
+
+            # parameter_context 内（=現在フレームを観測している）なら、
+            # base/GUI/CC を解決して effective 値を確定しつつ、FrameParamsBuffer に記録する。
             if current_frame_params() is not None:
                 resolved = resolve_params(
                     op=name,
                     params=base_params,
                     meta=meta,
                     site_id=site_id,
+                    explicit_args=explicit_args,
                 )
             else:
+                # parameter_context 外では ParamStore を使った解決を行わない（単純に base を使う）。
                 resolved = base_params
+            # resolved は Geometry.create に渡され、正規化・署名化される。
+            # primitive は inputs を持たないため op と params のみでノードが確定する。
             return Geometry.create(op=name, params=resolved)
 
         return factory

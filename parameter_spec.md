@@ -102,7 +102,7 @@
 • ランナーによるマージ（規範）
 • draw 終了後、ランナーは DiscoveryBuffer をメインスレッドで master ParamStore にマージする。
 • 新規 ParameterKey を見つけた場合、ParamState を生成して既定値を設定する：
-• override=False
+• override=（明示引数なら False / 省略引数なら True）
 • ui_value=base_value（型に従い正規化）
 • ui_min/ui_max=meta 既定（無ければフォールバックで生成）
 • cc=None
@@ -290,7 +290,7 @@
 • ランナーによるマージ（規範）
 • draw 終了後、ランナーは DiscoveryBuffer をメインスレッドで master ParamStore にマージする。
 • 新規 ParameterKey を見つけた場合、ParamState を生成して既定値を設定する：
-• override=False
+• override=（明示引数なら False / 省略引数なら True）
 • ui_value=base_value（型に従い正規化）
 • ui_min/ui_max=meta 既定（無ければフォールバックで生成）
 • cc=None

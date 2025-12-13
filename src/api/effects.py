@@ -51,21 +51,41 @@ class EffectBuilder:
         Geometry
             すべての effect を適用した Geometry。
         """
+        # effect チェーンは「入力 Geometry に対して、steps を順番に wrap していく」だけの処理。
+        # ここでは実体変換は行わず、あくまで Geometry DAG（レシピ）を構築する。
         result = geometry
         for op, params, site_id in self.steps:
+            # site_id は「その effect ステップが宣言された呼び出し箇所」。
+            # 例: E.scale(...).rotate(...)(g) の scale と rotate を別の GUI 行として扱うため、
+            # apply（__call__）時点ではなく「ステップ追加時点」で固定された site_id を使う。
             meta = effect_registry.get_meta(op)
             defaults = effect_registry.get_defaults(op)
+
+            # explicit_args は「ユーザーがこのステップに明示的に渡した kwargs」。
+            # defaults で補完された引数は explicit_args に含まれない。
+            explicit_args = set(params.keys())
+
+            # base_params は「デフォルト補完 → ユーザー指定で上書き」。
+            # 省略した引数も観測され、GUI 行が空になりにくい。
             base_params = dict(defaults)
             base_params.update(params)
+
+            # parameter_context 内なら、base/GUI/CC を解決して effective を確定し、
+            # FrameParamsBuffer に観測レコード（explicit など）を積む。
             if current_frame_params() is not None:
                 resolved = resolve_params(
                     op=op,
                     params=base_params,
                     meta=meta,
                     site_id=site_id,
+                    explicit_args=explicit_args,
                 )
             else:
+                # parameter_context 外では ParamStore を参照せず、base をそのまま使う。
                 resolved = base_params
+
+            # E(name="...") で付与されたラベルは、各ステップの (op, site_id) に保存する。
+            # GUI 側でヘッダ表示などに使う想定。
             if self.label_name is not None:
                 store = current_param_store()
                 if store is None:
@@ -73,6 +93,9 @@ class EffectBuilder:
                         "ParamStore が利用できないコンテキストで name 指定は使えません"
                     )
                 store.set_label(op, site_id, self.label_name)
+
+            # 直前までの result を inputs として 1 段 effect ノードを積む。
+            # これを steps の数だけ繰り返すことでチェーン全体の DAG になる。
             result = Geometry.create(op=op, inputs=(result,), params=resolved)
         return result
 

@@ -20,6 +20,7 @@ class FrameParamRecord:
     meta: ParamMeta
     effective: Any | None = None
     source: str | None = None  # "base" | "gui" | "cc"
+    explicit: bool = True
 
 
 class FrameParamsBuffer:
@@ -36,6 +37,7 @@ class FrameParamsBuffer:
         meta: ParamMeta,
         effective: Any | None = None,
         source: str | None = None,
+        explicit: bool = True,
     ) -> None:
         self._records.append(
             FrameParamRecord(
@@ -44,6 +46,7 @@ class FrameParamsBuffer:
                 meta=meta,
                 effective=effective,
                 source=source,
+                explicit=bool(explicit),
             )
         )
 

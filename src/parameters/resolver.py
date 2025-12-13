@@ -46,8 +46,19 @@ def _quantize(value: Any, meta: ParamMeta) -> Any:
 def _choose_value(
     base_value: Any, state: ParamState, meta: ParamMeta
 ) -> tuple[Any, str]:
+    """base/GUI/CC から effective 値を選び、(値, source) を返す。
+
+    Notes
+    -----
+    優先順位は概ね CC > GUI > base（ただし kind=bool は常に GUI 値）。
+    ここでは「どの値を採用するか」だけを決め、量子化は `_quantize()` が担う。
+    """
+
+    # cc_snapshot は parameter_context で固定された「今フレームの CC 値」。
+    # 無い場合（None）や state.cc_key が未設定の場合は CC 経路をスキップする。
     cc_snapshot = current_cc_snapshot()
     if cc_snapshot is not None and state.cc_key is not None:
+        # --- scalar CC（cc_key が int の場合）---
         if isinstance(state.cc_key, int) and state.cc_key in cc_snapshot:
             v = float(cc_snapshot[state.cc_key])
             if meta.kind in {"float", "int"}:
@@ -66,6 +77,9 @@ def _choose_value(
                 idx = min(len(choices) - 1, int(v * len(choices)))
                 return str(choices[int(idx)]), "cc"
 
+        # --- vec3 CC（cc_key が (a,b,c) の場合）---
+        # 各成分ごとに「CC があれば CC」「なければ override に応じて GUI/base」を選ぶ。
+        # ※ vec3 は成分ごとに CC を割り当てたい要望が多いので特別扱いしている。
         if meta.kind == "vec3" and isinstance(state.cc_key, tuple):
             lo = float(meta.ui_min) if meta.ui_min is not None else 0.0
             hi = float(meta.ui_max) if meta.ui_max is not None else 1.0
@@ -91,18 +105,23 @@ def _choose_value(
                     else:
                         out.append(b)
 
+                # vec3 は「1 成分でも CC が使われたら source=cc」とする。
+                # そうでなければ override の有無で gui/base に分岐する。
                 if used_cc:
                     return tuple(out), "cc"
                 if state.override:
                     return tuple(out), "gui"
                 return tuple(out), "base"
 
+    # --- CC を使わない通常経路 ---
     if meta.kind == "bool":
         # bool は override トグルを持たない。ui_value を常に採用する。
         # ui_value は初期状態では base_value と一致するため、実質的に base を踏襲する。
         return bool(state.ui_value), "gui"
     if state.override:
+        # override=True のときだけ GUI 値を採用する（bool 以外）。
         return state.ui_value, "gui"
+    # override=False のときはコードが与えた base を採用する。
     return base_value, "base"
 
 
@@ -112,37 +131,61 @@ def resolve_params(
     params: dict[str, Any],
     meta: dict[str, ParamMeta],
     site_id: str,
+    explicit_args: set[str] | None = None,
 ) -> dict[str, Any]:
-    """引数辞書を解決し、Geometry.create 用の値を返す。"""
+    """引数辞書を解決し、Geometry.create 用の値を返す。
+
+    Notes
+    -----
+    explicit_args は「ユーザーが明示的に渡した kwargs のキー集合」。
+    指定時は FrameParamRecord.explicit に記録され、初期 override ポリシーに使われる。
+    """
 
     param_snapshot = current_param_snapshot()
     frame_params: FrameParamsBuffer | None = current_frame_params()
     resolved: dict[str, Any] = {}
 
     for arg, base_value in params.items():
+        # explicit_args は API 層で「ユーザーが明示的に渡した kwargs」のキー集合として渡される。
+        # ここでの判定結果は record に記録され、初期 override ポリシー（store 側）に使われる。
+        # ※ effective の解決結果そのものは explicit/implicit では変えない（state.override に従う）。
+        is_explicit = True if explicit_args is None else arg in explicit_args
+
+        # ParameterKey は GUI 行を一意に識別するキー（op + 呼び出し箇所 + 引数名）。
         key = ParameterKey(op=op, site_id=site_id, arg=arg)
+
+        # param_snapshot は parameter_context 開始時点の store.snapshot() で固定されている。
+        # そのため 1 draw 呼び出しの途中で GUI が動いても、このフレームの解決は決定的になる。
         snapshot_entry = param_snapshot.get(key)  # type: ignore[arg-type]
         if snapshot_entry is not None:
+            # 既に GUI 側で状態が存在する場合は、それを正として meta/state を採用する。
             snapshot_meta, state, _ordinal, _label = snapshot_entry
             arg_meta = snapshot_meta
         else:
+            # 初出のキーは
+            # 1) 登録側 meta があればそれを採用
+            # 2) 無ければ base_value から最低限の meta を推定
             arg_meta = meta.get(arg) or infer_meta_from_value(base_value)
-            state = ParamState(
-                override=base_value,
-                ui_value=base_value,
-                cc_key=None,
-            )
+            # この場では仮の state（ui_value=base）を作るだけ。
+            # override の初期値は store 側（フレーム境界のマージ）で explicit/implicit を見て決める。
+            state = ParamState(ui_value=base_value)
+
+        # base/GUI/CC を統合して effective を決める（source は "base"/"gui"/"cc"）。
         effective, source = _choose_value(base_value, state, arg_meta)
+        # 量子化は「署名に入る値」と「実際に使う値」を一致させるため、ここで一元的に行う。
         effective = _quantize(effective, arg_meta)
         resolved[arg] = effective
 
         if frame_params is not None:
+            # frame_params は「このフレームで観測した引数」を蓄積し、
+            # parameter_context の finally で ParamStore にマージされる。
             frame_params.record(
                 key=key,
                 base=base_value,
                 meta=arg_meta,
                 effective=effective,
                 source=source,
+                explicit=is_explicit,
             )
 
     return resolved

@@ -35,28 +35,28 @@
 
 ## チェックリスト
 
-- [ ] 影響範囲の棚卸し
-  - [ ] `ParamState(` / `override=` / `FrameParamRecord(` の利用箇所を検索し、どこが初期化ポリシーに関与するか分類する
-- [ ] record に「明示/省略」情報を載せる
-  - [ ] `src/parameters/frame_params.py` の `FrameParamRecord` に `explicit: bool` を追加
-  - [ ] `src/parameters/frame_params.py` の `FrameParamsBuffer.record()` に `explicit` を追加
-- [ ] `resolve_params` が明示/省略を判定して記録する
-  - [ ] `src/parameters/resolver.py` の `resolve_params(..., explicit_args=...)` を追加（省略時は「全て明示」とみなして後方互換の挙動に寄せる）
-  - [ ] API 層（`src/api/primitives.py` / `src/api/effects.py`）から `explicit_args=set(params.keys())` を渡す
-- [ ] ParamStore 側で初期 override を 1 箇所で決める
-  - [ ] `src/parameters/store.py` の `ensure_state` に「初期 override（任意）」を受け取れる形を追加（例: `initial_override: bool | None`）
-  - [ ] `src/parameters/store.py` の `store_frame_params` で「新規 state のときだけ」`explicit` に応じて `initial_override` を指定する
-  - [ ] `src/parameters/store.py` の `ensure_state` / `src/parameters/resolver.py` のフォールバックで `override=False` を直書きしない（ポリシーへ集約）
-- [ ] JSON（任意）
-  - [ ] `from_json` は保存値を優先（欠落時 fallback は、固定値ではなく同じポリシーに寄せるか、破壊的変更として割り切るか決める）
-- [ ] テスト（最小）
-  - [ ] `pytest -q tests/parameters` が通ることを確認する
-  - [ ] 新規テスト `tests/parameters/test_default_override_policy.py`（新規）
-    - [ ] `G.circle()`（省略）で `r/cx/cy/segments` の override が True になる
-    - [ ] `G.circle(cx=1.0)`（明示）で `cx` だけ override が False、他は True になる
-    - [ ] 既存 state がある場合は勝手に反転しない（例: 一度 GUI で切替後、次フレームも維持）
-- [ ] ドキュメント
-  - [ ] 近接ドキュメントに「明示/省略で override 初期値が変わる」ことを短く明記する（冗長なら省略）
+- [x] 影響範囲の棚卸し
+  - [x] `ParamState(` / `override=` / `FrameParamRecord(` の利用箇所を検索し、どこが初期化ポリシーに関与するか分類する
+- [x] record に「明示/省略」情報を載せる
+  - [x] `src/parameters/frame_params.py` の `FrameParamRecord` に `explicit: bool` を追加
+  - [x] `src/parameters/frame_params.py` の `FrameParamsBuffer.record()` に `explicit` を追加
+- [x] `resolve_params` が明示/省略を判定して記録する
+  - [x] `src/parameters/resolver.py` の `resolve_params(..., explicit_args=...)` を追加（省略時は「全て明示」とみなして後方互換の挙動に寄せる）
+  - [x] API 層（`src/api/primitives.py` / `src/api/effects.py`）から `explicit_args=set(params.keys())` を渡す
+- [x] ParamStore 側で初期 override を 1 箇所で決める
+  - [x] `src/parameters/store.py` の `ensure_state` に「初期 override（任意）」を受け取れる形を追加（例: `initial_override: bool | None`）
+  - [x] `src/parameters/store.py` の `store_frame_params` で「新規 state のときだけ」`explicit` に応じて `initial_override` を指定する
+  - [x] `src/parameters/store.py` の `ensure_state` / `src/parameters/resolver.py` のフォールバックで `override=False` を直書きしない（ポリシーへ集約）
+- [x] JSON（任意）
+  - [x] `from_json` は保存値を優先し、`override` 欠落時は `ParamState` の既定に従う（hardcode しない）
+- [x] テスト（最小）
+  - [x] `pytest -q tests/parameters` が通ることを確認する
+  - [x] 新規テスト `tests/parameters/test_default_override_policy.py`（新規）
+    - [x] `G.circle()`（省略）で `r/cx/cy/segments` の override が True になる
+    - [x] `G.circle(cx=1.0)`（明示）で `cx` だけ override が False、他は True になる
+    - [x] 既存 state がある場合は勝手に反転しない（例: 一度 GUI で切替後、次フレームも維持）
+- [x] ドキュメント
+  - [x] 近接ドキュメントに「明示/省略で override 初期値が変わる」ことを短く明記する（冗長なら省略）
 
 ## 完了定義
 

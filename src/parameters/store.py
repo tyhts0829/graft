@@ -37,15 +37,19 @@ class ParamStore:
         """ParamMeta を上書き保存する。"""
         self._meta[key] = meta
 
-    def ensure_state(self, key: ParameterKey, *, base_value: Any) -> ParamState:
+    def ensure_state(
+        self,
+        key: ParameterKey,
+        *,
+        base_value: Any,
+        initial_override: bool | None = None,
+    ) -> ParamState:
         """ParamState を確保し、無ければ base_value で初期化して返す。"""
         state = self._states.get(key)
         if state is None:
-            state = ParamState(
-                override=base_value,
-                ui_value=base_value,
-                cc_key=None,
-            )
+            state = ParamState(ui_value=base_value)
+            if initial_override is not None:
+                state.override = bool(initial_override)
             self._states[key] = state
             self._assign_ordinal(key.op, key.site_id)
         return state
@@ -93,6 +97,7 @@ class ParamStore:
             self.ensure_state(
                 rec.key,
                 base_value=rec.base,
+                initial_override=(not bool(rec.explicit)),
             )
             # meta は初出時に確定し、以後は保持する（GUI 側で編集できるようにする）
             if rec.key not in self._meta or self._meta[rec.key].kind != rec.meta.kind:
@@ -148,11 +153,9 @@ class ParamStore:
                 cc_key = None
             else:
                 cc_key = int(raw_cc)
-            state = ParamState(
-                override=item.get("override", True),
-                ui_value=item.get("ui_value"),
-                cc_key=cc_key,
-            )
+            state = ParamState(ui_value=item.get("ui_value"), cc_key=cc_key)
+            if "override" in item:
+                state.override = bool(item["override"])
             store._states[key] = state
 
         for item in obj.get("meta", []):
