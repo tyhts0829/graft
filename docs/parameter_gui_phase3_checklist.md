@@ -36,7 +36,7 @@
 	    - 未知 kind: 例外を投げて検知させる。
 	    - ユーザー定義 primitive/effect: meta 無しなら GUI 非表示、meta 不正は例外。
   - 注意: すべて (changed, value) 系で返る前提でディスパッチの共通 I/F を統一する（checkbox だけ clicked→changed に正規化）。
-- [ ] 行の追加/更新/非表示管理
+- [x] 行の追加/更新/非表示管理
   - 対象: `parameter_gui.py` 内のロジック。
   - 内容: `rows_from_snapshot` の出力を使い、既存行は更新、新規は追加。widget_id 命名規約を統一（未観測の扱いは今回なし）。
 - [ ] ヘッダ行・ラベリング
@@ -56,10 +56,10 @@
     - ラベル情報は ParamStore に永続化。
   - 追加タスク（未実装）:
     - snapshot の label を GUI で取り出し、重複時は連番付与する処理を実装。
-- [ ] コールバック配線
+- [x] コールバック配線
   - 対象: `parameter_gui.py`。
   - 内容: ウィジェット変更時に `update_state_from_ui` を呼び、状態を ParamStore に反映。エラー時はログ/色でフィードバック。override トグル・cc 入力もここで処理。
-- [ ] イベントループ統合
+- [x] イベントループ統合
   - 対象: `parameter_gui.py`。
   - 内容: `tick()` 的な関数で `renderer.process_inputs()` → `imgui.new_frame()` → テーブル描画 → `imgui.render()` → `renderer.render(imgui.get_draw_data())` を実行。pyglet 側の `on_draw` / `on_close` 連携を明示し、閉じるボタンで renderer/コンテキストを teardown。pyglet 側から呼び出せる I/F を定義。
 - [x] マルチウィンドウ・Retina 対応の実装メモ（今回のスモークで判明した罠）
@@ -68,7 +68,7 @@
   - 位置決めは ImGui の座標系（上記で上書きした display_size 基準）で行う。ウィンドウ実寸を使うと Retina で 0.5,0.5 中央指定時に右上へずれる。
   - ダブルバッファ + vsync を有効にし、毎フレーム `window.dispatch_events()` → clear → draw → flip の順に処理すると点滅が消える。
   - pyimgui 2.0 が内部で `distutils.LooseVersion` を使うため DeprecationWarning が出る。根本対応は `packaging.version` へ置換（フォーク/パッチ）か、テスト側で warning をフィルタする。
-- [ ] クリーンアップ
+- [x] クリーンアップ
   - 対象: `parameter_gui.py`。
   - 内容: shutdown 時に `renderer.shutdown()` → `imgui.destroy_context(imgui.get_current_context())` を呼ぶ。複数回起動を考慮して二重初期化を防ぐ簡易ガードを入れる。
 - [ ] 最小スモークテスト
