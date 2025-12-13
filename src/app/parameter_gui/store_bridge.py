@@ -6,11 +6,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from src.core.primitive_registry import primitive_registry
 from src.parameters.key import ParameterKey
 from src.parameters.meta import ParamMeta
 from src.parameters.store import ParamStore
 from src.parameters.view import ParameterRow, rows_from_snapshot, update_state_from_ui
 
+from .labeling import primitive_header_display_names_from_snapshot
 from .table import COLUMN_WEIGHTS_DEFAULT, render_parameter_table
 
 
@@ -72,9 +74,15 @@ def render_store_parameter_table(
     """ParamStore の snapshot を 4 列テーブルとして描画し、変更を store に反映する。"""
 
     snapshot = store.snapshot()
+    primitive_header_by_group = primitive_header_display_names_from_snapshot(
+        snapshot,
+        is_primitive_op=lambda op: op in primitive_registry,
+    )
     rows_before = rows_from_snapshot(snapshot)
     changed, rows_after = render_parameter_table(
-        rows_before, column_weights=column_weights
+        rows_before,
+        column_weights=column_weights,
+        primitive_header_by_group=primitive_header_by_group,
     )
     if changed:
         _apply_updated_rows_to_store(store, snapshot, rows_before, rows_after)

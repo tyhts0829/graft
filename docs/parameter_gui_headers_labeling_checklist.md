@@ -24,10 +24,9 @@
 - ラベル永続化（出来ている）
   - `G(name=...)` / `E(name=...)` が `ParamStore.set_label(op, site_id, name)` に保存する。
   - `ParamStore.snapshot()` は各 ParameterKey に対応する `label` を返す。
-- GUI のラベリング（出来ていない）
-  - ヘッダ行（Primitive / Effect チェーン）の概念がまだない。
-  - 1 列目は `op#ordinal` 固定で、`arg` が見えない（`polygon#1 n_sides` になっていない）。
-  - snapshot の `label`（= `G/E(name=...)`）を GUI 表示に使っていない。
+- GUI のラベリング（部分的に出来ている）
+  - Primitive は出来ている（ヘッダ行 + `polygon#1 n_sides` 形式 + snapshot.label 反映 + 表示専用の衝突解消）。
+  - Effect チェーンは出来ていない（チェーン境界/順序が復元できず、チェーン名ヘッダやチェーン内採番が未実装）。
 - Style / Layer セクション（出来ていない）
   - background/global thickness/global line_color は ParamStore とは別系統（run/settings/defaults）。
   - Layer の一覧（L(name)）は ParamStore に観測されていない。
@@ -41,17 +40,17 @@
 
 ### Phase 1（最小・素直）: Primitive のヘッダ行 + 行ラベルを `polygon#1 n_sides` 形式へ
 
-- [ ] Primitive グルーピング単位を確定する（`(op, site_id)` → `op#ordinal`）
-- [ ] テーブル描画側で「ヘッダ行」を挿入できるようにする
-  - [ ] `rows_from_snapshot()` は “パラメータ行だけ” を返し、ヘッダ行の挿入は GUI 層でやる（責務を分離）
-  - [ ] (op, ordinal) が変わったタイミングで 1 行だけヘッダ行を描画する
-- [ ] ヘッダ表示名を snapshot の `label` から解決する
-  - [ ] `G(name=...)` がある場合はそれを使う
-  - [ ] 無い場合のフォールバックを決める（例: `polygon#1`）；ない場合は primitive 名で。
-  - [ ] 同名衝突は表示専用に `name#1/#2` を付与（永続化ラベルは変更しない）
-- [ ] パラメータ行の 1 列目を `"{op}#{ordinal} {arg}"` に変更する（例: `polygon#1 n_sides`）
-- [ ] テスト（最小）
-  - [ ] 「ヘッダ名の衝突解消」と「行ラベル整形」を純粋関数に切り出してユニットテストする
+- [x] Primitive グルーピング単位を確定する（`(op, site_id)` → `op#ordinal`）
+- [x] テーブル描画側で「ヘッダ行」を挿入できるようにする
+  - [x] `rows_from_snapshot()` は “パラメータ行だけ” を返し、ヘッダ行の挿入は GUI 層でやる（責務を分離）
+  - [x] (op, ordinal) が変わったタイミングで 1 行だけヘッダ行を描画する
+- [x] ヘッダ表示名を snapshot の `label` から解決する
+  - [x] `G(name=...)` がある場合はそれを使う
+  - [x] 無い場合のフォールバックを決める（例: `polygon#1`）；ない場合は primitive 名で。
+  - [x] 同名衝突は表示専用に `name#1/#2` を付与（永続化ラベルは変更しない）
+- [x] パラメータ行の 1 列目を `"{op}#{ordinal} {arg}"` に変更する（例: `polygon#1 n_sides`）
+- [x] テスト（最小）
+  - [x] 「ヘッダ名の衝突解消」と「行ラベル整形」を純粋関数に切り出してユニットテストする
 
 完了条件:
 

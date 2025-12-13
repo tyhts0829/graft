@@ -4,17 +4,20 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from src.parameters.view import ParameterRow
 
+from .labeling import format_param_row_label
 from .widgets import render_value_widget
 
 COLUMN_WEIGHTS_DEFAULT = (0.20, 0.60, 0.15, 0.20)
 
 
 def _row_visible_label(row: ParameterRow) -> str:
-    """行の表示ラベル（`op#ordinal`）を返す。"""
+    """行の表示ラベル（`op#ordinal arg`）を返す。"""
 
-    return f"{row.op}#{row.ordinal}"
+    return format_param_row_label(row.op, int(row.ordinal), row.arg)
 
 
 def _row_id(row: ParameterRow) -> str:
@@ -182,11 +185,13 @@ def render_parameter_table(
     rows: list[ParameterRow],
     *,
     column_weights: tuple[float, float, float, float] = COLUMN_WEIGHTS_DEFAULT,
+    primitive_header_by_group: Mapping[tuple[str, int], str] | None = None,
 ) -> tuple[bool, list[ParameterRow]]:
     """ParameterRow の列を 4 列テーブルとして描画し、更新後の rows を返す。"""
 
     import imgui  # type: ignore[import-untyped]
 
+    # 列幅は stretch 比率として使う（負/ゼロは imgui 的にも意味が無いのでエラーにする）。
     label_weight, control_weight, range_weight, meta_weight = column_weights
     if (
         label_weight <= 0.0
@@ -196,15 +201,23 @@ def render_parameter_table(
     ):
         raise ValueError(f"column_weights must be > 0: {column_weights}")
 
+    # このテーブル（rows 全体）で変更があったかの集計。
     changed_any = False
+    # 返り値として「更新後の row 群」を返すため、描画しながら新しい row を貯める。
+    # 注: グループを折りたたんで行を描画しない場合でも、`rows_before` と 1:1 で揃える必要がある。
+    #     （store_bridge が `zip(rows_before, rows_after, strict=True)` で差分適用するため）
     updated_rows: list[ParameterRow] = []
 
+    # `begin_table` は pyimgui のバージョン/バックエンドで返り値が揺れるため、
+    # `.opened` 属性があればそれを使い、無ければ返り値自体を bool として扱う。
     table = imgui.begin_table("##parameters", 4, imgui.TABLE_SIZING_STRETCH_PROP)
     opened = getattr(table, "opened", table)
     if not opened:
         return False, rows
 
     try:
+        # 4 列: label / control / min-max / cc
+        # それぞれ「残り幅に対する比率」で伸縮させる。
         imgui.table_setup_column(
             "label", imgui.TABLE_COLUMN_WIDTH_STRETCH, float(label_weight)
         )
@@ -221,14 +234,71 @@ def render_parameter_table(
             imgui.TABLE_COLUMN_WIDTH_STRETCH,
             float(meta_weight),
         )
+        # カラム名（label/control/min-max/cc）をヘッダ行として描画する。
         imgui.table_headers_row()
+        # 次の行へ進める（ヘッダの直後にボディを描くための 1 行目の準備）。
+        # pyimgui の API は `table_next_row(row_flags, min_row_height)` なので `(0, 1)` を渡している。
         imgui.table_next_row(0, 1)
 
+        # Primitive の “グループ” は (op, ordinal) を単位にする。
+        # - op: primitive 名（例: polygon）
+        # - ordinal: 同じ op の別呼び出し箇所を区別する GUI 上の連番（例: polygon#1）
+        # rows は view 層で (op, ordinal, arg) 順にソート済みなので、同じ group は連続する前提。
+        prev_group: tuple[str, int] | None = None
+        # 現在グループが open（展開）されているか。
+        # グループが閉じている間は、その配下のパラメータ行を描画しない。
+        group_open = True
         for row in rows:
+            # 現在行が属するグループキー（Primitive 1 個ぶん）。
+            group = (row.op, int(row.ordinal))
+            if group != prev_group:
+                # グループが切り替わったタイミングで “ヘッダ行” を 1 行だけ描画する。
+                #
+                # `primitive_header_by_group` は store_bridge 側で snapshot から生成され、
+                # - G(name=...) があればその name
+                # - 無ければ primitive 名（将来的に `polygon#1` などにしてもよい）
+                # を (op, ordinal) → 表示名として持つ。
+                header = (
+                    None
+                    if primitive_header_by_group is None
+                    else primitive_header_by_group.get(group)
+                )
+                if header:
+                    # ヘッダ行はテーブルの 1 行として追加し、1 列目に collapsing_header を置く。
+                    # 他の列は何も描かない（空セルのまま）。
+                    imgui.table_next_row()
+                    imgui.table_set_column_index(0)
+                    # 折りたたみ状態の永続化と ID 衝突回避のため、グループキーで push_id する。
+                    # さらに `##...` で visible text と internal id を分離する（同名ヘッダ対策）。
+                    imgui.push_id(f"{group[0]}#{group[1]}")
+                    try:
+                        # collapsing_header は (expanded, visible) を返す。
+                        # visible=None なので close ボタン無しで常に表示する。
+                        group_open, _visible = imgui.collapsing_header(
+                            f"{header}##group_header",
+                            None,
+                            flags=imgui.TREE_NODE_DEFAULT_OPEN,
+                        )
+                    finally:
+                        imgui.pop_id()
+                else:
+                    # Primitive 以外（例: effect の op）や、ヘッダ名が無い場合は常に展開扱い。
+                    group_open = True
+                prev_group = group
+
+            if not group_open:
+                # 折りたたみ中は描画しないが、rows_after の長さを揃えるため “変更なし” として返す。
+                updated_rows.append(row)
+                continue
+
+            # 展開中は通常どおり 1 行ぶんの 4 列テーブルを描画し、変更後 row を受け取る。
             row_changed, updated = render_parameter_row_4cols(row)
             changed_any = changed_any or row_changed
             updated_rows.append(updated)
     finally:
+        # begin_table と必ず対になる end_table を呼ぶ。
         imgui.end_table()
 
+    # changed_any は「UI のどこかが変わったか」。
+    # updated_rows は store へ差分適用するための “更新後” 行モデル列（rows と同じ長さ）。
     return changed_any, updated_rows
