@@ -18,6 +18,7 @@ def main() -> None:
         ParameterRow(
             label="1:enabled",
             op="demo",
+            site_id="demo:0",
             arg="enabled",
             kind="bool",
             ui_value=False,
@@ -31,6 +32,7 @@ def main() -> None:
         ParameterRow(
             label="2:mode",
             op="demo",
+            site_id="demo:1",
             arg="mode",
             kind="choice",
             ui_value="green",
@@ -44,6 +46,7 @@ def main() -> None:
         ParameterRow(
             label="3:text",
             op="demo",
+            site_id="demo:2",
             arg="text",
             kind="string",
             ui_value="hello",
@@ -57,6 +60,7 @@ def main() -> None:
         ParameterRow(
             label="4:gain",
             op="demo",
+            site_id="demo:3",
             arg="gain",
             kind="float",
             ui_value=0.0,
@@ -70,6 +74,7 @@ def main() -> None:
         ParameterRow(
             label="5:count",
             op="demo",
+            site_id="demo:4",
             arg="count",
             kind="int",
             ui_value=0,
@@ -83,6 +88,7 @@ def main() -> None:
         ParameterRow(
             label="6:offset",
             op="demo",
+            site_id="demo:5",
             arg="offset",
             kind="vec3",
             ui_value=(0.0, 0.0, 0.0),

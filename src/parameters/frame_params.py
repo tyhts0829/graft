@@ -21,6 +21,8 @@ class FrameParamRecord:
     effective: Any | None = None
     source: str | None = None  # "base" | "gui" | "cc"
     explicit: bool = True
+    chain_id: str | None = None
+    step_index: int | None = None
 
 
 class FrameParamsBuffer:
@@ -38,6 +40,8 @@ class FrameParamsBuffer:
         effective: Any | None = None,
         source: str | None = None,
         explicit: bool = True,
+        chain_id: str | None = None,
+        step_index: int | None = None,
     ) -> None:
         self._records.append(
             FrameParamRecord(
@@ -47,6 +51,8 @@ class FrameParamsBuffer:
                 effective=effective,
                 source=source,
                 explicit=bool(explicit),
+                chain_id=chain_id,
+                step_index=step_index,
             )
         )
 

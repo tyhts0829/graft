@@ -59,20 +59,20 @@
 
 ### Phase 2（設計追加・中）: Effect チェーンのヘッダ行 + `scale#1 auto_center`（チェーン内採番）
 
-- [ ] チェーン境界と “ステップ順序” を復元できるデータを追加する
-  - [ ] `EffectBuilder` に `chain_id` を導入する（例: “builder 生成時の site_id” を chain_id にする）
-  - [ ] 観測レコード（FrameParamRecord）へ `chain_id` と `step_index`（steps 内の順序）を載せる
-  - [ ] ParamStore が (op, site_id) → (chain_id, step_index) を参照できるように保持/公開する
-- [ ] チェーンヘッダ表示名の解決
-  - [ ] `E(name=...)` がある場合はその name をチェーン名として表示する
-  - [ ] 無い場合は `effect#N`（N は chain ごとの ordinal）を表示する
-  - [ ] 同名衝突は表示専用に `name#1/#2` を付与する
-- [ ] チェーン内の “同一 op 連番” を計算する
-  - [ ] steps の順序に従い、op ごとにカウントして `scale#1/scale#2` を決める
-  - [ ] パラメータ行の 1 列目を `"{op}#{step_ordinal} {arg}"` にする（例: `scale#1 auto_center`）
-- [ ] GUI 側で「チェーンヘッダ → ステップ群」の順に並べて表示する
-- [ ] テスト（最小）
-  - [ ] `E(name="xf").scale().rotate().scale()(g)` で
+- [x] チェーン境界と “ステップ順序” を復元できるデータを追加する
+  - [x] `EffectBuilder` に `chain_id` を導入する（例: “builder 生成時の site_id” を chain_id にする）
+  - [x] 観測レコード（FrameParamRecord）へ `chain_id` と `step_index`（steps 内の順序）を載せる
+  - [x] ParamStore が (op, site_id) → (chain_id, step_index) を参照できるように保持/公開する
+- [x] チェーンヘッダ表示名の解決
+  - [x] `E(name=...)` がある場合はその name をチェーン名として表示する
+  - [x] 無い場合は `effect#N`（N は chain ごとの ordinal）を表示する
+  - [x] 同名衝突は表示専用に `name#1/#2` を付与する
+- [x] チェーン内の “同一 op 連番” を計算する
+  - [x] steps の順序に従い、op ごとにカウントして `scale#1/scale#2` を決める
+  - [x] パラメータ行の 1 列目を `"{op}#{step_ordinal} {arg}"` にする（例: `scale#1 auto_center`）
+- [x] GUI 側で「チェーンヘッダ → ステップ群」の順に並べて表示する
+- [x] テスト（最小）
+  - [x] `E(name="xf").scale().rotate().scale()(g)` で
     - チェーンヘッダが 1 回だけ出る
     - `scale#1`, `rotate#1`, `scale#2` の採番になる
     - 行ラベルが `"{op}#{n} {arg}"` になる

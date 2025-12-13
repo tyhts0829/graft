@@ -5,11 +5,13 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Hashable, Mapping
+from typing import TypeVar
 
 from src.parameters.key import ParameterKey
 
 GroupKey = tuple[str, int]
+K = TypeVar("K", bound=Hashable)
 
 
 def format_param_row_label(op: str, ordinal: int, arg: str) -> str:
@@ -18,9 +20,7 @@ def format_param_row_label(op: str, ordinal: int, arg: str) -> str:
     return f"{op}#{int(ordinal)} {arg}"
 
 
-def dedup_display_names_in_order(
-    items: list[tuple[GroupKey, str]],
-) -> dict[GroupKey, str]:
+def dedup_display_names_in_order(items: list[tuple[K, str]]) -> dict[K, str]:
     """同名がある場合だけ `name#N` を付与して表示名を返す。
 
     - 衝突解消は表示専用で、永続化される label そのものは変更しない。
@@ -30,7 +30,7 @@ def dedup_display_names_in_order(
     counts = Counter(name for _key, name in items)
     seen: dict[str, int] = defaultdict(int)
 
-    out: dict[GroupKey, str] = {}
+    out: dict[K, str] = {}
     for key, name in items:
         if counts[name] <= 1:
             out[key] = name
@@ -59,3 +59,61 @@ def primitive_header_display_names_from_snapshot(
     ordered = [(k, base_name_by_group[k]) for k in sorted(base_name_by_group)]
     return dedup_display_names_in_order(ordered)
 
+
+EffectStepKey = tuple[str, str]  # (op, site_id)
+
+
+def effect_step_ordinals_by_site(
+    step_info_by_site: Mapping[EffectStepKey, tuple[str, int]],
+) -> dict[EffectStepKey, int]:
+    """同一チェーン内の “同一 op の出現回数” でステップ連番を計算する。"""
+
+    steps_by_chain: dict[str, list[tuple[int, str, str]]] = {}
+    for (op, site_id), (chain_id, step_index) in step_info_by_site.items():
+        steps_by_chain.setdefault(str(chain_id), []).append(
+            (int(step_index), op, site_id)
+        )
+
+    out: dict[EffectStepKey, int] = {}
+    for chain_id, steps in steps_by_chain.items():
+        counts: dict[str, int] = defaultdict(int)
+        for _step_index, op, site_id in sorted(steps):
+            counts[op] += 1
+            out[(op, site_id)] = int(counts[op])
+    return out
+
+
+def effect_chain_header_display_names_from_snapshot(
+    snapshot: Mapping[ParameterKey, tuple[object, object, int, str | None]],
+    *,
+    step_info_by_site: Mapping[EffectStepKey, tuple[str, int]],
+    chain_ordinal_by_id: Mapping[str, int],
+    is_effect_op: Callable[[str], bool],
+) -> dict[str, str]:
+    """snapshot から Effect チェーン用のヘッダ表示名（衝突解消済み）を作る。"""
+
+    base_name_by_chain: dict[str, str] = {}
+    for key, (_meta, _state, _ordinal, label) in snapshot.items():
+        op = str(key.op)
+        if not is_effect_op(op):
+            continue
+        step = step_info_by_site.get((op, str(key.site_id)))
+        if step is None:
+            continue
+        chain_id, _step_index = step
+        if chain_id in base_name_by_chain:
+            continue
+        if label:
+            base_name_by_chain[chain_id] = str(label)
+            continue
+        chain_ordinal = int(chain_ordinal_by_id.get(chain_id, 0))
+        base_name_by_chain[chain_id] = (
+            f"effect#{chain_ordinal}" if chain_ordinal > 0 else "effect"
+        )
+
+    chain_ids_sorted = sorted(
+        base_name_by_chain.keys(),
+        key=lambda cid: (int(chain_ordinal_by_id.get(cid, 0)), str(cid)),
+    )
+    ordered = [(cid, base_name_by_chain[cid]) for cid in chain_ids_sorted]
+    return dedup_display_names_in_order(ordered)

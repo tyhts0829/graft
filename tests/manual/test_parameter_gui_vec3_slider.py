@@ -17,6 +17,7 @@ def main() -> None:
     row = ParameterRow(
         label="1:v",
         op="demo",
+        site_id="demo:0",
         arg="v",
         kind="vec3",
         ui_value=(0.0, 0.0, 0.0),

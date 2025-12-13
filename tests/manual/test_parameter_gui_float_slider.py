@@ -17,6 +17,7 @@ def main() -> None:
     row = ParameterRow(
         label="1:value",
         op="demo",
+        site_id="demo:0",
         arg="value",
         kind="float",
         ui_value=0.0,

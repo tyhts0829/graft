@@ -37,6 +37,7 @@ class EffectBuilder:
     """
 
     steps: tuple[tuple[str, dict[str, Any], str], ...]
+    chain_id: str
     label_name: str | None = None
 
     def __call__(self, geometry: Geometry) -> Geometry:
@@ -55,7 +56,7 @@ class EffectBuilder:
         # effect チェーンは「入力 Geometry に対して、steps を順番に wrap していく」だけの処理。
         # ここでは実体変換は行わず、あくまで Geometry DAG（レシピ）を構築する。
         result = geometry
-        for op, params, site_id in self.steps:
+        for step_index, (op, params, site_id) in enumerate(self.steps):
             # site_id は「その effect ステップが宣言された呼び出し箇所」。
             # 例: E.scale(...).rotate(...)(g) の scale と rotate を別の GUI 行として扱うため、
             # apply（__call__）時点ではなく「ステップ追加時点」で固定された site_id を使う。
@@ -80,6 +81,8 @@ class EffectBuilder:
                     meta=meta,
                     site_id=site_id,
                     explicit_args=explicit_args,
+                    chain_id=self.chain_id,
+                    step_index=int(step_index),
                 )
             else:
                 # parameter_context 外では ParamStore を参照せず、base をそのまま使う。
@@ -140,7 +143,11 @@ class EffectBuilder:
 
             site_id = caller_site_id(skip=1)
             new_steps = self.steps + ((name, dict(params), site_id),)
-            return EffectBuilder(steps=new_steps, label_name=self.label_name)
+            return EffectBuilder(
+                steps=new_steps,
+                chain_id=self.chain_id,
+                label_name=self.label_name,
+            )
 
         return factory
 
@@ -195,7 +202,9 @@ class EffectNamespace:
 
             site_id = caller_site_id(skip=1)
             return EffectBuilder(
-                steps=((name, dict(params), site_id),), label_name=self._pending_label
+                steps=((name, dict(params), site_id),),
+                chain_id=site_id,
+                label_name=self._pending_label,
             )
 
         return factory

@@ -131,6 +131,8 @@ def resolve_params(
     params: dict[str, Any],
     meta: dict[str, ParamMeta],
     site_id: str,
+    chain_id: str | None = None,
+    step_index: int | None = None,
     explicit_args: set[str] | None = None,
 ) -> dict[str, Any]:
     """引数辞書を解決し、Geometry.create 用の値を返す。
@@ -186,6 +188,8 @@ def resolve_params(
                 effective=effective,
                 source=source,
                 explicit=is_explicit,
+                chain_id=chain_id,
+                step_index=step_index,
             )
 
     return resolved

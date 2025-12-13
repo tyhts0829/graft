@@ -24,6 +24,10 @@ class ParamStore:
         self._labels: dict[tuple[str, str], str] = {}
         # op ごとの site_id -> ordinal
         self._ordinals: dict[str, dict[str, int]] = {}
+        # effect ステップ (op, site_id) -> (chain_id, step_index)
+        self._effect_steps: dict[tuple[str, str], tuple[str, int]] = {}
+        # chain_id -> ordinal（GUI の effect#N 用）
+        self._chain_ordinals: dict[str, int] = {}
 
     def get_state(self, key: ParameterKey) -> ParamState | None:
         """登録済みの ParamState を返す。未登録なら None。"""
@@ -62,6 +66,18 @@ class ParamStore:
         ordinal = len(mapping) + 1
         mapping[site_id] = ordinal
         return ordinal
+
+    def _assign_chain_ordinal(self, chain_id: str) -> int:
+        if chain_id in self._chain_ordinals:
+            return self._chain_ordinals[chain_id]
+        ordinal = len(self._chain_ordinals) + 1
+        self._chain_ordinals[chain_id] = ordinal
+        return ordinal
+
+    def get_chain_ordinal(self, chain_id: str) -> int:
+        """chain_id の ordinal を返し、未登録なら採番して返す。"""
+
+        return self._chain_ordinals.get(chain_id, self._assign_chain_ordinal(chain_id))
 
     def get_ordinal(self, op: str, site_id: str) -> int:
         """既存 ordinal を返し、未登録なら採番して返す。"""
@@ -103,6 +119,11 @@ class ParamStore:
             if rec.key not in self._meta or self._meta[rec.key].kind != rec.meta.kind:
                 self._meta[rec.key] = rec.meta
             # cc/ui_value/override はここでは変更しない
+            if rec.chain_id is not None and rec.step_index is not None:
+                chain_id = str(rec.chain_id)
+                step_index = int(rec.step_index)
+                self._assign_chain_ordinal(chain_id)
+                self._effect_steps[(rec.key.op, rec.key.site_id)] = (chain_id, step_index)
 
     def to_json(self) -> str:
         """状態・メタ・ordinal を JSON 文字列として保存する。"""
@@ -135,6 +156,16 @@ class ParamStore:
                 for (op, site_id), label in self._labels.items()
             ],
             "ordinals": self._ordinals,
+            "effect_steps": [
+                {
+                    "op": op,
+                    "site_id": site_id,
+                    "chain_id": chain_id,
+                    "step_index": step_index,
+                }
+                for (op, site_id), (chain_id, step_index) in self._effect_steps.items()
+            ],
+            "chain_ordinals": self._chain_ordinals,
         }
         return json.dumps(data)
 
@@ -170,11 +201,32 @@ class ParamStore:
         for item in obj.get("labels", []):
             store._labels[(item["op"], item["site_id"])] = item["label"]
         store._ordinals = obj.get("ordinals", {})
+        for item in obj.get("effect_steps", []):
+            store._effect_steps[(item["op"], item["site_id"])] = (
+                item["chain_id"],
+                int(item["step_index"]),
+            )
+        store._chain_ordinals = obj.get("chain_ordinals", {})
         return store
 
     def ordinals(self) -> dict[str, dict[str, int]]:
         """op ごとの ordinal マップを返す。"""
         return self._ordinals
+
+    def effect_steps(self) -> dict[tuple[str, str], tuple[str, int]]:
+        """(op, site_id) -> (chain_id, step_index) のコピーを返す。"""
+
+        return dict(self._effect_steps)
+
+    def get_effect_step(self, op: str, site_id: str) -> tuple[str, int] | None:
+        """effect ステップ情報を返す。未登録なら None。"""
+
+        return self._effect_steps.get((op, site_id))
+
+    def chain_ordinals(self) -> dict[str, int]:
+        """chain_id -> ordinal のコピーを返す。"""
+
+        return dict(self._chain_ordinals)
 
     def meta_items(self) -> Iterable[tuple[ParameterKey, ParamMeta]]:
         """(ParameterKey, ParamMeta) のイテレータを返す。"""

@@ -19,6 +19,7 @@ class ParameterRow:
 
     label: str
     op: str
+    site_id: str
     arg: str
     kind: str
     ui_value: Any
@@ -41,6 +42,7 @@ def rows_from_snapshot(
             ParameterRow(
                 label=f"{ordinal}:{key.arg}",
                 op=key.op,
+                site_id=key.site_id,
                 arg=key.arg,
                 kind=meta.kind,
                 ui_value=state.ui_value,

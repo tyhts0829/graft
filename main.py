@@ -17,9 +17,12 @@ CANVAS_HEIGHT = 300
 
 
 def draw(t: float):
-    eff = E.scale().rotate()
-    ply = G.polygon()
-    return L(eff(ply))
+    eff1 = E(name="triple_scale").scale().rotate().scale().scale()
+    ply1 = G.polygon()
+    eff2 = E.scale().rotate()
+    ply2 = G.polygon()
+
+    return L(eff1(ply1)), L(eff2(ply2), thickness=0.002, color=(1.0, 0.0, 0.0))
 
 
 if __name__ == "__main__":

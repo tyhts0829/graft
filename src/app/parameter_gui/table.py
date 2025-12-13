@@ -26,7 +26,9 @@ def _row_id(row: ParameterRow) -> str:
     return f"{row.op}#{row.ordinal}:{row.arg}"
 
 
-def render_parameter_row_4cols(row: ParameterRow) -> tuple[bool, ParameterRow]:
+def render_parameter_row_4cols(
+    row: ParameterRow, *, visible_label: str | None = None
+) -> tuple[bool, ParameterRow]:
     """1 行（1 key）を 4 列テーブルとして描画し、更新後の row を返す。
 
     Columns
@@ -45,6 +47,8 @@ def render_parameter_row_4cols(row: ParameterRow) -> tuple[bool, ParameterRow]:
     """
 
     import imgui  # type: ignore[import-untyped]
+
+    row_label = _row_visible_label(row) if visible_label is None else str(visible_label)
 
     # この 1 行（= 1 key）で何かが変更されたかの集計フラグ。
     changed_any = False
@@ -68,7 +72,7 @@ def render_parameter_row_4cols(row: ParameterRow) -> tuple[bool, ParameterRow]:
 
         # --- Column 1: label（op#ordinal のみ表示）---
         imgui.table_set_column_index(0)
-        imgui.text(_row_visible_label(row))
+        imgui.text(row_label)
 
         # --- Column 2: control（kind に応じたウィジェット）---
         # slider の visible label はテーブルの label 列で代替するため、
@@ -167,6 +171,7 @@ def render_parameter_row_4cols(row: ParameterRow) -> tuple[bool, ParameterRow]:
     updated = ParameterRow(
         label=row.label,
         op=row.op,
+        site_id=row.site_id,
         arg=row.arg,
         kind=row.kind,
         ui_value=ui_value,
@@ -186,6 +191,9 @@ def render_parameter_table(
     *,
     column_weights: tuple[float, float, float, float] = COLUMN_WEIGHTS_DEFAULT,
     primitive_header_by_group: Mapping[tuple[str, int], str] | None = None,
+    effect_chain_header_by_id: Mapping[str, str] | None = None,
+    step_info_by_site: Mapping[tuple[str, str], tuple[str, int]] | None = None,
+    effect_step_ordinal_by_site: Mapping[tuple[str, str], int] | None = None,
 ) -> tuple[bool, list[ParameterRow]]:
     """ParameterRow の列を 4 列テーブルとして描画し、更新後の rows を返す。"""
 
@@ -240,37 +248,55 @@ def render_parameter_table(
         # pyimgui の API は `table_next_row(row_flags, min_row_height)` なので `(0, 1)` を渡している。
         imgui.table_next_row(0, 1)
 
-        # Primitive の “グループ” は (op, ordinal) を単位にする。
-        # - op: primitive 名（例: polygon）
-        # - ordinal: 同じ op の別呼び出し箇所を区別する GUI 上の連番（例: polygon#1）
-        # rows は view 層で (op, ordinal, arg) 順にソート済みなので、同じ group は連続する前提。
-        prev_group: tuple[str, int] | None = None
+        # GUI 上の “グループ” は 2 種類ある。
+        # - Primitive: (op, ordinal) 単位
+        # - Effect: chain_id 単位（チェーンヘッダ → ステップ群）
+        # rows は store_bridge 側で「Primitive 群 → Effect 群（チェーン順）」に並べ替え済みなので、
+        # 同じ group は連続する前提で “境界” を検出する。
+        prev_group_id: tuple[str, object] | None = None
         # 現在グループが open（展開）されているか。
         # グループが閉じている間は、その配下のパラメータ行を描画しない。
         group_open = True
         for row in rows:
-            # 現在行が属するグループキー（Primitive 1 個ぶん）。
-            group = (row.op, int(row.ordinal))
-            if group != prev_group:
-                # グループが切り替わったタイミングで “ヘッダ行” を 1 行だけ描画する。
-                #
-                # `primitive_header_by_group` は store_bridge 側で snapshot から生成され、
-                # - G(name=...) があればその name
-                # - 無ければ primitive 名（将来的に `polygon#1` などにしてもよい）
-                # を (op, ordinal) → 表示名として持つ。
+            # 現在行が effect ステップに紐づくかどうか（(op, site_id) → (chain_id, step_index)）。
+            step_key = (row.op, row.site_id)
+            step_info = None if step_info_by_site is None else step_info_by_site.get(step_key)
+
+            if step_info is not None:
+                # --- effect: chain_id を group として扱う ---
+                chain_id, _step_index = step_info
+                group_id: tuple[str, object] = ("effect_chain", chain_id)
+                header = (
+                    None
+                    if effect_chain_header_by_id is None
+                    else effect_chain_header_by_id.get(chain_id)
+                )
+                # “同一チェーン内の同一 op” の出現回数で採番した label を使う。
+                step_ordinal = row.ordinal
+                if effect_step_ordinal_by_site is not None:
+                    step_ordinal = int(effect_step_ordinal_by_site.get(step_key, row.ordinal))
+                visible_label = format_param_row_label(row.op, int(step_ordinal), row.arg)
+                header_id = f"effect_chain:{chain_id}"
+            else:
+                # --- primitive: (op, ordinal) を group として扱う ---
+                group_key = (row.op, int(row.ordinal))
+                group_id = ("primitive", group_key)
                 header = (
                     None
                     if primitive_header_by_group is None
-                    else primitive_header_by_group.get(group)
+                    else primitive_header_by_group.get(group_key)
                 )
+                visible_label = format_param_row_label(row.op, int(row.ordinal), row.arg)
+                header_id = f"primitive:{group_key[0]}#{group_key[1]}"
+
+            if group_id != prev_group_id:
+                # グループが切り替わったタイミングで “ヘッダ行” を 1 行だけ描画する。
                 if header:
-                    # ヘッダ行はテーブルの 1 行として追加し、1 列目に collapsing_header を置く。
-                    # 他の列は何も描かない（空セルのまま）。
                     imgui.table_next_row()
                     imgui.table_set_column_index(0)
-                    # 折りたたみ状態の永続化と ID 衝突回避のため、グループキーで push_id する。
+                    # 折りたたみ状態の永続化と ID 衝突回避のため、group 固有 ID で push_id する。
                     # さらに `##...` で visible text と internal id を分離する（同名ヘッダ対策）。
-                    imgui.push_id(f"{group[0]}#{group[1]}")
+                    imgui.push_id(header_id)
                     try:
                         # collapsing_header は (expanded, visible) を返す。
                         # visible=None なので close ボタン無しで常に表示する。
@@ -282,9 +308,8 @@ def render_parameter_table(
                     finally:
                         imgui.pop_id()
                 else:
-                    # Primitive 以外（例: effect の op）や、ヘッダ名が無い場合は常に展開扱い。
                     group_open = True
-                prev_group = group
+                prev_group_id = group_id
 
             if not group_open:
                 # 折りたたみ中は描画しないが、rows_after の長さを揃えるため “変更なし” として返す。
@@ -292,7 +317,10 @@ def render_parameter_table(
                 continue
 
             # 展開中は通常どおり 1 行ぶんの 4 列テーブルを描画し、変更後 row を受け取る。
-            row_changed, updated = render_parameter_row_4cols(row)
+            row_changed, updated = render_parameter_row_4cols(
+                row,
+                visible_label=visible_label,
+            )
             changed_any = changed_any or row_changed
             updated_rows.append(updated)
     finally:
