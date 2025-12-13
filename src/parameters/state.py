@@ -12,6 +12,6 @@ from typing import Any
 class ParamState:
     """単一 ParameterKey に紐づく GUI 状態（レンジ情報は保持しない）。"""
 
-    override: bool = False
+    override: bool = True
     ui_value: Any = None
     cc_key: int | tuple[int | None, int | None, int | None] | None = None

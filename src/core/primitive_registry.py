@@ -4,11 +4,12 @@
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import ItemsView
-from typing import Any, Callable, Mapping
+from typing import Any, Callable
 
 from src.core.realized_geometry import RealizedGeometry
-from src.parameters.meta import ParamMeta, infer_meta_from_value
+from src.parameters.meta import ParamMeta
 
 PrimitiveFunc = Callable[[tuple[tuple[str, Any], ...]], RealizedGeometry]
 
@@ -27,14 +28,16 @@ class PrimitiveRegistry:
         """空のレジストリを初期化する。"""
         self._items: dict[str, PrimitiveFunc] = {}
         self._meta: dict[str, dict[str, ParamMeta]] = {}
+        self._defaults: dict[str, dict[str, Any]] = {}
 
     def register(
         self,
         name: str,
         func: PrimitiveFunc | None = None,
         *,
-        overwrite: bool = False,
+        overwrite: bool = True,
         meta: dict[str, ParamMeta] | None = None,
+        defaults: dict[str, Any] | None = None,
     ):
         """primitive を登録する（関数またはデコレータとして使用可能）。
 
@@ -65,6 +68,8 @@ class PrimitiveRegistry:
         self._items[name] = func
         if meta is not None:
             self._meta[name] = meta
+        if defaults is not None:
+            self._defaults[name] = defaults
         return func
 
     def get(self, name: str) -> PrimitiveFunc:
@@ -103,6 +108,10 @@ class PrimitiveRegistry:
         """op 名に対応する ParamMeta 辞書を取得する。"""
         return dict(self._meta.get(name, {}))
 
+    def get_defaults(self, name: str) -> dict[str, Any]:
+        """op 名に対応するデフォルト引数辞書を取得する。"""
+        return dict(self._defaults.get(name, {}))
+
 
 primitive_registry = PrimitiveRegistry()
 """グローバルな primitive レジストリインスタンス。"""
@@ -111,7 +120,7 @@ primitive_registry = PrimitiveRegistry()
 def primitive(
     func: Callable[..., RealizedGeometry] | None = None,
     *,
-    overwrite: bool = False,
+    overwrite: bool = True,
     meta: dict[str, ParamMeta] | None = None,
 ):
     """グローバル primitive レジストリ用デコレータ。
@@ -132,12 +141,44 @@ def primitive(
         ...
     """
 
-    def decorator(f: Callable[..., RealizedGeometry]) -> Callable[..., RealizedGeometry]:
+    def _defaults_from_signature(
+        f: Callable[..., RealizedGeometry],
+        param_meta: dict[str, ParamMeta],
+    ) -> dict[str, Any]:
+        sig = inspect.signature(f)
+        defaults: dict[str, Any] = {}
+        for arg in param_meta.keys():
+            param = sig.parameters.get(arg)
+            if param is None:
+                raise ValueError(
+                    f"primitive '{f.__name__}' の meta 引数がシグネチャに存在しない: {arg!r}"
+                )
+            if param.default is inspect._empty:
+                raise ValueError(
+                    f"primitive '{f.__name__}' の meta 引数は default 必須: {arg!r}"
+                )
+            if param.default is None:
+                raise ValueError(
+                    f"primitive '{f.__name__}' の meta 引数 default に None は使えない: {arg!r}"
+                )
+            defaults[arg] = param.default
+        return defaults
+
+    def decorator(
+        f: Callable[..., RealizedGeometry],
+    ) -> Callable[..., RealizedGeometry]:
         def wrapper(args: tuple[tuple[str, Any], ...]) -> RealizedGeometry:
             params: dict[str, Any] = dict(args)
             return f(**params)
 
-        primitive_registry.register(f.__name__, wrapper, overwrite=overwrite, meta=meta)
+        defaults = None if meta is None else _defaults_from_signature(f, meta)
+        primitive_registry.register(
+            f.__name__,
+            wrapper,
+            overwrite=overwrite,
+            meta=meta,
+            defaults=defaults,
+        )
         return f
 
     if func is None:
@@ -149,7 +190,7 @@ def register_primitive(
     name: str,
     func: PrimitiveFunc,
     *,
-    overwrite: bool = False,
+    overwrite: bool = True,
 ) -> None:
     """グローバルレジストリに primitive を登録する。
 

@@ -56,7 +56,11 @@ def _choose_value(
                 hi = float(meta.ui_max) if meta.ui_max is not None else 1.0
                 effective = lo + (hi - lo) * v
                 return effective, "cc"
-            if meta.kind == "choice" and meta.choices is not None and list(meta.choices):
+            if (
+                meta.kind == "choice"
+                and meta.choices is not None
+                and list(meta.choices)
+            ):
                 # 0..1 を choices の index に写像
                 choices = list(meta.choices)
                 idx = min(len(choices) - 1, int(v * len(choices)))
@@ -124,7 +128,7 @@ def resolve_params(
         else:
             arg_meta = meta.get(arg) or infer_meta_from_value(base_value)
             state = ParamState(
-                override=False,
+                override=base_value,
                 ui_value=base_value,
                 cc_key=None,
             )

@@ -6,7 +6,7 @@
 
 ## 方針
 
-- pyimgui 部は `src/app/parameter_gui.py` に集約し、純粋関数（view.py）は再利用する。
+- pyimgui 部は `src/app/parameter_gui/` に集約し、純粋関数（view.py）は再利用する。
 - pyglet window を引数に `imgui.integrations.pyglet.create_renderer(window)` で renderer を作る（古い `PygletRenderer` は避ける）。
 - イベントループは pyglet と同一スレッドで `renderer.process_inputs()` → `imgui.new_frame()` → UI 描画 → `imgui.render()` → `renderer.render(imgui.get_draw_data())` を 1 フレームとしてポーリングする。
 - 破壊的変更を許容し、シンプルさ優先（互換フラグなし）。
@@ -16,9 +16,9 @@
 - [x] 現状確認
   - 対象: `docs/parameter_gui_impl_plan.md` フェーズ 3 要件、既存の `parameter_gui.py` の有無（未実装想定）。
   - 内容: 必要なウィジェット構成（4 列: label / control / min-max / cc&override）とイベントループ統合ポイントをメモ。
-- [ ] UI レイアウト構築
-  - 対象: 新規 `src/app/parameter_gui.py`。
-  - 内容: imgui コンテキスト生成/破棄、`imgui.integrations.pyglet.create_renderer(window)` の初期化、メインウィンドウ（pyglet 側で既存 window を使う想定）と 4 列テーブル（1: label, 2: control, 3: min-max, 4: cc_key/override）を構築。kind によって列 3/4 は空（描画しない）になる。`imgui.begin_table` の戻り値（opened）を確認し、true のときのみ行を追加して最後に `imgui.end_table()`。Style セクションを先頭に配置する（背景色・グローバル thickness・グローバル line_color の 3 行、続いて Layer（L(name)）ごとに thickness 行 + color 行）。Layer で未指定の thickness/color はグローバルを適用する。
+- [x] UI レイアウト構築
+  - 対象: `src/app/parameter_gui/`（主に `gui.py`/`table.py`）。
+  - 内容: imgui コンテキスト生成/破棄、`imgui.integrations.pyglet.create_renderer(window)` の初期化、メインウィンドウと 4 列テーブル（1: label, 2: control, 3: min-max, 4: cc_key/override）を構築。kind によって列 3/4 は空（描画しない）になる。`imgui.begin_table` の戻り値（opened）を確認し、true のときのみ行を追加して最後に `imgui.end_table()`。Style セクションは別タスクへ分離。
 - [x] ウィジェットディスパッチ設計
   - 対象: `parameter_gui.py` 内の kind→ ウィジェット生成関数マップ。
   - 内容: kind ごとの UI 方針を固定し、共通インターフェース（生成・値取得・更新）を定義する。
@@ -86,3 +86,4 @@
 - 「UI レイアウト構築」に “Style セクション” まで入っていて重い: (A) parameter table と (B) Style/Layer/label header に分割した方が進めやすい。
 - 「create_renderer を使い PygletRenderer を避ける」は現実装は「優先」にしてフォールバックあり: 方針を「必須」にするか、計画側で緩めるか決めたい。
 - kind ごとの CC 方針: `vec3` は `input_int3`、`bool/string/choice` は cc 入力を非表示にした。
+- kwargs 省略時も meta の default を補完して観測する: `G.circle()` のように引数なしでも ParamStore にキーが入り、GUI が空になりにくい。

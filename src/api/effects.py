@@ -54,15 +54,18 @@ class EffectBuilder:
         result = geometry
         for op, params, site_id in self.steps:
             meta = effect_registry.get_meta(op)
+            defaults = effect_registry.get_defaults(op)
+            base_params = dict(defaults)
+            base_params.update(params)
             if current_frame_params() is not None:
                 resolved = resolve_params(
                     op=op,
-                    params=params,
+                    params=base_params,
                     meta=meta,
                     site_id=site_id,
                 )
             else:
-                resolved = params
+                resolved = base_params
             if self.label_name is not None:
                 store = current_param_store()
                 if store is None:

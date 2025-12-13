@@ -17,18 +17,7 @@ CANVAS_HEIGHT = 300
 
 
 def draw(t: float):
-    NX = 50
-    NY = 50
-    WHITE_SPACE = 10
-    # 画面にNX×NY個の円を描く
-    circles = []
-    for ix in range(NX):
-        for iy in range(NY):
-            cx = (CANVAS_WIDTH - WHITE_SPACE * 2) / (NX - 1) * ix + WHITE_SPACE
-            cy = (CANVAS_HEIGHT - WHITE_SPACE * 2) / (NY - 1) * iy + WHITE_SPACE
-            r = 10 + 5 * math.sin(t + 20 * 0.5)
-            circles.append(G.circle(r=r, cx=cx, cy=cy))
-    return L(circles, color=(0.2, 0.6, 0.8), thickness=0.001)
+    return G.circle()
 
 
 if __name__ == "__main__":
@@ -39,4 +28,5 @@ if __name__ == "__main__":
         line_color=(0.0, 0.0, 0.0),
         render_scale=4.0,
         canvas_size=(CANVAS_WIDTH, CANVAS_HEIGHT),
+        parameter_gui=True,
     )

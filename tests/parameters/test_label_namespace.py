@@ -10,10 +10,14 @@ def test_primitive_name_sets_label():
         G(name="p1").circle(r=1.0)
 
     snap = store.snapshot()
-    assert len(snap) == 1
-    (key, (_meta, _state, _ordinal, label)) = next(iter(snap.items()))
-    assert key.op == "circle"
-    assert label == "p1"
+    circle_entries = [(k, v) for k, v in snap.items() if k.op == "circle"]
+    circle_args = {k.arg for k, _v in circle_entries}
+    circle_site_ids = {k.site_id for k, _v in circle_entries}
+    circle_labels = {lbl for _k, (_m, _s, _o, lbl) in circle_entries}
+
+    assert circle_args == {"r", "cx", "cy", "segments"}
+    assert circle_site_ids and len(circle_site_ids) == 1
+    assert circle_labels == {"p1"}
 
 
 def test_effect_name_sets_label():
@@ -26,8 +30,8 @@ def test_effect_name_sets_label():
 
     snap = store.snapshot()
     # scale エントリの label を確認
-    labels = {k.op: lbl for k, (_m, _s, _o, lbl) in snap.items()}
-    assert labels.get("scale") == "chain1"
+    scale_labels = {lbl for k, (_m, _s, _o, lbl) in snap.items() if k.op == "scale"}
+    assert scale_labels == {"chain1"}
 
 
 def test_name_overwrites_last_value():

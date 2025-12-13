@@ -36,26 +36,26 @@
 
 ## 実装チェックリスト
 
-- [ ] 対象の洗い出し
-  - [ ] 組み込み primitive/effect の meta と関数シグネチャ（default 値）を一覧化
-  - [ ] `None` default を含む引数を特定し、契約違反として修正対象にする（現状は `scale` のみ想定）
-- [ ] registry に default 情報を保持
-  - [ ] `src/core/primitive_registry.py` に `defaults` 保存と `get_defaults(op)` を追加
-  - [ ] `src/core/effect_registry.py` に `defaults` 保存と `get_defaults(op)` を追加
-  - [ ] デコレータ（`primitive`/`effect`）で、元関数の `inspect.signature` から default 値を抽出して登録
-  - [ ] meta に含まれる引数の default が `None` の場合は `ValueError`（早期検知）
-- [ ] API 層で「省略引数の補完」を入れる（meta がある op のみ）
-  - [ ] `src/api/primitives.py`: `factory(**params)` で `defaults` を `params` にマージしてから `resolve_params()` を呼ぶ
-  - [ ] `src/api/effects.py`: `EffectBuilder` の解決前に `defaults` を `params` にマージしてから `resolve_params()` を呼ぶ
-- [ ] 組み込み effect の契約違反を解消する
-  - [ ] `src/effects/scale.py` の `None` default を廃止し、meta と整合する default を持つ形に整理する
-- [ ] テスト追加（最小）
-  - [ ] `tests/parameters/test_defaults_autopopulate.py`（新規）
-    - [ ] `parameter_context` 内で `G.circle()` を呼ぶと `store.snapshot()` に `r/cx/cy/segments` が入る
-    - [ ] GUI 表示対象は meta があるキーのみ、という既存仕様は維持される
-    - [ ] meta に含まれる引数の default が `None` の場合に登録で失敗する（契約のテスト）
+- [x] 対象の洗い出し
+  - [x] 組み込み primitive/effect の meta と関数シグネチャ（default 値）を一覧化
+  - [x] `None` default を含む引数を特定し、契約違反として修正対象にする（現状は `scale` のみ想定）
+- [x] registry に default 情報を保持
+  - [x] `src/core/primitive_registry.py` に `defaults` 保存と `get_defaults(op)` を追加
+  - [x] `src/core/effect_registry.py` に `defaults` 保存と `get_defaults(op)` を追加
+  - [x] デコレータ（`primitive`/`effect`）で、元関数の `inspect.signature` から default 値を抽出して登録
+  - [x] meta に含まれる引数の default が `None` の場合は `ValueError`（早期検知）
+- [x] API 層で「省略引数の補完」を入れる（meta がある op のみ）
+  - [x] `src/api/primitives.py`: `factory(**params)` で `defaults` を `params` にマージしてから `resolve_params()` を呼ぶ
+  - [x] `src/api/effects.py`: `EffectBuilder` の解決前に `defaults` を `params` にマージしてから `resolve_params()` を呼ぶ
+- [x] 組み込み effect の契約違反を解消する
+  - [x] `src/effects/scale.py` の `None` default を廃止し、meta と整合する default を持つ形に整理する
+- [x] テスト追加（最小）
+  - [x] `tests/parameters/test_defaults_autopopulate.py`（新規）
+    - [x] `parameter_context` 内で `G.circle()` を呼ぶと `store.snapshot()` に `r/cx/cy/segments` が入る
+    - [x] GUI 表示対象は meta があるキーのみ、という既存仕様は維持される
+    - [x] meta に含まれる引数の default が `None` の場合に登録で失敗する（契約のテスト）
 - [ ] ドキュメント更新
-  - [ ] `docs/parameter_gui_phase3_checklist.md` に「引数省略でも GUI が埋まる」ことを反映
+  - [x] `docs/parameter_gui_phase3_checklist.md` に「引数省略でも GUI が埋まる」ことを反映
   - [ ] `parameter_spec.md` など、必要なら注意点（override の挙動）を追記
 
 ## 完了定義

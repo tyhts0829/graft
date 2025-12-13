@@ -42,7 +42,7 @@ class ParamStore:
         state = self._states.get(key)
         if state is None:
             state = ParamState(
-                override=False,
+                override=base_value,
                 ui_value=base_value,
                 cc_key=None,
             )
@@ -149,7 +149,7 @@ class ParamStore:
             else:
                 cc_key = int(raw_cc)
             state = ParamState(
-                override=item.get("override", False),
+                override=item.get("override", True),
                 ui_value=item.get("ui_value"),
                 cc_key=cc_key,
             )
