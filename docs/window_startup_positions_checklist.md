@@ -1,7 +1,5 @@
 # どこで: `docs/window_startup_positions_checklist.md`。
-#
 # 何を: 描画ウィンドウと Parameter GUI ウィンドウの「起動時の OS ウィンドウ位置」を、実装で固定する計画。
-#
 # なぜ: 毎回ウィンドウがバラバラに出ると作業がしづらく、2 ウィンドウを並べて使いたいため。
 
 ## 方針（最小）
@@ -12,19 +10,19 @@
 
 ## 仕様（決める）
 
-- [ ] 描画ウィンドウの基準位置を決める（例: `DRAW_WINDOW_POS = (50, 50)`）
-- [ ] Parameter GUI の配置方式を決める
-  - [ ] 案A: 固定位置（例: `PARAMETER_GUI_POS = (900, 50)`）
+- [x] 描画ウィンドウの基準位置を決める（`DRAW_WINDOW_POS = (200, 200)`）
+- [x] Parameter GUI の配置方式を決める（案A: 固定位置）
+  - [x] 案A: 固定位置（`PARAMETER_GUI_POS = (800, 200)`）
   - [ ] 案B: 描画ウィンドウの右隣（例: `PARAMETER_GUI_POS = (DRAW_X + draw_w + GAP, DRAW_Y)`）
-- [ ] 案B の場合、間隔 `GAP` を決める（例: `GAP = 16`）
+- [x] 案B の場合、間隔 `GAP` を決める（今回は不要）
 
 ## 実装（予定）
 
-- [ ] `src/api/run.py` で `DrawWindowSystem` / `ParameterGUIWindowSystem` 生成後に `set_location(...)` を呼ぶ
-  - [ ] `parameter_gui=False` の場合は描画ウィンドウのみ移動する
-  - [ ] `parameter_gui=True` の場合は 2 つのウィンドウを意図した配置にする
-- [ ] 位置定数の置き場所を決める
-  - [ ] 今回は `src/api/run.py` 内で完結（最小）
+- [x] `src/api/run.py` で `DrawWindowSystem` / `ParameterGUIWindowSystem` 生成後に `set_location(...)` を呼ぶ
+  - [x] `parameter_gui=False` の場合は描画ウィンドウのみ移動する
+  - [x] `parameter_gui=True` の場合は 2 つのウィンドウを意図した配置にする
+- [x] 位置定数の置き場所を決める
+  - [x] 今回は `src/api/run.py` 内で完結（最小）
   - [ ] 必要になったら `src/app/runtime/window_positions.py` へ切り出す（今回はやらない）
 
 ## 動作確認（手動）

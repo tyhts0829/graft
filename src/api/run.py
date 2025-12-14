@@ -17,6 +17,9 @@ from src.render.layer import LayerStyleDefaults
 from src.render.render_settings import RenderSettings
 from src.render.scene import SceneItem
 
+DRAW_WINDOW_POS = (500, 100)
+PARAMETER_GUI_POS = (1800, 100)
+
 
 def run(
     draw: Callable[[float], SceneItem],
@@ -81,6 +84,7 @@ def run(
         defaults=defaults,
         store=param_store,
     )
+    draw_window.window.set_location(*DRAW_WINDOW_POS)
 
     # `systems` は teardown 用（close 順もここで管理する）。
     systems = [draw_window]
@@ -93,6 +97,7 @@ def run(
         from src.app.runtime.parameter_gui_system import ParameterGUIWindowSystem
 
         gui = ParameterGUIWindowSystem(store=param_store)
+        gui.window.set_location(*PARAMETER_GUI_POS)
         systems.append(gui)
         tasks.append(WindowTask(window=gui.window, draw_frame=gui.draw_frame))
 
