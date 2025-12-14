@@ -15,73 +15,64 @@
   - GUI は `src/app/parameter_gui/store_bridge.py` → `src/app/parameter_gui/table.py` の 4 列テーブルで ParamStore を編集する。
   - 表示順は現状「Primitive → Effect（チェーン順）→ その他」。
   - kind は GUI 側で `float/int/vec3/bool/string/choice` を描画できるが、色編集用の `color_edit3` は未導入。
-  - `src/parameters/view.py` には `kind == "rgb"` 分岐があるが、現状の正規化は 0–255 int 前提になっている（描画側の float 0–1 とズレる）。
+  - `src/parameters/view.py` の `kind == "rgb"` は 0–255 int を正としている（描画側の float 0–1 とは変換が必要）。
 
 ## 方針（ここでは代替案を増やさない）
 
 - Style 値は ParamStore に統合する（“特殊 op/site_id/arg” で表現）。
 - GUI では Style を最上段に 1 セクションとして出す（`collapsing_header("Style")`）。
-- 色は **float 0–1 の RGB** を正とし、GUI のコントロールは **`imgui.color_edit3`** を使う。
-  - そのため `kind="rgb"` の意味を「0–1 float の RGB」へ寄せ、0–255 int 前提は廃止する（破壊的変更 OK の方針に従う）。
+- 色（`kind="rgb"`）は **0–255 int の RGB** を正とする（GUI は `imgui.color_edit3(..., COLOR_EDIT_UINT8)` を使う）。
+- 描画側（renderer/shader）が使う RGB は 0–1 float のため、適用直前に 0–255→0–1 変換する。
 
 ## 実装計画（チェックリスト）
 
 ### 1) Style を ParamStore に載せる（キー設計 + 初期化）
 
-- [ ] Style 用の定数を決める（例）
+- [x] Style 用の定数/キーを定義する（`src/parameters/style.py`）
   - `STYLE_OP = "__style__"`
   - `STYLE_SITE_ID = "__global__"`
   - arg は `background_color`, `global_thickness`, `global_line_color`
-- [ ] `src/api/run.py`（または `DrawWindowSystem.__init__`）で ParamStore を初期化するタイミングで
-  - [ ] 3 つの style key を `store.ensure_state(..., base_value=...)` で作成する
-  - [ ] `store.set_meta(key, meta)` で GUI 対象にする（snapshot に載る条件が meta のため）
-  - [ ] `initial_override=True`（初期は GUI 上書きを有効にして、触らなくても base と一致する）を明示する
-    - ui_value は base で初期化されるので、override=True でも見た目は変わらない
-- [ ] Style の `ParamMeta` を固定する
-  - [ ] `background_color`: `ParamMeta(kind="rgb")`（range は不要 or `ui_min=0.0, ui_max=1.0`）
-  - [ ] `global_line_color`: 同上
-  - [ ] `global_thickness`: `ParamMeta(kind="float", ui_min=0.0, ui_max=<適当>)`
+- [x] `DrawWindowSystem.__init__` で style key の meta/state を初期化する
+  - [x] 3 つの style key を `store.ensure_state(..., base_value=...)` で作成する
+  - [x] `store.set_meta(key, meta)` で GUI 対象にする（snapshot に載る条件が meta のため）
+  - [x] `initial_override=True`（初期は GUI 上書きを有効にして、触らなくても base と一致する）
+- [x] Style の `ParamMeta` を固定する
+  - [x] `background_color`: `ParamMeta(kind="rgb", ui_min=0, ui_max=255)`
+  - [x] `global_line_color`: 同上
+  - [x] `global_thickness`: `ParamMeta(kind="float", ui_min=0.0, ui_max=...)`
 
-### 2) `kind="rgb"` を float 0–1 に寄せ、GUI で `color_edit3` を使えるようにする
+### 2) `kind="rgb"` を GUI で `color_edit3`（0–255 表示）できるようにする
 
-- [ ] `src/parameters/view.py`
-  - [ ] `normalize_input(..., kind=="rgb")` を「(r,g,b) を float 化し 0..1 に clamp」へ変更
-- [ ] `tests/parameters/test_parameter_normalize.py`
-  - [ ] `kind="rgb"` の期待値を 0..1 float の clamp へ更新
-- [ ] `tests/parameters/test_parameter_updates.py`
-  - [ ] `rgb` の meta/値を 0..1 float 前提へ更新
-- [ ] `src/app/parameter_gui/widgets.py`
-  - [ ] `widget_rgb_color_edit3(row)` を追加（`imgui.color_edit3("##value", r, g, b)`）
-  - [ ] `_KIND_TO_WIDGET["rgb"] = widget_rgb_color_edit3` を追加
-- [ ] `src/app/parameter_gui/table.py`
-  - [ ] Column 3（min-max）は `rgb` では表示しない（固定値なので）
-  - [ ] Column 4（cc/override）は `rgb` は「override だけ」にする（cc は一旦無し）
+- [x] `src/app/parameter_gui/widgets.py`
+  - [x] `widget_rgb_color_edit3(row)` を追加（内部は float 0–1 へ変換し、`COLOR_EDIT_UINT8` で 0–255 表示）
+  - [x] `_KIND_TO_WIDGET["rgb"] = widget_rgb_color_edit3` を追加
+- [x] `src/app/parameter_gui/table.py`
+  - [x] Column 3（min-max）は `rgb` では表示しない
+  - [x] Column 4（cc/override）は `rgb` は「override だけ」にする（cc は一旦無し）
 
 ### 3) GUI に Style セクションを追加する（表示順 + ヘッダ）
 
-- [ ] `src/app/parameter_gui/store_bridge.py`
-  - [ ] `rows_from_snapshot` の結果から style 行（`row.op == STYLE_OP`）を抽出し、表示順の最上段へ移動する
-  - [ ] 既存の primitive/effect/other の並びは維持する（style だけ先頭へ）
-- [ ] `src/app/parameter_gui/table.py`
-  - [ ] style 行を 1 グループとして扱い、グループ境界で `collapsing_header("Style")` を描画する
-  - [ ] style 行の 1 列目は `row.arg`（例: `background_color`）を表示する
-    - 既存の `format_param_row_label(op#ordinal arg)` は style では使わない
+- [x] `src/app/parameter_gui/store_bridge.py`
+  - [x] style 行（`row.op == STYLE_OP`）を抽出し、表示順の最上段へ移動する
+  - [x] 既存の primitive/effect/other の並びは維持する（style だけ先頭へ）
+- [x] `src/app/parameter_gui/table.py`
+  - [x] style 行を 1 グループとして扱い、グループ境界で `collapsing_header("Style")` を描画する
+  - [x] style 行の 1 列目は `row.arg`（例: `background_color`）を表示する
 
 ### 4) 描画へ反映する（次フレームに反映される経路）
 
-- [ ] `src/app/runtime/draw_window_system.py`
-  - [ ] `parameter_context(self._store, ...)` のスコープを「clear + render_scene」まで含める
-  - [ ] フレーム冒頭で style の effective 値を解決し、描画へ適用する
-    - [ ] `background_color` を `renderer.clear(effective_background_color)` に使う
-    - [ ] `LayerStyleDefaults` を `effective_global_thickness/global_line_color` で組み立て、`render_scene(..., defaults=...)` に渡す
-  - [ ] “解決”は `resolve_params(op=STYLE_OP, site_id=STYLE_SITE_ID, params={...}, meta={...})` を流用して一元化する（source/base/gui の整合を揃える）
+- [x] `src/app/runtime/draw_window_system.py`
+  - [x] フレーム冒頭で style の effective 値を解決し、描画へ適用する
+    - [x] `background_color` を `renderer.clear(...)` に使う
+    - [x] `LayerStyleDefaults` を `global_thickness/global_line_color` で組み立て、`render_scene(..., defaults=...)` に渡す
+  - [x] 色は 0–255→0–1 に変換してから renderer/shader へ渡す
+  - [x] style の float 量子化で見た目が変わるのを避けるため、style は resolver を経由せず store 状態を直接参照する
 
 ### 5) テスト（最小・重くしない）
 
-- [ ] `tests/parameters/*`
-  - [ ] `rgb` 正規化（0..1 clamp）が落ちないこと
+- [x] `tests/parameters/*`
+  - [x] `rgb`（0..255 clamp）の正規化テストが落ちないこと
 - [ ] `tests/app/*`（純粋関数/ロジックだけ）
-  - [ ] style 行を先頭へ出す “並び替え” ロジックを純粋関数化できるなら、ユニットテストで担保する
   - [ ] `DrawWindowSystem` そのものの描画テストは増やさない（GL/pyglet 依存が重い）
 
 ## 完了条件（Phase 3 / Style）

@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import list
 
 import numpy as np
 
 from src.core.geometry import Geometry
 from src.render.frame_pipeline import render_scene
 from src.render.layer import Layer, LayerStyleDefaults
+from src.primitives import circle as _circle_module  # noqa: F401
 
 
 @dataclass

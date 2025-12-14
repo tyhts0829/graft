@@ -11,6 +11,7 @@ from src.core.primitive_registry import primitive_registry
 from src.parameters.key import ParameterKey
 from src.parameters.meta import ParamMeta
 from src.parameters.store import ParamStore
+from src.parameters.style import STYLE_OP
 from src.parameters.view import ParameterRow, rows_from_snapshot, update_state_from_ui
 
 from .labeling import primitive_header_display_names_from_snapshot
@@ -123,19 +124,31 @@ def render_store_parameter_table(
     rows_before_raw = rows_from_snapshot(snapshot)
 
     # --- 5) 表示順のために 3 つへ分類 ---
-    # 1) primitive 群（先に見せたい）
-    # 2) effect 群（チェーン順に並べたい）
-    # 3) その他（将来の拡張/ユーザー定義 op など）
+    # 1) style 行（最上段に出したい）
+    # 2) primitive 群（先に見せたい）
+    # 3) effect 群（チェーン順に並べたい）
+    # 4) その他（将来の拡張/ユーザー定義 op など）
+    style_rows: list[ParameterRow] = []
     primitive_rows: list[ParameterRow] = []
     effect_rows: list[ParameterRow] = []
     other_rows: list[ParameterRow] = []
     for row in rows_before_raw:
-        if row.op in primitive_registry:
+        if row.op == STYLE_OP:
+            style_rows.append(row)
+        elif row.op in primitive_registry:
             primitive_rows.append(row)
         elif row.op in effect_registry:
             effect_rows.append(row)
         else:
             other_rows.append(row)
+
+    # Style は固定の表示順に寄せる（background → thickness → line_color）。
+    style_order = {
+        "background_color": 0,
+        "global_thickness": 1,
+        "global_line_color": 2,
+    }
+    style_rows.sort(key=lambda r: (style_order.get(r.arg, 999), r.arg))
 
     def _effect_sort_key(row: ParameterRow) -> tuple[int, int, str]:
         # effect ステップは chain_id / step_index を使って “チェーン順→ステップ順” に並べる。
@@ -150,9 +163,9 @@ def render_store_parameter_table(
 
     # Effect 行を “チェーン順→ステップ順→arg” で並び替える。
     effect_rows.sort(key=_effect_sort_key)
-    # 最終的な表示順: primitive → effect → other
+    # 最終的な表示順: style → primitive → effect → other
     # ※ この rows_before の順番が、そのまま GUI の並び順になる。
-    rows_before = primitive_rows + effect_rows + other_rows
+    rows_before = style_rows + primitive_rows + effect_rows + other_rows
 
     # --- 6) 描画（imgui）→ UI 入力を反映した更新 rows を受け取る ---
     # render_parameter_table は

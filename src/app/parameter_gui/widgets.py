@@ -46,6 +46,22 @@ def _as_float3(value: Any) -> tuple[float, float, float]:
     return float(x), float(y), float(z)
 
 
+def _as_rgb255(value: Any) -> tuple[int, int, int]:
+    """値を長さ 3 の int タプル `(r, g, b)`（0..255）に変換して返す。"""
+
+    try:
+        r, g, b = value  # type: ignore[misc]
+    except Exception as exc:
+        raise ValueError(f"rgb ui_value must be a length-3 sequence: {value!r}") from exc
+
+    out: list[int] = []
+    for v in (r, g, b):
+        iv = int(v)
+        iv = max(0, min(255, iv))
+        out.append(iv)
+    return int(out[0]), int(out[1]), int(out[2])
+
+
 def widget_float_slider(row: ParameterRow) -> tuple[bool, float]:
     """kind=float のスライダーを描画し、(changed, value) を返す。
 
@@ -66,9 +82,16 @@ def widget_float_slider(row: ParameterRow) -> tuple[bool, float]:
 
     value = float(row.ui_value)
     min_value, max_value = _float_slider_range(row)
-    return imgui.slider_float(
-        "##value", float(value), float(min_value), float(max_value)
-    )
+    if str(row.arg).endswith("thickness"):
+        return imgui.slider_float(
+            "##value",
+            float(value),
+            float(min_value),
+            float(max_value),
+            format="%.6f",
+            flags=imgui.SLIDER_FLAGS_ALWAYS_CLAMP,
+        )
+    return imgui.slider_float("##value", float(value), float(min_value), float(max_value))
 
 
 def widget_int_slider(row: ParameterRow) -> tuple[bool, int]:
@@ -97,6 +120,30 @@ def widget_vec3_slider(row: ParameterRow) -> tuple[bool, tuple[float, float, flo
         float(max_value),
     )
     return changed, _as_float3(out)
+
+
+def widget_rgb_color_edit3(row: ParameterRow) -> tuple[bool, tuple[int, int, int]]:
+    """kind=rgb のカラーピッカーを描画し、(changed, value) を返す。"""
+
+    import imgui  # type: ignore[import-untyped]
+
+    r, g, b = _as_rgb255(row.ui_value)
+    rf, gf, bf = r / 255.0, g / 255.0, b / 255.0
+    flags = (
+        imgui.COLOR_EDIT_UINT8 | imgui.COLOR_EDIT_DISPLAY_RGB | imgui.COLOR_EDIT_INPUT_RGB
+    )
+    changed, out = imgui.color_edit3("##value", float(rf), float(gf), float(bf), flags=flags)
+    if not changed:
+        return False, (r, g, b)
+
+    r2, g2, b2 = out
+    r_out = int(round(float(r2) * 255.0))
+    g_out = int(round(float(g2) * 255.0))
+    b_out = int(round(float(b2) * 255.0))
+    r_out = max(0, min(255, r_out))
+    g_out = max(0, min(255, g_out))
+    b_out = max(0, min(255, b_out))
+    return True, (r_out, g_out, b_out)
 
 
 def widget_bool_checkbox(row: ParameterRow) -> tuple[bool, bool]:
@@ -150,6 +197,7 @@ _KIND_TO_WIDGET: dict[str, WidgetFn] = {
     "float": widget_float_slider,
     "int": widget_int_slider,
     "vec3": widget_vec3_slider,
+    "rgb": widget_rgb_color_edit3,
     "bool": widget_bool_checkbox,
     "string": widget_string_input,
     "choice": widget_choice_radio,

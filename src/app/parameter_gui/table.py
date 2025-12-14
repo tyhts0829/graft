@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from src.parameters.style import STYLE_OP
 from src.parameters.view import ParameterRow
 
 from .labeling import format_param_row_label
@@ -88,23 +89,27 @@ def render_parameter_row_4cols(
         imgui.table_set_column_index(2)
         # min-max スライダーは float/vec3/int のみ表示可能。
         if row.kind in {"float", "vec3"}:
-            min_display = -1.0 if ui_min is None else float(ui_min)
-            max_display = 1.0 if ui_max is None else float(ui_max)
-            imgui.set_next_item_width(-1)
-            changed_range, min_display, max_display = imgui.drag_float_range2(
-                "##ui_range",
-                float(min_display),  # current_min
-                float(max_display),  # current_max
-                0.1,  # speed
-                0.0,  # min_value
-                0.0,  # max_value
-                "%.1f",  # format
-                None,
-            )
-            if changed_range:
-                changed_any = True
-                ui_min = float(min_display)
-                ui_max = float(max_display)
+            if row.op == STYLE_OP and row.arg == "global_thickness":
+                # thickness は特別扱いで drag_float_range2 を出さない。
+                pass
+            else:
+                min_display = -1.0 if ui_min is None else float(ui_min)
+                max_display = 1.0 if ui_max is None else float(ui_max)
+                imgui.set_next_item_width(-1)
+                changed_range, min_display, max_display = imgui.drag_float_range2(
+                    "##ui_range",
+                    float(min_display),  # current_min
+                    float(max_display),  # current_max
+                    0.1,  # speed
+                    0.0,  # min_value
+                    0.0,  # max_value
+                    "%.1f",  # format
+                    None,
+                )
+                if changed_range:
+                    changed_any = True
+                    ui_min = float(min_display)
+                    ui_max = float(max_display)
         elif row.kind == "int":
             min_display_i = -10 if ui_min is None else int(ui_min)
             max_display_i = 10 if ui_max is None else int(ui_max)
@@ -126,7 +131,7 @@ def render_parameter_row_4cols(
         imgui.table_set_column_index(3)
         if row.kind in {"bool", "string", "choice"}:
             pass
-        elif row.kind == "vec3":
+        elif row.kind in {"vec3", "rgb"}:
             if isinstance(cc_key, tuple):
                 a, b, c = cc_key
                 v0 = -1 if a is None else int(a)
@@ -258,36 +263,56 @@ def render_parameter_table(
         # グループが閉じている間は、その配下のパラメータ行を描画しない。
         group_open = True
         for row in rows:
-            # 現在行が effect ステップに紐づくかどうか（(op, site_id) → (chain_id, step_index)）。
-            step_key = (row.op, row.site_id)
-            step_info = None if step_info_by_site is None else step_info_by_site.get(step_key)
-
-            if step_info is not None:
-                # --- effect: chain_id を group として扱う ---
-                chain_id, _step_index = step_info
-                group_id: tuple[str, object] = ("effect_chain", chain_id)
-                header = (
-                    None
-                    if effect_chain_header_by_id is None
-                    else effect_chain_header_by_id.get(chain_id)
-                )
-                # “同一チェーン内の同一 op” の出現回数で採番した label を使う。
-                step_ordinal = row.ordinal
-                if effect_step_ordinal_by_site is not None:
-                    step_ordinal = int(effect_step_ordinal_by_site.get(step_key, row.ordinal))
-                visible_label = format_param_row_label(row.op, int(step_ordinal), row.arg)
-                header_id = f"effect_chain:{chain_id}"
+            if row.op == STYLE_OP:
+                # --- style: 1 セクションだけを先頭に出す ---
+                group_id: tuple[str, object] = ("style", "global")
+                header = "Style"
+                visible_label = str(row.arg)
+                header_id = "style:global"
+                step_info = None
             else:
-                # --- primitive: (op, ordinal) を group として扱う ---
-                group_key = (row.op, int(row.ordinal))
-                group_id = ("primitive", group_key)
-                header = (
+                # 現在行が effect ステップに紐づくかどうか（(op, site_id) → (chain_id, step_index)）。
+                step_key = (row.op, row.site_id)
+                step_info = (
                     None
-                    if primitive_header_by_group is None
-                    else primitive_header_by_group.get(group_key)
+                    if step_info_by_site is None
+                    else step_info_by_site.get(step_key)
                 )
-                visible_label = format_param_row_label(row.op, int(row.ordinal), row.arg)
-                header_id = f"primitive:{group_key[0]}#{group_key[1]}"
+
+                if step_info is not None:
+                    # --- effect: chain_id を group として扱う ---
+                    chain_id, _step_index = step_info
+                    group_id = ("effect_chain", chain_id)
+                    header = (
+                        None
+                        if effect_chain_header_by_id is None
+                        else effect_chain_header_by_id.get(chain_id)
+                    )
+                    # “同一チェーン内の同一 op” の出現回数で採番した label を使う。
+                    step_ordinal = row.ordinal
+                    if effect_step_ordinal_by_site is not None:
+                        step_ordinal = int(
+                            effect_step_ordinal_by_site.get(step_key, row.ordinal)
+                        )
+                    visible_label = format_param_row_label(
+                        row.op,
+                        int(step_ordinal),
+                        row.arg,
+                    )
+                    header_id = f"effect_chain:{chain_id}"
+                else:
+                    # --- primitive: (op, ordinal) を group として扱う ---
+                    group_key = (row.op, int(row.ordinal))
+                    group_id = ("primitive", group_key)
+                    header = (
+                        None
+                        if primitive_header_by_group is None
+                        else primitive_header_by_group.get(group_key)
+                    )
+                    visible_label = format_param_row_label(
+                        row.op, int(row.ordinal), row.arg
+                    )
+                    header_id = f"primitive:{group_key[0]}#{group_key[1]}"
 
             if group_id != prev_group_id:
                 # グループが切り替わったタイミングで “ヘッダ行” を 1 行だけ描画する。
