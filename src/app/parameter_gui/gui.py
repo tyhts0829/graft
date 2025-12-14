@@ -91,6 +91,12 @@ class ParameterGUI:
         # キーボード/マウス入力などを backend から ImGui IO へ取り込む。
         self._renderer.process_inputs()
 
+        # Parameter GUI のスクロール方向を反転する。
+        # pyglet backend は `io.mouse_wheel = scroll` をそのまま入れるため、
+        # ここで「このフレームのホイールΔ」だけ符号反転して扱う。
+        io = imgui.get_io()
+        io.mouse_wheel = float(-float(io.mouse_wheel))
+
         # --- ImGui フレーム開始 ---
         imgui.new_frame()
 
