@@ -2,19 +2,20 @@
 
 どこで: `src/parameters/key.py`（site_id 生成）と `data/output/param_store/*.json`（永続化）、および Parameter GUI（`src/app/parameter_gui/*`）。
 何を: ParamStore 復元後に「polyhedron ヘッダや effect ヘッダが複製される」不具合の原因調査結果と、修正計画をまとめる。
-なぜ: 永続化を有効にした運用（調整→保存→コード編集→再起動）で GUI が増殖していき、作業性が大きく落ちるため。
+なぜ: 永続化を有効にした運用（調整 → 保存 → コード編集 → 再起動）で GUI が増殖していき、作業性が大きく落ちるため。
 
 ## 1. 現象（報告内容の整理）
 
 再現手順（ユーザー報告）:
 
-1) `main.py` を起動して 1 回描画し、閉じる（`data/output/param_store/main.json` が保存される）
-2) `main.py` の `draw()` を編集し、`G.polyhedron(type_index=2)` のように `type_index` を「コード側で明示指定」する
-3) 再度起動すると、Parameter GUI で
+1. `main.py` を起動して 1 回描画し、閉じる（`data/output/param_store/main.json` が保存される）
+2. `main.py` の `draw()` を編集し、`G.polyhedron(type_index=2)` のように `type_index` を「コード側で明示指定」する
+3. 再度起動すると、Parameter GUI で
    - polyhedron のヘッダが 2 つに増える
    - effect のヘッダも複製される
 
 補足:
+
 - これは「GUI のグルーピングが壊れている」というより、**同一スクリプト内の“同じつもりの呼び出し箇所”が別物として認識され、古い方が残り続ける**挙動に見える。
 
 ## 2. 調査（コード上の根拠）
@@ -60,30 +61,34 @@ ParamStore 永続化そのものではなく、**site_id が `f_lasti` 依存で
 
 ### 4.2 対応案
 
-案A（最小・推奨）:
+案 A（最小・推奨）:
 
 - site_id から `f_lasti` を外し、**行番号ベース**にする。
   - 例: `"{filename}:{lineno}"`（lineno は `frame.f_lineno`）
   - もしくは `"{filename}:{co_name}:{line_offset}"`（`line_offset = f_lineno - co_firstlineno`）
 
 メリット:
+
 - 実装が単純で、今回の “引数追加で増殖” を確実に止められる。
 
 デメリット:
-- 同一行に複数の `G.*()`/`E.*()` があると衝突しうる（運用で「1行1呼び出し」を推奨するのが最も簡単）。
 
-案B（やや堅牢、ただし複雑化）:
+- 同一行に複数の `G.*()`/`E.*()` があると衝突しうる（運用で「1 行 1 呼び出し」を推奨するのが最も簡単）。
+
+案 B（やや堅牢、ただし複雑化）:
 
 - `dis.get_instructions(frame.f_code)` と `frame.f_lasti` から「その命令の source position（lineno/col）」を取得し、
   site_id を `"{filename}:{lineno}:{col}"` のようにする（`f_lasti` 自体は含めない）。
 
 メリット:
+
 - 同一行に複数呼び出しがあっても衝突しにくい。
 
 デメリット:
+
 - 実装とテストが増える（このリポの方針としては “必要が出てから” でよい）。
 
-本件の修正は案Aで十分（必要十分 / シンプル優先）。
+本件の修正は案 A で十分（必要十分 / シンプル優先）。
 
 ## 5. 既存の保存ファイルについて
 
@@ -98,17 +103,16 @@ site_id 仕様を変えると、既存の `data/output/param_store/*.json` 内�
 
 - [ ] 再現メモを最小化（main.py で再現する手順を確定）
 - [ ] 回帰テストを追加（site_id が「同一行の軽微編集」で変わらないこと）
-  - 例: `compile(..., filename="main.py", ...)` を使い、`G.polyhedron()` と `G.polyhedron(type_index=2)` の2バリアントで
+  - 例: `compile(..., filename="main.py", ...)` を使い、`G.polyhedron()` と `G.polyhedron(type_index=2)` の 2 バリアントで
     生成される `ParameterKey.site_id` が一致することを確認する（`parameter_context` + `ParamStore` を使う）
-- [ ] `src/parameters/key.py` の site_id 形式を案Aへ変更（`f_lasti` を除去）
+- [ ] `src/parameters/key.py` の site_id 形式を案 A へ変更（`f_lasti` を除去）
 - [ ] `tests/parameters/test_site_id.py` を必要に応じて更新
 - [ ] ドキュメント（`parameter_spec.md` 等）に site_id 形式が出ていれば更新
 - [ ] `data/output/param_store/main.json` を削除してスモーク確認
-  - 1回目: 起動→GUIで変更→終了→保存される
-  - 2回目: `G.polyhedron(type_index=2)` に編集→起動→ヘッダが増殖しない
+  - 1 回目: 起動 →GUI で変更 → 終了 → 保存される
+  - 2 回目: `G.polyhedron(type_index=2)` に編集 → 起動 → ヘッダが増殖しない
 
 ## 7. 追加で確認したい点（任意）
 
 - `main.py` 以外（`sketch/*.py`）でも同様に増殖が止まるか
-- 1 行に複数呼び出しがあるスクリプトで衝突が問題になるか（問題なら案Bへ移行）
-
+- 1 行に複数呼び出しがあるスクリプトで衝突が問題になるか（問題なら案 B へ移行）
