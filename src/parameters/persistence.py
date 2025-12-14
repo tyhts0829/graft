@@ -13,7 +13,6 @@ from typing import Any
 from .store import ParamStore
 
 _PERSIST_DIR = Path("data") / "output" / "param_store"
-_FILENAME_PREFIX = "param_store__"
 
 
 def _sanitize_filename_fragment(text: str) -> str:
@@ -44,11 +43,11 @@ def default_param_store_path(draw: Callable[[float], Any]) -> Path:
 
     Notes
     -----
-    パスは `data/output/param_store/param_store__{script_stem}.json`。
+    パスは `data/output/param_store/{script_stem}.json`。
     """
 
     script_stem = _sanitize_filename_fragment(_draw_script_stem(draw))
-    filename = f"{_FILENAME_PREFIX}{script_stem}.json"
+    filename = f"{script_stem}.json"
     return _PERSIST_DIR / filename
 
 

@@ -12,7 +12,7 @@ def test_default_param_store_path_uses_data_dir_and_script_stem():
     assert path.parts[0] == "data"
     assert path.parts[1] == "output"
     assert path.parts[2] == "param_store"
-    assert Path(__file__).stem in path.name
+    assert path.name == f"{Path(__file__).stem}.json"
     assert path.suffix == ".json"
 
 
@@ -22,7 +22,7 @@ def test_param_store_file_roundtrip(tmp_path: Path):
     store.ensure_state(key, base_value=0.5).override = True
     store.set_meta(key, ParamMeta(kind="float", ui_min=0.0, ui_max=1.0))
 
-    path = tmp_path / "param_store__dummy.json"
+    path = tmp_path / "dummy.json"
     save_param_store(store, path)
     loaded = load_param_store(path)
 
@@ -37,7 +37,7 @@ def test_param_store_file_roundtrip(tmp_path: Path):
 
 
 def test_load_param_store_ignores_broken_json(tmp_path: Path):
-    path = tmp_path / "param_store__broken.json"
+    path = tmp_path / "broken.json"
     path.write_text("{broken-json", encoding="utf-8")
 
     loaded = load_param_store(path)

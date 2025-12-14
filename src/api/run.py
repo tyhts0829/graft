@@ -30,7 +30,7 @@ def run(
     draw: Callable[[float], SceneItem],
     *,
     background_color: tuple[float, float, float] = (1.0, 1.0, 1.0),
-    line_thickness: float = 0.01,
+    line_thickness: float = 0.001,
     line_color: tuple[float, float, float] = (0.0, 0.0, 0.0),
     render_scale: float = 1.0,
     canvas_size: tuple[int, int] = (800, 800),

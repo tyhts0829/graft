@@ -38,11 +38,11 @@
 
 - 保存ディレクトリ: `data/output/param_store/`
 - 保存ファイル名（例）:
-  - `data/output/param_store/param_store__main.json`
-  - `data/output/param_store/param_store__sketch__251214.json`
+  - `data/output/param_store/main.json`
+  - `data/output/param_store/251214.json`
 - ルール:
-  - `param_store__{script_key}.json`
-  - `script_key` は必ずスクリプト名（stem）を含むこと（要件）。
+  - `{script_stem}.json`
+  - `script_stem` は draw 定義元ファイル名の stem（要件）。
 
 ## 4. どのデータを永続化するか
 

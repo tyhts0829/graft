@@ -27,7 +27,7 @@ if __name__ == "__main__":
     run(
         draw,
         background_color=(1.0, 1.0, 1.0),
-        line_thickness=0.0015,
+        # line_thickness=0.0015,
         line_color=(0.0, 0.0, 0.0),
         render_scale=4.0,
         canvas_size=(CANVAS_WIDTH, CANVAS_HEIGHT),
