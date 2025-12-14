@@ -18,7 +18,7 @@ CANVAS_HEIGHT = 300
 
 def draw(t: float):
     eff1 = E(name="triple_scale").scale().fill().rotate()
-    ply1 = G.polyhedron()
+    ply1 = G.polyhedron(type_index=2)
     eff2 = E.scale().rotate()
     ply2 = G.polygon()
 

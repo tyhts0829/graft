@@ -5,3 +5,4 @@ parameter_gui Style, Effect, Primitive のヘッダ色指定
 Color Palette 統合
 Midi Controller 統合
 LFO 実装
+stub 生成
