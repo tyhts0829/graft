@@ -1,343 +1,226 @@
+"""
+どこで: `src/effects/fill.py`。ハッチ塗りつぶし effect の実体変換。
+何を: 閉領域（外周＋穴）に対し、偶奇規則でハッチ線を生成する。
+なぜ: 塗りつぶし表現を effect として提供し、レシピ DAG/Parameter GUI と整合させるため。
+"""
+
 from __future__ import annotations
 
-"""
-閉領域のハッチ塗り（外環＋穴の偶奇規則、複数方向、共通間隔）
-テキストや多輪郭形状で「穴」を正しく抜きつつ、回転やスケールの影響を受けにくい安定した塗り密度を得る。
-
-処理の流れ（開発者向け）
-1) パラメータ正規化
-   - `density/angle/angle_sets` はスカラまたは配列（図形グループごとにサイクル適用）。
-
-2) 共平面判定と XY 整列（重要）
-   - 各リングを試し、十分平面なリングから姿勢（回転 R と z オフセット）を推定。
-   - 見つからない場合は PCA（SVD）で全体の法線を推定（最小特異ベクトル）。
-   - 得られた姿勢で「全体」を XY に整列し、z 残差が絶対/相対閾値以内なら「共平面」とみなす。
-
-3) 共平面経路（穴の塗り分け）
-   - グルーピング: `util.polygon_grouping.build_evenodd_groups` で外環＋穴の集合へ分解。
-     - 内包判定は「重心」ではなく各リングの代表点（第1頂点）で行う。ドーナツや非凸外周で重心が穴側に落ちる破綻を避けるため。
-   - 共通間隔: 全体の未回転高さから 1 本あたりの `spacing` を算出し、全グループで共通に使用。
-     - 小さな島（例: 句読点/ドット）でも見かけ密度が過剰にならない（本数ではなく間隔基準）。
-   - 各グループに対し、`angle_sets` 本の方向で `_generate_line_fill_evenodd_multi` を実行（XY 空間でスキャンライン→偶奇規則で区間化）。
-   - 生成した 2D 線分を `transform_back` で元姿勢の 3D に戻す。
-   - `remove_boundary=False` なら元の輪郭線も先頭に残す。
-
-4) 非共平面フォールバック
-   - 各ポリゴンを個別に平面性チェックし、平面なら単一ポリゴン用のスキャンでハッチ、そうでなければ境界のみ返す（空出力回避）。
-   - この経路では穴の偶奇統合は行わない（グローバルに共平面でない場合のみ到達）。
-
-実装メモ
-- 線本数のスケール `density` は 2..MAX（200）にクランプして `spacing` を求める（`_spacing_from_height`）。
-- 平面性の閾値は絶対/相対の最大。
-- 方向本数 `angle_sets=k` のとき、`angle + i*(pi/k)`（i=0..k-1）で等間隔回転。
-- グループ順と各リングの順序は入力順を基準に安定化している。
-"""
-
-
-from typing import Iterable
+from dataclasses import dataclass
+from typing import Sequence
 
 import numpy as np
-from numba import njit  # type: ignore[attr-defined]
 
-from engine.core.geometry import Geometry
-from util.geom3d_frame import choose_coplanar_frame
-from util.geom3d_ops import transform_back, transform_to_xy_plane
-from util.polygon_grouping import build_evenodd_groups
+from src.core.effect_registry import effect
+from src.core.realized_geometry import RealizedGeometry
+from src.parameters.meta import ParamMeta
 
-from .registry import effect
-
-# 塗りつぶし線の最大密度（最大本数）
+# 生成する塗り線の最大本数（密度の上限）。
 MAX_FILL_LINES = 1000
 NONPLANAR_EPS_ABS = 1e-6
 NONPLANAR_EPS_REL = 1e-5
-PARAM_META = {
-    "angle_sets": {"type": "integer", "min": 1, "max": 6, "step": 1},
-    "density": {"type": "number", "min": 0.0, "max": MAX_FILL_LINES, "step": 1.0},
-    "spacing_gradient": {"type": "number", "min": -5.0, "max": 5.0, "step": 0.1},
-    "angle": {"type": "number", "min": 0.0, "max": 180.0},
-    "remove_boundary": {"type": "boolean"},
+
+fill_meta = {
+    "angle_sets": ParamMeta(kind="int", ui_min=1, ui_max=6),
+    "angle": ParamMeta(kind="float", ui_min=0.0, ui_max=180.0),
+    "density": ParamMeta(kind="float", ui_min=0.0, ui_max=float(MAX_FILL_LINES)),
+    "spacing_gradient": ParamMeta(kind="float", ui_min=-5.0, ui_max=5.0),
+    "remove_boundary": ParamMeta(kind="bool"),
 }
 
 
-@effect()
-def fill(
-    g: Geometry,
+@dataclass(frozen=True, slots=True)
+class _PlaneBasis:
+    """平面の 2D 基底を表現する（3D <-> 2D 変換用）。"""
+
+    origin: np.ndarray  # (3,)
+    u: np.ndarray  # (3,)
+    v: np.ndarray  # (3,)
+
+
+def _empty_geometry() -> RealizedGeometry:
+    coords = np.zeros((0, 3), dtype=np.float32)
+    offsets = np.zeros((1,), dtype=np.int32)
+    return RealizedGeometry(coords=coords, offsets=offsets)
+
+
+def _fit_plane_basis(
+    points: np.ndarray,
     *,
-    angle_sets: int | list[int] | tuple[int, ...] = 1,
-    angle: float | list[float] | tuple[float, ...] = 45.0,
-    density: float | list[float] | tuple[float, ...] = 35.0,
-    spacing_gradient: float | list[float] | tuple[float, ...] = 0.0,
-    remove_boundary: bool = False,
-) -> Geometry:
-    """閉じた形状をハッチングで塗りつぶし（純関数）。
-
-    Parameters
-    ----------
-    g : Geometry
-        入力ジオメトリ。各行が 1 本のポリライン。
-    angle_sets : int | list[int] | tuple[int, ...], default 1
-        ハッチ方向の本数（1=単方向, 2=90°クロス, 3=60°間隔, ...）。
-        配列指定時は図形（グループ）ごとに順番適用し、長さに応じてサイクルする。
-    angle : float | list[float] | tuple[float, ...], default 45.0
-        ハッチ角 [deg]。配列指定時は図形（グループ）ごとに順番適用し、長さに応じてサイクルする。
-        共平面の場合は外環＋穴のグループ単位で適用。
-    density : float | list[float] | tuple[float, ...], default 35.0
-        ハッチ密度（本数のスケール）。配列指定時は図形（グループ）ごとに順番適用し、長さに応じてサイクルする。
-        0 以下はその図形では no-op。最大は内部定数（200）。
-    spacing_gradient : float | list[float] | tuple[float, ...], default 0.0
-        スキャン方向に沿った線間隔の勾配。0.0 で一様間隔。
-        正の値でスキャン軸の +側に行くほど線間隔が広がり、負の値で -側に行くほど広がる。
-        絶対値が大きいほど変化が強くなり、配列指定時は図形（グループ）ごとに順番適用し、長さに応じてサイクルする。
-    remove_boundary : bool, default False
-        元の閉じた輪郭線を出力から除去する。False で輪郭を残す。
-
-    Notes
-    -----
-    共平面入力では角度ごとのスキャン方向スパンから `spacing` を決定するため、affine の Z 回転に
-    対しても実生成本数は概ね一定（`round(density)`、端数の影響で ±1 程度の誤差あり）。
-    非共平面の入力では輪郭ごとの個別処理を行い、このとき各ポリラインが十分に平面で
-    ないと判定された場合は塗りをスキップして元の境界のみを返す。
-    """
-    coords, offsets = g.as_arrays(copy=False)
-
-    def _as_float_seq(x: float | Iterable[float]) -> list[float]:
-        if isinstance(x, (int, float, np.floating)):
-            return [float(x)]
-        if isinstance(x, (list, tuple)):
-            return [float(v) for v in x]
-        # その他 Iterable は受け取らない（仕様上 list/tuple のみ）
-        raise TypeError(
-            "angle/density/spacing_gradient は float または list/tuple[float] を指定してください"
+    eps_abs: float = NONPLANAR_EPS_ABS,
+    eps_rel: float = NONPLANAR_EPS_REL,
+) -> tuple[bool, _PlaneBasis]:
+    """点群が“ほぼ平面”なら 2D 基底を返す。"""
+    if points.shape[0] < 3:
+        origin = points.mean(axis=0) if points.shape[0] else np.zeros((3,), dtype=np.float64)
+        basis = _PlaneBasis(
+            origin=np.asarray(origin, dtype=np.float64),
+            u=np.array([1.0, 0.0, 0.0], dtype=np.float64),
+            v=np.array([0.0, 1.0, 0.0], dtype=np.float64),
         )
+        return False, basis
 
-    density_seq = _as_float_seq(density)  # type: ignore[arg-type]
-    angle_seq_deg = _as_float_seq(angle)  # type: ignore[arg-type]
-    # degree で受け取り radian に変換
-    angle_seq = [float(np.deg2rad(a)) for a in angle_seq_deg]
-    spacing_gradient_seq = _as_float_seq(spacing_gradient)  # type: ignore[arg-type]
+    p = points.astype(np.float64, copy=False)
+    origin = p.mean(axis=0)
+    centered = p - origin
 
-    def _as_int_seq(x: int | Iterable[int]) -> list[int]:
-        if isinstance(x, (int, np.integer)):
-            return [int(x)]
-        if isinstance(x, (list, tuple)):
-            return [int(v) for v in x]
-        raise TypeError("angle_sets は int または list/tuple[int] を指定してください")
-
-    angle_sets_seq = _as_int_seq(angle_sets)  # type: ignore[arg-type]
-
-    if offsets.size <= 1:
-        return Geometry(coords.copy(), offsets.copy())
-
-    if all(d <= 0.0 for d in density_seq):
-        return Geometry(coords.copy(), offsets.copy())
-
-    # angle_sets は図形（グループ）ごとに決定する（配列時はサイクル）
-
-    planar_global, v2d_all, R_all, z_all, ref_height_global = choose_coplanar_frame(coords, offsets)
-
-    if planar_global:
-        results: list[np.ndarray] = []
-
-        # 1) 境界保持（必要時）
-        if not remove_boundary:
-            for i in range(len(offsets) - 1):
-                results.append(coords[offsets[i] : offsets[i + 1]].copy())
-
-        # 2) 外環＋穴のグループ化（XYへ整列した座標で評価）
-        groups = build_evenodd_groups(v2d_all, offsets)
-        if ref_height_global <= 0:
-            return Geometry(coords.copy(), offsets.copy())
-
-        # 3) 共通間隔で各グループにハッチを適用（XY空間で生成→元姿勢へ戻す）
-        for gi, ring_indices in enumerate(groups):
-            d = density_seq[gi % len(density_seq)]
-            if d <= 0.0:
-                continue
-            d = max(0.0, min(MAX_FILL_LINES, float(d)))
-            grad = spacing_gradient_seq[gi % len(spacing_gradient_seq)]
-            # グループの頂点配列にまとめ直し
-            lines: list[np.ndarray] = []
-            for idx in ring_indices:
-                s, e = int(offsets[idx]), int(offsets[idx + 1])
-                lines.append(v2d_all[s:e])
-            if not lines:
-                continue
-            g_coords = np.concatenate(lines, axis=0)
-            g_offsets = np.zeros(len(lines) + 1, dtype=np.int32)
-            acc = 0
-            for i, ln in enumerate(lines):
-                acc += ln.shape[0]
-                g_offsets[i + 1] = acc
-
-            base_ang = angle_seq[gi % len(angle_seq)]
-            k_i = angle_sets_seq[gi % len(angle_sets_seq)]
-            k_i = int(k_i) if int(k_i) > 0 else 1
-            # 全体の参照高さと density から共通間隔を決定（各グループで共通の“見かけ密度”）
-            base_spacing = _spacing_from_height(ref_height_global, float(d))
-            if base_spacing <= 0.0:
-                continue
-            for i in range(k_i):
-                ang_i = float(base_ang) + (np.pi / k_i) * i
-                segs_xy = _generate_line_fill_evenodd_multi(
-                    g_coords,
-                    g_offsets,
-                    d,
-                    ang_i,
-                    spacing_override=base_spacing,
-                    spacing_gradient=float(grad),
-                )
-                for seg in segs_xy:
-                    results.append(transform_back(seg, R_all, z_all))
-
-        return Geometry.from_lines(results)
-
-    # 非平面は従来通りポリゴン個別に処理
-
-    filled_results: list[np.ndarray] = []
-    for i in range(len(offsets) - 1):
-        vertices = coords[offsets[i] : offsets[i + 1]]
-
-        d = density_seq[i % len(density_seq)]
-        grad = spacing_gradient_seq[i % len(spacing_gradient_seq)]
-        if d <= 0.0:
-            # 塗り線無し、境界だけ保持
-            if not remove_boundary:
-                filled_results.append(vertices)
-            continue
-        base_ang = angle_seq[i % len(angle_seq)]
-        k_i = angle_sets_seq[i % len(angle_sets_seq)]
-        k_i = int(k_i) if int(k_i) > 0 else 1
-        filled_results.extend(
-            _fill_single_polygon(
-                vertices,
-                angle_sets=k_i,
-                density=max(0.0, min(MAX_FILL_LINES, float(d))),
-                angle=float(base_ang),
-                spacing_gradient=float(grad),
-                remove_boundary=remove_boundary,
-            )
+    _u, _s, vh = np.linalg.svd(centered, full_matrices=False)
+    normal = vh[-1]
+    n_norm = float(np.linalg.norm(normal))
+    if not np.isfinite(n_norm) or n_norm <= 0.0:
+        basis = _PlaneBasis(
+            origin=np.asarray(origin, dtype=np.float64),
+            u=np.array([1.0, 0.0, 0.0], dtype=np.float64),
+            v=np.array([0.0, 1.0, 0.0], dtype=np.float64),
         )
+        return False, basis
+    normal = normal / n_norm
 
-    if not filled_results:
-        return Geometry(coords.copy(), offsets.copy())
-
-    return Geometry.from_lines(filled_results)
-
-
-# UI 表示のためのメタ情報（RangeHint 構築に使用）
-fill.__param_meta__ = PARAM_META
-
-
-def _generate_line_fill(
-    vertices: np.ndarray, density: float, angle: float = 0.0, spacing_gradient: float = 0.0
-) -> list[np.ndarray]:
-    """平行線塗りつぶしパターンを生成します。"""
-    # 処理を簡素化するため XY 平面へ射影
-    vertices_2d, rotation_matrix, z_offset = transform_to_xy_plane(vertices)
-
-    # 2D 座標（未回転）
-    coords_2d = vertices_2d[:, :2]
-
-    # 角度が指定されている場合はポリゴンを回転（交点計算用の作業座標）
-    if angle != 0.0:
-        # 逆回転（作業座標へ）
-        cos_inv, sin_inv = np.cos(-angle), np.sin(-angle)
-        center_inv = np.mean(coords_2d, axis=0)
-        coords_2d_centered = coords_2d - center_inv
-        rot2_inv = np.array([[cos_inv, -sin_inv], [sin_inv, cos_inv]])
-        work_2d = coords_2d_centered @ rot2_inv.T + center_inv
-        # 正回転（生成した水平線を元角度へ戻す）を事前計算
-        cos_fwd, sin_fwd = np.cos(angle), np.sin(angle)
-        center_fwd = np.mean(vertices_2d[:, :2], axis=0)
-        rot2_fwd = np.array([[cos_fwd, -sin_fwd], [sin_fwd, cos_fwd]])
-    else:
-        work_2d = coords_2d
-
-    # 参照間隔用の“未回転”高さ（角度に依存しない間隔を実現）
-    _min_y_ref = float(np.min(coords_2d[:, 1]))
-    _max_y_ref = float(np.max(coords_2d[:, 1]))
-    ref_height = _max_y_ref - _min_y_ref
-    if ref_height <= 0:
-        return []
-
-    # 実際のスキャン範囲は作業座標（角度考慮）
-    min_y = float(np.min(work_2d[:, 1]))
-    max_y = float(np.max(work_2d[:, 1]))
-
-    # 密度に基づいて線間隔を算出（逆数的: 0=疎, 1=密）
-    # density=1.0 で MAX_FILL_LINES 本、density=0.0 でごく少数
-    if density <= 0:
-        return []
-
-    # 間隔計算: 間隔が小さいほど線が多い
-    # density=1.0 → バウンディングボックス内に MAX_FILL_LINES 本を想定
-    # density=0.1 → より少ない本数
-    spacing = _spacing_from_height(ref_height, float(density))
-    if spacing <= 0:
-        return []
-
-    # スキャンラインの Y 座標を生成（spacing_gradient=0 なら一様間隔）
-    y_values = _generate_y_values(min_y, max_y, spacing, float(spacing_gradient))
-    if y_values.size == 0:
-        return []
-    fill_lines = []
-
-    # 性能向上のためバッチ処理で交点計算（作業座標 = 角度考慮後）
-    intersection_results = generate_line_intersections_batch(work_2d, y_values)
-
-    for y, intersections in intersection_results:
-        # 交点をソートし線分を生成
-        intersections_sorted = np.sort(intersections)
-        for i in range(0, len(intersections_sorted) - 1, 2):
-            if i + 1 < len(intersections_sorted):
-                x1, x2 = intersections_sorted[i], intersections_sorted[i + 1]
-                line_2d = np.array([[x1, y], [x2, y]], dtype=np.float32)
-
-                # 必要に応じて正方向の回転を適用
-                if angle != 0.0:
-                    line_2d = (line_2d - center_fwd) @ rot2_fwd.T + center_fwd
-
-                # 3D に戻す
-                line_3d = np.hstack([line_2d, np.zeros((2, 1), dtype=np.float32)])
-
-                # 元の姿勢に戻す
-                line_final = transform_back(line_3d, rotation_matrix, z_offset)
-                fill_lines.append(line_final)
-
-    return fill_lines
-
-
-# ── 偶奇規則ベースの多輪郭塗り（平面XY向け） ─────────────────────────────────
-def _is_polygon_planar(
-    vertices: np.ndarray, *, eps_abs: float = NONPLANAR_EPS_ABS, eps_rel: float = NONPLANAR_EPS_REL
-) -> bool:
-    """単一ポリラインが“ほぼ平面”かを簡易判定する。
-
-    - `transform_to_xy_plane` で先頭3点が張る平面へ整列し、z 残差の最大値を評価する。
-    - 閾値は絶対/相対の最大値（相対は元座標のバウンディングボックス対角でスケール不変）。
-    """
-    if vertices.shape[0] < 3:
-        return False
-    v = np.asarray(vertices, dtype=np.float32)
-    v2d, _R, _z = transform_to_xy_plane(v)
-    z = v2d[:, 2]
-    z_span = float(np.max(np.abs(z))) if z.size else 0.0
-    # 元座標の対角長
-    mins = np.min(v, axis=0)
-    maxs = np.max(v, axis=0)
-    diag = float(np.sqrt(np.sum((maxs - mins) ** 2)))
+    residual = np.max(np.abs(centered @ normal))
+    mins = np.min(p, axis=0)
+    maxs = np.max(p, axis=0)
+    diag = float(np.linalg.norm(maxs - mins))
     threshold = max(float(eps_abs), float(eps_rel) * diag)
-    return z_span <= threshold
+    planar = bool(residual <= threshold)
+
+    # 基底の向きを安定させるため、world x 軸の平面内射影を u として採用する。
+    # normal とほぼ平行な場合は y 軸へフォールバックする。
+    ref = np.array([1.0, 0.0, 0.0], dtype=np.float64)
+    if abs(float(np.dot(ref, normal))) > 0.9:
+        ref = np.array([0.0, 1.0, 0.0], dtype=np.float64)
+    u_axis = ref - float(np.dot(ref, normal)) * normal
+    u_norm = float(np.linalg.norm(u_axis))
+    if u_norm <= 0.0:
+        ref = np.array([0.0, 0.0, 1.0], dtype=np.float64)
+        u_axis = ref - float(np.dot(ref, normal)) * normal
+        u_norm = float(np.linalg.norm(u_axis))
+    u_axis = u_axis / u_norm
+    v_axis = np.cross(normal, u_axis)
+
+    basis = _PlaneBasis(origin=origin, u=u_axis, v=v_axis)
+    return planar, basis
+
+
+def _project_to_2d(points: np.ndarray, basis: _PlaneBasis) -> np.ndarray:
+    """3D 点群を平面 2D 座標へ射影する。"""
+    p = points.astype(np.float64, copy=False) - basis.origin
+    x = p @ basis.u
+    y = p @ basis.v
+    return np.stack([x, y], axis=1).astype(np.float32, copy=False)
+
+
+def _lift_to_3d(coords_2d: np.ndarray, basis: _PlaneBasis) -> np.ndarray:
+    """2D 点群を 3D 空間へ戻す。"""
+    xy = coords_2d.astype(np.float64, copy=False)
+    return (
+        basis.origin[None, :]
+        + xy[:, 0:1] * basis.u[None, :]
+        + xy[:, 1:2] * basis.v[None, :]
+    ).astype(np.float32, copy=False)
+
+
+def _polygon_area_abs(vertices: np.ndarray) -> float:
+    """2D ポリゴンの面積絶対値を返す（閉じは仮定しない）。"""
+    if vertices.shape[0] < 3:
+        return 0.0
+    x = vertices[:, 0].astype(np.float64, copy=False)
+    y = vertices[:, 1].astype(np.float64, copy=False)
+    return float(0.5 * abs(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1))))
+
+
+def _point_in_polygon(point: np.ndarray, polygon: np.ndarray) -> bool:
+    """点が多角形内部にあるかを返す（境界上は False 扱い）。"""
+    x = float(point[0])
+    y = float(point[1])
+    n = int(polygon.shape[0])
+    if n < 3:
+        return False
+
+    inside = False
+    x1 = float(polygon[-1, 0])
+    y1 = float(polygon[-1, 1])
+    for i in range(n):
+        x2 = float(polygon[i, 0])
+        y2 = float(polygon[i, 1])
+        # y を跨ぐ辺だけを見る（水平辺は除外）。
+        if (y1 > y) != (y2 > y):
+            # 交点の x 座標
+            x_int = (x2 - x1) * (y - y1) / (y2 - y1) + x1
+            if x < x_int:
+                inside = not inside
+        x1, y1 = x2, y2
+    return inside
+
+
+def _build_evenodd_groups(coords_2d_all: np.ndarray, offsets: np.ndarray) -> list[list[int]]:
+    """外周＋穴を even-odd でグルーピングし、[outer, hole...] のリストを返す。"""
+    ring_indices = [
+        i
+        for i in range(int(offsets.size) - 1)
+        if int(offsets[i + 1]) - int(offsets[i]) >= 3
+    ]
+    if not ring_indices:
+        return []
+
+    rings = {}
+    rep = {}
+    area = {}
+    for i in ring_indices:
+        s = int(offsets[i])
+        e = int(offsets[i + 1])
+        poly = coords_2d_all[s:e]
+        rings[i] = poly
+        rep[i] = poly[0]
+        area[i] = _polygon_area_abs(poly)
+
+    contains: dict[int, set[int]] = {j: set() for j in ring_indices}
+    depth: dict[int, int] = {i: 0 for i in ring_indices}
+
+    for i in ring_indices:
+        for j in ring_indices:
+            if i == j:
+                continue
+            if _point_in_polygon(rep[i], rings[j]):
+                contains[j].add(i)
+                depth[i] += 1
+
+    parent: dict[int, int | None] = {i: None for i in ring_indices}
+    for i in ring_indices:
+        if depth[i] <= 0:
+            continue
+        candidates = [
+            j
+            for j in ring_indices
+            if j != i and depth.get(j, 0) == depth[i] - 1 and i in contains[j]
+        ]
+        if not candidates:
+            continue
+        parent[i] = min(candidates, key=lambda j: area.get(j, 0.0))
+
+    children: dict[int, list[int]] = {i: [] for i in ring_indices}
+    for i in ring_indices:
+        p = parent[i]
+        if p is None:
+            continue
+        children[p].append(i)
+
+    groups: list[list[int]] = []
+    for i in sorted(ring_indices):
+        if depth[i] % 2 != 0:
+            continue
+        holes = sorted(children.get(i, []))
+        groups.append([i, *holes])
+    return groups
 
 
 def _spacing_from_height(height: float, density: float) -> float:
-    """高さと密度から一定間隔を算出（ライン本数は2..MAXでクランプ）。"""
+    """高さと密度から線間隔を算出する（旧仕様: round(density) 本相当）。"""
     num_lines = int(round(float(density)))
     if num_lines < 2:
         num_lines = 2
     if num_lines > MAX_FILL_LINES:
         num_lines = MAX_FILL_LINES
-    if height <= 0 or num_lines <= 0:
+    if height <= 0.0:
         return 0.0
     return float(height) / float(num_lines)
 
@@ -345,7 +228,7 @@ def _spacing_from_height(height: float, density: float) -> float:
 def _generate_y_values(
     min_y: float, max_y: float, base_spacing: float, spacing_gradient: float
 ) -> np.ndarray:
-    """スキャン範囲と勾配からスキャンラインの Y 座標列を生成する。"""
+    """旧仕様のスキャンライン Y 値列を生成する（max_y は含めない）。"""
     if not np.isfinite(base_spacing) or base_spacing <= 0.0:
         return np.empty(0, dtype=np.float32)
     if not np.isfinite(spacing_gradient):
@@ -353,20 +236,16 @@ def _generate_y_values(
     if max_y <= min_y:
         return np.empty(0, dtype=np.float32)
 
-    # 勾配ゼロは元の一様間隔と同じ
     if abs(spacing_gradient) < 1e-6:
         return np.arange(min_y, max_y, base_spacing, dtype=np.float32)
 
     height = max_y - min_y
-
-    # 勾配の暴走を抑えるためソフトクランプ
     k = float(spacing_gradient)
     if k > 4.0:
         k = 4.0
     elif k < -4.0:
         k = -4.0
 
-    # 平均間隔がおおよそ一定になるように正規化係数を導入
     if abs(k) < 1e-3:
         c = 1.0
     else:
@@ -374,177 +253,262 @@ def _generate_y_values(
 
     y_values: list[float] = []
     y = float(min_y)
-    # 細かすぎる間隔への発散を避けるための下限
     min_step = base_spacing * 1e-3
-
     while y < max_y:
-        t = (y - min_y) / height  # 0..1
+        t = (y - min_y) / height
         factor = c * float(np.exp(k * (t - 0.5)))
         step = base_spacing * max(factor, 0.0)
         if step < min_step:
             step = min_step
-
         y_values.append(y)
         y += step
-
     return np.asarray(y_values, dtype=np.float32)
 
 
-def _scan_span_for_angle_xy(coords_2d: np.ndarray, angle: float) -> float:
-    """XY 座標群に対し、角度 `angle` のスキャン方向（y'=x*sinθ + y*cosθ）のスパン長を返す。
+def _find_line_intersections(polygon: np.ndarray, y: float) -> list[float]:
+    """水平線 y とポリゴンの交点 x 座標列を返す（旧仕様条件）。"""
+    n = int(polygon.shape[0])
+    if n < 2:
+        return []
 
-    - 入力は XY 整列済みの 2D 座標を想定。
-    - 戻り値は max(y')-min(y')。点数が不足するなどで無効な場合は 0.0。
-    """
-    if coords_2d.size == 0:
-        return 0.0
-    s = float(np.sin(angle))
-    c = float(np.cos(angle))
-    y_proj = coords_2d[:, 0] * s + coords_2d[:, 1] * c
-    return float(np.max(y_proj) - np.min(y_proj)) if y_proj.size else 0.0
+    out: list[float] = []
+    for i in range(n):
+        p1 = polygon[i]
+        p2 = polygon[(i + 1) % n]
+        y1 = float(p1[1])
+        y2 = float(p2[1])
+        if (y1 <= y < y2) or (y2 <= y < y1):
+            if y2 == y1:
+                continue
+            x1 = float(p1[0])
+            x2 = float(p2[0])
+            x = x1 + (y - y1) * (x2 - x1) / (y2 - y1)
+            out.append(float(x))
+    return out
 
 
 def _generate_line_fill_evenodd_multi(
-    coords: np.ndarray,
+    coords_2d: np.ndarray,
     offsets: np.ndarray,
+    *,
     density: float,
-    angle: float = 0.0,
-    spacing_override: float | None = None,
-    spacing_gradient: float = 0.0,
+    angle_rad: float,
+    spacing_override: float | None,
+    spacing_gradient: float,
 ) -> list[np.ndarray]:
-    """複数輪郭を偶奇規則でまとめてハッチング（XY 平面前提）。"""
-    if density <= 0 or offsets.size <= 1:
+    """複数輪郭を偶奇規則でまとめてハッチングする（2D 平面前提）。"""
+    if density <= 0.0 or offsets.size <= 1 or coords_2d.size == 0:
         return []
 
-    coords_2d = coords[:, :2].astype(np.float32, copy=False)
+    c2 = coords_2d.astype(np.float32, copy=False)
+    center = np.mean(c2, axis=0)
+    work = c2
+    rot_fwd: np.ndarray | None = None
 
-    # 角度回転のための中心（全体）
-    center = np.mean(coords_2d, axis=0)
-    work_2d = coords_2d
-    rot2_fwd: np.ndarray | None = None
-    if angle != 0.0:
-        # 逆回転（作業座標へ）
-        cos_inv, sin_inv = np.cos(-angle), np.sin(-angle)
+    if angle_rad != 0.0:
+        cos_inv = float(np.cos(-angle_rad))
+        sin_inv = float(np.sin(-angle_rad))
         rot_inv = np.array([[cos_inv, -sin_inv], [sin_inv, cos_inv]], dtype=np.float32)
-        work_2d = (coords_2d - center) @ rot_inv.T + center
-        # 正回転（線分を戻す）
-        cos_fwd, sin_fwd = np.cos(angle), np.sin(angle)
-        rot2_fwd = np.array([[cos_fwd, -sin_fwd], [sin_fwd, cos_fwd]], dtype=np.float32)
+        work = (c2 - center) @ rot_inv.T + center
+        cos_fwd = float(np.cos(angle_rad))
+        sin_fwd = float(np.sin(angle_rad))
+        rot_fwd = np.array([[cos_fwd, -sin_fwd], [sin_fwd, cos_fwd]], dtype=np.float32)
 
-    # 参照間隔用の“未回転”高さ（角度に依存しない間隔を実現）
-    ref_min_y = float(np.min(coords_2d[:, 1]))
-    ref_max_y = float(np.max(coords_2d[:, 1]))
-    ref_height = ref_max_y - ref_min_y
-    if ref_height <= 0:
+    ref_height = float(np.max(c2[:, 1]) - np.min(c2[:, 1]))
+    if ref_height <= 0.0:
         return []
 
-    # 実スキャン範囲は作業座標系（角度考慮）
-    min_y = float(np.min(work_2d[:, 1]))
-    max_y = float(np.max(work_2d[:, 1]))
+    min_y = float(np.min(work[:, 1]))
+    max_y = float(np.max(work[:, 1]))
 
-    if spacing_override is None:
-        spacing = _spacing_from_height(ref_height, float(density))
-    else:
-        spacing = float(spacing_override)
-    if not np.isfinite(spacing) or spacing <= 0:
+    spacing = float(spacing_override) if spacing_override is not None else _spacing_from_height(ref_height, density)
+    if not np.isfinite(spacing) or spacing <= 0.0:
         return []
 
     y_values = _generate_y_values(min_y, max_y, spacing, float(spacing_gradient))
     out_lines: list[np.ndarray] = []
-    z0 = float(coords[0, 2])
 
-    # スキャンライン毎に全輪郭から交点を収集し偶奇規則で区間を作成
     for y in y_values:
-        # 交点収集
-        intersections_all = []  # list[float]
-        for i in range(len(offsets) - 1):
-            if offsets[i + 1] - offsets[i] < 2:
+        intersections_all: list[float] = []
+        for i in range(int(offsets.size) - 1):
+            s = int(offsets[i])
+            e = int(offsets[i + 1])
+            if e - s < 2:
                 continue
-            poly = work_2d[offsets[i] : offsets[i + 1]]
-            xs = find_line_intersections_njit(poly, float(y))
-            if len(xs) > 0:
-                intersections_all.extend(xs.tolist())
+            poly = work[s:e]
+            intersections_all.extend(_find_line_intersections(poly, float(y)))
 
         if len(intersections_all) < 2:
             continue
 
         xs_sorted = np.sort(np.asarray(intersections_all, dtype=np.float32))
-        # ペアで塗り区間を生成（偶奇）
-        for j in range(0, xs_sorted.size - 1, 2):
+        for j in range(0, int(xs_sorted.size) - 1, 2):
             x1 = float(xs_sorted[j])
             x2 = float(xs_sorted[j + 1])
             if x2 - x1 <= 1e-9:
                 continue
-            seg2d = np.array([[x1, y], [x2, y]], dtype=np.float32)
-            if angle != 0.0 and rot2_fwd is not None:
-                # 元の角度へ戻す（前計算した行列を使用）
-                seg2d = (seg2d - center) @ rot2_fwd.T + center
-            # 3D に（一定 z）
-            seg3d = np.hstack([seg2d, np.full((2, 1), z0, dtype=np.float32)])
-            out_lines.append(seg3d)
-
+            seg2d = np.array([[x1, float(y)], [x2, float(y)]], dtype=np.float32)
+            if rot_fwd is not None:
+                seg2d = (seg2d - center) @ rot_fwd.T + center
+            out_lines.append(seg2d)
     return out_lines
 
 
-def _fill_single_polygon(
-    vertices: np.ndarray,
+def _lines_to_realized(lines: Sequence[np.ndarray]) -> RealizedGeometry:
+    """ポリライン列を RealizedGeometry にまとめる。"""
+    if not lines:
+        return _empty_geometry()
+
+    coords_list: list[np.ndarray] = []
+    offsets = np.zeros((len(lines) + 1,), dtype=np.int32)
+    acc = 0
+    for i, line in enumerate(lines):
+        ln = np.asarray(line)
+        if ln.ndim != 2 or ln.shape[1] != 3:
+            raise ValueError("lines は shape (N,3) の配列列である必要がある")
+        coords_list.append(ln.astype(np.float32, copy=False))
+        acc += int(ln.shape[0])
+        offsets[i + 1] = acc
+    coords = np.concatenate(coords_list, axis=0) if coords_list else np.zeros((0, 3), dtype=np.float32)
+    return RealizedGeometry(coords=coords, offsets=offsets)
+
+
+@effect(meta=fill_meta)
+def fill(
+    inputs: Sequence[RealizedGeometry],
     *,
-    angle_sets: int,
-    density: float,
-    angle: float,
-    spacing_gradient: float,
-    remove_boundary: bool,
-) -> list[np.ndarray]:
-    """単一ポリゴンに対して塗りつぶし線/ドットを生成し、元の輪郭と合わせて返す。"""
-    if len(vertices) < 3:
-        return [vertices]
-    # 平面性が不足する場合は塗りをスキップ（境界のみ返す）
-    if not _is_polygon_planar(vertices):
-        return [vertices]
+    angle_sets: int = 1,
+    angle: float = 45.0,
+    density: float = 35.0,
+    spacing_gradient: float = 0.0,
+    remove_boundary: bool = False,
+) -> RealizedGeometry:
+    """閉領域をハッチングで塗りつぶす。
 
-    out: list[np.ndarray] = [] if remove_boundary else [vertices]
-    k = int(angle_sets) if int(angle_sets) > 0 else 1
-    for i in range(k):
-        ang_i = angle + (np.pi / k) * i
-        out.extend(_generate_line_fill(vertices, density, ang_i, spacing_gradient=spacing_gradient))
-    return out
+    Parameters
+    ----------
+    inputs : Sequence[RealizedGeometry]
+        入力実体ジオメトリ列。通常は 1 要素。
+    angle_sets : int, default 1
+        方向本数。1=単方向、2=90°クロス、3=60°間隔、...（180°を等分）。
+    angle : float, default 45.0
+        基準角 [deg]。
+    density : float, default 35.0
+        旧仕様の密度スケール。`round(density)` 本相当の間隔を基準高さから算出する。
+        0 以下は塗り線を生成しない。
+    spacing_gradient : float, default 0.0
+        スキャン方向に沿った線間隔勾配。0.0 で一様間隔。
+    remove_boundary : bool, default False
+        True なら入力境界（入力ポリライン）を出力から除去する。
 
+    Returns
+    -------
+    RealizedGeometry
+        境界線（必要なら）と塗り線を含む実体ジオメトリ。
+    """
+    if not inputs:
+        return _empty_geometry()
 
-# 後方互換クラスは廃止（関数APIのみ）
+    base = inputs[0]
+    if base.coords.shape[0] == 0:
+        return base
 
+    density = float(density)
+    if density <= 0.0:
+        return base if not remove_boundary else _empty_geometry()
 
-# 高速化のための Numba コンパイル関数群
-@njit(cache=True)
-def find_line_intersections_njit(polygon: np.ndarray, y: float) -> np.ndarray:
-    """水平線とポリゴンエッジの交点を検索します（Numba最適化版）。"""
-    n = len(polygon)
-    intersections = np.full(n, -1.0)  # 無効値で事前確保
-    count = 0
+    # 出力は「境界（必要なら）→塗り線」の順に積む。
+    out_lines: list[np.ndarray] = []
+    if not remove_boundary:
+        for i in range(int(base.offsets.size) - 1):
+            s = int(base.offsets[i])
+            e = int(base.offsets[i + 1])
+            out_lines.append(base.coords[s:e])
 
-    for i in range(n):
-        p1 = polygon[i]
-        p2 = polygon[(i + 1) % n]
+    k = int(angle_sets)
+    if k < 1:
+        k = 1
 
-        # 線分が水平線と交差するか判定
-        if (p1[1] <= y < p2[1]) or (p2[1] <= y < p1[1]):
-            # 交点の x 座標を計算
-            if p2[1] != p1[1]:  # 0 除算回避
-                x = p1[0] + (y - p1[1]) * (p2[0] - p1[0]) / (p2[1] - p1[1])
-                intersections[count] = x
-                count += 1
+    # 1) 全体がほぼ平面なら、外周＋穴をグルーピングして even-odd 塗りを行う。
+    planar_global, basis_global = _fit_plane_basis(base.coords)
+    if planar_global:
+        coords2d_all = _project_to_2d(base.coords, basis_global)
+        groups = _build_evenodd_groups(coords2d_all, base.offsets)
+        if not groups:
+            return _lines_to_realized(out_lines)
 
-    return intersections[:count]
+        ref_height_global = float(np.max(coords2d_all[:, 1]) - np.min(coords2d_all[:, 1]))
+        if ref_height_global <= 0.0:
+            return _lines_to_realized(out_lines)
 
+        base_angle_rad = float(np.deg2rad(float(angle)))
+        for ring_indices in groups:
+            base_spacing = _spacing_from_height(ref_height_global, density)
+            if base_spacing <= 0.0:
+                continue
 
-@njit(cache=True)
-def generate_line_intersections_batch(polygon: np.ndarray, y_values: np.ndarray) -> list:
-    """複数のy値に対して交点を一括計算（Numba最適化版）。"""
-    results = []
-    for y in y_values:
-        intersections = find_line_intersections_njit(polygon, y)
-        if len(intersections) >= 2:
-            results.append((y, intersections))
-    return results
+            parts: list[np.ndarray] = []
+            g_offsets = np.zeros((len(ring_indices) + 1,), dtype=np.int32)
+            acc = 0
+            for j, ring_i in enumerate(ring_indices):
+                s = int(base.offsets[ring_i])
+                e = int(base.offsets[ring_i + 1])
+                poly = coords2d_all[s:e]
+                if poly.shape[0] < 2:
+                    continue
+                parts.append(poly)
+                acc += int(poly.shape[0])
+                g_offsets[j + 1] = acc
+            if not parts or g_offsets[-1] <= 0:
+                continue
 
+            g_coords2d = np.concatenate(parts, axis=0)
+            for i in range(k):
+                ang_i = base_angle_rad + (np.pi / k) * i
+                segs2d = _generate_line_fill_evenodd_multi(
+                    g_coords2d,
+                    g_offsets,
+                    density=density,
+                    angle_rad=float(ang_i),
+                    spacing_override=float(base_spacing),
+                    spacing_gradient=float(spacing_gradient),
+                )
+                for seg in segs2d:
+                    out_lines.append(_lift_to_3d(seg, basis_global))
 
-## 旧 dots 用の交点探索は削除（グルーピング関連は util/polygon_grouping.py へ移設）
+        return _lines_to_realized(out_lines)
+
+    # 2) 全体が非平面なら、各ポリラインごとに「平面なら塗り、非平面なら境界のみ」とする。
+    base_angle_rad = float(np.deg2rad(float(angle)))
+    for poly_i in range(int(base.offsets.size) - 1):
+        s = int(base.offsets[poly_i])
+        e = int(base.offsets[poly_i + 1])
+        vertices = base.coords[s:e]
+        if vertices.shape[0] < 3:
+            continue
+
+        planar_poly, basis = _fit_plane_basis(vertices)
+        if not planar_poly:
+            continue
+
+        coords2d = _project_to_2d(vertices, basis)
+        ref_height = float(np.max(coords2d[:, 1]) - np.min(coords2d[:, 1]))
+        base_spacing = _spacing_from_height(ref_height, density)
+        if base_spacing <= 0.0:
+            continue
+
+        offsets = np.array([0, coords2d.shape[0]], dtype=np.int32)
+        for i in range(k):
+            ang_i = base_angle_rad + (np.pi / k) * i
+            segs2d = _generate_line_fill_evenodd_multi(
+                coords2d,
+                offsets,
+                density=density,
+                angle_rad=float(ang_i),
+                spacing_override=float(base_spacing),
+                spacing_gradient=float(spacing_gradient),
+            )
+            for seg in segs2d:
+                out_lines.append(_lift_to_3d(seg, basis))
+
+    return _lines_to_realized(out_lines)

@@ -4,3 +4,4 @@ tools/cache_check/*.dot
 .pytest_cache/
 *.ini
 **/.DS_Store
+data
