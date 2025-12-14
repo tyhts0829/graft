@@ -1,13 +1,13 @@
 # param_store_persistence_plan.md
 
-どこで: `src/api/run.py` と `src/parameters/store.py` 周辺。永続化データはリポジトリ直下 `data/param_store/` 配下。
+どこで: `src/api/run.py` と `src/parameters/store.py` 周辺。永続化データはリポジトリ直下 `data/output/param_store/` 配下。
 何を: `parameter_gui` 等で編集した `ParamStore`（UI 値/override/ui_min/ui_max/choices/CC 割当など）を JSON として保存し、次回起動時に自動復元する仕組みを追加する。
 なぜ: プレビュー調整の反復（起動 → 調整 → 終了 → 再起動）で毎回つまみを戻す手間を無くし、スケッチ単位で「前回の状態」から作業を再開できるようにするため。
 
 ## 0. ゴール / スコープ
 
 - run 実行終了時に `ParamStore` を JSON 保存し、次回 run 開始時に復元する。
-- 保存先は `data` 配下に新規ディレクトリを切り、そこへ保存する（例: `data/param_store/`）。
+- 保存先は `data` 配下に新規ディレクトリを切り、そこへ保存する（例: `data/output/param_store/`）。
 - 永続化ファイル名には「描画スクリプト名（例: `main.py` / `sketch/251214.py` の stem）」を必ず含める。
 - ここでは設計と実装タスク分割までを扱い、実装は別タスクで進める。
 
@@ -36,10 +36,10 @@
 
 ## 3. 保存先ディレクトリ / ファイル名規約
 
-- 保存ディレクトリ: `data/param_store/`
+- 保存ディレクトリ: `data/output/param_store/`
 - 保存ファイル名（例）:
-  - `data/param_store/param_store__main.json`
-  - `data/param_store/param_store__sketch__251214.json`
+  - `data/output/param_store/param_store__main.json`
+  - `data/output/param_store/param_store__sketch__251214.json`
 - ルール:
   - `param_store__{script_key}.json`
   - `script_key` は必ずスクリプト名（stem）を含むこと（要件）。
@@ -66,7 +66,7 @@
 
 ### 6.2 `run()` の公開 API 変更（候補）
 
-- 候補 A（最小・自動）: 引数追加なしで **常に** `data/param_store/...` に保存/復元する。
+- 候補 A（最小・自動）: 引数追加なしで **常に** `data/output/param_store/...` に保存/復元する。
   - 期待: “起動するだけで前回復帰” の体験が最短。
   - 懸念: 一時的に保存したくないケースが出たときに逃げ道が無い。
 - 候補 B（扱いやすい）: `run(..., parameter_persistence: bool = True)` を追加する。；これで。
@@ -77,11 +77,11 @@
 
 ## 7. テスト方針（pytest）
 
-- `tests/parameters/test_param_store_persistence.py`（新規）:
+- `tests/parameters/test_persistence.py`（新規）:
   - `ParamStore` の簡単な状態を作って `save → load` し、主要フィールドが復元できることを確認。
   - `default_param_store_path()` が
     - ファイル名にスクリプト stem を含む
-    - `data/param_store/` 配下になる
+    - `data/output/param_store/` 配下になる
     - 区切り/置換ルールが期待通り
       を満たすことを確認（tmpdir を使う）。
 
@@ -91,21 +91,18 @@
 - 再度 `python main.py` → GUI で前回値に復帰していることを確認
 - `sketch/251214.py` でも同様に確認（スクリプトごとに別ファイルになることを確認）
 
-## 9. オープン事項（要確認）
+## 9. 決定事項（2025-12-14）
 
-- JSON が壊れていた場合の挙動:
-  - 例外で落としてパスを提示（単純）
-  - もしくは「無視して新規ストアで起動」（利便性） ；こちらで
-    どちらを採るか決める。
-- 保存する粒度:
-  - 終了時のみ（今回の最小）；こちらで
-  - GUI 変更検知時の自動保存（クラッシュ耐性は上がるが、実装は増える）
+- JSON が壊れていた場合は「無視して新規ストアで起動」する（利便性優先）。
+- `script_key` は draw 定義元ファイルの stem を使う。
+- `run(..., parameter_persistence: bool = True)` を追加し、False で無効化できる。
+- 保存粒度は終了時のみ（finally で 1 回保存）。
 
 ## 10. 実装チェックリスト（実装フェーズで消し込み）
 
-- [ ] 保存先ディレクトリを `data/param_store/` に確定
-- [ ] `script_key` の正規化ルール（相対パス or stem）を確定；stem で
-- [ ] `src/parameters/persistence.py` を追加（path 算出 / load / save）
-- [ ] `src/api/run.py` にロード/セーブを組み込み
-- [ ] `pytest` の単体テストを追加（roundtrip + path ルール）
+- [x] 保存先ディレクトリを `data/output/param_store/` に確定
+- [x] `script_key` の正規化ルール（相対パス or stem）を確定（stem）
+- [x] `src/parameters/persistence.py` を追加（path 算出 / load / save）
+- [x] `src/api/run.py` にロード/セーブを組み込み
+- [x] `pytest` の単体テストを追加（roundtrip + path ルール）
 - [ ] `main.py` と `sketch/` のスモーク手順で復元を確認

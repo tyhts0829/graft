@@ -1,6 +1,6 @@
 """
 どこで: tests/manual/test_parameter_gui_multirow.py。
-何を: bool / choice / string / float / int / vec3 の 6 行を 1 つの 4 列テーブルに表示する手動スモーク。
+何を: bool / choice / str / float / int / vec3 の 6 行を 1 つの 4 列テーブルに表示する手動スモーク。
 なぜ: 実際の GUI に近い「複数行」のレイアウト崩れや ID 衝突を早期に検知するため。
 """
 
@@ -48,7 +48,7 @@ def main() -> None:
             op="demo",
             site_id="demo:2",
             arg="text",
-            kind="string",
+            kind="str",
             ui_value="hello",
             ui_min=None,
             ui_max=None,

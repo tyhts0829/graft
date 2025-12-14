@@ -94,14 +94,14 @@ def normalize_input(value: Any, meta: ParamMeta) -> tuple[Any | None, str | None
         except Exception:
             return None, "invalid_float"
 
-    if kind == "string":
+    if kind == "str":
         try:
             return str(value), None
         except Exception:
             return None, "invalid_string"
 
     if kind == "choice":
-        # choice は string として扱い、choices 外の場合は先頭に丸める
+        # choice は str として扱い、choices 外の場合は先頭に丸める
         try:
             text = str(value)
         except Exception:

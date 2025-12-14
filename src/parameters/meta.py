@@ -15,7 +15,7 @@ class ParamMeta:
     ui_min/ui_max はスライダー初期レンジを示すだけで、実値をクランプしない。
     """
 
-    kind: str  # "float" | "int" | "bool" | "string" | "choice" | "vec3"
+    kind: str  # "float" | "int" | "bool" | "str" | "choice" | "vec3"
     ui_min: Any | None = None
     ui_max: Any | None = None
     choices: Sequence[str] | None = None
@@ -33,14 +33,14 @@ def infer_meta_from_value(value: Any) -> ParamMeta:
         span = abs(value) if value != 0.0 else 1.0
         return ParamMeta(kind="float", ui_min=value - span, ui_max=value + span)
     if isinstance(value, str):
-        return ParamMeta(kind="string")
+        return ParamMeta(kind="str")
     if isinstance(value, Iterable):
         # vec3 を優先判定
         seq = list(value)
         if len(seq) == 3 and all(isinstance(v, (int, float)) for v in seq):
             return ParamMeta(kind="vec3", ui_min=None, ui_max=None)
         if not seq:
-            return ParamMeta(kind="string")
+            return ParamMeta(kind="str")
         inner = infer_meta_from_value(seq[0])
         return ParamMeta(
             kind=inner.kind,
@@ -48,4 +48,4 @@ def infer_meta_from_value(value: Any) -> ParamMeta:
             ui_max=inner.ui_max,
             choices=inner.choices,
         )
-    return ParamMeta(kind="string")
+    return ParamMeta(kind="str")

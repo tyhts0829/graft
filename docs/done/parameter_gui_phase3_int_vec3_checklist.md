@@ -22,7 +22,7 @@
 - [x] `render_parameter_row_4cols` の min-max 入力を kind で分岐
   - [x] `int`: `imgui.drag_int_range2`
   - [x] `float/vec3`: `imgui.drag_float_range2`
-  - [x] `cc_key` と `override` は `float/int/vec3` のみ表示し、`bool/string/choice` は空
+  - [x] `cc_key` と `override` は `float/int/vec3` のみ表示し、`bool/str/choice` は空
 - [x] 手動スモークを追加（`tests/manual`）
   - [x] `tests/manual/test_parameter_gui_int_slider.py`
   - [x] `tests/manual/test_parameter_gui_vec3_slider.py`

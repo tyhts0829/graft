@@ -13,6 +13,11 @@ import pyglet
 from src.app.runtime.draw_window_system import DrawWindowSystem
 from src.app.runtime.window_loop import MultiWindowLoop, WindowTask
 from src.parameters import ParamStore
+from src.parameters.persistence import (
+    default_param_store_path,
+    load_param_store,
+    save_param_store,
+)
 from src.render.layer import LayerStyleDefaults
 from src.render.render_settings import RenderSettings
 from src.render.scene import SceneItem
@@ -30,6 +35,7 @@ def run(
     render_scale: float = 1.0,
     canvas_size: tuple[int, int] = (800, 800),
     parameter_gui: bool = True,
+    parameter_persistence: bool = True,
 ) -> None:
     """pyglet ウィンドウを生成し `draw(t)` のシーンをリアルタイム描画する。
 
@@ -49,6 +55,9 @@ def run(
         キャンバス寸法（任意単位）。投影行列生成とウィンドウサイズ決定に使用。
     parameter_gui : bool
         True の場合、別ウィンドウで Parameter GUI を起動し、ParamStore を編集できるようにする。
+    parameter_persistence : bool
+        True の場合、ParamStore を `data/output/param_store/` に JSON 保存し、次回起動時に復元する。
+        保存ファイル名には draw の定義元ファイル名（stem）を含める。
 
     Returns
     -------
@@ -74,7 +83,12 @@ def run(
 
     # パラメータは「描画」と「GUI」で共有する。
     # GUI で値を変えると、次フレーム以降の parameter_context 参照に反映される。
-    param_store = ParamStore()
+    param_store_path = default_param_store_path(draw) if parameter_persistence else None
+    param_store = (
+        load_param_store(param_store_path)
+        if param_store_path is not None
+        else ParamStore()
+    )
 
     # --- サブシステムの組み立て ---
     # 描画ウィンドウは常に有効（メイン描画）。
@@ -108,7 +122,11 @@ def run(
     try:
         loop.run()
     finally:
-        # 例外でも確実に後始末する。
-        # 作成順の逆で閉じることで、後に作ったサブシステム（GUI など）から先に破棄できる。
-        for system in reversed(systems):
-            system.close()
+        try:
+            if param_store_path is not None:
+                save_param_store(param_store, param_store_path)
+        finally:
+            # 例外でも確実に後始末する。
+            # 作成順の逆で閉じることで、後に作ったサブシステム（GUI など）から先に破棄できる。
+            for system in reversed(systems):
+                system.close()

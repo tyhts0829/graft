@@ -156,7 +156,7 @@ def widget_bool_checkbox(row: ParameterRow) -> tuple[bool, bool]:
 
 
 def widget_string_input(row: ParameterRow) -> tuple[bool, str]:
-    """kind=string のテキスト入力を描画し、(changed, value) を返す。"""
+    """kind=str のテキスト入力を描画し、(changed, value) を返す。"""
 
     import imgui  # type: ignore[import-untyped]
 
@@ -199,7 +199,7 @@ _KIND_TO_WIDGET: dict[str, WidgetFn] = {
     "vec3": widget_vec3_slider,
     "rgb": widget_rgb_color_edit3,
     "bool": widget_bool_checkbox,
-    "string": widget_string_input,
+    "str": widget_string_input,
     "choice": widget_choice_radio,
 }
 

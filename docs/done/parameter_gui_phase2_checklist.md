@@ -20,7 +20,7 @@
   - テスト: `tests/parameters/test_parameter_rows.py` で並び順・値コピー・欠損時スキップを検証。
 - [x] 入力変換ユーティリティ  
   - 対象: `src/parameters/view.py` に kind 別変換関数 `normalize_input(value, meta)` を実装。  
-  - 内容: int/float/vec3/bool/string/choice/rgb などへの型変換と検証、ui_min/ui_max が壊れている場合の扱い、choices 外の値の補正（先頭に差し替え等）。  
+  - 内容: int/float/vec3/bool/str/choice/rgb などへの型変換と検証、ui_min/ui_max が壊れている場合の扱い、choices 外の値の補正（先頭に差し替え等）。  
   - テスト: `tests/parameters/test_parameter_normalize.py` で各 kind の変換・エラー補正を確認。
 - [x] ParamStore 連携ヘルパ  
   - 対象: `src/parameters/store.py` または `view.py` に `update_state_from_ui(store, key, ui_input_value, *, meta)` を実装。  

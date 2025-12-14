@@ -32,6 +32,12 @@ def test_normalize_float_and_error():
     assert out2 is None and err2 == "invalid_float"
 
 
+def test_normalize_str():
+    out, err = normalize_input(123, ParamMeta(kind="str"))
+    assert out == "123"
+    assert err is None
+
+
 def test_normalize_choice_coerces_to_first():
     meta = ParamMeta(kind="choice", choices=["red", "green"])
     out, err = normalize_input("blue", meta)

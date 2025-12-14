@@ -25,7 +25,7 @@
   - 例外: `STYLE_OP/global_thickness` は min-max 無効
   - 例外: `LAYER_STYLE_OP/line_thickness` は min-max 無効
 - Column 4（cc + override）
-  - `kind in {"bool","string","choice"}` → 何も出さない（cc/override なし）
+  - `kind in {"bool","str","choice"}` → 何も出さない（cc/override なし）
   - `kind in {"vec3","rgb"}` → `input_int3` + override checkbox
   - その他（float/int など） → `input_int` + override checkbox
 
@@ -38,7 +38,7 @@
 
 ### 判定の優先順位を固定する（筋の良い統一）
 
-- まず `kind` で “型に由来するデフォルト挙動” を決める（例: `rgb/vec3` は cc_key=int3、`bool/string/choice` は cc/override 非表示）。
+- まず `kind` で “型に由来するデフォルト挙動” を決める（例: `rgb/vec3` は cc_key=int3、`bool/str/choice` は cc/override 非表示）。
 - 最後に `(op, arg)` の “意味（セマンティクス）由来の例外” を上書きする（例: `STYLE_OP/global_thickness` と `LAYER_STYLE_OP/line_thickness` は min-max 無効）。
 - `table.py` / `widgets.py` など他モジュールでは `kind/op/arg` の例外判定をしない（`rules.py` に寄せる）。
 
@@ -67,7 +67,7 @@
 - [x] 1) ルールの仕様を確定する（現状の挙動を “そのまま” とみなす範囲を明文化）
   - [x] `STYLE_OP/global_thickness` の min-max 無効は維持
   - [x] `LAYER_STYLE_OP/line_thickness` の min-max 無効は維持
-  - [x] `bool/string/choice` の cc/override 非表示は維持
+  - [x] `bool/str/choice` の cc/override 非表示は維持
   - [x] `vec3/rgb` の cc_key は int3 + override は維持
 - [x] 2) `src/app/parameter_gui/rules.py` を追加する
   - [x] `RowUiRules`（dataclass）を定義する
@@ -79,7 +79,7 @@
   - [x] “例外 if” を `table.py` から削除し、`rules.py` に集約する
 - [x] 4) unit test を追加する（imgui 非依存）
   - [x] 新規: `tests/app/test_parameter_gui_table_rules.py`
-  - [x] 代表行（float/int/vec3/rgb/bool/string/choice）で `ui_rules_for_row` の返り値を検証する
+  - [x] 代表行（float/int/vec3/rgb/bool/str/choice）で `ui_rules_for_row` の返り値を検証する
   - [x] 例外ケース（`STYLE_OP/global_thickness`, `LAYER_STYLE_OP/line_thickness`）を検証する
 - [x] 5) 仕上げ
   - [x] `pytest -q` を通す

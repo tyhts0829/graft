@@ -34,8 +34,8 @@ def test_ui_rules_for_row_defaults_by_kind():
 
     assert ui_rules_for_row(_row(op="circle", arg="b", kind="bool")).cc_key == "none"
     assert ui_rules_for_row(_row(op="circle", arg="b", kind="bool")).show_override is False
-    assert ui_rules_for_row(_row(op="circle", arg="s", kind="string")).cc_key == "none"
-    assert ui_rules_for_row(_row(op="circle", arg="s", kind="string")).show_override is False
+    assert ui_rules_for_row(_row(op="circle", arg="s", kind="str")).cc_key == "none"
+    assert ui_rules_for_row(_row(op="circle", arg="s", kind="str")).show_override is False
     assert ui_rules_for_row(_row(op="circle", arg="c", kind="choice")).cc_key == "none"
     assert ui_rules_for_row(_row(op="circle", arg="c", kind="choice")).show_override is False
 
@@ -50,4 +50,3 @@ def test_ui_rules_for_row_minmax_exceptions_by_key():
     assert ui_rules_for_row(layer_thickness).minmax == "none"
     assert ui_rules_for_row(layer_thickness).cc_key == "int"
     assert ui_rules_for_row(layer_thickness).show_override is True
-

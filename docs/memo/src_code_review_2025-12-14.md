@@ -92,8 +92,8 @@
    - ほとんどのファイルが「どこで/何を/なぜ」を持つ一方で、`src/render/shader.py` は「どこで」が無い/形式が違う、`src/render/line_mesh.py` は `engine.render` 名義の記述になっている、など軽微な不一致がある。
 
 4) **`ParamMeta.kind` の表記ゆれ（コメントと実装）**
-   - `src/parameters/meta.py` のコメントでは `kind: "float" | "int" | "bool" | "str" | ...` となっているが、実装側は `"string"` を使っている。
-   - GUI 側も `"string"` 前提なので、コメントを合わせるだけで混乱が減る。
+   - `src/parameters/meta.py` を含め、文字列型の kind 表記を `"str"` に統一した（`"string"` を廃止）。
+   - GUI 側のディスパッチも `"str"` に合わせたため、語彙の揺れが無くなった。
 
 ### P2（将来の整理ポイント）
 
@@ -139,4 +139,3 @@
 
 - まずは P0 の 1)（registry の decorator 経路）と 2)（公開 API の型/doc）を揃えるのがコスパ良い。
 - import 経路（P0-3）は方針が決まると全体がスッキリするので、整理の “意思決定” を先にやるのが良さそう。
-

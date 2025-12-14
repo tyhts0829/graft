@@ -1,7 +1,7 @@
 """
 どこで: tests/manual/test_parameter_gui_string_input.py。
 何を: `src/app/parameter_gui.py` の string 入力を 1 行だけ表示する手動スモーク。
-なぜ: kind=string のディスパッチとテーブルの挙動を 1 行ずつデバッグ確認するため。
+なぜ: kind=str のディスパッチとテーブルの挙動を 1 行ずつデバッグ確認するため。
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ def main() -> None:
         op="demo",
         site_id="demo:0",
         arg="text",
-        kind="string",
+        kind="str",
         ui_value="hello",
         ui_min=None,
         ui_max=None,

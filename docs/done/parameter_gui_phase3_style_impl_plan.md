@@ -14,7 +14,7 @@
 - GUI/ParamStore 側
   - GUI は `src/app/parameter_gui/store_bridge.py` → `src/app/parameter_gui/table.py` の 4 列テーブルで ParamStore を編集する。
   - 表示順は現状「Primitive → Effect（チェーン順）→ その他」。
-  - kind は GUI 側で `float/int/vec3/bool/string/choice` を描画できるが、色編集用の `color_edit3` は未導入。
+  - kind は GUI 側で `float/int/vec3/bool/str/choice` を描画できるが、色編集用の `color_edit3` は未導入。
   - `src/parameters/view.py` の `kind == "rgb"` は 0–255 int を正としている（描画側の float 0–1 とは変換が必要）。
 
 ## 方針（ここでは代替案を増やさない）

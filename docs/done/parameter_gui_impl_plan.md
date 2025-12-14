@@ -27,11 +27,11 @@
 
 ### 2.1 kind ごとの論点メモ
 
-- 共通: widget_id の命名規約を統一し、非表示/更新処理を単純化。未知 kind は `input_text` + 警告ログにフォールバック（string/choice もここで扱う）。
+- 共通: widget_id の命名規約を統一し、非表示/更新処理を単純化。未知 kind は `input_text` + 警告ログにフォールバック（str/choice もここで扱う）。
 - float: ui_min/ui_max が壊れているときのデフォルト値（例: min=0, max=1）を決めて、検証エラー時はその範囲にクランプ。量子化刻みとスライダー刻みはグローバル step（1e-3）に従う。
 - int: スライダー刻みは 1 固定。override で float が入った場合は int() で確定。
 - choice: choices 未指定時の挙動（読み取り専用テキストに落とす等）と、現値が choices 外にある場合の扱い（警告 + 先頭値に差し替えなど）を定義。
-- string: テキスト入力をそのまま採用。長さやエンコードの制約は設けず、空文字も許容。
+- str: テキスト入力をそのまま採用。長さやエンコードの制約は設けず、空文字も許容。
 - rgb: 3 要素の 0–255 int を想定。スライダー/カラー入力で 0–255 にクランプする。
 - vec*: スカラーと同一の min/max を全要素に適用するか、要素長ごとに分岐するかを決める。スライダー刻みは全成分でグローバル step（1e-3）を共用。DPG の vec スライダーで表現できない長さはタプル入力にフォールバック。
 - bool: override トグルと二重にならないよう、override は別列に置き、値は checkbox 単独に限定する。
@@ -47,7 +47,7 @@
 
 **フェーズ2: ViewModel + 変換ユーティリティ**
 - [x] ViewModel ヘルパ（純粋関数）を追加し、ParamStore から `ParameterRow`（label/op/arg/kind/ui_value/ui_min/ui_max/choices/cc_key/override/ordinal）を生成。並び順のユニットテストを作成（`tests/parameters/test_parameter_rows.py`）。
-- [x] UI 更新ユーティリティを設計し、ユーザー入力を型変換・妥当化して ParamStore に反映する処理を DPG 非依存で実装。kind=string/choice/rgb などもカバーし、エラー時の挙動をテスト（`tests/parameters/test_parameter_normalize.py`, `tests/parameters/test_parameter_updates.py`）。
+- [x] UI 更新ユーティリティを設計し、ユーザー入力を型変換・妥当化して ParamStore に反映する処理を DPG 非依存で実装。kind=str/choice/rgb などもカバーし、エラー時の挙動をテスト（`tests/parameters/test_parameter_normalize.py`, `tests/parameters/test_parameter_updates.py`）。
 - チェックポイント CP2（ユーザー）：ViewModel/変換ユーティリティのテスト結果共有。サンプル ParamStore 入力に対し期待行が得られるかを一緒に確認。
 
 **フェーズ3: GUI 骨格（DPG なし依存部の先行）**

@@ -8,11 +8,16 @@
 
 - `ParamMeta.kind` の「文字列型」を **`"string"` ではなく `"str"`** に統一する（コメント/実装/テスト含む）。
 
-## 前提（現状の検出結果）
+## 前提（実装前の検出結果）
 
 - `src/parameters/meta.py` が `"string"` を生成する（`infer_meta_from_value()`）。
 - GUI/正規化/ルールは `"string"` を前提に分岐している箇所がある。
 - `docs/` の一部（done/memo）にも `kind=string` の言及が残っている。
+
+## 実装結果（実装後）
+
+- `ParamMeta.kind` の文字列型は `"str"` に統一した（`"string"` を廃止）。
+- `src/` / `tests/` / `docs/` の該当表記を更新した。
 
 ## 変更対象（必須：コードとして意味がある箇所）
 
@@ -59,10 +64,9 @@
 
 ## 実装チェックリスト（このファイルは “洗い出し” 用）
 
-- [ ] `src/parameters/meta.py` の kind 列挙コメントを `"str"` に統一する
-- [ ] `src/parameters/meta.py` の `infer_meta_from_value()` が返す kind を `"str"` に統一する
-- [ ] `src/parameters/view.py` の `"string"` 分岐を `"str"` に置換する（コメント含む）
-- [ ] `src/app/parameter_gui/*` の `"string"` ディスパッチを `"str"` に置換する（rules/widgets）
-- [ ] `tests/` の `kind="string"` を `"str"` に置換する（manual/app）
-- [ ] （任意）`docs/` の `kind=string` 表記を `"str"` に置換する
-
+- [x] `src/parameters/meta.py` の kind 列挙コメントを `"str"` に統一する
+- [x] `src/parameters/meta.py` の `infer_meta_from_value()` が返す kind を `"str"` に統一する
+- [x] `src/parameters/view.py` の `"string"` 分岐を `"str"` に置換する（コメント含む）
+- [x] `src/app/parameter_gui/*` の `"string"` ディスパッチを `"str"` に置換する（rules/widgets）
+- [x] `tests/` の `kind="string"` を `"str"` に置換する（manual/app）
+- [x] （任意）`docs/` の `kind=string` 表記を `"str"` に置換する
