@@ -17,7 +17,7 @@ from src.parameters.meta import ParamMeta
 # `type_index`（0..N-1）で参照する型順序を固定する。
 _TYPE_ORDER = ["tetrahedron", "hexahedron", "octahedron", "dodecahedron", "icosahedron"]
 
-_DATA_DIR = Path(__file__).parents[2] / "data" / "regular_polyhedron"
+_DATA_DIR = Path(__file__).parent / "regular_polyhedron"
 _POLYHEDRON_CACHE: dict[str, tuple[np.ndarray, ...]] = {}
 
 polyhedron_meta = {
@@ -79,11 +79,15 @@ def _polylines_to_realized(
     try:
         cx, cy, cz = center
     except Exception as exc:
-        raise ValueError("polyhedron の center は長さ 3 のシーケンスである必要がある") from exc
+        raise ValueError(
+            "polyhedron の center は長さ 3 のシーケンスである必要がある"
+        ) from exc
     try:
         sx, sy, sz = scale
     except Exception as exc:
-        raise ValueError("polyhedron の scale は長さ 3 のシーケンスである必要がある") from exc
+        raise ValueError(
+            "polyhedron の scale は長さ 3 のシーケンスである必要がある"
+        ) from exc
 
     coords = np.concatenate(polylines, axis=0).astype(np.float32, copy=False)
 
