@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import pyglet
+from pyglet.gl import Config
 from pyglet.window import Window
 
 from src.render.render_settings import RenderSettings
@@ -12,12 +13,15 @@ from src.render.render_settings import RenderSettings
 
 def create_draw_window(settings: RenderSettings) -> Window:
     """設定に基づき描画ウィンドウを生成する。"""
+    # 線描画を滑らかにするために MSAA を有効化
+    config = Config(double_buffer=True, sample_buffers=1, samples=4, vsync=True)
     canvas_w, canvas_h = settings.canvas_size
     window = pyglet.window.Window(
         width=int(canvas_w * settings.render_scale),
         height=int(canvas_h * settings.render_scale),
         resizable=False,
         caption="Graft",
+        config=config,
     )
     return window
 
