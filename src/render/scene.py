@@ -41,7 +41,7 @@ def normalize_scene(scene: SceneItem) -> list[Layer]:
             result.append(item)
             return
         if isinstance(item, Geometry):
-            result.append(Layer(geometry=item))
+            result.append(Layer(geometry=item, site_id=f"implicit:{item.id}"))
             return
         if isinstance(item, Sequence) and not isinstance(item, (str, bytes)):
             for child in item:

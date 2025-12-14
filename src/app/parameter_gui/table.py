@@ -6,10 +6,11 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from src.parameters.layer_style import LAYER_STYLE_OP
 from src.parameters.style import STYLE_OP
 from src.parameters.view import ParameterRow
 
-from .labeling import format_param_row_label
+from .labeling import format_layer_style_row_label, format_param_row_label
 from .widgets import render_value_widget
 
 COLUMN_WEIGHTS_DEFAULT = (0.20, 0.60, 0.15, 0.20)
@@ -89,7 +90,9 @@ def render_parameter_row_4cols(
         imgui.table_set_column_index(2)
         # min-max スライダーは float/vec3/int のみ表示可能。
         if row.kind in {"float", "vec3"}:
-            if row.op == STYLE_OP and row.arg == "global_thickness":
+            if (row.op == STYLE_OP and row.arg == "global_thickness") or (
+                row.op == LAYER_STYLE_OP and row.arg == "line_thickness"
+            ):
                 # thickness は特別扱いで drag_float_range2 を出さない。
                 pass
             else:
@@ -196,6 +199,7 @@ def render_parameter_table(
     *,
     column_weights: tuple[float, float, float, float] = COLUMN_WEIGHTS_DEFAULT,
     primitive_header_by_group: Mapping[tuple[str, int], str] | None = None,
+    layer_style_name_by_site_id: Mapping[str, str] | None = None,
     effect_chain_header_by_id: Mapping[str, str] | None = None,
     step_info_by_site: Mapping[tuple[str, str], tuple[str, int]] | None = None,
     effect_step_ordinal_by_site: Mapping[tuple[str, str], int] | None = None,
@@ -263,12 +267,24 @@ def render_parameter_table(
         # グループが閉じている間は、その配下のパラメータ行を描画しない。
         group_open = True
         for row in rows:
-            if row.op == STYLE_OP:
+            if row.op in {STYLE_OP, LAYER_STYLE_OP}:
                 # --- style: 1 セクションだけを先頭に出す ---
                 group_id: tuple[str, object] = ("style", "global")
                 header = "Style"
-                visible_label = str(row.arg)
-                header_id = "style:global"
+                if row.op == STYLE_OP:
+                    visible_label = str(row.arg)
+                else:
+                    layer_name = (
+                        "layer"
+                        if layer_style_name_by_site_id is None
+                        else str(layer_style_name_by_site_id.get(row.site_id, "layer"))
+                    )
+                    visible_label = format_layer_style_row_label(
+                        layer_name,
+                        int(row.ordinal),
+                        row.arg,
+                    )
+                header_id = "style"
                 step_info = None
             else:
                 # 現在行が effect ステップに紐づくかどうか（(op, site_id) → (chain_id, step_index)）。

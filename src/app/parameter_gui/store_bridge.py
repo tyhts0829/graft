@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from src.core.effect_registry import effect_registry
 from src.core.primitive_registry import primitive_registry
 from src.parameters.key import ParameterKey
+from src.parameters.layer_style import LAYER_STYLE_OP
 from src.parameters.meta import ParamMeta
 from src.parameters.store import ParamStore
 from src.parameters.style import STYLE_OP
@@ -26,6 +27,60 @@ def _row_identity(row: ParameterRow) -> tuple[str, int, str]:
     """store snapshot と突き合わせるための行識別子（op, ordinal, arg）を返す。"""
 
     return row.op, int(row.ordinal), row.arg
+
+
+def _order_rows_for_display(
+    rows: list[ParameterRow],
+    *,
+    step_info_by_site: Mapping[tuple[str, str], tuple[str, int]],
+    chain_ordinal_by_id: Mapping[str, int],
+) -> list[ParameterRow]:
+    """GUI 表示順に並び替えた rows を返す。"""
+
+    style_global_rows: list[ParameterRow] = []
+    style_layer_rows: list[ParameterRow] = []
+    primitive_rows: list[ParameterRow] = []
+    effect_rows: list[ParameterRow] = []
+    other_rows: list[ParameterRow] = []
+    for row in rows:
+        if row.op == STYLE_OP:
+            style_global_rows.append(row)
+        elif row.op == LAYER_STYLE_OP:
+            style_layer_rows.append(row)
+        elif row.op in primitive_registry:
+            primitive_rows.append(row)
+        elif row.op in effect_registry:
+            effect_rows.append(row)
+        else:
+            other_rows.append(row)
+
+    # Style（global）は固定の表示順に寄せる（background → thickness → line_color）。
+    style_order = {
+        "background_color": 0,
+        "global_thickness": 1,
+        "global_line_color": 2,
+    }
+    style_global_rows.sort(key=lambda r: (style_order.get(r.arg, 999), r.arg))
+
+    # Style（layer）は layer ordinal 順に、line_thickness → line_color の順で出す。
+    layer_style_order = {"line_thickness": 0, "line_color": 1}
+    style_layer_rows.sort(
+        key=lambda r: (int(r.ordinal), layer_style_order.get(r.arg, 999), r.arg)
+    )
+
+    def _effect_sort_key(row: ParameterRow) -> tuple[int, int, str]:
+        info = step_info_by_site.get((row.op, row.site_id))
+        if info is None:
+            return (10**9, 10**9, row.arg)
+        chain_id, step_index = info
+        chain_ordinal = int(chain_ordinal_by_id.get(chain_id, 0))
+        return (chain_ordinal, int(step_index), row.arg)
+
+    # Effect 行を “チェーン順→ステップ順→arg” で並び替える。
+    effect_rows.sort(key=_effect_sort_key)
+
+    # 最終的な表示順: style → primitive → effect → other
+    return style_global_rows + style_layer_rows + primitive_rows + effect_rows + other_rows
 
 
 def _apply_updated_rows_to_store(
@@ -84,7 +139,7 @@ def render_store_parameter_table(
     # snapshot は (key -> (meta, state, ordinal, label)) の辞書。
     # - key: (op, site_id, arg)
     # - ordinal: GUI 用の連番（primitive/effect どちらも op ごとの連番）
-    # - label: G(name=...) / E(name=...) が付与した表示名（op, site_id 単位）
+    # - label: G(name=...) / E(name=...) / L(name=...) が付与した表示名（op, site_id 単位）
     snapshot = store.snapshot()
 
     # --- 2) Primitive のヘッダ表示名（G(name=...)）を解決 ---
@@ -123,49 +178,22 @@ def render_store_parameter_table(
     # Effect については「チェーン順/ステップ順」で見せたいので、ここで並び替える。
     rows_before_raw = rows_from_snapshot(snapshot)
 
-    # --- 5) 表示順のために 3 つへ分類 ---
-    # 1) style 行（最上段に出したい）
-    # 2) primitive 群（先に見せたい）
-    # 3) effect 群（チェーン順に並べたい）
-    # 4) その他（将来の拡張/ユーザー定義 op など）
-    style_rows: list[ParameterRow] = []
-    primitive_rows: list[ParameterRow] = []
-    effect_rows: list[ParameterRow] = []
-    other_rows: list[ParameterRow] = []
-    for row in rows_before_raw:
-        if row.op == STYLE_OP:
-            style_rows.append(row)
-        elif row.op in primitive_registry:
-            primitive_rows.append(row)
-        elif row.op in effect_registry:
-            effect_rows.append(row)
-        else:
-            other_rows.append(row)
-
-    # Style は固定の表示順に寄せる（background → thickness → line_color）。
-    style_order = {
-        "background_color": 0,
-        "global_thickness": 1,
-        "global_line_color": 2,
-    }
-    style_rows.sort(key=lambda r: (style_order.get(r.arg, 999), r.arg))
-
-    def _effect_sort_key(row: ParameterRow) -> tuple[int, int, str]:
-        # effect ステップは chain_id / step_index を使って “チェーン順→ステップ順” に並べる。
-        # 同一ステップ内の各 arg は、見やすさのため arg 名で安定ソートする。
-        info = step_info_by_site.get((row.op, row.site_id))
-        if info is None:
-            # step 情報が無い行は末尾へ寄せる（= 観測されていない/旧データなど）。
-            return (10**9, 10**9, row.arg)
-        chain_id, step_index = info
-        chain_ordinal = int(chain_ordinal_by_id.get(chain_id, 0))
-        return (chain_ordinal, int(step_index), row.arg)
-
-    # Effect 行を “チェーン順→ステップ順→arg” で並び替える。
-    effect_rows.sort(key=_effect_sort_key)
     # 最終的な表示順: style → primitive → effect → other
     # ※ この rows_before の順番が、そのまま GUI の並び順になる。
-    rows_before = style_rows + primitive_rows + effect_rows + other_rows
+    rows_before = _order_rows_for_display(
+        rows_before_raw,
+        step_info_by_site=step_info_by_site,
+        chain_ordinal_by_id=chain_ordinal_by_id,
+    )
+
+    layer_style_name_by_site_id: dict[str, str] = {}
+    for key, (_meta, _state, _ordinal, label) in snapshot.items():
+        if key.op != LAYER_STYLE_OP:
+            continue
+        site_id = str(key.site_id)
+        if site_id in layer_style_name_by_site_id:
+            continue
+        layer_style_name_by_site_id[site_id] = str(label) if label else "layer"
 
     # --- 6) 描画（imgui）→ UI 入力を反映した更新 rows を受け取る ---
     # render_parameter_table は
@@ -176,6 +204,7 @@ def render_store_parameter_table(
         rows_before,
         column_weights=column_weights,
         primitive_header_by_group=primitive_header_by_group,
+        layer_style_name_by_site_id=layer_style_name_by_site_id,
         effect_chain_header_by_id=effect_chain_header_by_id,
         step_info_by_site=step_info_by_site,
         effect_step_ordinal_by_site=effect_step_ordinal_by_site,

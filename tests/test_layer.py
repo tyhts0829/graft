@@ -13,7 +13,7 @@ def _geometry() -> Geometry:
 
 
 def test_resolve_layer_style_fills_missing_values() -> None:
-    layer = Layer(geometry=_geometry(), color=None, thickness=None)
+    layer = Layer(geometry=_geometry(), site_id="layer:1", color=None, thickness=None)
     defaults = LayerStyleDefaults(color=(0.5, 0.5, 0.5), thickness=0.02)
 
     resolved = resolve_layer_style(layer, defaults)
@@ -23,7 +23,12 @@ def test_resolve_layer_style_fills_missing_values() -> None:
 
 
 def test_resolve_layer_style_rejects_non_positive_thickness() -> None:
-    layer = Layer(geometry=_geometry(), color=(1.0, 0.0, 0.0), thickness=0.0)
+    layer = Layer(
+        geometry=_geometry(),
+        site_id="layer:1",
+        color=(1.0, 0.0, 0.0),
+        thickness=0.0,
+    )
     defaults = LayerStyleDefaults(color=(0.0, 0.0, 0.0), thickness=0.01)
 
     with pytest.raises(ValueError):

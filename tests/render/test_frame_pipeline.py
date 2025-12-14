@@ -25,7 +25,7 @@ def test_render_scene_normalizes_and_renders_layers() -> None:
     g2 = Geometry.create("circle", params={"r": 2.0})
 
     def draw(t: float):
-        return [Layer(g1, color=None, thickness=None), g2]
+        return [Layer(g1, site_id="layer:1", color=None, thickness=None), g2]
 
     defaults = LayerStyleDefaults(color=(0.1, 0.2, 0.3), thickness=0.05)
     renderer = StubRenderer()

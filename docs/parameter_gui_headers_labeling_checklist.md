@@ -7,16 +7,16 @@
 ## ゴール（最終形）
 
 - Parameter GUI に以下の順で「ヘッダ行」を表示できる。
-  1. Style（background/global_thickness/global_line_color）
-  2. Layer（L(name) ごとに thickness/color）
-  3. Primitive（`G(name=...)` の name をヘッダ行に表示）
-  4. Effect チェーン（`E(name=...)` の name をヘッダ行に表示）
+  1. Style（background/global_thickness/global_line_color + Layer ごとの line_thickness/line_color）
+  2. Primitive（`G(name=...)` の name をヘッダ行に表示）
+  3. Effect チェーン（`E(name=...)` の name をヘッダ行に表示）
 - 1 つの G / 1 つの Effect チェーンのパラメータが大量に並んでも「どこに紐づくか」見失わないこと。
 - 行ラベル（テーブル 1 列目）は以下の形式で統一する。
   - Primitive の各パラメータ行: `"{op}#{ordinal} {arg}"`（例: `polygon#1 n_sides`）
   - Effect の各パラメータ行: `"{op}#{step_ordinal} {arg}"`（例: `scale#1 auto_center`）
     - `step_ordinal` は “同一チェーン内での同一 op の出現回数” で採番する
       （例: `E.scale().rotate().scale()` → `scale#1`, `rotate#1`, `scale#2`）
+  - Layer style の各行: `"{layer_name}#{ordinal} {arg}"`（例: `bg#1 line_color`）
 - 同名ヘッダ（例: `G(name="A")` が複数）は GUI 表示専用に `name#1`, `name#2` で衝突回避する（永続化ラベル自体は変えない）。
 
 ## 現状確認（すでに出来ている/出来ていない）
@@ -27,12 +27,11 @@
 - GUI のラベリング（部分的に出来ている）
   - Primitive は出来ている（ヘッダ行 + `polygon#1 n_sides` 形式 + snapshot.label 反映 + 表示専用の衝突解消）。
   - Effect チェーンは出来ていない（チェーン境界/順序が復元できず、チェーン名ヘッダやチェーン内採番が未実装）。
-- Style / Layer セクション（出来ていない）
-  - background/global thickness/global line_color は ParamStore とは別系統（run/settings/defaults）。
-  - Layer の一覧（L(name)）は ParamStore に観測されていない。
-- Effect「チェーン」単位のヘッダ（出来ていない）
-  - ordinal は op ごとなので、チェーン境界やチェーン順序が復元できない。
-  - チェーン ID（chain_id）の概念がまだ無い。
+- Style / Layer セクション（出来ている）
+  - Style（background/global_thickness/global_line_color）は出来ている（Phase 3）。
+  - Layer style（L(name) ごとの line_thickness/line_color）は出来ている（Phase 4）。
+- Effect「チェーン」単位のヘッダ（出来ている）
+  - chain_id/step_index を導入し、チェーンヘッダ + チェーン内採番を実装済み（Phase 2）。
 - 用語のズレ
   - チェックリスト本文は `label(name=...)` と書いているが、実装は `G(name=...)` / `E(name=...)` 方式。
 
@@ -98,23 +97,27 @@
 
 - Style セクションが GUI に出て、値変更が次フレームの描画に反映される。
 
-### Phase 4（設計追加・大）: Layer セクション（L(name)ごと thickness/color）を GUI で編集できるようにする
+### Phase 4（設計追加・大）: Layer style（L(name) ごとの line_thickness/line_color）を Style セクション内で編集できるようにする
 
-- [ ] Layer の“発見”（どの Layer が存在するか）をどこで行うか決める
-  - [ ] `render_scene`（normalize_scene 後）で current_param_store を見て “今フレームの layers” を記録する案
-  - [ ] もしくは `L(...)` 生成時に callsite_id を使って記録する案
-- [ ] Layer の識別子を決める（同名 layer が複数あっても衝突しない）
-  - [ ] (layer_site_id, layer_name) の併用、または ordinal 付与
-- [ ] GUI の Layer セクションへ thickness/color 行を出す
-  - [ ] “コードが指定した値” と “GUI の上書き値” の優先順位（override の有無）を決める
-- [ ] render へ反映
-  - [ ] resolve_layer_style の前後どちらで上書きするか決め、責務を分離する
-- [ ] テスト（最小）
-  - [ ] Layer の識別・上書き適用の純粋部分を unit テストで担保
+- [x] Layer の識別子（site_id）を導入する
+  - [x] `Layer` に `site_id` を追加する
+  - [x] `L(...)` で `caller_site_id()` を採用する
+  - [x] `normalize_scene` の暗黙 Layer には `implicit:{geometry.id}` を付与する
+- [x] ParamStore に Layer style を統合する
+  - [x] `LAYER_STYLE_OP="__layer_style__"` + `line_thickness` / `line_color` を定義する
+  - [x] `line_thickness` は `ui_min=1e-6, ui_max=0.01` で固定する
+  - [x] `line_color` は `kind="rgb"`（0..255 int）に寄せる
+- [x] 描画へ反映する
+  - [x] `frame_pipeline.render_scene` で layer を観測し、override=True の場合だけ GUI 値で上書きする
+- [x] GUI に統合して表示する
+  - [x] Style セクション内に “Layer 行” を並べる（global style の直後）
+  - [x] 行ラベルを `"{layer_name}#{ordinal} {arg}"`（例: `bg#1 line_color`）にする
+- [x] テスト（最小）
+  - [x] 行ラベル整形と並び順を unit テストで担保する
 
 完了条件:
 
-- L(name) ごとの thickness/color を GUI で調整でき、描画に反映される。
+- Style セクション内で、L(name) ごとの line_thickness/line_color を GUI で調整でき、描画に反映される。
 
 ### Phase 5（仕上げ）: docs の整合
 

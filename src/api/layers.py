@@ -7,6 +7,8 @@ from __future__ import annotations
 from typing import Sequence
 
 from src.core.geometry import Geometry
+from src.parameters import caller_site_id, current_param_store
+from src.parameters.layer_style import LAYER_STYLE_OP
 from src.render.layer import Layer
 
 
@@ -69,13 +71,29 @@ class LayerHelper:
         if not geometries:
             raise ValueError("L に空の Geometry リストは渡せません")
 
+        # site_id は「この Layer が生成された呼び出し箇所」を識別する安定 ID。
+        # Layer style（line_thickness/line_color）の行は、この site_id をキーとして保存する。
+        site_id = caller_site_id(skip=1)
+
+        store = current_param_store()
+        if store is not None and name is not None:
+            store.set_label(LAYER_STYLE_OP, site_id, name)
+
         # 複数 Geometry は concat で 1 Layer にまとめる。
         if len(geometries) == 1:
             geometry = geometries[0]
         else:
             geometry = Geometry.create(op="concat", inputs=tuple(geometries), params={})
 
-        return [Layer(geometry=geometry, color=color, thickness=thickness, name=name)]
+        return [
+            Layer(
+                geometry=geometry,
+                site_id=site_id,
+                color=color,
+                thickness=thickness,
+                name=name,
+            )
+        ]
 
 
 L = LayerHelper()

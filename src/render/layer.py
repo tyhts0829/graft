@@ -18,6 +18,7 @@ class Layer:
     """Geometry と RGB 色・線幅を束ねるシーン要素。"""
 
     geometry: Geometry
+    site_id: str
     color: ColorRGB | None = None
     thickness: float | None = None
     name: str | None = None

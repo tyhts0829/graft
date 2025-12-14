@@ -20,6 +20,12 @@ def format_param_row_label(op: str, ordinal: int, arg: str) -> str:
     return f"{op}#{int(ordinal)} {arg}"
 
 
+def format_layer_style_row_label(layer_name: str, ordinal: int, arg: str) -> str:
+    """Layer style 行の表示ラベル `"{layer_name}#{ordinal} {arg}"` を返す。"""
+
+    return f"{layer_name}#{int(ordinal)} {arg}"
+
+
 def dedup_display_names_in_order(items: list[tuple[K, str]]) -> dict[K, str]:
     """同名がある場合だけ `name#N` を付与して表示名を返す。
 
