@@ -343,20 +343,20 @@ def render_parameter_table(
                 # 4 列: label / control / min-max / cc
                 # それぞれ「残り幅に対する比率」で伸縮させる。
                 imgui.table_setup_column(
-                    "label", imgui.TABLE_COLUMN_WIDTH_STRETCH, float(label_weight)
+                    "  label", imgui.TABLE_COLUMN_WIDTH_STRETCH, float(label_weight)
                 )
                 imgui.table_setup_column(
-                    "control",
+                    "  control",
                     imgui.TABLE_COLUMN_WIDTH_STRETCH,
                     float(control_weight),
                 )
                 imgui.table_setup_column(
-                    "min-max",
+                    "  min - max",
                     imgui.TABLE_COLUMN_WIDTH_STRETCH,
                     float(range_weight),
                 )
                 imgui.table_setup_column(
-                    "cc",
+                    "  cc",
                     imgui.TABLE_COLUMN_WIDTH_STRETCH,
                     float(meta_weight),
                 )
