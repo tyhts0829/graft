@@ -36,6 +36,18 @@
 - 新規: `src/app/parameter_gui/rules.py`
 - `ParameterRow` を入力に取り、UI の “描画方針” を返す純粋関数に寄せる。
 
+### 判定の優先順位を固定する（筋の良い統一）
+
+- まず `kind` で “型に由来するデフォルト挙動” を決める（例: `rgb/vec3` は cc_key=int3、`bool/string/choice` は cc/override 非表示）。
+- 最後に `(op, arg)` の “意味（セマンティクス）由来の例外” を上書きする（例: `STYLE_OP/global_thickness` と `LAYER_STYLE_OP/line_thickness` は min-max 無効）。
+- `table.py` / `widgets.py` など他モジュールでは `kind/op/arg` の例外判定をしない（`rules.py` に寄せる）。
+
+### 例外の表現を 1 箇所に固定する（管理しやすさ）
+
+- `rules.py` 内で “例外キー集合” を明示する（例: `frozenset[tuple[str, str]]` で `(op, arg)` を列挙）。
+  - 例: `_DISABLE_MINMAX_KEYS = frozenset({(STYLE_OP, "global_thickness"), (LAYER_STYLE_OP, "line_thickness")})`
+- 例外集合は `rules.py` から外へ公開しない（参照は `ui_rules_for_row()` 経由のみ）。
+
 例（イメージ）:
 
 - `RowUiRules`
@@ -78,4 +90,3 @@
 - min-max を無効化するのは「`arg.endswith("thickness")` 全般」ではなく、現状どおり “特定キーだけ” にする想定で良い？
   - 現状: global_thickness と layer line_thickness だけ無効（primitive の thickness 系は有効）
 - `rgb` の cc_key 表示（int3）を維持して良い？（将来は色を CC で駆動したい前提か）
-
