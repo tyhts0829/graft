@@ -6,11 +6,11 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from src.parameters.layer_style import LAYER_STYLE_OP
-from src.parameters.style import STYLE_OP
 from src.parameters.view import ParameterRow
 
-from .labeling import format_layer_style_row_label, format_param_row_label
+from .grouping import group_info_for_row
+from .labeling import format_param_row_label
+from .rules import ui_rules_for_row
 from .widgets import render_value_widget
 
 COLUMN_WEIGHTS_DEFAULT = (0.20, 0.60, 0.15, 0.20)
@@ -26,6 +26,134 @@ def _row_id(row: ParameterRow) -> str:
     """ImGui の `push_id()` 用に、行の安定 ID を返す。"""
 
     return f"{row.op}#{row.ordinal}:{row.arg}"
+
+
+def _render_label_cell(imgui, *, row_label: str) -> None:
+    """label 列を描画する。"""
+
+    imgui.table_set_column_index(0)
+    imgui.text(str(row_label))
+
+
+def _render_control_cell(imgui, row: ParameterRow) -> tuple[bool, object]:
+    """control 列を描画し、(changed, ui_value) を返す。"""
+
+    imgui.table_set_column_index(1)
+    imgui.set_next_item_width(-1)  # 残り幅いっぱい
+    return render_value_widget(row)
+
+
+def _render_minmax_cell(
+    imgui,
+    *,
+    rules,
+    ui_min: object | None,
+    ui_max: object | None,
+) -> tuple[bool, object | None, object | None]:
+    """min-max 列を描画し、(changed, ui_min, ui_max) を返す。"""
+
+    imgui.table_set_column_index(2)
+
+    if rules.minmax == "float_range":
+        min_display = -1.0 if ui_min is None else float(ui_min)
+        max_display = 1.0 if ui_max is None else float(ui_max)
+        imgui.set_next_item_width(-1)
+        changed, min_display, max_display = imgui.drag_float_range2(
+            "##ui_range",
+            float(min_display),  # current_min
+            float(max_display),  # current_max
+            0.1,  # speed
+            0.0,  # min_value
+            0.0,  # max_value
+            "%.1f",  # format
+            None,
+        )
+        if not changed:
+            return False, ui_min, ui_max
+        return True, float(min_display), float(max_display)
+
+    if rules.minmax == "int_range":
+        min_display_i = -10 if ui_min is None else int(ui_min)
+        max_display_i = 10 if ui_max is None else int(ui_max)
+        imgui.set_next_item_width(-1)
+        changed, min_display_i, max_display_i = imgui.drag_int_range2(
+            "##ui_range",
+            int(min_display_i),  # current_min
+            int(max_display_i),  # current_max
+            0.1,  # speed
+            0,  # min_value
+            0,  # max_value
+        )
+        if not changed:
+            return False, ui_min, ui_max
+        return True, int(min_display_i), int(max_display_i)
+
+    return False, ui_min, ui_max
+
+
+def _render_cc_cell(
+    imgui,
+    *,
+    rules,
+    cc_key: object,
+    override: bool,
+    cc_key_width: int,
+    width_spacer: int,
+) -> tuple[bool, object, bool]:
+    """cc/override 列を描画し、(changed, cc_key, override) を返す。"""
+
+    imgui.table_set_column_index(3)
+
+    changed_any = False
+
+    if rules.cc_key == "none":
+        return False, cc_key, override
+
+    if rules.cc_key == "int3":
+        if isinstance(cc_key, tuple):
+            a, b, c = cc_key
+            v0 = -1 if a is None else int(a)
+            v1 = -1 if b is None else int(b)
+            v2 = -1 if c is None else int(c)
+        else:
+            v0, v1, v2 = -1, -1, -1
+
+        changed_cc, out = imgui.input_int3("##cc_key", int(v0), int(v1), int(v2))
+        if changed_cc:
+            changed_any = True
+            cc_tuple = (
+                None if out[0] < 0 else int(out[0]),
+                None if out[1] < 0 else int(out[1]),
+                None if out[2] < 0 else int(out[2]),
+            )
+            cc_key = None if cc_tuple == (None, None, None) else cc_tuple
+
+        if rules.show_override:
+            imgui.same_line(0.0, width_spacer)
+            clicked_override, override = imgui.checkbox("##override", bool(override))
+            if clicked_override:
+                changed_any = True
+
+        return changed_any, cc_key, bool(override)
+
+    cc_display = -1 if not isinstance(cc_key, int) else int(cc_key)
+
+    imgui.push_item_width(cc_key_width * 0.88)
+    changed_cc, cc_display = imgui.input_int("##cc_key", int(cc_display), 0, 0)
+    imgui.pop_item_width()
+
+    clicked_override = False
+    if rules.show_override:
+        imgui.same_line(0.0, width_spacer)
+        clicked_override, override = imgui.checkbox("##override", bool(override))
+
+    if changed_cc:
+        changed_any = True
+        cc_key = None if cc_display < 0 else int(cc_display)
+    if clicked_override:
+        changed_any = True
+
+    return changed_any, cc_key, bool(override)
 
 
 def render_parameter_row_4cols(
@@ -65,6 +193,8 @@ def render_parameter_row_4cols(
     cc_key_width = 30
     width_spacer = 4
 
+    rules = ui_rules_for_row(row)
+
     # テーブル内のウィジェット ID が行ごとに衝突しないよう、push_id でスコープを切る。
     # ここで `row.arg` まで含めているのは、同じ op#ordinal でも arg が異なる可能性があるため。
     imgui.push_id(_row_id(row))
@@ -73,104 +203,37 @@ def render_parameter_row_4cols(
         imgui.table_next_row()
 
         # --- Column 1: label（op#ordinal のみ表示）---
-        imgui.table_set_column_index(0)
-        imgui.text(row_label)
+        _render_label_cell(imgui, row_label=row_label)
 
         # --- Column 2: control（kind に応じたウィジェット）---
         # slider の visible label はテーブルの label 列で代替するため、
         # ウィジェット側は "##value" を使って非表示にしている。
-        imgui.table_set_column_index(1)
-        imgui.set_next_item_width(-1)  # 残り幅いっぱい
-        changed, value = render_value_widget(row)
+        changed, value = _render_control_cell(imgui, row)
         if changed:
             changed_any = True
             ui_value = value
 
         # --- Column 3: min-max（ui_min/ui_max）---
-        imgui.table_set_column_index(2)
-        # min-max スライダーは float/vec3/int のみ表示可能。
-        if row.kind in {"float", "vec3"}:
-            if (row.op == STYLE_OP and row.arg == "global_thickness") or (
-                row.op == LAYER_STYLE_OP and row.arg == "line_thickness"
-            ):
-                # thickness は特別扱いで drag_float_range2 を出さない。
-                pass
-            else:
-                min_display = -1.0 if ui_min is None else float(ui_min)
-                max_display = 1.0 if ui_max is None else float(ui_max)
-                imgui.set_next_item_width(-1)
-                changed_range, min_display, max_display = imgui.drag_float_range2(
-                    "##ui_range",
-                    float(min_display),  # current_min
-                    float(max_display),  # current_max
-                    0.1,  # speed
-                    0.0,  # min_value
-                    0.0,  # max_value
-                    "%.1f",  # format
-                    None,
-                )
-                if changed_range:
-                    changed_any = True
-                    ui_min = float(min_display)
-                    ui_max = float(max_display)
-        elif row.kind == "int":
-            min_display_i = -10 if ui_min is None else int(ui_min)
-            max_display_i = 10 if ui_max is None else int(ui_max)
-            imgui.set_next_item_width(-1)
-            changed_range, min_display_i, max_display_i = imgui.drag_int_range2(
-                "##ui_range",
-                int(min_display_i),  # current_min
-                int(max_display_i),  # current_max
-                0.1,  # speed
-                0,  # min_value
-                0,  # max_value
-            )
-            if changed_range:
-                changed_any = True
-                ui_min = int(min_display_i)
-                ui_max = int(max_display_i)
+        changed_range, ui_min, ui_max = _render_minmax_cell(
+            imgui,
+            rules=rules,
+            ui_min=ui_min,
+            ui_max=ui_max,
+        )
+        if changed_range:
+            changed_any = True
 
         # --- Column 4: cc override（cc_key/override）---
-        imgui.table_set_column_index(3)
-        if row.kind in {"bool", "string", "choice"}:
-            pass
-        elif row.kind in {"vec3", "rgb"}:
-            if isinstance(cc_key, tuple):
-                a, b, c = cc_key
-                v0 = -1 if a is None else int(a)
-                v1 = -1 if b is None else int(b)
-                v2 = -1 if c is None else int(c)
-            else:
-                v0, v1, v2 = -1, -1, -1
-
-            changed_cc, out = imgui.input_int3("##cc_key", int(v0), int(v1), int(v2))
-            if changed_cc:
-                changed_any = True
-                cc_tuple = (
-                    None if out[0] < 0 else int(out[0]),
-                    None if out[1] < 0 else int(out[1]),
-                    None if out[2] < 0 else int(out[2]),
-                )
-                cc_key = None if cc_tuple == (None, None, None) else cc_tuple
-            imgui.same_line(0.0, width_spacer)
-            clicked_override, override = imgui.checkbox("##override", bool(override))
-            if clicked_override:
-                changed_any = True
-        else:
-            cc_display = -1 if not isinstance(cc_key, int) else int(cc_key)
-
-            imgui.push_item_width(cc_key_width * 0.88)
-            changed_cc, cc_display = imgui.input_int("##cc_key", int(cc_display), 0, 0)
-            imgui.pop_item_width()
-
-            imgui.same_line(0.0, width_spacer)
-            clicked_override, override = imgui.checkbox("##override", bool(override))
-
-            if changed_cc:
-                changed_any = True
-                cc_key = None if cc_display < 0 else int(cc_display)
-            if clicked_override:
-                changed_any = True
+        changed_cc, cc_key, override = _render_cc_cell(
+            imgui,
+            rules=rules,
+            cc_key=cc_key,
+            override=bool(override),
+            cc_key_width=cc_key_width,
+            width_spacer=width_spacer,
+        )
+        if changed_cc:
+            changed_any = True
     finally:
         # push_id と必ず対になるよう finally で pop_id する。
         imgui.pop_id()
@@ -267,82 +330,28 @@ def render_parameter_table(
         # グループが閉じている間は、その配下のパラメータ行を描画しない。
         group_open = True
         for row in rows:
-            if row.op in {STYLE_OP, LAYER_STYLE_OP}:
-                # --- style: 1 セクションだけを先頭に出す ---
-                group_id: tuple[str, object] = ("style", "global")
-                header = "Style"
-                if row.op == STYLE_OP:
-                    visible_label = str(row.arg)
-                else:
-                    layer_name = (
-                        "layer"
-                        if layer_style_name_by_site_id is None
-                        else str(layer_style_name_by_site_id.get(row.site_id, "layer"))
-                    )
-                    visible_label = format_layer_style_row_label(
-                        layer_name,
-                        int(row.ordinal),
-                        row.arg,
-                    )
-                header_id = "style"
-                step_info = None
-            else:
-                # 現在行が effect ステップに紐づくかどうか（(op, site_id) → (chain_id, step_index)）。
-                step_key = (row.op, row.site_id)
-                step_info = (
-                    None
-                    if step_info_by_site is None
-                    else step_info_by_site.get(step_key)
-                )
+            info = group_info_for_row(
+                row,
+                primitive_header_by_group=primitive_header_by_group,
+                layer_style_name_by_site_id=layer_style_name_by_site_id,
+                effect_chain_header_by_id=effect_chain_header_by_id,
+                step_info_by_site=step_info_by_site,
+                effect_step_ordinal_by_site=effect_step_ordinal_by_site,
+            )
 
-                if step_info is not None:
-                    # --- effect: chain_id を group として扱う ---
-                    chain_id, _step_index = step_info
-                    group_id = ("effect_chain", chain_id)
-                    header = (
-                        None
-                        if effect_chain_header_by_id is None
-                        else effect_chain_header_by_id.get(chain_id)
-                    )
-                    # “同一チェーン内の同一 op” の出現回数で採番した label を使う。
-                    step_ordinal = row.ordinal
-                    if effect_step_ordinal_by_site is not None:
-                        step_ordinal = int(
-                            effect_step_ordinal_by_site.get(step_key, row.ordinal)
-                        )
-                    visible_label = format_param_row_label(
-                        row.op,
-                        int(step_ordinal),
-                        row.arg,
-                    )
-                    header_id = f"effect_chain:{chain_id}"
-                else:
-                    # --- primitive: (op, ordinal) を group として扱う ---
-                    group_key = (row.op, int(row.ordinal))
-                    group_id = ("primitive", group_key)
-                    header = (
-                        None
-                        if primitive_header_by_group is None
-                        else primitive_header_by_group.get(group_key)
-                    )
-                    visible_label = format_param_row_label(
-                        row.op, int(row.ordinal), row.arg
-                    )
-                    header_id = f"primitive:{group_key[0]}#{group_key[1]}"
-
-            if group_id != prev_group_id:
+            if info.group_id != prev_group_id:
                 # グループが切り替わったタイミングで “ヘッダ行” を 1 行だけ描画する。
-                if header:
+                if info.header:
                     imgui.table_next_row()
                     imgui.table_set_column_index(0)
                     # 折りたたみ状態の永続化と ID 衝突回避のため、group 固有 ID で push_id する。
                     # さらに `##...` で visible text と internal id を分離する（同名ヘッダ対策）。
-                    imgui.push_id(header_id)
+                    imgui.push_id(info.header_id)
                     try:
                         # collapsing_header は (expanded, visible) を返す。
                         # visible=None なので close ボタン無しで常に表示する。
                         group_open, _visible = imgui.collapsing_header(
-                            f"{header}##group_header",
+                            f"{info.header}##group_header",
                             None,
                             flags=imgui.TREE_NODE_DEFAULT_OPEN,
                         )
@@ -350,7 +359,7 @@ def render_parameter_table(
                         imgui.pop_id()
                 else:
                     group_open = True
-                prev_group_id = group_id
+                prev_group_id = info.group_id
 
             if not group_open:
                 # 折りたたみ中は描画しないが、rows_after の長さを揃えるため “変更なし” として返す。
@@ -360,7 +369,7 @@ def render_parameter_table(
             # 展開中は通常どおり 1 行ぶんの 4 列テーブルを描画し、変更後 row を受け取る。
             row_changed, updated = render_parameter_row_4cols(
                 row,
-                visible_label=visible_label,
+                visible_label=info.visible_label,
             )
             changed_any = changed_any or row_changed
             updated_rows.append(updated)

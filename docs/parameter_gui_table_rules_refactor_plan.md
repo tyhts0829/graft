@@ -64,25 +64,25 @@
 
 ## 実装チェックリスト
 
-- [ ] 1) ルールの仕様を確定する（現状の挙動を “そのまま” とみなす範囲を明文化）
-  - [ ] `STYLE_OP/global_thickness` の min-max 無効は維持
-  - [ ] `LAYER_STYLE_OP/line_thickness` の min-max 無効は維持
-  - [ ] `bool/string/choice` の cc/override 非表示は維持
-  - [ ] `vec3/rgb` の cc_key は int3 + override は維持
-- [ ] 2) `src/app/parameter_gui/rules.py` を追加する
-  - [ ] `RowUiRules`（dataclass か NamedTuple）を定義する
-  - [ ] `ui_rules_for_row(row)` を実装する
-  - [ ] `STYLE_OP` / `LAYER_STYLE_OP` など必要な識別子はここで参照する
-- [ ] 3) `src/app/parameter_gui/table.py` をリファクタする（挙動維持）
-  - [ ] Column 3 の分岐を rules ベースに置換する
-  - [ ] Column 4 の分岐を rules ベースに置換する
-  - [ ] “例外 if” を `table.py` から削除し、`rules.py` に集約する
-- [ ] 4) unit test を追加する（imgui 非依存）
-  - [ ] 新規: `tests/app/test_parameter_gui_table_rules.py`
-  - [ ] 代表行（float/int/vec3/rgb/bool/string/choice）で `ui_rules_for_row` の返り値を検証する
-  - [ ] 例外ケース（`STYLE_OP/global_thickness`, `LAYER_STYLE_OP/line_thickness`）を検証する
-- [ ] 5) 仕上げ
-  - [ ] `pytest -q` を通す
+- [x] 1) ルールの仕様を確定する（現状の挙動を “そのまま” とみなす範囲を明文化）
+  - [x] `STYLE_OP/global_thickness` の min-max 無効は維持
+  - [x] `LAYER_STYLE_OP/line_thickness` の min-max 無効は維持
+  - [x] `bool/string/choice` の cc/override 非表示は維持
+  - [x] `vec3/rgb` の cc_key は int3 + override は維持
+- [x] 2) `src/app/parameter_gui/rules.py` を追加する
+  - [x] `RowUiRules`（dataclass）を定義する
+  - [x] `ui_rules_for_row(row)` を実装する
+  - [x] `STYLE_OP` / `LAYER_STYLE_OP` など必要な識別子はここで参照する
+- [x] 3) `src/app/parameter_gui/table.py` をリファクタする（挙動維持）
+  - [x] Column 3 の分岐を rules ベースに置換する
+  - [x] Column 4 の分岐を rules ベースに置換する
+  - [x] “例外 if” を `table.py` から削除し、`rules.py` に集約する
+- [x] 4) unit test を追加する（imgui 非依存）
+  - [x] 新規: `tests/app/test_parameter_gui_table_rules.py`
+  - [x] 代表行（float/int/vec3/rgb/bool/string/choice）で `ui_rules_for_row` の返り値を検証する
+  - [x] 例外ケース（`STYLE_OP/global_thickness`, `LAYER_STYLE_OP/line_thickness`）を検証する
+- [x] 5) 仕上げ
+  - [x] `pytest -q` を通す
   - [ ] 可能なら `python main.py` で手動確認（スクロール/列表示/override 動作）
 
 ## 追加で事前確認したいこと（分岐が出るポイント）
