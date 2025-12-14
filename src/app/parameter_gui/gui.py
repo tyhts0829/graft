@@ -13,7 +13,7 @@ from .pyglet_backend import _create_imgui_pyglet_renderer, _sync_imgui_io_for_wi
 from .store_bridge import render_store_parameter_table
 from .table import COLUMN_WEIGHTS_DEFAULT
 
-_DEFAULT_GUI_FONT_PATH = Path("/System/Library/Fonts/SFNS.ttf")
+_DEFAULT_GUI_FONT_PATH = Path("data/input/font/SFNS.ttf")
 _DEFAULT_GUI_FONT_SIZE_PX = 14.0
 
 
