@@ -71,5 +71,7 @@ def load_param_store(path: Path) -> ParamStore:
 def save_param_store(store: ParamStore, path: Path) -> None:
     """ParamStore を JSON として path に保存する（親ディレクトリは作成する）。"""
 
+    # 保存前に「旧 site_id の残骸」を掃除して、GUI ヘッダ増殖とファイル肥大化を防ぐ。
+    store.prune_stale_loaded_groups()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(store.to_json() + "\n", encoding="utf-8")

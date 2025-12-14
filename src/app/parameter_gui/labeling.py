@@ -98,7 +98,10 @@ def effect_chain_header_display_names_from_snapshot(
 ) -> dict[str, str]:
     """snapshot から Effect チェーン用のヘッダ表示名（衝突解消済み）を作る。"""
 
-    base_name_by_chain: dict[str, str] = {}
+    # chain_id ごとの「明示ラベル（あれば）」を集める。
+    # - E(name=...) が付いている場合: label をヘッダ名として採用
+    # - そうでない場合: 無名チェーンとして扱う
+    label_by_chain: dict[str, str | None] = {}
     for key, (_meta, _state, _ordinal, label) in snapshot.items():
         op = str(key.op)
         if not is_effect_op(op):
@@ -107,19 +110,27 @@ def effect_chain_header_display_names_from_snapshot(
         if step is None:
             continue
         chain_id, _step_index = step
-        if chain_id in base_name_by_chain:
+        if chain_id in label_by_chain:
             continue
+        label_by_chain[chain_id] = None if label is None else str(label)
+
+    # 表示順は “チェーンの ordinal → chain_id” に寄せる（表示の安定化目的）。
+    chain_ids_sorted = sorted(
+        label_by_chain.keys(),
+        key=lambda cid: (int(chain_ordinal_by_id.get(cid, 0)), str(cid)),
+    )
+
+    # effect#N は “無名チェーンだけ” を対象に 1..K へ正規化する。
+    # これにより、名前付きチェーンが存在しても無名は必ず effect#1 から始まる。
+    unnamed_count = 0
+    base_name_by_chain: dict[str, str] = {}
+    for chain_id in chain_ids_sorted:
+        label = label_by_chain.get(chain_id)
         if label:
             base_name_by_chain[chain_id] = str(label)
             continue
-        chain_ordinal = int(chain_ordinal_by_id.get(chain_id, 0))
-        base_name_by_chain[chain_id] = (
-            f"effect#{chain_ordinal}" if chain_ordinal > 0 else "effect"
-        )
+        unnamed_count += 1
+        base_name_by_chain[chain_id] = f"effect#{unnamed_count}"
 
-    chain_ids_sorted = sorted(
-        base_name_by_chain.keys(),
-        key=lambda cid: (int(chain_ordinal_by_id.get(cid, 0)), str(cid)),
-    )
     ordered = [(cid, base_name_by_chain[cid]) for cid in chain_ids_sorted]
     return dedup_display_names_in_order(ordered)

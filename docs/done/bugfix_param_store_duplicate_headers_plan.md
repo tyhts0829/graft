@@ -31,7 +31,7 @@
 
 ### 2.2 site_id が「コード編集で変わりやすい」形式になっている
 
-site_id 生成は `src/parameters/key.py` にあり、現状は以下（コメント含む）:
+site_id 生成は `src/parameters/key.py` にあり、**修正前**は以下（コメント含む）:
 
 - `make_site_id()` の形式: `"{filename}:{co_firstlineno}:{f_lasti}"`
 - `caller_site_id()` はユーザー側の呼び出しフレームまで遡って `make_site_id()` を呼ぶ
@@ -45,6 +45,8 @@ site_id 生成は `src/parameters/key.py` にあり、現状は以下（コメ�
 
 この構造は primitive/effect の両方で成立するため、「polyhedron も effect も増える」説明が付く。
 
+※ 現行実装の site_id 形式は `"{filename}:{co_firstlineno}:{f_lasti}"`。
+
 ## 3. 根本原因（結論）
 
 ParamStore 永続化そのものではなく、**site_id が `f_lasti` 依存で不安定**なことが原因。
@@ -56,63 +58,44 @@ ParamStore 永続化そのものではなく、**site_id が `f_lasti` 依存で
 
 ### 4.1 目標
 
-- `G.polyhedron()` → `G.polyhedron(type_index=2)` のような「呼び出し行は同じ」編集で site_id が変わらないこと。
-- その結果として、復元後にヘッダが複製されないこと。
+- 編集（引数追加/空行整理/整形）で site_id がズレても、GUI が増殖しないこと。
+- 可能な範囲で GUI 調整値（override/ui_value/ui_min/ui_max/cc_key）を新しい呼び出し箇所へ引き継ぐこと。
+- 曖昧な場合は誤マッチしないこと（初期化の方が優先）。
 
-### 4.2 対応案
+### 4.2 採用案（site_id を信仰しない）
 
-案 A（最小・推奨）:
+site_id 安定化は「空行編集」「呼び出し順の変更」などで別の揺れが残り、やりたいことに対して大げさになりやすい。
+そこで、永続化は以下の “reconcile/prune” と “GUI 側の隠蔽” で成立させる:
 
-- site_id から `f_lasti` を外し、**行番号ベース**にする。
-  - 例: `"{filename}:{lineno}"`（lineno は `frame.f_lineno`）
-  - もしくは `"{filename}:{co_name}:{line_offset}"`（`line_offset = f_lineno - co_firstlineno`）
+- load 直後に “ロード済みグループ集合” を保持する
+- 実行中に “観測済みグループ集合” を集める
+- 旧だけ残っているグループ（stale）と新だけ現れたグループ（fresh）を比較し、fingerprint で再リンクする
+  - `label`（任意）と `arg/kind` の一致でスコアリング
+  - 同点首位が複数なら移行しない
+- GUI 表示では「増殖の原因になる stale」を隠す（その場で増殖しない）
+- 保存時に stale を削除する（ファイル肥大化しない）
 
-メリット:
+実装の要点:
 
-- 実装が単純で、今回の “引数追加で増殖” を確実に止められる。
+- `ParamStore.snapshot_for_gui()` を GUI 側で使用し、stale を隠す
+- `save_param_store()` 保存前に `ParamStore.prune_stale_loaded_groups()` を呼び、stale を削除する
 
-デメリット:
-
-- 同一行に複数の `G.*()`/`E.*()` があると衝突しうる（運用で「1 行 1 呼び出し」を推奨するのが最も簡単）。
-
-案 B（やや堅牢、ただし複雑化）:
-
-- `dis.get_instructions(frame.f_code)` と `frame.f_lasti` から「その命令の source position（lineno/col）」を取得し、
-  site_id を `"{filename}:{lineno}:{col}"` のようにする（`f_lasti` 自体は含めない）。
-
-メリット:
-
-- 同一行に複数呼び出しがあっても衝突しにくい。
-
-デメリット:
-
-- 実装とテストが増える（このリポの方針としては “必要が出てから” でよい）。
-
-本件の修正は案 A で十分（必要十分 / シンプル優先）。
+詳細な実装計画/チェックリストは `docs/param_store_reconcile_and_prune_plan.md` に切り出す（最新はこちら）。
 
 ## 5. 既存の保存ファイルについて
 
-site_id 仕様を変えると、既存の `data/output/param_store/*.json` 内のキーが新仕様と一致しないため、
-**1 回だけ**以下が必要になる:
-
-- 手動で `data/output/param_store/main.json` を削除/退避して作り直す
-
-（互換 migration を作るのはシム扱いになりやすいので、このリポ方針ではやらない前提）
+手動削除は不要（復元時に reconcile/prune するため）。
 
 ## 6. 修正チェックリスト（実装フェーズ）
 
-- [ ] 再現メモを最小化（main.py で再現する手順を確定）
-- [ ] 回帰テストを追加（site_id が「同一行の軽微編集」で変わらないこと）
-  - 例: `compile(..., filename="main.py", ...)` を使い、`G.polyhedron()` と `G.polyhedron(type_index=2)` の 2 バリアントで
-    生成される `ParameterKey.site_id` が一致することを確認する（`parameter_context` + `ParamStore` を使う）
-- [ ] `src/parameters/key.py` の site_id 形式を案 A へ変更（`f_lasti` を除去）
-- [ ] `tests/parameters/test_site_id.py` を必要に応じて更新
-- [ ] ドキュメント（`parameter_spec.md` 等）に site_id 形式が出ていれば更新
-- [ ] `data/output/param_store/main.json` を削除してスモーク確認
-  - 1 回目: 起動 →GUI で変更 → 終了 → 保存される
-  - 2 回目: `G.polyhedron(type_index=2)` に編集 → 起動 → ヘッダが増殖しない
+- [x] 根本原因の整理（site_id 揺れ + 永続化で増殖）
+- [x] reconcile/prune の方針を確定し、別ドキュメントへ分離（`docs/param_store_reconcile_and_prune_plan.md`）
+- [x] GUI 表示で stale を隠す（増殖を見せない）
+- [x] 保存時に stale を削除する（ファイル肥大化しない）
+- [x] pytest を追加（再リンク/隠蔽/削除の最小回帰）
+- [ ] 手動スモーク（`main.py` を編集しながら起動/終了を繰り返して増殖しないこと）
 
 ## 7. 追加で確認したい点（任意）
 
 - `main.py` 以外（`sketch/*.py`）でも同様に増殖が止まるか
-- 1 行に複数呼び出しがあるスクリプトで衝突が問題になるか（問題なら案 B へ移行）
+- effect chain の chain_id 変更（E の宣言箇所移動）でも増殖しないか

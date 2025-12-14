@@ -140,7 +140,7 @@ def render_store_parameter_table(
     # - key: (op, site_id, arg)
     # - ordinal: GUI 用の連番（primitive/effect どちらも op ごとの連番）
     # - label: G(name=...) / E(name=...) / L(name=...) が付与した表示名（op, site_id 単位）
-    snapshot = store.snapshot()
+    snapshot = store.snapshot_for_gui()
 
     # --- 2) Primitive のヘッダ表示名（G(name=...)）を解決 ---
     # snapshot の label を “Primitive グループ” (op, ordinal) へ対応付ける。
