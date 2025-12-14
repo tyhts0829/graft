@@ -8,7 +8,7 @@ from collections.abc import Mapping
 
 from src.parameters.view import ParameterRow
 
-from .grouping import group_info_for_row
+from .group_blocks import group_blocks_from_rows
 from .labeling import format_param_row_label
 from .rules import ui_rules_for_row
 from .widgets import render_value_widget
@@ -288,94 +288,94 @@ def render_parameter_table(
     #     （store_bridge が `zip(rows_before, rows_after, strict=True)` で差分適用するため）
     updated_rows: list[ParameterRow] = []
 
-    # `begin_table` は pyimgui のバージョン/バックエンドで返り値が揺れるため、
-    # `.opened` 属性があればそれを使い、無ければ返り値自体を bool として扱う。
-    table = imgui.begin_table("##parameters", 4, imgui.TABLE_SIZING_STRETCH_PROP)
-    opened = getattr(table, "opened", table)
-    if not opened:
-        return False, rows
+    # rows を “連続する group” ごとにブロック化する。
+    # `collapsing_header` をテーブル外へ出すことで、ヘッダを全幅で表示できる。
+    blocks = group_blocks_from_rows(
+        rows,
+        primitive_header_by_group=primitive_header_by_group,
+        layer_style_name_by_site_id=layer_style_name_by_site_id,
+        effect_chain_header_by_id=effect_chain_header_by_id,
+        step_info_by_site=step_info_by_site,
+        effect_step_ordinal_by_site=effect_step_ordinal_by_site,
+    )
 
-    try:
-        # 4 列: label / control / min-max / cc
-        # それぞれ「残り幅に対する比率」で伸縮させる。
-        imgui.table_setup_column(
-            "label", imgui.TABLE_COLUMN_WIDTH_STRETCH, float(label_weight)
-        )
-        imgui.table_setup_column(
-            "control", imgui.TABLE_COLUMN_WIDTH_STRETCH, float(control_weight)
-        )
-        imgui.table_setup_column(
-            "min-max",
-            imgui.TABLE_COLUMN_WIDTH_STRETCH,
-            float(range_weight),
-        )
-        imgui.table_setup_column(
-            "cc",
-            imgui.TABLE_COLUMN_WIDTH_STRETCH,
-            float(meta_weight),
-        )
-        # カラム名（label/control/min-max/cc）をヘッダ行として描画する。
-        imgui.table_headers_row()
-        # 次の行へ進める（ヘッダの直後にボディを描くための 1 行目の準備）。
-        # pyimgui の API は `table_next_row(row_flags, min_row_height)` なので `(0, 1)` を渡している。
-        imgui.table_next_row(0, 1)
+    # 列ヘッダ（label/control/min-max/cc）は繰り返すとノイズになるので、
+    # 最初に開いたグループのテーブルで 1 回だけ描画する。
+    drew_column_headers = False
 
-        # GUI 上の “グループ” は 2 種類ある。
-        # - Primitive: (op, ordinal) 単位
-        # - Effect: chain_id 単位（チェーンヘッダ → ステップ群）
-        # rows は store_bridge 側で「Primitive 群 → Effect 群（チェーン順）」に並べ替え済みなので、
-        # 同じ group は連続する前提で “境界” を検出する。
-        prev_group_id: tuple[str, object] | None = None
-        # 現在グループが open（展開）されているか。
-        # グループが閉じている間は、その配下のパラメータ行を描画しない。
-        group_open = True
-        for row in rows:
-            info = group_info_for_row(
-                row,
-                primitive_header_by_group=primitive_header_by_group,
-                layer_style_name_by_site_id=layer_style_name_by_site_id,
-                effect_chain_header_by_id=effect_chain_header_by_id,
-                step_info_by_site=step_info_by_site,
-                effect_step_ordinal_by_site=effect_step_ordinal_by_site,
-            )
-
-            if info.group_id != prev_group_id:
-                # グループが切り替わったタイミングで “ヘッダ行” を 1 行だけ描画する。
-                if info.header:
-                    imgui.table_next_row()
-                    imgui.table_set_column_index(0)
-                    # 折りたたみ状態の永続化と ID 衝突回避のため、group 固有 ID で push_id する。
-                    # さらに `##...` で visible text と internal id を分離する（同名ヘッダ対策）。
-                    imgui.push_id(info.header_id)
-                    try:
-                        # collapsing_header は (expanded, visible) を返す。
-                        # visible=None なので close ボタン無しで常に表示する。
-                        group_open, _visible = imgui.collapsing_header(
-                            f"{info.header}##group_header",
-                            None,
-                            flags=imgui.TREE_NODE_DEFAULT_OPEN,
-                        )
-                    finally:
-                        imgui.pop_id()
-                else:
-                    group_open = True
-                prev_group_id = info.group_id
+    for block in blocks:
+        # 折りたたみ状態の永続化と ID 衝突回避のため、group 固有 ID で push_id する。
+        # - collapsing_header の state（open/close）
+        # - begin_table の内部 ID
+        # の両方をブロック単位で分離できる。
+        imgui.push_id(block.header_id)
+        try:
+            # collapsing_header は (expanded, visible) を返す。
+            # visible=None なので close ボタン無しで常に表示する。
+            group_open = True
+            if block.header:
+                group_open, _visible = imgui.collapsing_header(
+                    f"{block.header}##group_header",
+                    None,
+                    flags=imgui.TREE_NODE_DEFAULT_OPEN,
+                )
 
             if not group_open:
                 # 折りたたみ中は描画しないが、rows_after の長さを揃えるため “変更なし” として返す。
-                updated_rows.append(row)
+                for item in block.items:
+                    updated_rows.append(item.row)
                 continue
 
-            # 展開中は通常どおり 1 行ぶんの 4 列テーブルを描画し、変更後 row を受け取る。
-            row_changed, updated = render_parameter_row_4cols(
-                row,
-                visible_label=info.visible_label,
+            # --- open のときだけ、当該グループの行を 4 列テーブルとして描く ---
+            #
+            # `begin_table` は pyimgui のバージョン/バックエンドで返り値が揺れるため、
+            # `.opened` 属性があればそれを使い、無ければ返り値自体を bool として扱う。
+            table = imgui.begin_table(
+                "##parameters", 4, imgui.TABLE_SIZING_STRETCH_PROP
             )
-            changed_any = changed_any or row_changed
-            updated_rows.append(updated)
-    finally:
-        # begin_table と必ず対になる end_table を呼ぶ。
-        imgui.end_table()
+            opened = getattr(table, "opened", table)
+            if not opened:
+                for item in block.items:
+                    updated_rows.append(item.row)
+                continue
+
+            try:
+                # 4 列: label / control / min-max / cc
+                # それぞれ「残り幅に対する比率」で伸縮させる。
+                imgui.table_setup_column(
+                    "label", imgui.TABLE_COLUMN_WIDTH_STRETCH, float(label_weight)
+                )
+                imgui.table_setup_column(
+                    "control",
+                    imgui.TABLE_COLUMN_WIDTH_STRETCH,
+                    float(control_weight),
+                )
+                imgui.table_setup_column(
+                    "min-max",
+                    imgui.TABLE_COLUMN_WIDTH_STRETCH,
+                    float(range_weight),
+                )
+                imgui.table_setup_column(
+                    "cc",
+                    imgui.TABLE_COLUMN_WIDTH_STRETCH,
+                    float(meta_weight),
+                )
+                if not drew_column_headers:
+                    # カラム名（label/control/min-max/cc）をヘッダ行として描画する（1回だけ）。
+                    imgui.table_headers_row()
+                    drew_column_headers = True
+
+                for item in block.items:
+                    row_changed, updated = render_parameter_row_4cols(
+                        item.row,
+                        visible_label=item.visible_label,
+                    )
+                    changed_any = changed_any or row_changed
+                    updated_rows.append(updated)
+            finally:
+                imgui.end_table()
+        finally:
+            imgui.pop_id()
 
     # changed_any は「UI のどこかが変わったか」。
     # updated_rows は store へ差分適用するための “更新後” 行モデル列（rows と同じ長さ）。

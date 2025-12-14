@@ -1,156 +1,145 @@
+"""
+どこで: `src/primitives/polyhedron.py`。正多面体プリミティブの実体生成。
+何を: `data/regular_polyhedron/*_vertices_list.npz` から面ポリライン列を読み込み、選択して返す。
+なぜ: 正多面体データを primitive として提供し、プレビューとエクスポートで再利用するため。
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 
-from engine.core.geometry import Geometry
+from src.core.primitive_registry import primitive
+from src.core.realized_geometry import RealizedGeometry
+from src.parameters.meta import ParamMeta
 
-from .registry import shape
-
-_vertices_cache: dict[str, list[np.ndarray]] | None = None
-
-# UI/インデックス用の型順序（0..N-1）
+# `type_index`（0..N-1）で参照する型順序を固定する。
 _TYPE_ORDER = ["tetrahedron", "hexahedron", "octahedron", "dodecahedron", "icosahedron"]
 
+_DATA_DIR = Path(__file__).parents[2] / "data" / "regular_polyhedron"
+_POLYHEDRON_CACHE: dict[str, tuple[np.ndarray, ...]] = {}
 
-def _load_vertices_data() -> None:
-    global _vertices_cache
-    if _vertices_cache is not None:
-        return
-    _vertices_cache = {}
-    # リポジトリ直下の data ディレクトリを参照する
-    data_dir = Path(__file__).parents[2] / "data" / "regular_polyhedron"
-    if not data_dir.exists():
-        _vertices_cache = None
-        return
-    for polyhedron in _TYPE_ORDER:
-        npz_file = data_dir / f"{polyhedron}_vertices_list.npz"
-        if npz_file.exists():
-            with np.load(npz_file) as data:
-                if "arrays" in data.files:
-                    arrays = data["arrays"]
-                    _vertices_cache[polyhedron] = [np.array(a, dtype=np.float32) for a in arrays]
-                else:
-                    keys = sorted(
-                        [k for k in data.files if k.startswith("arr_")],
-                        key=lambda k: int(k.split("_")[1]),
-                    )
-                    _vertices_cache[polyhedron] = [data[k].astype(np.float32) for k in keys]
+polyhedron_meta = {
+    "type_index": ParamMeta(kind="int", ui_min=0, ui_max=len(_TYPE_ORDER) - 1),
+    "center": ParamMeta(kind="vec3", ui_min=-500.0, ui_max=500.0),
+    "scale": ParamMeta(kind="vec3", ui_min=0.0, ui_max=200.0),
+}
 
 
-@shape
+def _load_face_polylines(kind: str) -> tuple[np.ndarray, ...]:
+    """データファイルから「面ポリライン列」を読み込んで返す。"""
+    cached = _POLYHEDRON_CACHE.get(kind)
+    if cached is not None:
+        return cached
+
+    npz_path = _DATA_DIR / f"{kind}_vertices_list.npz"
+    if not npz_path.exists():
+        raise FileNotFoundError(f"polyhedron データが見つかりません: {npz_path}")
+
+    with np.load(npz_path, allow_pickle=False) as data:
+        if "arrays" in data.files:
+            raw_lines = list(data["arrays"])
+        else:
+            keys = sorted(
+                [k for k in data.files if k.startswith("arr_")],
+                key=lambda k: int(k.split("_")[1]),
+            )
+            if not keys:
+                raise ValueError(f"polyhedron データが空です: {npz_path.name}")
+            raw_lines = [data[k] for k in keys]
+
+    polylines: list[np.ndarray] = []
+    for i, line in enumerate(raw_lines):
+        arr = np.asarray(line, dtype=np.float32)
+        if arr.ndim != 2 or arr.shape[1] not in (2, 3):
+            raise ValueError(
+                "polyhedron データの各ポリラインは shape (N,3) の配列である必要がある"
+                f": kind={kind!r}, index={i}, shape={arr.shape}"
+            )
+        polylines.append(arr.astype(np.float32, copy=False))
+
+    cached = tuple(polylines)
+    _POLYHEDRON_CACHE[kind] = cached
+    return cached
+
+
+def _polylines_to_realized(
+    polylines: tuple[np.ndarray, ...],
+    *,
+    center: tuple[float, float, float],
+    scale: tuple[float, float, float],
+) -> RealizedGeometry:
+    """面ポリライン列を RealizedGeometry に変換する。"""
+    if not polylines:
+        coords = np.zeros((0, 3), dtype=np.float32)
+        offsets = np.zeros((1,), dtype=np.int32)
+        return RealizedGeometry(coords=coords, offsets=offsets)
+
+    try:
+        cx, cy, cz = center
+    except Exception as exc:
+        raise ValueError("polyhedron の center は長さ 3 のシーケンスである必要がある") from exc
+    try:
+        sx, sy, sz = scale
+    except Exception as exc:
+        raise ValueError("polyhedron の scale は長さ 3 のシーケンスである必要がある") from exc
+
+    coords = np.concatenate(polylines, axis=0).astype(np.float32, copy=False)
+
+    offsets = np.zeros(len(polylines) + 1, dtype=np.int32)
+    acc = 0
+    for i, line in enumerate(polylines):
+        acc += int(line.shape[0])
+        offsets[i + 1] = acc
+
+    cx_f, cy_f, cz_f = float(cx), float(cy), float(cz)
+    sx_f, sy_f, sz_f = float(sx), float(sy), float(sz)
+    if (cx_f, cy_f, cz_f) != (0.0, 0.0, 0.0) or (sx_f, sy_f, sz_f) != (1.0, 1.0, 1.0):
+        center_vec = np.array([cx_f, cy_f, cz_f], dtype=np.float32)
+        scale_vec = np.array([sx_f, sy_f, sz_f], dtype=np.float32)
+        coords = coords * scale_vec + center_vec
+
+    return RealizedGeometry(coords=coords, offsets=offsets)
+
+
+@primitive(meta=polyhedron_meta)
 def polyhedron(
     *,
-    polygon_index: int = 0,
-    **params: Any,
-) -> Geometry:
-    """正多面体を生成します。
+    type_index: int = 0,
+    center: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
+) -> RealizedGeometry:
+    """正多面体を面ポリライン列として生成する。
 
-    選択は `polygon_index`（0..N-1）で行う。0=tetrahedron, 1=hexahedron, 2=octahedron,
-    3=dodecahedron, 4=icosahedron。範囲外はクランプする。
+    Parameters
+    ----------
+    type_index : int, optional
+        形状の選択インデックス（0..N-1）。範囲外はクランプする。
+        0=tetrahedron, 1=hexahedron, 2=octahedron, 3=dodecahedron, 4=icosahedron。
+    center : tuple[float, float, float], optional
+        平行移動ベクトル (cx, cy, cz)。
+    scale : tuple[float, float, float], optional
+        成分ごとのスケール (sx, sy, sz)。
+
+    Returns
+    -------
+    RealizedGeometry
+        各面が「閉ポリライン（先頭==末尾）」になっている実体ジオメトリ。
+
+    Raises
+    ------
+    FileNotFoundError
+        `data/regular_polyhedron` のデータが見つからない場合。
+    ValueError
+        データ内容が不正な場合。
     """
-    idx = int(polygon_index)
+    idx = int(type_index)
     if idx < 0:
         idx = 0
     elif idx >= len(_TYPE_ORDER):
         idx = len(_TYPE_ORDER) - 1
-    shape_name = _TYPE_ORDER[idx]
-    _load_vertices_data()
-    if _vertices_cache and shape_name in _vertices_cache:
-        vertices_list = _vertices_cache[shape_name]
-        if isinstance(vertices_list, list):
-            converted_list = [np.array(v, dtype=np.float32) for v in vertices_list]
-            return Geometry.from_lines(converted_list)
-        return Geometry.from_lines(vertices_list)
-    return Geometry.from_lines(_generate_simple_polyhedron(shape_name))
 
-
-def _generate_simple_polyhedron(shape_name: str) -> list[np.ndarray]:
-    """簡易な多面体の頂点・辺リストを生成します。"""
-    if shape_name == "tetrahedron":
-        # 単純な四面体
-        vertices = np.array(
-            [[0, 0, 0.5], [0.433, 0, -0.25], [-0.216, 0.375, -0.25], [-0.216, -0.375, -0.25]],
-            dtype=np.float32,
-        )
-
-        # 辺の接続定義
-        edges = [
-            [vertices[0], vertices[1]],
-            [vertices[0], vertices[2]],
-            [vertices[0], vertices[3]],
-            [vertices[1], vertices[2]],
-            [vertices[2], vertices[3]],
-            [vertices[3], vertices[1]],
-        ]
-        return [np.array(edge, dtype=np.float32) for edge in edges]
-
-    elif shape_name == "hexahedron" or shape_name == "cube":
-        # 単純な立方体
-        d = 0.5
-        vertices = np.array(
-            [
-                [-d, -d, -d],
-                [d, -d, -d],
-                [d, d, -d],
-                [-d, d, -d],
-                [-d, -d, d],
-                [d, -d, d],
-                [d, d, d],
-                [-d, d, d],
-            ],
-            dtype=np.float32,
-        )
-
-        # 辺の接続定義
-        edges = []
-        # 底面
-        for i in range(4):
-            edges.append([vertices[i], vertices[(i + 1) % 4]])
-        # 上面
-        for i in range(4):
-            edges.append([vertices[i + 4], vertices[((i + 1) % 4) + 4]])
-        # 垂直の辺
-        for i in range(4):
-            edges.append([vertices[i], vertices[i + 4]])
-
-        return [np.array(edge, dtype=np.float32) for edge in edges]
-
-    elif shape_name == "octahedron":
-        # 単純な八面体
-        vertices = np.array(
-            [[0.5, 0, 0], [-0.5, 0, 0], [0, 0.5, 0], [0, -0.5, 0], [0, 0, 0.5], [0, 0, -0.5]],
-            dtype=np.float32,
-        )
-
-        # 辺の接続定義
-        edges = []
-        # 上側頂点と中間の四角形を接続
-        for i in range(4):
-            edges.append([vertices[4], vertices[i]])
-        # 下側頂点と中間の四角形を接続
-        for i in range(4):
-            edges.append([vertices[5], vertices[i]])
-        # 中央の四角形
-        edges.append([vertices[0], vertices[2]])
-        edges.append([vertices[2], vertices[1]])
-        edges.append([vertices[1], vertices[3]])
-        edges.append([vertices[3], vertices[0]])
-
-        return [np.array(edge, dtype=np.float32) for edge in edges]
-
-    else:
-        # 未対応タイプは四面体にフォールバック
-        return _generate_simple_polyhedron("tetrahedron")
-
-
-polyhedron.__param_meta__ = {
-    "polygon_index": {
-        "type": "integer",
-        "min": 0,
-        "max": len(_TYPE_ORDER) - 1,
-        "step": 1,
-    },
-}
+    kind = _TYPE_ORDER[idx]
+    polylines = _load_face_polylines(kind)
+    return _polylines_to_realized(polylines, center=center, scale=scale)
