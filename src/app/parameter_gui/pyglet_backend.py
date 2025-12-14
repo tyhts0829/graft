@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Any
 
 DEFAULT_WINDOW_WIDTH = 800
-DEFAULT_WINDOW_HEIGHT = 800
+DEFAULT_WINDOW_HEIGHT = 1200
 
 
 def _create_imgui_pyglet_renderer(imgui_pyglet_mod: Any, gui_window: Any) -> Any:
