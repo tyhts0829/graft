@@ -86,8 +86,8 @@
 - [ ] Style を保持する場所を決める（ParamStore に統合するか、別ストアを作るか）
   - [ ] まずは ParamStore へ統合する案（特殊 op/site_id/arg で表現）を第一候補にする
 - [ ] 型/kind を揃える
-  - [ ] background_color（RGB）をどう表現するか決める（vec3/ rgb kind 追加など）
-  - [ ] global_line_color（RGB）をどう表現するか決める（vec3/ rgb kind 追加など）
+  - [ ] background_color（RGB）をどう表現するか決める（vec3/ rgb kind 追加など） rgb kind 追加。control には color_edit3 を使う。
+  - [ ] global_line_color（RGB）をどう表現するか決める（vec3/ rgb kind 追加など） rgb kind 追加。control には color_edit3 を使う
 - [ ] run/render への反映経路を追加
   - [ ] GUI 値で `renderer.clear(background_color)` を上書きできる
   - [ ] GUI 値で LayerStyleDefaults（global_thickness/global_line_color）を上書きできる
