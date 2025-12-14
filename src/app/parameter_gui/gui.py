@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from src.parameters.store import ParamStore
@@ -11,6 +12,9 @@ from src.parameters.store import ParamStore
 from .pyglet_backend import _create_imgui_pyglet_renderer, _sync_imgui_io_for_window
 from .store_bridge import render_store_parameter_table
 from .table import COLUMN_WEIGHTS_DEFAULT
+
+_DEFAULT_GUI_FONT_PATH = Path("/System/Library/Fonts/SFNS.ttf")
+_DEFAULT_GUI_FONT_SIZE_PX = 14.0
 
 
 class ParameterGUI:
@@ -33,7 +37,9 @@ class ParameterGUI:
 
         # imgui の pyglet backend は環境によって import 経路が揺れるため、明示的にここで解決する。
         try:
-            from imgui.integrations import pyglet as imgui_pyglet  # type: ignore[import-untyped]
+            from imgui.integrations import (
+                pyglet as imgui_pyglet,  # type: ignore[import-untyped]
+            )
         except Exception as exc:
             raise RuntimeError(f"imgui.integrations.pyglet を import できない: {exc}")
 
@@ -52,6 +58,17 @@ class ParameterGUI:
         # ImGui の draw_data を実際に OpenGL へ流す renderer を作る。
         # ここで作られた renderer は内部に GL リソースを保持する。
         self._renderer = _create_imgui_pyglet_renderer(imgui_pyglet, gui_window)
+
+        # お試し: フォントを差し替えて文字サイズだけ調整する。
+        # ここでは「既定フォントを丸ごと置き換える」ため、push/pop は不要。
+        if _DEFAULT_GUI_FONT_PATH.is_file():
+            io = imgui.get_io()
+            io.fonts.clear()
+            io.fonts.add_font_from_file_ttf(
+                str(_DEFAULT_GUI_FONT_PATH),
+                float(_DEFAULT_GUI_FONT_SIZE_PX),
+            )
+
         refresh_font = getattr(self._renderer, "refresh_font_texture", None)
         if callable(refresh_font):
             # backend によっては初期化時にフォントテクスチャが未生成なので、明示的に更新する。
