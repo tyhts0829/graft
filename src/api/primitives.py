@@ -13,6 +13,7 @@ from src.parameters import caller_site_id, current_frame_params, current_param_s
 # primitive 実装モジュールをインポートしてレジストリに登録させる。
 from src.primitives import circle as _primitive_circle  # noqa: F401
 from src.primitives import polygon as _primitive_polygon  # noqa: F401
+from src.primitives import polyhedron as _primitive_polyhedron  # noqa: F401
 
 
 class PrimitiveNamespace:
