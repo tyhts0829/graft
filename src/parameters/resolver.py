@@ -9,7 +9,7 @@ from typing import Any, Iterable
 from .context import current_cc_snapshot, current_frame_params, current_param_snapshot
 from .frame_params import FrameParamsBuffer
 from .key import ParameterKey
-from .meta import ParamMeta, infer_meta_from_value
+from .meta import ParamMeta
 from .state import ParamState
 
 DEFAULT_QUANT_STEP = 1e-3
@@ -164,10 +164,12 @@ def resolve_params(
             snapshot_meta, state, _ordinal, _label = snapshot_entry
             arg_meta = snapshot_meta
         else:
-            # 初出のキーは
-            # 1) 登録側 meta があればそれを採用
-            # 2) 無ければ base_value から最低限の meta を推定
-            arg_meta = meta.get(arg) or infer_meta_from_value(base_value)
+            # 初出のキーは「登録側 meta がある場合のみ」GUI 対象として扱う。
+            # meta が無い引数は GUI/CC の対象外とし、このフレームでも観測しない。
+            arg_meta = meta.get(arg)
+            if arg_meta is None:
+                resolved[arg] = base_value
+                continue
             # この場では仮の state（ui_value=base）を作るだけ。
             # override の初期値は store 側（フレーム境界のマージ）で explicit/implicit を見て決める。
             state = ParamState(ui_value=base_value)

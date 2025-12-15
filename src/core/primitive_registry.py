@@ -30,39 +30,22 @@ class PrimitiveRegistry:
         self._meta: dict[str, dict[str, ParamMeta]] = {}
         self._defaults: dict[str, dict[str, Any]] = {}
 
-    def register(
+    def _register(
         self,
         name: str,
-        func: PrimitiveFunc | None = None,
+        func: PrimitiveFunc,
         *,
         overwrite: bool = True,
         meta: dict[str, ParamMeta] | None = None,
         defaults: dict[str, Any] | None = None,
-    ):
-        """primitive を登録する（関数またはデコレータとして使用可能）。
+    ) -> None:
+        """primitive を登録する（内部用）。
 
-        Parameters
-        ----------
-        name : str
-            op 名。
-        func : PrimitiveFunc
-            実体配列を生成する関数。
-        overwrite : bool, optional
-            既存エントリがある場合に上書きするかどうか。
-
-        Raises
-        ------
-        ValueError
-            overwrite が False のときに同名のエントリが既に存在する場合。
+        Notes
+        -----
+        登録は `@primitive` デコレータ経由に統一する。
+        このメソッドはデコレータ実装の内部からのみ呼ぶ。
         """
-        if func is None:
-            # デコレータとして使用された場合。
-            def decorator(f: PrimitiveFunc) -> PrimitiveFunc:
-                self.register(name, f, overwrite=overwrite, meta=meta)
-                return f
-
-            return decorator
-
         if not overwrite and name in self._items:
             raise ValueError(f"primitive '{name}' は既に登録されている")
         self._items[name] = func
@@ -70,7 +53,6 @@ class PrimitiveRegistry:
             self._meta[name] = meta
         if defaults is not None:
             self._defaults[name] = defaults
-        return func
 
     def get(self, name: str) -> PrimitiveFunc:
         """op 名に対応する primitive を取得する。
@@ -167,12 +149,20 @@ def primitive(
     def decorator(
         f: Callable[..., RealizedGeometry],
     ) -> Callable[..., RealizedGeometry]:
+        module = str(f.__module__)
+        if meta is None and (
+            module.startswith("src.primitives.") or module.startswith("primitives.")
+        ):
+            raise ValueError(
+                f"組み込み primitive は meta 必須: {f.__module__}.{f.__name__}"
+            )
+
         def wrapper(args: tuple[tuple[str, Any], ...]) -> RealizedGeometry:
             params: dict[str, Any] = dict(args)
             return f(**params)
 
         defaults = None if meta is None else _defaults_from_signature(f, meta)
-        primitive_registry.register(
+        primitive_registry._register(
             f.__name__,
             wrapper,
             overwrite=overwrite,
@@ -184,39 +174,3 @@ def primitive(
     if func is None:
         return decorator
     return decorator(func)
-
-
-def register_primitive(
-    name: str,
-    func: PrimitiveFunc,
-    *,
-    overwrite: bool = True,
-) -> None:
-    """グローバルレジストリに primitive を登録する。
-
-    Parameters
-    ----------
-    name : str
-        op 名。
-    func : PrimitiveFunc
-        実体配列を生成する関数。
-    overwrite : bool, optional
-        既存エントリがある場合に上書きするかどうか。
-    """
-    primitive_registry.register(name, func, overwrite=overwrite)
-
-
-def get_primitive(name: str) -> PrimitiveFunc:
-    """グローバルレジストリから primitive を取得する。
-
-    Parameters
-    ----------
-    name : str
-        op 名。
-
-    Returns
-    -------
-    PrimitiveFunc
-        対応する生成関数。
-    """
-    return primitive_registry.get(name)

@@ -1,5 +1,5 @@
 # どこで: `src/api/__init__.py`。
-# 何を: 公開 API パッケージのエントリポイントとして G/E/L/run を再エクスポートする。
+# 何を: 公開 API パッケージのエントリポイントとして G/E/L/run と、ユーザー定義登録用の primitive/effect を再エクスポートする。
 # なぜ: ユーザーコードからシンプルに API を import できるようにするため。
 
 from __future__ import annotations
@@ -7,8 +7,10 @@ from __future__ import annotations
 from .effects import E
 from .layers import L
 from .primitives import G
+from src.core.effect_registry import effect
+from src.core.primitive_registry import primitive
 
-__all__ = ["E", "G", "L", "run"]
+__all__ = ["E", "G", "L", "effect", "primitive", "run"]
 
 
 def run(*args, **kwargs):

@@ -109,7 +109,8 @@ class PrimitiveNamespace:
 
             # parameter_context 内（=現在フレームを観測している）なら、
             # base/GUI/CC を解決して effective 値を確定しつつ、FrameParamsBuffer に記録する。
-            if current_frame_params() is not None:
+            # meta が無い op は GUI 対象外とし、解決/記録を行わない（base をそのまま使う）。
+            if current_frame_params() is not None and meta:
                 resolved = resolve_params(
                     op=name,
                     params=base_params,

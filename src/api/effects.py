@@ -11,9 +11,13 @@ from src.core.effect_registry import effect_registry
 from src.core.geometry import Geometry
 
 # effect 実装モジュールをインポートしてレジストリに登録させる。
+from src.effects import collapse as _effect_collapse  # noqa: F401
 from src.effects import scale as _effect_scale  # noqa: F401
 from src.effects import rotate as _effect_rotate  # noqa: F401
 from src.effects import fill as _effect_fill  # noqa: F401
+from src.effects import dash as _effect_dash  # noqa: F401
+from src.effects import displace as _effect_displace  # noqa: F401
+from src.effects import affine as _effect_affine  # noqa: F401
 from src.parameters import (
     caller_site_id,
     current_frame_params,
@@ -75,7 +79,8 @@ class EffectBuilder:
 
             # parameter_context 内なら、base/GUI/CC を解決して effective を確定し、
             # FrameParamsBuffer に観測レコード（explicit など）を積む。
-            if current_frame_params() is not None:
+            # meta が無い op は GUI 対象外とし、解決/記録を行わない（base をそのまま使う）。
+            if current_frame_params() is not None and meta:
                 resolved = resolve_params(
                     op=op,
                     params=base_params,

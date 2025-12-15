@@ -33,39 +33,22 @@ class EffectRegistry:
         self._meta: dict[str, dict[str, ParamMeta]] = {}
         self._defaults: dict[str, dict[str, Any]] = {}
 
-    def register(
+    def _register(
         self,
         name: str,
-        func: EffectFunc | None = None,
+        func: EffectFunc,
         *,
         overwrite: bool = True,
         meta: dict[str, ParamMeta] | None = None,
         defaults: dict[str, Any] | None = None,
-    ):
-        """effect を登録する（関数またはデコレータとして使用可能）。
+    ) -> None:
+        """effect を登録する（内部用）。
 
-        Parameters
-        ----------
-        name : str
-            op 名。
-        func : EffectFunc
-            実体配列に effect を適用する関数。
-        overwrite : bool, optional
-            既存エントリがある場合に上書きするかどうか。
-
-        Raises
-        ------
-        ValueError
-            overwrite が False のときに同名のエントリが既に存在する場合。
+        Notes
+        -----
+        登録は `@effect` デコレータ経由に統一する。
+        このメソッドはデコレータ実装の内部からのみ呼ぶ。
         """
-        if func is None:
-            # デコレータとして使用された場合。
-            def decorator(f: EffectFunc) -> EffectFunc:
-                self.register(name, f, overwrite=overwrite, meta=meta)
-                return f
-
-            return decorator
-
         if not overwrite and name in self._items:
             raise ValueError(f"effect '{name}' は既に登録されている")
         self._items[name] = func
@@ -73,7 +56,6 @@ class EffectRegistry:
             self._meta[name] = meta
         if defaults is not None:
             self._defaults[name] = defaults
-        return func
 
     def get(self, name: str) -> EffectFunc:
         """op 名に対応する effect を取得する。
@@ -170,6 +152,10 @@ def effect(
     def decorator(
         f: Callable[..., RealizedGeometry],
     ) -> Callable[..., RealizedGeometry]:
+        module = str(f.__module__)
+        if meta is None and (module.startswith("src.effects.") or module.startswith("effects.")):
+            raise ValueError(f"組み込み effect は meta 必須: {f.__module__}.{f.__name__}")
+
         def wrapper(
             inputs: Sequence[RealizedGeometry],
             args: tuple[tuple[str, Any], ...],
@@ -178,7 +164,7 @@ def effect(
             return f(inputs, **params)
 
         defaults = None if meta is None else _defaults_from_signature(f, meta)
-        effect_registry.register(
+        effect_registry._register(
             f.__name__,
             wrapper,
             overwrite=overwrite,
@@ -190,39 +176,3 @@ def effect(
     if func is None:
         return decorator
     return decorator(func)
-
-
-def register_effect(
-    name: str,
-    func: EffectFunc,
-    *,
-    overwrite: bool = True,
-) -> None:
-    """グローバルレジストリに effect を登録する。
-
-    Parameters
-    ----------
-    name : str
-        op 名。
-    func : EffectFunc
-        実体配列に effect を適用する関数。
-    overwrite : bool, optional
-        既存エントリがある場合に上書きするかどうか。
-    """
-    effect_registry.register(name, func, overwrite=overwrite)
-
-
-def get_effect(name: str) -> EffectFunc:
-    """グローバルレジストリから effect を取得する。
-
-    Parameters
-    ----------
-    name : str
-        op 名。
-
-    Returns
-    -------
-    EffectFunc
-        対応する適用関数。
-    """
-    return effect_registry.get(name)
