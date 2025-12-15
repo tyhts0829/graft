@@ -1,6 +1,6 @@
 # collapse effect（旧 `from_previous_project`）の現仕様ポーティング計画
 
-対象: `src/effects/from_previous_project/collapse.py`
+対象: `src/effects/collapse.py`（旧: `src/effects/from_previous_project/collapse.py` は保持）
 
 ## 目的
 
@@ -21,34 +21,36 @@
 
 ## 要確認（決めてから実装）
 
-- [ ] 出力の「非接続（2点ポリラインの集合）」仕様は現プロジェクトでも維持する？（維持なら旧挙動踏襲で最短）
-- [ ] 乱数シードを `seed: int = 0` としてパラメータ化する？（`GeometryId` に入るので決定性は維持しつつ見た目を変えられる）
-- [ ] `subdivisions` の上限を設ける？（GUI はレンジ指定のみでクランプしない前提。必要なら最低限の安全策だけ入れる）
-- [ ] 配置: 新規に `src/effects/collapse.py` を作って正規 effect に昇格する？それとも既存パスのまま現仕様へ書き換えて `src/api/effects.py` から import する？
-- [ ] Numba 経路は当面捨てて NumPy のみでいく？（初期は NumPy のみがシンプル）
+基本的に旧仕様踏襲してください。かなり頑張って最適化されているコードなので。
+
+- [x] 出力の「非接続（2 点ポリラインの集合）」仕様は維持（旧仕様踏襲）
+- [x] 乱数シードはパラメータ化しない（`np.random.default_rng(0)` 固定、旧仕様踏襲）
+- [x] `subdivisions` はクランプしない（UI レンジ指定のみ、旧仕様踏襲）
+- [x] 新規に `src/effects/collapse.py` を作って正規 effect に昇格（旧ファイルは保持）
+- [x] Numba 経路も実装し、`collapse` は Numba 経路を使用（旧仕様踏襲）
 
 ## 実装チェックリスト
 
-- [ ] （設計）現行 effect 実装の最小パターン（`src/effects/scale.py` 等）に合わせた I/O とメタ定義を決める
-- [ ] （移植）`collapse` を `RealizedGeometry` ベースに書き換える
-  - [ ] `inputs` 空なら空ジオメトリを返す
-  - [ ] `base = inputs[0]` のみを対象（他 effect と整合）
-  - [ ] `intensity<=0` または `subdivisions<=0` は no-op（入力をそのまま返す）
-  - [ ] 出力 `coords=float32`, `offsets=int32` を満たす（`RealizedGeometry` が最終検証）
-- [ ] （メタ）`collapse_meta = {"intensity": ParamMeta(...), "subdivisions": ParamMeta(...)}`
-  - [ ] `intensity`: `kind="float"`, `ui_min=0.0`, `ui_max=10.0`
-  - [ ] `subdivisions`: `kind="int"`, `ui_min=0`, `ui_max=10`
-  - [ ] （採用時）`seed`: `kind="int"`, `ui_min=0`, `ui_max=2**31-1`
-- [ ] （内部実装）旧 `_collapse_numpy_v2` をベースに、`base.coords/base.offsets` から 2-pass（count/fill）で生成する
-  - [ ] 乱数生成は `np.random.default_rng(seed)` で一元化（seed を入れない場合は 0 固定）
-  - [ ] EPS/非有限チェックの扱いを現仕様で再確認（最低限の分岐に留める）
-- [ ] （登録）`E` から見えるように `src/api/effects.py` に import を追加する（`# noqa: F401` 方式）
-- [ ] （テスト）`tests/test_collapse.py` を追加する
-  - [ ] `subdivisions=0` / `intensity=0` が no-op になる
-  - [ ] 2点線分 + `subdivisions=D` で「出力ポリライン本数 == D」かつ各線が2点になる
-  - [ ] 決定性（同一入力/同一 seed で出力が一致）
-  - [ ] 0 長線分の扱い（端点2点をそのまま出す）
-- [ ] （動作確認）最小の対象テストだけ回す: `pytest -q tests/test_collapse.py`
+- [x] （設計）現行 effect 実装の最小パターン（`src/effects/scale.py` 等）に合わせた I/O とメタ定義を決める
+- [x] （移植）`collapse` を `RealizedGeometry` ベースに書き換える
+  - [x] `inputs` 空なら空ジオメトリを返す
+  - [x] `base = inputs[0]` のみを対象（他 effect と整合）
+  - [x] `intensity==0` または `subdivisions<=0` は no-op（入力をそのまま返す）
+  - [x] 出力 `coords=float32`, `offsets=int32` を満たす（`RealizedGeometry` が最終検証）
+- [x] （メタ）`collapse_meta = {"intensity": ParamMeta(...), "subdivisions": ParamMeta(...)}`
+  - [x] `intensity`: `kind="float"`, `ui_min=0.0`, `ui_max=10.0`
+  - [x] `subdivisions`: `kind="int"`, `ui_min=0`, `ui_max=10`
+- [x] （内部実装）旧 `_collapse_numpy_v2` / Numba 経路をベースに、2-pass（count/fill）で生成する
+  - [x] 乱数生成は `np.random.default_rng(0)` に固定
+  - [x] EPS/非有限チェックの扱いを旧仕様踏襲
+  - [x] Numba 経路（count + njit fill）を実装する
+- [x] （登録）`E` から見えるように `src/api/effects.py` に import を追加する（`# noqa: F401` 方式）
+- [x] （テスト）`tests/test_collapse.py` を追加する
+  - [x] `subdivisions=0` / `intensity=0` が no-op になる
+  - [x] 2 点線分 + `subdivisions=D` で「出力ポリライン本数 == D」かつ各線が 2 点になる
+  - [x] 決定性（同一入力で出力が一致）
+  - [x] 0 長線分の扱い（端点 2 点をそのまま出す）
+- [x] （動作確認）最小の対象テストだけ回す: `pytest -q tests/test_collapse.py`
 
 ## 完了条件
 
@@ -56,3 +58,8 @@
 - 追加したテストが通る
 - meta があるため Parameter GUI に `intensity/subdivisions` が出現する（範囲は ui_min/ui_max）
 
+## 実施結果
+
+- 実装: `src/effects/collapse.py`
+- 登録: `src/api/effects.py`（import 追加）
+- テスト: `tests/test_collapse.py`（`pytest -q tests/test_collapse.py`）

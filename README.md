@@ -12,13 +12,35 @@ from api import E, G, run
 
 def draw(t: float):
     poly = G.sphere()
-    effect = E.affine().displace()
+    effect = E.scale().rotate()
     return effect(poly)
 
 
 if __name__ == "__main__":
     run(draw, canvas_size="A5", render_scale=10)
 ```
+
+## Extending (custom primitives / effects)
+
+You can register your own primitives and effects via decorators:
+
+```python
+from api import effect, primitive
+
+
+@primitive
+def user_prim(*, r=10.0):
+    ...
+
+
+@effect
+def user_eff(inputs, *, amount=1.0):
+    ...
+```
+
+Notes:
+- Built-in primitives/effects must provide `meta=...` (enforced).
+- For user-defined ops, `meta` is optional. If omitted, parameters are not shown in the Parameter GUI.
 
 ## Features
 

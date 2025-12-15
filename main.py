@@ -20,7 +20,7 @@ def draw(t: float):
     eff1 = E(name="triple_scale").scale().rotate()
 
     ply1 = G.grid(nx=100)
-    eff2 = E.scale().rotate()
+    eff2 = E.affine().dash()
     ply2 = G.polygon()
 
     return L(eff1(ply1)), L(eff2(ply2), thickness=0.002, color=(1.0, 0.0, 0.0))

@@ -128,17 +128,18 @@ API としては不一致で “罠” になる。
 
 ## 実装チェックリスト（このファイルは計画用）
 
-- [ ] `src/api/__init__.py` で `primitive/effect` を re-export（`__all__` 更新）
-- [ ] `src/core/primitive_registry.py` の `PrimitiveRegistry.register()` を削除（直接登録 API を廃止）
-- [ ] `src/core/effect_registry.py` も同様に修正
-- [ ] `src/core/*_registry.py` から `register_*` / `get_*` の未使用ヘルパを削除
-- [ ] 組み込み primitive/effect で meta 無し登録を例外にする（`__module__` 等で判定）
-- [ ] `src/api/primitives.py` / `src/api/effects.py` を “meta がある op のみ GUI 観測する” 仕様へ変更
-- [ ] `infer_meta_from_value()` を削除し、resolver 側の meta 推定分岐も削除
+- [x] `src/api/__init__.py` で `primitive/effect` を re-export（`__all__` 更新）
+- [x] `src/core/primitive_registry.py` の `PrimitiveRegistry.register()` を削除（直接登録 API を廃止）
+- [x] `src/core/effect_registry.py` も同様に修正
+- [x] `src/core/*_registry.py` から `register_*` / `get_*` の未使用ヘルパを削除
+- [x] 組み込み primitive/effect で meta 無し登録を例外にする（`__module__` 等で判定）
+- [x] `src/api/primitives.py` / `src/api/effects.py` を “meta がある op のみ GUI 観測する” 仕様へ変更
+- [x] `infer_meta_from_value()` を削除し、resolver 側の meta 推定分岐も削除
 - [ ] ドキュメント更新
-  - [ ] `docs/memo/registry_register_defaults_decorator_trap_explained.md` に「この refactor で罠を消す」旨を追記（任意）
-  - [ ] README or spec に「ユーザー定義は `from api import primitive/effect`」の例を追記（必要なら）
-- [ ] テストを追加/更新
-  - [ ] `from api import primitive/effect` を確認するテスト（テスト内で一時 `sys.path` 追加）
-  - [ ] meta 無しユーザー定義が GUI 非表示であることを確認するテスト
-  - [ ] 既存テストが green であることを確認
+  - [x] `docs/memo/registry_register_defaults_decorator_trap_explained.md` に「この refactor で罠を消す」旨を追記（任意）
+  - [x] `architecture.md` の `infer_meta_from_value` 記述を更新
+  - [x] `README.md` に「ユーザー定義は `from api import primitive/effect`」の例を追記
+- [x] テストを追加/更新
+  - [x] `from api import primitive/effect` を確認するテスト（テスト内で一時 `sys.path` 追加）
+  - [x] meta 無しユーザー定義が GUI 非表示であることを確認するテスト
+  - [x] 既存テストが green であることを確認

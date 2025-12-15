@@ -208,7 +208,7 @@ GUI ウィンドウは同じループで `ParameterGUIWindowSystem.draw_frame()`
 
 - `ParameterKey(op, site_id, arg)` を作る
 - snapshot に状態があればそれを使用（meta/state/ordinal/label）
-- 無ければ `meta.get(arg) or infer_meta_from_value(base)` で最低限の meta を作る
+- 無ければ `meta.get(arg)` がある引数のみ GUI 対象として扱う（meta が無い引数は観測しない）
 - `CC > GUI > base`（ただし bool は常に GUI）で effective を選ぶ
 - 量子化（既定 `DEFAULT_QUANT_STEP=1e-3`）を **ここだけ** で行い、署名に入る値と実計算値を一致させる
 - `FrameParamsBuffer` に観測レコードを積む（explicit/chain_id/step_index も記録）

@@ -1,5 +1,7 @@
 # どこで: `docs/dash_effect_migration_checklist.md`。
+
 # 何を: `src/effects/from_previous_project/dash.py`（旧 dash）を現行コア（RealizedGeometry/effect_registry/ParamMeta）へ移植するためのチェックリスト。
+
 # なぜ: 旧プロジェクト依存（`engine.*` / 旧 registry / Numba 前提）を排除し、`E.dash(...)` をこのリポジトリで利用可能にするため。
 
 ## ゴール
@@ -17,57 +19,49 @@
   - 現状の `ParamMeta`/GUI は「スカラー（float/int/bool/choice/vec3/rgb）」が主。
   - 旧 dash の「dash_length/gap_length/offset を list/tuple で与えるパターン」は、現仕様の GUI とは噛み合わないため **今回はスカラーのみ**に寄せる。
 - 決定性（キャッシュ整合）:
-  - effect は `inputs` と `args` だけで決まる純粋関数として実装する（乱数は使わない / 使うなら args に seed を含める）。
+  - effect は `inputs` と `args` だけで決まる形にする（`offset_jitter` は seed=0 の決定的 RNG を使用）。
 
-## 事前確認したいポイント（ここが決まると実装が一意になる）
+## 仕様確定（ユーザー確認済み / 旧仕様踏襲）
 
-1. 公開引数（案）
-   - 案A（シンプル）: `dash_length: float`, `gap_length: float`, `offset: float`
-   - 案B（旧寄り）: 案A + `offset_jitter: float`（線ごとの位相ゆらぎ）
-   - 推奨: **案A**（まず最小で移植、必要が出たら拡張）
-
-2. 無効値の扱い（dash/gap/offset が負、または `dash_length + gap_length <= 0`）
-   - 案A: no-op（入力をそのまま返す）
-   - 案B: `ValueError`
-   - 推奨: **案A**（インタラクティブ用途で落としにくい）
-
+1. 公開引数
+   - `dash_length: float`, `gap_length: float`, `offset: float`, `offset_jitter: float`
+2. 無効値の扱い
+   - `dash_length < 0` または `gap_length < 0` は no-op
+   - `dash_length + gap_length <= 0` は no-op
+   - `offset < 0` は 0 にクランプ
+   - `offset_jitter <= 0` は無効
 3. offset の意味
-   - 案A: 旧実装同様「パターン位相（mm）」として扱う（開始が部分ダッシュになり得る）
-   - 案B: 「先頭から offset 分だけ捨ててからダッシュ開始」（部分ダッシュを作らない）
-   - 推奨: **案A**（旧 dash の挙動を踏襲）
-
+   - 「パターン位相（mm）」として扱う（開始が部分ダッシュになり得る）
 4. 「ダッシュが 1 本も生成されない」場合
-   - 案A: no-op（元線を返す）
-   - 案B: 空 geometry（何も描かない）
-   - 推奨: **案A**（直感的で、デバッグもしやすい）
+   - no-op（元線を返す）
 
 ## 作業チェックリスト
 
-- [ ] 現状整理
-  - [ ] 現行 effect 実装の規約を確認（例: `src/effects/rotate.py`, `src/core/effect_registry.py`）
-  - [ ] 旧 `src/effects/from_previous_project/dash.py` の機能範囲（offset/補間/多ポリライン）を棚卸し
-- [ ] 仕様確定（上の「事前確認したいポイント」）
-- [ ] 実装（新スタイルへ移植）
-  - [ ] `src/effects/dash.py` を新規作成（`@effect(meta=...)` + `RealizedGeometry` 変換）
-  - [ ] 破線化コア（各ポリラインごとに弧長→区間化→補間で切り出し）
-  - [ ] no-op 条件（空入力/頂点数<2/全長<=0/無効パターン）を決めた仕様通りに統一
-  - [ ] dtype/shape を `RealizedGeometry` 契約に合わせる
-- [ ] 登録
-  - [ ] `src/api/effects.py` に `from src.effects import dash as _effect_dash` を追加して登録されるようにする
-- [ ] テスト
-  - [ ] `tests/test_dash.py` を追加
-    - [ ] 直線（2点）で `dash_length/gap_length` が期待セグメント数になる
-    - [ ] `offset` の位相が効く（先頭が部分ダッシュになり得る）ことを固定
-    - [ ] 空 geometry が no-op で落ちない
+- [x] 現状整理
+  - [x] 現行 effect 実装の規約を確認（例: `src/effects/rotate.py`, `src/core/effect_registry.py`）
+  - [x] 旧 `src/effects/from_previous_project/dash.py` の機能範囲（offset/補間/多ポリライン）を棚卸し
+- [x] 仕様確定（上の「仕様確定」）
+- [x] 実装（新スタイルへ移植）
+  - [x] `src/effects/dash.py` を新規作成（`@effect(meta=...)` + `RealizedGeometry` 変換）
+  - [x] 破線化コア（各ポリラインごとに弧長 → 区間化 → 補間で切り出し）を移植
+  - [x] no-op 条件（無効パターン/頂点数<2/全長<=0）を旧仕様通りに統一
+  - [x] dtype/shape を `RealizedGeometry` 契約に合わせる
+- [x] 登録
+  - [x] `src/api/effects.py` に `from src.effects import dash as _effect_dash` を追加
+- [x] テスト
+  - [x] `tests/test_dash.py` を追加
+    - [x] 直線（2 点）で `dash_length/gap_length` が期待セグメント数になる
+    - [x] `offset` の位相が効く（先頭が部分ダッシュになり得る）ことを固定
+    - [x] 無効パターンが no-op になることを固定
+    - [x] 空 geometry が no-op で落ちない
     - [ ] （任意）複数ポリライン入力で「各ポリラインごとにパターンがリセット」されることを固定
 - [ ] 旧ファイルの扱い（破壊的変更を含むので要確認）
   - [ ] `src/effects/from_previous_project/dash.py` を削除する（または `docs/done/` へ退避する）
-- [ ] 検証
-  - [ ] `pytest -q tests/test_dash.py`
-  - [ ] 影響確認として `pytest -q tests/test_scale.py tests/test_rotate.py tests/test_fill.py`
+- [x] 検証
+  - [x] `pytest -q tests/test_dash.py`
+  - [x] 影響確認として `pytest -q tests/test_scale.py tests/test_rotate.py tests/test_fill.py`
 
 ## 追加で気づいた点（今回はやらないが、必要なら次の改善候補）
 
 - 旧 dash の「dash/gap/offset の配列パターン」対応（GUI 側の kind 拡張が必要になりそう）。
-- 速度が問題なら、旧実装の 2-pass（count→fill）や Numba を後から検討（まずは素朴実装で固定）。
-
+- `offset_jitter` を「決定的」ではなく「seed 指定」にしたい場合は、公開引数へ `seed` を追加するのが筋。

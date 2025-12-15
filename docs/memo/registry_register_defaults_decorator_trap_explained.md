@@ -4,6 +4,11 @@
 
 # `register(..., defaults=...)` をデコレータとして使うと `defaults` が捨てられる、とは何か
 
+## 更新（このメモの現状）
+
+- 2025-12-15 時点で、登録経路を `@primitive` / `@effect` に一本化し、`PrimitiveRegistry.register()` / `EffectRegistry.register()` の公開・デコレータ経路は廃止した。
+- そのため **この「defaults が捨てられる罠」は構造的に発生しない**（参考: `docs/memo/decorator_only_registration_refactor_plan.md`）。
+
 ## 結論（いちばん短い説明）
 
 `PrimitiveRegistry.register()` と `EffectRegistry.register()` は「関数として呼んでもいいし、デコレータとしても使える」という二刀流の形になっているが、**デコレータとして使った場合だけ `defaults` 引数が “次の register 呼び出し” に引き継がれていない**。
@@ -210,4 +215,3 @@ EffectRegistry も同様。
 - `defaults` はこの repo の Parameter GUI において “省略引数も行を出す” ための重要情報。
 - `register()` をデコレータとして使う経路だけ `defaults` が引き継がれておらず、保存されない。
 - 組み込みは別の `@primitive/@effect` 経路を使うため今は壊れていないが、API としては不一致で “罠” になり得る。
-

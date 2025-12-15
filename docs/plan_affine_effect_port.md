@@ -13,8 +13,8 @@
 ## 方針（設計）
 
 - **現仕様の effect 実装は `src/effects/*.py` に置く**。そのため `affine` は `src/effects/affine.py` を新設し、現行の `scale/rotate` と同じインターフェイスに揃える。
-- 旧ファイル `src/effects/from_previous_project/affine.py` は、移植完了後に **削除**（または `docs/done/` に移動）して二重管理を避ける（互換ラッパーは作らない）。
-- 数値計算は `numpy` ベースで実装し、`rotate.py` と同じ回転規約（degree 入力、行ベクトル運用で `rot.T` を適用、合成順序は x→y→z）に合わせる。
+- 旧ファイル `src/effects/from_previous_project/affine.py` は **そのまま保持** する（削除しない）。
+- 数値計算は `numpy` ベースで実装し、回転規約は旧仕様（Rz・Ry・Rx の合成、row-vector のため `rot.T` を適用）を踏襲する。
 - 変換順序は **中心へ移動 → スケール → 回転 → 中心へ戻す → 平行移動** とする。
 
 ## 仕様（この移植で確定させる内容）
@@ -30,34 +30,37 @@
 
 ## チェックリスト（実装タスク）
 
-- [ ] `src/effects/affine.py` を新規作成（ヘッダ: どこで/何を/なぜ、NumPy スタイル docstring、型ヒント）。
-- [ ] `affine_meta` を定義（`ParamMeta(kind="bool"/"vec3")`、`ui_min/ui_max` は `scale.py` / `rotate.py` と整合する範囲で設定）。
-- [ ] `@effect(meta=affine_meta)` で `affine()` を登録（署名は他 effect と同形: `inputs` + keyword-only params）。
-- [ ] 空入力（`not inputs`）は空 `RealizedGeometry` を返す（既存 `scale/rotate` と同じ振る舞い）。
-- [ ] `inputs[0].coords.shape[0] == 0` は入力をそのまま返す（no-op）。
-- [ ] 中心座標の決定:
+- [x] `src/effects/affine.py` を新規作成（ヘッダ: どこで/何を/なぜ、NumPy スタイル docstring、型ヒント）。
+- [x] `affine_meta` を定義（`ParamMeta(kind="bool"/"vec3")`、`ui_min/ui_max` は `scale.py` / `rotate.py` と整合する範囲で設定）。
+- [x] `@effect(meta=affine_meta)` で `affine()` を登録（署名は他 effect と同形: `inputs` + keyword-only params）。
+- [x] 空入力（`not inputs`）は空 `RealizedGeometry` を返す（既存 `scale/rotate` と同じ振る舞い）。
+- [x] `inputs[0].coords.shape[0] == 0` は入力をそのまま返す（no-op）。
+- [x] 中心座標の決定:
   - `auto_center=True` のとき `coords.mean(axis=0)`（float64）を中心に使う。
   - `auto_center=False` のとき `pivot` を中心に使う。
-- [ ] 合成変換を実装（float64 で計算し、最後に float32 へ戻す）:
+- [x] 合成変換を実装（float64 で計算し、最後に float32 へ戻す）:
   - `shifted = coords - center`
   - `scaled = shifted * scale + center`
   - `rotated = (scaled - center) @ rot.T + center`（`rotate.py` と同じ回転行列生成）
   - `translated = rotated + delta`
-- [ ] 変換が恒等（`scale=(1,1,1)` かつ `rotation=(0,0,0)` かつ `delta=(0,0,0)`）の場合は `inputs[0]` をそのまま返す（中心計算を避ける、仕様上安全）。
-- [ ] `src/api/effects.py` に `from src.effects import affine as _effect_affine  # noqa: F401` を追加し、`E.affine` を公開する。
-- [ ] `tests/test_affine.py` を追加（`tests/test_scale.py` / `tests/test_rotate.py` の形式に揃える）:
-  - [ ] 原点 pivot での合成結果（スケール→回転→平行移動）を数値で検証。
-  - [ ] `auto_center=True` で `pivot` を無視することを検証。
-  - [ ] `auto_center=False` で `pivot` が効くことを検証。
-  - [ ] 空 geometry が no-op であることを検証。
-- [ ] 影響確認として `pytest -q tests/test_affine.py tests/test_rotate.py tests/test_scale.py` を実行。
+- [x] 変換が恒等（`scale=(1,1,1)` かつ `rotation=(0,0,0)` かつ `delta=(0,0,0)`）の場合は `inputs[0]` をそのまま返す（中心計算を避ける、仕様上安全）。
+- [x] `src/api/effects.py` に `from src.effects import affine as _effect_affine  # noqa: F401` を追加し、`E.affine` を公開する。
+- [x] `tests/test_affine.py` を追加（`tests/test_scale.py` / `tests/test_rotate.py` の形式に揃える）:
+  - [x] 原点 pivot での合成結果（スケール → 回転 → 平行移動）を数値で検証。
+  - [x] `auto_center=True` で `pivot` を無視することを検証。
+  - [x] `auto_center=False` で `pivot` が効くことを検証。
+  - [x] 空 geometry が no-op であることを検証。
+- [x] 影響確認として `pytest -q tests/test_affine.py tests/test_rotate.py tests/test_scale.py` を実行。
 - [ ] `ruff` / `mypy` が運用されているなら、変更ファイルに限定して実行（例: `ruff check src/effects/affine.py tests/test_affine.py`）。
-- [ ] 移植完了後に旧ファイル `src/effects/from_previous_project/affine.py` を削除（または `docs/done/` に移動）し、参照が残っていないことを `rg` で確認。
+- [x] 旧ファイル `src/effects/from_previous_project/affine.py` は保持する（削除しない）。
 - [ ] README の例が `E.affine()` 前提なので、必要なら README を現状に合わせて更新（例の `displace()` が未移植なら例を差し替え）。
 
-## 事前に確認したい点（あなたに質問）
+## 事前に確認した点（確定）
 
-1. `affine` は **新規に `src/effects/affine.py`** として追加し、旧 `src/effects/from_previous_project/affine.py` は削除（または docs へ退避）で良いですか？
-2. `affine` の回転合成順序は、現行 `rotate` に合わせて **x→y→z**（内部行列は `Rz @ Ry @ Rx`）で固定して良いですか？
-3. `delta` の UI レンジ（`ui_min/ui_max`）はひとまず `pivot` と同じ `-500..500` で良いですか？（mm 想定）
+1. `affine` は **新規に `src/effects/affine.py`** として追加し、旧 `src/effects/from_previous_project/affine.py` はそのまま置く。
+2. 回転合成順序は旧仕様（Rz・Ry・Rx 合成）を踏襲する。
+3. `delta` の UI レンジ（`ui_min/ui_max`）は `-500..500` とする。
 
+## 注意
+
+- 旧ファイル `src/effects/from_previous_project/affine.py` を将来 import すると、同名 effect の登録が上書きされる可能性がある（現状は未 import なので影響なし）。
