@@ -31,6 +31,14 @@ def _int_slider_range(row: ParameterRow) -> tuple[int, int]:
 
     min_value = -10 if row.ui_min is None else int(row.ui_min)
     max_value = 10 if row.ui_max is None else int(row.ui_max)
+
+    # ImGui の slider_int は min/max が int32 の “半分レンジ” 以内であることを要求する。
+    # （範囲外だと assertion error でクラッシュする）
+    # 参照: imgui-cpp/imgui_widgets.cpp の slider_int 実装。
+    min_value = max(-1_073_741_824, min(1_073_741_823, min_value))
+    max_value = max(-1_073_741_824, min(1_073_741_823, max_value))
+    if min_value > max_value:
+        min_value, max_value = max_value, min_value
     return min_value, max_value
 
 

@@ -18,6 +18,12 @@ from src.effects import fill as _effect_fill  # noqa: F401
 from src.effects import dash as _effect_dash  # noqa: F401
 from src.effects import displace as _effect_displace  # noqa: F401
 from src.effects import affine as _effect_affine  # noqa: F401
+from src.effects import subdivide as _effect_subdivide  # noqa: F401
+from src.effects import partition as _effect_partition  # noqa: F401
+from src.effects import mirror as _effect_mirror  # noqa: F401
+from src.effects import translate as _effect_translate  # noqa: F401
+from src.effects import repeat as _effect_repeat  # noqa: F401
+from src.effects import offset as _effect_offset  # noqa: F401
 from src.parameters import (
     caller_site_id,
     current_frame_params,
