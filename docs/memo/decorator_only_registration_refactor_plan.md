@@ -20,7 +20,7 @@ def my_eff(...):
     ...
 ```
 
-- 上記以外の登録方法（`PrimitiveRegistry.register(...)` / `EffectRegistry.register(...)` / `register_primitive` 等）を削除 or 内部専用化し、**公開 API と実装の両方を簡素化**する。
+- 上記以外の登録方法（`PrimitiveRegistry.register(...)` / `EffectRegistry.register(...)` / `register_primitive` 等）を削除し、**公開 API と実装の両方を簡素化**する。
 - 既存の “罠” を根絶する:
   - `register(..., defaults=...)` をデコレータとして使うと `defaults` が引き継がれず捨てられる問題（詳細は `docs/memo/registry_register_defaults_decorator_trap_explained.md`）。
 
@@ -28,6 +28,32 @@ def my_eff(...):
 
 - 互換ラッパー/シムの提供（古い登録方法を残す等）はしない。
 - パッケージング（`api` と `src.api` の二重 import 問題）の全面解消は別トピック（ただし影響はメモする）。
+
+## 決定事項（この前提で進める）
+
+### 登録経路
+
+- **ユーザー向け/内部向けともに** 登録は `@primitive` / `@effect` のみ。
+  - registry のメソッドや `register_*`/`get_*` のような関数経由では登録しない（実装から削除する）。
+
+### meta の扱い（仕様）
+
+- **組み込み primitive/effect（`src/primitives/*`, `src/effects/*`）は meta 必須**。
+  - `@primitive` / `@effect` の登録時点で `meta is None` を検出したら例外にする（「書き忘れ」を即時に落とす）。
+- **ユーザー定義は meta 任意**。
+  - `meta` を与えない場合、その op は **Parameter GUI に表示しない**（= GUI/CC/override の対象外）。
+  - `meta` を与えた場合のみ GUI 管理対象（表示/override/CC/既定引数の自動観測）になる。
+
+### meta 推定の扱い（簡素化）
+
+- `infer_meta_from_value()` による **meta 推定は廃止**する（= “meta が無いなら GUI へは出さない” を徹底）。
+
+## デメリット / トレードオフ（想定される不利益）
+
+- **動的登録がやりにくい**: 実行時に `if/for` で選んだ関数を “名前付き op として” 登録する用途は弱くなる（デコレータ前提）。
+- **op 名の自由度が下がる**: 基本は `__name__` 固定になるため、別名で登録したい場合は「関数名を変える」以外の手段が減る（`name=` を足すと API が増えるので今回はやらない想定）。
+- **グローバルレジストリの汚染が起きやすい**: テスト/REPL で一時 op を量産すると、同名衝突や残骸が起きる。必要なら “レジストリ初期化/クリア” の仕組みが別途要る。
+- **ユーザー meta 省略は GUI 非対応**: 省略時に `infer_meta_from_value` で “それっぽく GUI を出す” ことはしない（仕様）。
 
 ## 現状整理（なぜやる必要があるか）
 
@@ -54,31 +80,22 @@ API としては不一致で “罠” になる。
 
 - `from api import primitive, effect` を正式な導線にする
 - op 名は原則 **関数名**（`f.__name__`）
-- 既存どおり meta も同じデコレータで任意指定可（これは「登録方法」は増えない/デコレータ1本のまま）
-  - `@primitive(meta={...})`
-  - `@effect(meta={...})`
-
-### 2) registry の “直接 register” は外へ出さない
-
-実装上は「辞書へ登録する処理」は必要なので残すが、公開 API としては見えない形へ寄せる。
+- meta を付けたい場合は同じデコレータにオプションとして渡す（登録方法は増やさない）
+  - `@primitive(meta={...})`（組み込みは必須、ユーザーは任意）
+  - `@effect(meta={...})`（同上）
 
 ## 方針（実装をどう簡素化するか）
 
-### A案（最小変更で罠を消す / 推奨）
+### 採用案（decorator-only を徹底）
 
-- `PrimitiveRegistry.register()` / `EffectRegistry.register()` から **decorator 機能（`func=None`）を削除**し、
-  “関数としての登録” のみに限定する（= `func` 必須にする、または `_register()` として private 化）。
-  - これにより `defaults` の取り回し不備が原理的に消える（decorator 経路が存在しない）。
-- `register_primitive/get_primitive/register_effect/get_effect` は未使用なので削除。
-- ユーザー向け導線として `src/api/__init__.py` から `primitive/effect` を re-export する。
-
-### B案（もっと削る / 追加検討）
-
-- `PrimitiveRegistry/EffectRegistry` クラス自体をやめ、モジュール内の `dict` + 関数に置き換える。
-  - 利点: さらに単純（属性が見える/隠れるが明確）
-  - 欠点: 参照箇所（`primitive_registry.get_meta()` 等）に影響が出て変更範囲が広がる
-
-まずは A案で十分シンプルにできる見込み。
+- `PrimitiveRegistry.register()` / `EffectRegistry.register()` を削除する（= “直接登録” の入り口を閉じる）。
+  - デコレータ `primitive/effect` の内部からだけ登録できるようにし、API の不一致を根絶する。
+  - これにより `defaults` の “decorator 経路で捨てられる” 問題は構造的に消える（その経路自体が無くなる）。
+- `register_primitive/get_primitive/register_effect/get_effect` を削除する。
+- `src/api/__init__.py` で `primitive/effect` を re-export して “ユーザー導線” を固定する。
+- Parameter GUI に関する仕様を単純化する:
+  - `meta` が無い op は resolver/FrameParamsBuffer に載せない（= GUI 非表示）。
+  - `meta` がある op のみ、既存どおり `defaults` を使って “省略引数の観測” を行う。
 
 ## 変更範囲（予定）
 
@@ -87,47 +104,41 @@ API としては不一致で “罠” になる。
 - `src/api/__init__.py`
   - `primitive` / `effect` を export（`__all__` 更新）
 - `src/core/primitive_registry.py`
-  - `PrimitiveRegistry.register()` の decorator 機能削除（`func=None` 分岐を削る）
+  - `PrimitiveRegistry.register()` 自体の削除（直接登録 API を廃止）
   - `register_primitive` / `get_primitive` の削除
   - docstring/コメントの整理（「register をデコレータとして使える」等の文言を削除）
+  - 組み込み（`src.primitives.*`）は `meta is None` を例外にするチェックを追加
 - `src/core/effect_registry.py`
   - 上と同様
+- `src/api/primitives.py` / `src/api/effects.py`
+  - op に `meta` が無い場合は `resolve_params()` を使わず、ParamStore を観測しない（= GUI 非表示仕様）
+- `src/parameters/resolver.py` / `src/parameters/meta.py` / `src/parameters/__init__.py`
+  - `infer_meta_from_value()` とその利用を削除（meta 推定の廃止）
 
 ### テスト
 
-最小で以下を追加/更新（方針確認後に確定）:
+最小で以下を追加/更新:
 
 - 「ユーザー導線」を保証するテスト
   - `from api import primitive, effect` が動くこと
   - ただし pytest 実行時は通常 `api` が import できない（`src` を `sys.path` に入れていない）ため、
-    テスト内で `sys.path` を一時追加するか、`src.api` 経由を許すかを決める必要がある
-
-## 事前に確認したいこと（質問）
-
-1) `api` import について
-   - pytest の世界では `from api import ...` はそのままだと失敗する（`src` ディレクトリが `sys.path` に無い）前提。
-   - ここは:
-     - (a) テスト内で `sys.path` を一時追加して “ユーザー導線そのもの” をテストする
-     - (b) “ユーザー導線は main.py のような `sys.path.append(\"src\")` が前提” と割り切り、テストは `from src.api import ...` に留める
-   - どちらで行くのが好み？
-
-2) meta を省略した `@primitive` / `@effect` の扱い（GUI まで期待するか）
-   - 現状は meta が無いと `defaults` が保存されず、`G/E` 側の “引数省略の補完” が効かないため GUI 行が出にくい。
-   - ここは:
-     - (a) **meta 無し登録は「登録だけできる（GUI 省略引数は出ない）」** と割り切る（最も単純）
-     - (b) meta が無くても、関数シグネチャから “安全な default” を抽出して `defaults` として保存し、GUI を出せるようにする（便利だが仕様が増える）
-   - どちらに寄せる？
+    テスト内で `sys.path` を一時追加して import を確認する（ユーザー導線を固定したいのでこちらを採用する）。
+- 「meta 無しユーザー定義は GUI 非表示」のテスト
+  - `@primitive` / `@effect` で meta を渡さず登録 → `parameter_context` 下で呼んでも `store.snapshot()` に行が増えないこと
 
 ## 実装チェックリスト（このファイルは計画用）
 
 - [ ] `src/api/__init__.py` で `primitive/effect` を re-export（`__all__` 更新）
-- [ ] `src/core/primitive_registry.py` の `PrimitiveRegistry.register()` から decorator 機能を削除（`func` 必須化 or private 化）
+- [ ] `src/core/primitive_registry.py` の `PrimitiveRegistry.register()` を削除（直接登録 API を廃止）
 - [ ] `src/core/effect_registry.py` も同様に修正
 - [ ] `src/core/*_registry.py` から `register_*` / `get_*` の未使用ヘルパを削除
+- [ ] 組み込み primitive/effect で meta 無し登録を例外にする（`__module__` 等で判定）
+- [ ] `src/api/primitives.py` / `src/api/effects.py` を “meta がある op のみ GUI 観測する” 仕様へ変更
+- [ ] `infer_meta_from_value()` を削除し、resolver 側の meta 推定分岐も削除
 - [ ] ドキュメント更新
   - [ ] `docs/memo/registry_register_defaults_decorator_trap_explained.md` に「この refactor で罠を消す」旨を追記（任意）
   - [ ] README or spec に「ユーザー定義は `from api import primitive/effect`」の例を追記（必要なら）
-- [ ] テスト方針確定（上の質問 1/2 の回答に従う）
-  - [ ] 必要なら `api` import 導線のテストを追加
+- [ ] テストを追加/更新
+  - [ ] `from api import primitive/effect` を確認するテスト（テスト内で一時 `sys.path` 追加）
+  - [ ] meta 無しユーザー定義が GUI 非表示であることを確認するテスト
   - [ ] 既存テストが green であることを確認
-

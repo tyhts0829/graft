@@ -8,12 +8,21 @@ from typing import Any, Callable
 
 from src.core.geometry import Geometry
 from src.core.primitive_registry import primitive_registry
-from src.parameters import caller_site_id, current_frame_params, current_param_store, resolve_params
+from src.parameters import (
+    caller_site_id,
+    current_frame_params,
+    current_param_store,
+    resolve_params,
+)
 
 # primitive 実装モジュールをインポートしてレジストリに登録させる。
 from src.primitives import circle as _primitive_circle  # noqa: F401
+from src.primitives import grid as _primitive_grid  # noqa: F401
+from src.primitives import line as _primitive_line  # noqa: F401
 from src.primitives import polygon as _primitive_polygon  # noqa: F401
 from src.primitives import polyhedron as _primitive_polyhedron  # noqa: F401
+from src.primitives import sphere as _primitive_sphere  # noqa: F401
+from src.primitives import torus as _primitive_torus  # noqa: F401
 
 
 class PrimitiveNamespace:
@@ -74,7 +83,9 @@ class PrimitiveNamespace:
             store = current_param_store()
             if self._pending_label is not None:
                 if store is None:
-                    raise RuntimeError("ParamStore が利用できないコンテキストで name 指定は使えません")
+                    raise RuntimeError(
+                        "ParamStore が利用できないコンテキストで name 指定は使えません"
+                    )
                 store.set_label(name, site_id, self._pending_label)
 
             # meta: GUI 表示対象や UI レンジなどの情報（組み込み primitive は meta ありを前提）。

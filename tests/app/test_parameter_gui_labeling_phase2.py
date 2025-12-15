@@ -61,3 +61,37 @@ def test_effect_chain_header_and_step_ordinals():
         == "scale#2 auto_center"
     )
 
+
+def test_effect_chain_header_normalizes_unnamed_chains_independent_of_chain_ordinal():
+    store = ParamStore()
+
+    with parameter_context(store):
+        g = G.polygon()
+        named = E(name="xf").scale()
+        unnamed = E.scale()
+        _out1 = named(g)
+        _out2 = unnamed(g)
+
+    snap = store.snapshot()
+    step_info_by_site = store.effect_steps()
+
+    chain_header_by_id = effect_chain_header_display_names_from_snapshot(
+        snap,
+        step_info_by_site=step_info_by_site,
+        chain_ordinal_by_id=store.chain_ordinals(),
+        is_effect_op=lambda op: op in effect_registry,
+    )
+    assert set(chain_header_by_id.values()) == {"xf", "effect#1"}
+
+    # chain_ordinal がギャップ/巨大値になっても、無名チェーンが 1 本なら表示は effect#1 のまま。
+    named_chain_id = next(cid for cid, name in chain_header_by_id.items() if name == "xf")
+    unnamed_chain_id = next(
+        cid for cid, name in chain_header_by_id.items() if name == "effect#1"
+    )
+    chain_header_by_id2 = effect_chain_header_display_names_from_snapshot(
+        snap,
+        step_info_by_site=step_info_by_site,
+        chain_ordinal_by_id={named_chain_id: 1, unnamed_chain_id: 99},
+        is_effect_op=lambda op: op in effect_registry,
+    )
+    assert chain_header_by_id2[unnamed_chain_id] == "effect#1"

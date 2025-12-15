@@ -20,7 +20,7 @@
 
 - G: primitive ファクトリ
   - G.<name>(\*\*params) -> Geometry
-  - 例: G.circle(r=10.0), G.line(p0=(0,0), p1=(10,0))
+  - 例: G.circle(r=10.0), G.line(length=10.0, angle=0.0, center=(0.0, 0.0, 0.0))
 - E: effect ファクトリ／パイプラインビルダ
   - E.<effect>(\*\*params) -> Callable[[Geometry], Geometry]（返り値の builder 型は非公開）
   - E.<effect1>(...).<effect2>(...) -> Callable[[Geometry], Geometry]
