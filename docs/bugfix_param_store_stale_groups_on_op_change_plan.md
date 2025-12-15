@@ -48,8 +48,8 @@
 
 例:
 
-- 1回目: `("polyhedron", old_site_id)` がロードされている
-- 2回目: `("sphere", new_site_id)` が観測され、`polyhedron` は観測されない
+- 1 回目: `("polyhedron", old_site_id)` がロードされている
+- 2 回目: `("sphere", new_site_id)` が観測され、`polyhedron` は観測されない
 
 このとき `fresh_ops` は `"sphere"` しか含まず、stale の `"polyhedron"` グループは:
 
@@ -84,17 +84,16 @@ primitive/effect（style/layer_style は除外）の ParamStore について:
 ## 4. 実装チェックリスト（OK をもらったらここから着手）
 
 - [x] 原因の特定: stale 掃除が `fresh_ops` 依存で、op 差し替え/削除が漏れている
-- [ ] `ParamStore.snapshot_for_gui()` を修正（primitive/effect の stale は `op` 無関係に隠す）
-- [ ] `ParamStore.prune_stale_loaded_groups()` を修正（primitive/effect の stale は `op` 無関係に prune）
-- [ ] pytest 追加: 「op を差し替えたとき、旧グループが GUI に出ない/保存で消える」
-  - [ ] `polyhedron` をロード → 次フレームで `sphere` を観測 → `snapshot_for_gui()` に `polyhedron` が残らない
-  - [ ] 同条件で `prune_stale_loaded_groups()` 後、`snapshot()` に `polyhedron` が残らない
+- [x] `ParamStore.snapshot_for_gui()` を修正（primitive/effect の stale は `op` 無関係に隠す）
+- [x] `ParamStore.prune_stale_loaded_groups()` を修正（primitive/effect の stale は `op` 無関係に prune）
+- [x] pytest 追加: 「op を差し替えたとき、旧グループが GUI に出ない/保存で消える」
+  - [x] `polyhedron` をロード → 次フレームで `sphere` を観測 → `snapshot_for_gui()` に `polyhedron` が残らない
+  - [x] 同条件で `prune_stale_loaded_groups()` 後、`snapshot()` に `polyhedron` が残らない
 - [ ] 手動スモーク（`main.py`）
   - [ ] `ply1` を `polyhedron → sphere` に差し替え → 再起動後に `polyhedron` 行が出ない/JSON から消える
   - [ ] `ply1` を `sphere → grid` に差し替え → 再起動後に `sphere` 行が出ない/JSON から消える
 
 ## 5. 事前確認したいこと（YES/NO）
 
-- primitive/effect で「この実行で観測されなかったロード済みグループ」を保存時に削除して OK？
+- primitive/effect で「この実行で観測されなかったロード済みグループ」を保存時に削除して OK？；はい。案 A でお願いします。
   - （条件分岐で一時的に出ないものも消える）
-

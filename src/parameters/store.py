@@ -230,9 +230,9 @@ class ParamStore:
             self._reconcile_applied.add(pair)
 
     def prune_stale_loaded_groups(self) -> None:
-        """実行終了時に「増殖の原因になる古い方」を削除する。"""
+        """実行終了時に、今回の実行で観測されなかったロード済みグループを削除する。"""
 
-        if not self._loaded_groups or not self._observed_groups:
+        if not self._loaded_groups:
             return
 
         # 保存直前にもう一度だけ再リンクを試みる（最後まで観測した集合で最善を尽くす）。
@@ -252,13 +252,8 @@ class ParamStore:
             if op not in {STYLE_OP, LAYER_STYLE_OP}
         }
 
-        fresh_ops = {op for op, _site_id in (observed_targets - loaded_targets)}
-        if not fresh_ops:
-            return
-
         stale = loaded_targets - observed_targets
-        prune_targets = {g for g in stale if g[0] in fresh_ops}
-        self.prune_groups(prune_targets)
+        self.prune_groups(stale)
 
     def snapshot_for_gui(
         self,
@@ -267,12 +262,12 @@ class ParamStore:
 
         Notes
         -----
-        `site_id` 変化で「旧グループ + 新グループ」が同居した場合、旧側は GUI から隠す。
+        実行中に観測されなかった「ロード済みグループ」は GUI から隠す。
         （ストア内から削除するのは保存時の `prune_stale_loaded_groups()` が担う）
         """
 
         snapshot = self.snapshot()
-        if not self._loaded_groups or not self._observed_groups:
+        if not self._loaded_groups:
             return snapshot
 
         from .layer_style import LAYER_STYLE_OP
@@ -289,13 +284,7 @@ class ParamStore:
             if op not in {STYLE_OP, LAYER_STYLE_OP}
         }
 
-        fresh_ops = {op for op, _site_id in (observed_targets - loaded_targets)}
-        if not fresh_ops:
-            return snapshot
-
-        hide_groups = {
-            g for g in (loaded_targets - observed_targets) if g[0] in fresh_ops
-        }
+        hide_groups = loaded_targets - observed_targets
         if not hide_groups:
             return snapshot
 

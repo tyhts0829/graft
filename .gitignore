@@ -5,3 +5,4 @@ tools/cache_check/*.dot
 *.ini
 **/.DS_Store
 data
+.mypy_cache/

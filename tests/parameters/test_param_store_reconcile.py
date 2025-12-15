@@ -37,6 +37,23 @@ def _polyhedron_records(site_id: str) -> list[FrameParamRecord]:
     ]
 
 
+def _sphere_records(site_id: str) -> list[FrameParamRecord]:
+    return [
+        FrameParamRecord(
+            key=ParameterKey(op="sphere", site_id=site_id, arg="type_index"),
+            base=0,
+            meta=ParamMeta(kind="int", ui_min=0, ui_max=3),
+            explicit=True,
+        ),
+        FrameParamRecord(
+            key=ParameterKey(op="sphere", site_id=site_id, arg="subdivisions"),
+            base=0,
+            meta=ParamMeta(kind="int", ui_min=0, ui_max=8),
+            explicit=True,
+        ),
+    ]
+
+
 def test_reconcile_migrates_state_and_hides_stale_group_in_gui_snapshot():
     old_site_id = "old-site"
     new_site_id = "new-site"
@@ -86,6 +103,28 @@ def test_prune_stale_loaded_groups_removes_old_entries_on_save_path():
     full_snapshot = store.snapshot()
     assert ParameterKey(op="polyhedron", site_id=old_site_id, arg="center") not in full_snapshot
     assert ParameterKey(op="polyhedron", site_id=new_site_id, arg="center") in full_snapshot
+
+
+def test_op_change_hides_loaded_group_in_gui_snapshot_and_prunes_on_save_path():
+    # polyhedron -> sphere の差し替えで、旧 op のグループが GUI/保存に残らないこと。
+    poly_site_id = "poly-site"
+    sphere_site_id = "sphere-site"
+
+    original = ParamStore()
+    for rec in _polyhedron_records(poly_site_id):
+        original.ensure_state(rec.key, base_value=rec.base)
+        original.set_meta(rec.key, rec.meta)
+    store = _roundtrip_store(original)
+
+    store.store_frame_params(_sphere_records(sphere_site_id))
+
+    gui_snapshot = store.snapshot_for_gui()
+    assert all(k.op != "polyhedron" for k in gui_snapshot.keys())
+    assert any(k.op == "sphere" for k in gui_snapshot.keys())
+
+    store.prune_stale_loaded_groups()
+    full_snapshot = store.snapshot()
+    assert all(k.op != "polyhedron" for k in full_snapshot.keys())
 
 
 def test_reconcile_does_not_migrate_when_ambiguous():
