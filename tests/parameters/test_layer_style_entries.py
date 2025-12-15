@@ -3,22 +3,23 @@ from src.parameters.layer_style import (
     LAYER_STYLE_LINE_COLOR,
     LAYER_STYLE_LINE_THICKNESS,
     LAYER_STYLE_OP,
-    ensure_layer_style_entries,
     layer_style_key,
+    layer_style_records,
 )
 
 
-def test_ensure_layer_style_entries_creates_state_meta_and_label():
+def test_layer_style_records_can_be_merged_by_param_store():
     store = ParamStore()
-    ensure_layer_style_entries(
-        store,
-        layer_site_id="layer:1",
-        base_line_thickness=0.01,
-        base_line_color_rgb01=(1.0, 0.0, 0.0),
-        initial_override_line_thickness=True,
-        initial_override_line_color=False,
-        label_name="bg",
+    store.store_frame_params(
+        layer_style_records(
+            layer_site_id="layer:1",
+            base_line_thickness=0.01,
+            base_line_color_rgb01=(1.0, 0.0, 0.0),
+            explicit_line_thickness=False,
+            explicit_line_color=True,
+        )
     )
+    store.set_label(LAYER_STYLE_OP, "layer:1", "bg")
 
     key_th = layer_style_key("layer:1", LAYER_STYLE_LINE_THICKNESS)
     key_color = layer_style_key("layer:1", LAYER_STYLE_LINE_COLOR)
@@ -44,4 +45,3 @@ def test_ensure_layer_style_entries_creates_state_meta_and_label():
     assert state_color.override is False
 
     assert store.get_label(LAYER_STYLE_OP, "layer:1") == "bg"
-

@@ -4,6 +4,10 @@
 何を: 「Layer のパラメータ行（line_thickness/line_color）が複製される」現象の原因を調査してまとめる。
 なぜ: `main.py` の編集と再起動を繰り返すと、Style セクション内に過去の Layer 行が残って UI が汚れ、どれが現行 Layer か分からなくなるため。
 
+## Update（修正状況）
+
+- 2025-12-15: `docs/plan_layer_style_unify_observation_and_prune.md` の方針で修正し、Layer style も primitive/effect と同じく「観測→reconcile/hide/prune→永続化」に統合した。
+
 ## 1. 現象（整理）
 
 - Parameter GUI の Style セクション内にある、Layer ごとの
@@ -30,13 +34,14 @@
 
 ### 2.2 描画パイプラインが毎フレーム `__layer_style__` の state/meta を作る
 
-- `src/render/frame_pipeline.py` の `render_scene()` は、各 `Layer` について
-  - `ensure_layer_style_entries(store, layer_site_id=layer.site_id, ...)`
-  を呼び、ParamStore に `__layer_style__` の行を作る。
-- `ensure_layer_style_entries()`（`src/parameters/layer_style.py`）は、
-  - `(op="__layer_style__", site_id=layer_site_id, arg="line_thickness")`
-  - `(op="__layer_style__", site_id=layer_site_id, arg="line_color")`
-  の 2 行を `store.ensure_state()` + `store.set_meta()` で登録する。
+以前の実装では、`src/render/frame_pipeline.py` の `render_scene()` が各 `Layer` について:
+
+- `(op="__layer_style__", site_id=layer_site_id, arg="line_thickness")`
+- `(op="__layer_style__", site_id=layer_site_id, arg="line_color")`
+
+の 2 行を ParamStore に直接登録していた。
+
+（修正後は `FrameParamRecord` として観測し、フレーム終端で `store_frame_params()` にマージする方式へ統一）
 
 GUI は ParamStore の snapshot から行を生成するので、**store に残っている `__layer_style__` の行は、そのまま GUI に出続ける**。
 
@@ -62,8 +67,8 @@ GUI は ParamStore の snapshot から行を生成するので、**store に残�
 
 ### 原因B: `__layer_style__` は prune/hide 対象から外してある（意図的な未対応）
 
-現行の ParamStore は、増殖対策（reconcile/prune）をまず primitive/effect に限定しており、
-`STYLE_OP="__style__"` と `LAYER_STYLE_OP="__layer_style__"` は対象外になっている。
+当時の ParamStore は、増殖対策（reconcile/prune）をまず primitive/effect に限定しており、
+`STYLE_OP="__style__"` と `LAYER_STYLE_OP="__layer_style__"` は対象外になっていた。
 
 - `src/parameters/store.py` の `snapshot_for_gui()` は stale グループを隠すが、
   - `STYLE_OP` と `LAYER_STYLE_OP` を除外しているため、**古い Layer style が GUI から隠れない**
@@ -81,12 +86,5 @@ GUI は ParamStore の snapshot から行を生成するので、**store に残�
 
 ## 4. 追加の注意点（このままでは直しにくい箇所）
 
-Layer style は `FrameParamRecord` 経由で store に入るわけではなく、`ensure_layer_style_entries()` が直接 `ensure_state()` している。
-そのため、primitive/effect で使っている `store._observed_groups`（`store_frame_params()` 由来）には **`__layer_style__` が入らない**。
-
-つまり、もし将来 `__layer_style__` も “observed-only” で掃除したいなら、
-
-- `ensure_layer_style_entries()` 側で「このフレームで layer_site_id を観測した」情報を ParamStore に渡す
-
-という仕組みが別途必要になる（ここは原因というより、修正時の設計ポイント）。
-
+当時は Layer style が `FrameParamRecord` 経由で store に入らなかったため、`store._observed_groups` が更新されず stale 判定ができなかった。
+修正では Layer style も `FrameParamRecord` に統一し、`__layer_style__` を reconcile/hide/prune の対象に含めることで解消した。

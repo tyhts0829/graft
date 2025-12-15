@@ -190,19 +190,18 @@ class ParamStore:
         if not self._loaded_groups or not self._observed_groups:
             return
 
-        # Style/layer_style は scope 外（当面は primitive/effect のみ）。
-        from .layer_style import LAYER_STYLE_OP
+        # Style（global）は常設キーとして扱うため scope 外。
         from .style import STYLE_OP
 
         loaded_targets = {
             (op, site_id)
             for op, site_id in self._loaded_groups
-            if op not in {STYLE_OP, LAYER_STYLE_OP}
+            if op not in {STYLE_OP}
         }
         observed_targets = {
             (op, site_id)
             for op, site_id in self._observed_groups
-            if op not in {STYLE_OP, LAYER_STYLE_OP}
+            if op not in {STYLE_OP}
         }
 
         fresh = observed_targets - loaded_targets
@@ -238,18 +237,17 @@ class ParamStore:
         # 保存直前にもう一度だけ再リンクを試みる（最後まで観測した集合で最善を尽くす）。
         self._reconcile_loaded_groups_for_runtime()
 
-        from .layer_style import LAYER_STYLE_OP
         from .style import STYLE_OP
 
         loaded_targets = {
             (op, site_id)
             for op, site_id in self._loaded_groups
-            if op not in {STYLE_OP, LAYER_STYLE_OP}
+            if op not in {STYLE_OP}
         }
         observed_targets = {
             (op, site_id)
             for op, site_id in self._observed_groups
-            if op not in {STYLE_OP, LAYER_STYLE_OP}
+            if op not in {STYLE_OP}
         }
 
         stale = loaded_targets - observed_targets
@@ -270,18 +268,17 @@ class ParamStore:
         if not self._loaded_groups:
             return snapshot
 
-        from .layer_style import LAYER_STYLE_OP
         from .style import STYLE_OP
 
         loaded_targets = {
             (op, site_id)
             for op, site_id in self._loaded_groups
-            if op not in {STYLE_OP, LAYER_STYLE_OP}
+            if op not in {STYLE_OP}
         }
         observed_targets = {
             (op, site_id)
             for op, site_id in self._observed_groups
-            if op not in {STYLE_OP, LAYER_STYLE_OP}
+            if op not in {STYLE_OP}
         }
 
         hide_groups = loaded_targets - observed_targets

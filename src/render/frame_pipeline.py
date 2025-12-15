@@ -9,12 +9,13 @@ from __future__ import annotations
 from typing import Callable
 
 from src.core.realize import realize
-from src.parameters import current_param_store
+from src.parameters import current_frame_params, current_param_store
 from src.parameters.layer_style import (
+    LAYER_STYLE_OP,
     LAYER_STYLE_LINE_COLOR,
     LAYER_STYLE_LINE_THICKNESS,
-    ensure_layer_style_entries,
     layer_style_key,
+    layer_style_records,
 )
 from src.parameters.style import rgb255_to_rgb01
 from src.render.index_buffer import build_line_indices
@@ -68,17 +69,22 @@ def render_scene(
         thickness = float(resolved.thickness)
         color = resolved.color
 
-        # Layer を観測し、override=True の場合だけ GUI 値で上書きして描画する。
+        # Layer style を観測し、override=True の場合だけ GUI 値で上書きして描画する。
         if store is not None:
-            ensure_layer_style_entries(
-                store,
-                layer_site_id=layer.site_id,
-                base_line_thickness=thickness,
-                base_line_color_rgb01=color,
-                initial_override_line_thickness=(layer.thickness is None),
-                initial_override_line_color=(layer.color is None),
-                label_name=layer.name,
-            )
+            if layer.name is not None:
+                store.set_label(LAYER_STYLE_OP, layer.site_id, layer.name)
+
+            frame_params = current_frame_params()
+            if frame_params is not None:
+                frame_params.records.extend(
+                    layer_style_records(
+                        layer_site_id=layer.site_id,
+                        base_line_thickness=thickness,
+                        base_line_color_rgb01=color,
+                        explicit_line_thickness=(layer.thickness is not None),
+                        explicit_line_color=(layer.color is not None),
+                    )
+                )
 
             thickness_state = store.get_state(
                 layer_style_key(layer.site_id, LAYER_STYLE_LINE_THICKNESS)

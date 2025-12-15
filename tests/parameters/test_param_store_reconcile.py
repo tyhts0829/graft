@@ -5,6 +5,7 @@ import json
 from src.parameters import ParamMeta, ParamStore, ParameterKey
 from src.parameters.context import parameter_context
 from src.parameters.frame_params import FrameParamRecord
+from src.parameters.layer_style import LAYER_STYLE_OP, layer_style_records
 
 
 def _roundtrip_store(store: ParamStore) -> ParamStore:
@@ -125,6 +126,42 @@ def test_op_change_hides_loaded_group_in_gui_snapshot_and_prunes_on_save_path():
     store.prune_stale_loaded_groups()
     full_snapshot = store.snapshot()
     assert all(k.op != "polyhedron" for k in full_snapshot.keys())
+
+
+def test_layer_style_site_id_change_hides_loaded_group_and_prunes_on_save_path():
+    old_site_id = "old-layer"
+    new_site_id = "new-layer"
+
+    original = ParamStore()
+    original.store_frame_params(
+        layer_style_records(
+            layer_site_id=old_site_id,
+            base_line_thickness=0.01,
+            base_line_color_rgb01=(1.0, 0.0, 0.0),
+            explicit_line_thickness=False,
+            explicit_line_color=False,
+        )
+    )
+    store = _roundtrip_store(original)
+
+    store.store_frame_params(
+        layer_style_records(
+            layer_site_id=new_site_id,
+            base_line_thickness=0.01,
+            base_line_color_rgb01=(1.0, 0.0, 0.0),
+            explicit_line_thickness=False,
+            explicit_line_color=False,
+        )
+    )
+
+    gui_snapshot = store.snapshot_for_gui()
+    layer_sites = {k.site_id for k in gui_snapshot.keys() if k.op == LAYER_STYLE_OP}
+    assert layer_sites == {new_site_id}
+
+    store.prune_stale_loaded_groups()
+    full_snapshot = store.snapshot()
+    layer_sites_full = {k.site_id for k in full_snapshot.keys() if k.op == LAYER_STYLE_OP}
+    assert old_site_id not in layer_sites_full
 
 
 def test_reconcile_does_not_migrate_when_ambiguous():

@@ -22,7 +22,7 @@
 
 ## 現状の問題（要点だけ）
 
-- Layer style は `FrameParamRecord` 経由ではなく、`render_scene()` が `ensure_layer_style_entries()` で ParamStore を直接更新している。
+- Layer style は `FrameParamRecord` 経由ではなく、`render_scene()` が ParamStore を直接更新していた。
 - そのため ParamStore の `_observed_groups` に `__layer_style__` が載らず、primitive/effect の増殖対策（reconcile/hide/prune）の枠外にいる。
 - 結果として `Layer.site_id` が揺れるたびに古い `__layer_style__` が残り続け、GUI 行/JSON が増殖する。
 
@@ -60,28 +60,28 @@
 
 ### 3) 役割の整理（Layer style の “キー生成” を 1 箇所に寄せる）
 
-- `ensure_layer_style_entries()` は「直接 store を触る」よりも、
-  - `FrameParamRecord` を生成する純粋ヘルパ（例: `layer_style_records(...) -> list[FrameParamRecord]`）
+- Layer style の生成は「直接 store を触る」よりも、
+  - `FrameParamRecord` を生成する純粋ヘルパ（`layer_style_records(...) -> list[FrameParamRecord]`）
     へ寄せる（呼び出し元は `render_scene()`）。
-- `store.set_label("__layer_style__", layer.site_id, layer.name)` は `L(...)` 側に残す（現状どおり）。
+- label（`store.set_label("__layer_style__", layer.site_id, layer.name)`）は `L(...)` 側を基本としつつ、`Layer(name=...)` を直接返す経路も拾えるよう必要なら描画側でも補完する。
 
 ---
 
 ## 実装チェックリスト（OK をもらったらここから着手）
 
-- [ ] `src/render/frame_pipeline.py`：Layer style の観測を `FrameParamRecord` に統一する
-  - [ ] `current_frame_params()` を使い、`line_thickness/line_color` の 2 レコードを記録する
-  - [ ] `ensure_layer_style_entries()` の直接呼び出しを削除する（責務の二重化をなくす）
-- [ ] `src/parameters/layer_style.py`：record 生成ヘルパへ寄せる（必要なら）
-  - [ ] `layer_style_key()` と meta 定義は維持
-  - [ ] （任意）`layer_style_records(...) -> list[FrameParamRecord]` を追加して `render_scene()` を簡潔にする
-- [ ] `src/parameters/store.py`：`__layer_style__` を reconcile/hide/prune 対象に含める
-  - [ ] 除外 op を `STYLE_OP` のみにする（`LAYER_STYLE_OP` を除外しない）
-- [ ] テスト追加（回帰）
-  - [ ] `tests/parameters/test_param_store_reconcile.py` に「layer_style の op/site_id 揺れでも増殖しない」テストを追加
-    - [ ] 1 回目: `__layer_style__` をロードした store を作る
-    - [ ] 2 回目: 別 site_id の `__layer_style__` を観測し、`snapshot_for_gui()` に旧 site_id が残らない
-    - [ ] `prune_stale_loaded_groups()` 後に `snapshot()` から旧 site_id が消える
+- [x] `src/render/frame_pipeline.py`：Layer style の観測を `FrameParamRecord` に統一する
+  - [x] `current_frame_params()` を使い、`line_thickness/line_color` の 2 レコードを記録する
+  - [x] store 直接更新の経路を削除する（責務の二重化をなくす）
+- [x] `src/parameters/layer_style.py`：record 生成ヘルパへ寄せる
+  - [x] `layer_style_key()` と meta 定義は維持
+  - [x] `layer_style_records(...) -> list[FrameParamRecord]` を追加して `render_scene()` を簡潔にする
+- [x] `src/parameters/store.py`：`__layer_style__` を reconcile/hide/prune 対象に含める
+  - [x] 除外 op を `STYLE_OP` のみにする（`LAYER_STYLE_OP` を除外しない）
+- [x] テスト追加（回帰）
+  - [x] `tests/parameters/test_param_store_reconcile.py` に「layer_style の site_id 揺れでも増殖しない」テストを追加
+    - [x] 1 回目: `__layer_style__` をロードした store を作る
+    - [x] 2 回目: 別 site_id の `__layer_style__` を観測し、`snapshot_for_gui()` に旧 site_id が残らない
+    - [x] `prune_stale_loaded_groups()` 後に `snapshot()` から旧 site_id が消える
 - [ ] 手動スモーク（`main.py`）
   - [ ] `L(...)` の周辺の空行/引数を編集 → 再起動しても Layer 行が増殖しない
 
