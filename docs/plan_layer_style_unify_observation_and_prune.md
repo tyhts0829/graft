@@ -62,7 +62,7 @@
 
 - `ensure_layer_style_entries()` は「直接 store を触る」よりも、
   - `FrameParamRecord` を生成する純粋ヘルパ（例: `layer_style_records(...) -> list[FrameParamRecord]`）
-  へ寄せる（呼び出し元は `render_scene()`）。
+    へ寄せる（呼び出し元は `render_scene()`）。
 - `store.set_label("__layer_style__", layer.site_id, layer.name)` は `L(...)` 側に残す（現状どおり）。
 
 ---
@@ -79,8 +79,8 @@
   - [ ] 除外 op を `STYLE_OP` のみにする（`LAYER_STYLE_OP` を除外しない）
 - [ ] テスト追加（回帰）
   - [ ] `tests/parameters/test_param_store_reconcile.py` に「layer_style の op/site_id 揺れでも増殖しない」テストを追加
-    - [ ] 1回目: `__layer_style__` をロードした store を作る
-    - [ ] 2回目: 別 site_id の `__layer_style__` を観測し、`snapshot_for_gui()` に旧 site_id が残らない
+    - [ ] 1 回目: `__layer_style__` をロードした store を作る
+    - [ ] 2 回目: 別 site_id の `__layer_style__` を観測し、`snapshot_for_gui()` に旧 site_id が残らない
     - [ ] `prune_stale_loaded_groups()` 後に `snapshot()` から旧 site_id が消える
 - [ ] 手動スモーク（`main.py`）
   - [ ] `L(...)` の周辺の空行/引数を編集 → 再起動しても Layer 行が増殖しない
@@ -89,6 +89,5 @@
 
 ## 事前確認したいこと（YES/NO）
 
-- layer_style も primitive/effect と同じく「この実行で観測されなかったロード済みグループは保存時に削除」で OK？
+- layer_style も primitive/effect と同じく「この実行で観測されなかったロード済みグループは保存時に削除」で OK？；OK
   - 条件分岐で一時的に layer が出ない場合、その run で layer_style は消える（observed-only の一貫性）。
-
