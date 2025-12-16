@@ -2,12 +2,12 @@
 
 Graft is a lightweight toolkit for building line-based geometries, applying chained effects, and viewing the result in real time.
 
-Shapes and effects are registered through the public API, allowing sketches to be composed by combining `G.<shape>()` calls with pipelines built from `E.<effect>()`.
+Shapes and effects are registered through the public API (`src.api`), allowing sketches to be composed by combining `G.<shape>()` calls with pipelines built from `E.<effect>()`.
 
 ## Examples
 
 ```python
-from api import E, G, run
+from src.api import E, G, run
 
 
 def draw(t: float):
@@ -17,7 +17,7 @@ def draw(t: float):
 
 
 if __name__ == "__main__":
-    run(draw, canvas_size="A5", render_scale=10)
+    run(draw, canvas_size=(800, 800), render_scale=2.0, parameter_gui=True)
 ```
 
 ## Extending (custom primitives / effects)
@@ -25,7 +25,7 @@ if __name__ == "__main__":
 You can register your own primitives and effects via decorators:
 
 ```python
-from api import effect, primitive
+from src.api import effect, primitive
 
 
 @primitive
@@ -42,34 +42,25 @@ Notes:
 - Built-in primitives/effects must provide `meta=...` (enforced).
 - For user-defined ops, `meta` is optional. If omitted, parameters are not shown in the Parameter GUI.
 
-## Features
+## Features (current)
 
-- `api.G` lets you generate primitive shapes such as `sphere`, `polyhedron`, `grid`, and more.
-- `api.E` lets you modulate and transform shapes such as `affine`, `fill`, `repeat`, and more.
-- `api.L` lets you define layers so you can manage colors, stroke widths, and other styling attributes per layer.
-- `api.run` lets you render any shapes, effects, and layers that a user-defined `draw(t)` function returns on each frame.
-- `api.cc` lets you map MIDI controllers to parameters so sliders, knobs, and pads can drive your sketches.
-- `api.lfo` lets you create tempo-synced oscillators for modulating any numeric parameter over time.
-- `Parameter GUI` lets you tweak all shape and effect argument parameters live while the sketch is running.
-- `Keyboard shortcuts` let you capture output while a sketch is running:
-  - `P` lets you save a screenshot (`Shift+P` for high resolution).
-  - `V` lets you record a video of the sketch (`Shift+V` for high resolution).
-  - `G` lets you export per-layer G-code for pen plotters.
+- `src.api.G` lets you generate primitive shapes such as `sphere`, `polyhedron`, `grid`, and more.
+- `src.api.E` lets you modulate and transform shapes such as `affine`, `fill`, `repeat`, and more.
+- `src.api.L` lets you define layers so you can manage colors, stroke widths, and other styling attributes per layer.
+- `src.api.run` lets you render any shapes, effects, and layers that a user-defined `draw(t)` function returns on each frame.
+- `Parameter GUI` lets you tweak parameters live while the sketch is running.
+- `src.api.Export` provides a headless export entrypoint (SVG/image/G-code) as an API skeleton (currently unimplemented / stubs).
 
-## Configurations
+## Not implemented yet
 
-- Default settings: `configs/default.yaml`
-- Local overrides: `config.yaml` at the repository root (merged when present)
+- MIDI/CC input, LFOs, keyboard shortcuts, screenshot/video recording
+- SVG/PNG/G-code actual file generation (export stubs currently raise `NotImplementedError`)
 
 ## Dependencies
 
-- Numpy
-- Numba
-- scipy
-- shapely
-- noise
-- vnoise
-- ModernGL
+- numpy
+- numba
+- shapely (optional; required for some effects)
+- moderngl
 - pyglet
-- mido
-- DearPyGui
+- pyimgui

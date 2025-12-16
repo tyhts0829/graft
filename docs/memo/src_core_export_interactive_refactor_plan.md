@@ -146,25 +146,25 @@ src/
 
 - [x] `src/export/svg.py` / `src/export/image.py` / `src/export/gcode.py` を追加し、公開したい関数/クラスのシグネチャだけ先に固定する（中身は空実装でよい）。
 - [x] “ヘッドレス export” の入口を `src/api/export.py` に用意する（`Export(draw, t, fmt, path, ...)` の形）。
-- [ ] interactive 実行時の保存（画像/svg/g-code/動画）は Keyboard Shortcut 経由を基本とし、ユーザーが `from api import Export` しなくても保存できる導線にする。
+- [ ] interactive 実行時の保存（画像/svg/g-code/動画）は Keyboard Shortcut 経由を基本とし、ユーザーが `from src.api import Export` しなくても保存できる導線にする。
 - [x] export が `pyglet/moderngl/imgui` を import しないことをテストで保証する。
 
 ### Phase 6: 依存方向の自動検査（壊れない仕組み）
 
-- [x] `tests/test_dependency_boundaries.py` を追加し、`src/core` が `src/interactive` / `src/export` を import していないことを AST で検査。
+- [x] `tests/architecture/test_dependency_boundaries.py` を追加し、`src/core` が `src/interactive` / `src/export` を import していないことを AST で検査。
 - [ ] `import src.core` / `import src.export` が `pyglet/moderngl/imgui` を引かないことを smoke テスト化（必要なら `importlib` + `sys.modules` で確認）。
 
 ### Phase 7: ドキュメント更新
 
-- [ ] `architecture.md` を新構造に合わせて更新（依存図、実行フロー、責務境界）。
-- [ ] `README.md` の import パス例が実態とズレていれば修正（必要最小限）。
+- [x] `architecture.md` を新構造に合わせて更新（依存図、実行フロー、責務境界）。
+- [x] `README.md` の import パス例が実態とズレていれば修正（必要最小限）。
 
 ## 7. 合意事項（2025-12-16）
 
 - [x] `src/api` は “第 4 の層（ファサード）” として残す（3 ディレクトリ＋ api）。
 - [x] `core` は `core/layer.py` + `core/scene.py` に分ける。
 - [x] export の入口は A を採用（ただし関数ではなく `Export` を公開導線にする）。
-  - `from api import Export`（例: `Export(draw, t, "svg", "data/outputs/svg/some_user_art.svg")`）
+  - `from src.api import Export`（例: `Export(draw, t, "svg", "data/outputs/svg/some_user_art.svg")`）
   - CLI は将来タスク（この計画では API 入口まで）
 - [x] SVG/画像/G-code/動画の出力処理は未実装でよい（当面は空実装/スタブ）。
 
