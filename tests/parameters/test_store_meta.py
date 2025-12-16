@@ -41,6 +41,7 @@ def test_json_roundtrip_preserves_meta_and_state():
         key=key,
         base=0.1,
         meta=ParamMeta(kind="float", ui_min=-1.0, ui_max=1.0, choices=None),
+        explicit=False,
     )
     store.store_frame_params([record])
     store._states[key].override = True  # type: ignore[attr-defined]
