@@ -114,3 +114,65 @@ def test_fill_empty_geometry_is_noop() -> None:
     assert realized.coords.shape == (0, 3)
     assert realized.offsets.tolist() == [0]
 
+
+def _hatch_direction(realized: RealizedGeometry) -> np.ndarray:
+    dirs: list[np.ndarray] = []
+    for seg in _iter_polylines(realized):
+        if seg.shape[0] < 2:
+            continue
+        d = seg[-1] - seg[0]
+        n = float(np.linalg.norm(d))
+        if n <= 1e-9:
+            continue
+        d = d / n
+        idx = int(np.argmax(np.abs(d)))
+        if float(d[idx]) < 0.0:
+            d = -d
+        dirs.append(d.astype(np.float64, copy=False))
+    if not dirs:
+        raise AssertionError("塗り線が生成されていない")
+    mean = np.mean(np.stack(dirs, axis=0), axis=0)
+    mean_n = float(np.linalg.norm(mean))
+    if mean_n <= 0.0:
+        raise AssertionError("塗り線方向の計算に失敗した")
+    return (mean / mean_n).astype(np.float64, copy=False)
+
+
+def test_fill_hatch_direction_is_stable_under_rotation() -> None:
+    g = G.fill_test_square()
+
+    prev_dir: np.ndarray | None = None
+    for deg in np.linspace(0.0, 60.0, 31):
+        rot = (float(deg), float(deg), float(deg))
+        filled = (
+            E.affine(rotation=rot)
+            .fill(angle_sets=1, angle=45.0, density=10.0, remove_boundary=True)(g)
+        )
+        realized = realize(filled)
+        d = _hatch_direction(realized)
+        if prev_dir is not None:
+            dot = float(abs(np.dot(prev_dir, d)))
+            assert dot > 0.5
+        prev_dir = d
+
+
+def test_fill_hatch_attaches_under_z_rotation() -> None:
+    g = G.fill_test_square()
+
+    base = realize(E.fill(angle_sets=1, angle=45.0, density=10.0, remove_boundary=True)(g))
+    base_dir = _hatch_direction(base)
+
+    for deg in [0.0, 15.0, 30.0, 60.0, 120.0]:
+        filled = (
+            E.affine(rotation=(0.0, 0.0, float(deg)))
+            .fill(angle_sets=1, angle=45.0, density=10.0, remove_boundary=True)(g)
+        )
+        realized = realize(filled)
+        d = _hatch_direction(realized)
+
+        th = np.deg2rad(float(deg))
+        c = float(np.cos(-th))
+        s = float(np.sin(-th))
+        rz = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]], dtype=np.float64)
+        d_local = rz @ d
+        assert float(abs(np.dot(d_local, base_dir))) > 0.99

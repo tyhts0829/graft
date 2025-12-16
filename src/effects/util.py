@@ -5,6 +5,37 @@ from numba import njit
 
 
 @njit(cache=True)
+def _dot3(a: np.ndarray, b: np.ndarray) -> float:
+    return float(a[0] * b[0] + a[1] * b[1] + a[2] * b[2])
+
+
+@njit(cache=True)
+def _matmul3(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    out = np.empty((3, 3), dtype=np.float64)
+    for i in range(3):
+        for j in range(3):
+            out[i, j] = (
+                a[i, 0] * b[0, j]
+                + a[i, 1] * b[1, j]
+                + a[i, 2] * b[2, j]
+            )
+    return out
+
+
+@njit(cache=True)
+def _apply_row_mat(points: np.ndarray, mat: np.ndarray) -> np.ndarray:
+    out = np.empty_like(points)
+    for i in range(points.shape[0]):
+        x = float(points[i, 0])
+        y = float(points[i, 1])
+        z = float(points[i, 2])
+        out[i, 0] = x * mat[0, 0] + y * mat[1, 0] + z * mat[2, 0]
+        out[i, 1] = x * mat[0, 1] + y * mat[1, 1] + z * mat[2, 1]
+        out[i, 2] = x * mat[0, 2] + y * mat[1, 2] + z * mat[2, 2]
+    return out
+
+
+@njit(cache=True)
 def transform_to_xy_plane(vertices: np.ndarray) -> tuple[np.ndarray, np.ndarray, float]:
     """頂点をXY平面（z=0）に変換する。
 
@@ -45,37 +76,64 @@ def transform_to_xy_plane(vertices: np.ndarray) -> tuple[np.ndarray, np.ndarray,
         rotation_axis[0] ** 2 + rotation_axis[1] ** 2 + rotation_axis[2] ** 2
     )
     if rotation_axis_norm == 0:
-        # Already aligned with Z-axis
-        z_offset = vertices[0, 2]
-        result = vertices.copy()
-        result[:, 2] -= z_offset
-        return result, np.eye(3), z_offset
+        # Z 軸と平行（または反平行）なら、姿勢はそのまま（法線方向の符号は入力順に依存）。
+        R0 = np.eye(3)
+    else:
+        rotation_axis = rotation_axis / rotation_axis_norm
 
-    rotation_axis = rotation_axis / rotation_axis_norm
+        # Calculate rotation angle
+        cos_theta = _dot3(normal, z_axis)
+        # Manual clip for njit compatibility
+        if cos_theta < -1.0:
+            cos_theta = -1.0
+        elif cos_theta > 1.0:
+            cos_theta = 1.0
+        angle = np.arccos(cos_theta)
 
-    # Calculate rotation angle
-    cos_theta = np.dot(normal, z_axis)
-    # Manual clip for njit compatibility
-    if cos_theta < -1.0:
-        cos_theta = -1.0
-    elif cos_theta > 1.0:
-        cos_theta = 1.0
-    angle = np.arccos(cos_theta)
+        # Create rotation matrix using Rodrigues' formula
+        # Create K matrix manually for njit compatibility
+        K = np.zeros((3, 3))
+        K[0, 1] = -rotation_axis[2]
+        K[0, 2] = rotation_axis[1]
+        K[1, 0] = rotation_axis[2]
+        K[1, 2] = -rotation_axis[0]
+        K[2, 0] = -rotation_axis[1]
+        K[2, 1] = rotation_axis[0]
 
-    # Create rotation matrix using Rodrigues' formula
-    # Create K matrix manually for njit compatibility
-    K = np.zeros((3, 3))
-    K[0, 1] = -rotation_axis[2]
-    K[0, 2] = rotation_axis[1]
-    K[1, 0] = rotation_axis[2]
-    K[1, 2] = -rotation_axis[0]
-    K[2, 0] = -rotation_axis[1]
-    K[2, 1] = rotation_axis[0]
+        R0 = np.eye(3) + np.sin(angle) * K + (1 - np.cos(angle)) * _matmul3(K, K)
 
-    R = np.eye(3) + np.sin(angle) * K + (1 - np.cos(angle)) * np.dot(K, K)
+    # --- 追加: 面内の回転自由度を固定する ---
+    #
+    # 法線を Z に揃えるだけだと、法線まわりの回転（面内回転）が未定義になり、
+    # 物体が自分の法線まわりに回転したときにハッチが「中で回って見える」。
+    # そこで XY 上で「最初に見つかった非ゼロの辺」を +X に揃える回転を足す。
+    # （旧実装の挙動に近づける）
+    aligned0 = _apply_row_mat(vertices, R0.T)
+    phi = 0.0
+    found = False
+    for i in range(vertices.shape[0] - 1):
+        dx = float(aligned0[i + 1, 0] - aligned0[i, 0])
+        dy = float(aligned0[i + 1, 1] - aligned0[i, 1])
+        if dx * dx + dy * dy > 1e-12:
+            phi = np.arctan2(dy, dx)
+            found = True
+            break
+
+    if found:
+        c = float(np.cos(phi))
+        s = float(np.sin(phi))
+        # 回転角は -phi（辺の向きを +X へ）
+        Rz = np.eye(3)
+        Rz[0, 0] = c
+        Rz[0, 1] = s
+        Rz[1, 0] = -s
+        Rz[1, 1] = c
+        R = _matmul3(Rz, R0)
+    else:
+        R = R0
 
     # Apply rotation
-    transformed_points = np.dot(vertices, R.T)
+    transformed_points = _apply_row_mat(vertices, R.T)
 
     # Get z-coordinate and align to z=0
     z_offset = transformed_points[0, 2]
@@ -98,4 +156,4 @@ def transform_back(
     result[:, 2] += z_offset
 
     # Apply inverse rotation
-    return np.dot(result, rotation_matrix)
+    return _apply_row_mat(result, rotation_matrix)

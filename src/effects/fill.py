@@ -1,18 +1,19 @@
 """
-どこで: `src/effects/fill.py`。ハッチ塗りつぶし effect の実体変換。
-何を: 閉領域（外周＋穴）に対し、偶奇規則でハッチ線を生成する。
-なぜ: 塗りつぶし表現を effect として提供し、レシピ DAG/Parameter GUI と整合させるため。
+ハッチ塗りつぶし effect。
+
+閉領域（外周＋穴）に対して偶奇規則で内部を判定し、指定角度のハッチ線分を生成する。
+3D 入力は一度 XY 平面へ整列して 2D で処理し、生成した線分を元の姿勢へ戻す。
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Sequence
 
 import numpy as np
 
 from src.core.effect_registry import effect
 from src.core.realized_geometry import RealizedGeometry
+from src.effects.util import transform_back, transform_to_xy_plane
 from src.parameters.meta import ParamMeta
 
 # 生成する塗り線の最大本数（密度の上限）。
@@ -29,94 +30,21 @@ fill_meta = {
 }
 
 
-@dataclass(frozen=True, slots=True)
-class _PlaneBasis:
-    """平面の 2D 基底を表現する（3D <-> 2D 変換用）。"""
-
-    origin: np.ndarray  # (3,)
-    u: np.ndarray  # (3,)
-    v: np.ndarray  # (3,)
-
-
 def _empty_geometry() -> RealizedGeometry:
     coords = np.zeros((0, 3), dtype=np.float32)
     offsets = np.zeros((1,), dtype=np.int32)
     return RealizedGeometry(coords=coords, offsets=offsets)
 
 
-def _fit_plane_basis(
-    points: np.ndarray,
-    *,
-    eps_abs: float = NONPLANAR_EPS_ABS,
-    eps_rel: float = NONPLANAR_EPS_REL,
-) -> tuple[bool, _PlaneBasis]:
-    """点群が“ほぼ平面”なら 2D 基底を返す。"""
-    if points.shape[0] < 3:
-        origin = points.mean(axis=0) if points.shape[0] else np.zeros((3,), dtype=np.float64)
-        basis = _PlaneBasis(
-            origin=np.asarray(origin, dtype=np.float64),
-            u=np.array([1.0, 0.0, 0.0], dtype=np.float64),
-            v=np.array([0.0, 1.0, 0.0], dtype=np.float64),
-        )
-        return False, basis
-
+def _planarity_threshold(points: np.ndarray) -> float:
+    """点群スケールに基づく平面性判定の閾値を返す。"""
+    if points.size == 0:
+        return float(NONPLANAR_EPS_ABS)
     p = points.astype(np.float64, copy=False)
-    origin = p.mean(axis=0)
-    centered = p - origin
-
-    _u, _s, vh = np.linalg.svd(centered, full_matrices=False)
-    normal = vh[-1]
-    n_norm = float(np.linalg.norm(normal))
-    if not np.isfinite(n_norm) or n_norm <= 0.0:
-        basis = _PlaneBasis(
-            origin=np.asarray(origin, dtype=np.float64),
-            u=np.array([1.0, 0.0, 0.0], dtype=np.float64),
-            v=np.array([0.0, 1.0, 0.0], dtype=np.float64),
-        )
-        return False, basis
-    normal = normal / n_norm
-
-    residual = np.max(np.abs(centered @ normal))
     mins = np.min(p, axis=0)
     maxs = np.max(p, axis=0)
     diag = float(np.linalg.norm(maxs - mins))
-    threshold = max(float(eps_abs), float(eps_rel) * diag)
-    planar = bool(residual <= threshold)
-
-    # 基底の向きを安定させるため、world x 軸の平面内射影を u として採用する。
-    # normal とほぼ平行な場合は y 軸へフォールバックする。
-    ref = np.array([1.0, 0.0, 0.0], dtype=np.float64)
-    if abs(float(np.dot(ref, normal))) > 0.9:
-        ref = np.array([0.0, 1.0, 0.0], dtype=np.float64)
-    u_axis = ref - float(np.dot(ref, normal)) * normal
-    u_norm = float(np.linalg.norm(u_axis))
-    if u_norm <= 0.0:
-        ref = np.array([0.0, 0.0, 1.0], dtype=np.float64)
-        u_axis = ref - float(np.dot(ref, normal)) * normal
-        u_norm = float(np.linalg.norm(u_axis))
-    u_axis = u_axis / u_norm
-    v_axis = np.cross(normal, u_axis)
-
-    basis = _PlaneBasis(origin=origin, u=u_axis, v=v_axis)
-    return planar, basis
-
-
-def _project_to_2d(points: np.ndarray, basis: _PlaneBasis) -> np.ndarray:
-    """3D 点群を平面 2D 座標へ射影する。"""
-    p = points.astype(np.float64, copy=False) - basis.origin
-    x = p @ basis.u
-    y = p @ basis.v
-    return np.stack([x, y], axis=1).astype(np.float32, copy=False)
-
-
-def _lift_to_3d(coords_2d: np.ndarray, basis: _PlaneBasis) -> np.ndarray:
-    """2D 点群を 3D 空間へ戻す。"""
-    xy = coords_2d.astype(np.float64, copy=False)
-    return (
-        basis.origin[None, :]
-        + xy[:, 0:1] * basis.u[None, :]
-        + xy[:, 1:2] * basis.v[None, :]
-    ).astype(np.float32, copy=False)
+    return max(float(NONPLANAR_EPS_ABS), float(NONPLANAR_EPS_REL) * diag)
 
 
 def _polygon_area_abs(vertices: np.ndarray) -> float:
@@ -430,9 +358,34 @@ def fill(
         k = 1
 
     # 1) 全体がほぼ平面なら、外周＋穴をグルーピングして even-odd 塗りを行う。
-    planar_global, basis_global = _fit_plane_basis(base.coords)
-    if planar_global:
-        coords2d_all = _project_to_2d(base.coords, basis_global)
+    # 3D -> XY 平面への整列で 2D 化し、生成した線分を元姿勢へ戻す。
+    planar_global = False
+    coords_xy_all: np.ndarray | None = None
+    rot_global: np.ndarray | None = None
+    z_global: float = 0.0
+
+    global_threshold = _planarity_threshold(base.coords)
+    for poly_i in range(int(base.offsets.size) - 1):
+        s = int(base.offsets[poly_i])
+        e = int(base.offsets[poly_i + 1])
+        if e - s < 3:
+            continue
+        vertices = base.coords[s:e]
+        _vxy, rot, z_off = transform_to_xy_plane(vertices)
+
+        coords64 = base.coords.astype(np.float64, copy=False)
+        aligned = coords64 @ rot.T
+        aligned[:, 2] -= float(z_off)
+        residual = float(np.max(np.abs(aligned[:, 2])))
+        if residual <= global_threshold:
+            planar_global = True
+            coords_xy_all = aligned
+            rot_global = rot
+            z_global = float(z_off)
+            break
+
+    if planar_global and coords_xy_all is not None and rot_global is not None:
+        coords2d_all = coords_xy_all[:, :2].astype(np.float32, copy=False)
         groups = _build_evenodd_groups(coords2d_all, base.offsets)
         if not groups:
             return _lines_to_realized(out_lines)
@@ -474,7 +427,10 @@ def fill(
                     spacing_gradient=float(spacing_gradient),
                 )
                 for seg in segs2d:
-                    out_lines.append(_lift_to_3d(seg, basis_global))
+                    seg3 = np.concatenate(
+                        [seg, np.zeros((int(seg.shape[0]), 1), dtype=np.float32)], axis=1
+                    )
+                    out_lines.append(transform_back(seg3, rot_global, z_global))
 
         return _lines_to_realized(out_lines)
 
@@ -487,11 +443,12 @@ def fill(
         if vertices.shape[0] < 3:
             continue
 
-        planar_poly, basis = _fit_plane_basis(vertices)
-        if not planar_poly:
+        vxy, rot, z_off = transform_to_xy_plane(vertices)
+        residual = float(np.max(np.abs(vxy[:, 2].astype(np.float64, copy=False))))
+        if residual > _planarity_threshold(vertices):
             continue
 
-        coords2d = _project_to_2d(vertices, basis)
+        coords2d = vxy[:, :2].astype(np.float32, copy=False)
         ref_height = float(np.max(coords2d[:, 1]) - np.min(coords2d[:, 1]))
         base_spacing = _spacing_from_height(ref_height, density)
         if base_spacing <= 0.0:
@@ -509,6 +466,9 @@ def fill(
                 spacing_gradient=float(spacing_gradient),
             )
             for seg in segs2d:
-                out_lines.append(_lift_to_3d(seg, basis))
+                seg3 = np.concatenate(
+                    [seg, np.zeros((int(seg.shape[0]), 1), dtype=np.float32)], axis=1
+                )
+                out_lines.append(transform_back(seg3, rot, float(z_off)))
 
     return _lines_to_realized(out_lines)
