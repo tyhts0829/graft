@@ -13,18 +13,19 @@
 
 ## 実施チェックリスト
 
-- [ ] 現状のエラーを対象限定で再現（例: `python -m mypy src/interactive/parameter_gui/gui.py`）
-- [ ] mypy 用の stub 置き場として `typings/` を追加
-- [ ] `typings/imgui/__init__.pyi` を追加（`__getattr__ -> Any` で全面 Any）
-- [ ] `typings/imgui/integrations/__init__.pyi` を追加（必要なら）
-- [ ] `typings/imgui/integrations/pyglet.pyi` を追加（必要なら）
-- [ ] `mypy.ini` を追加して `mypy_path = typings` を設定
-- [ ] 対象限定の mypy を再実行し、imgui 由来の警告が消えることを確認
+- [x] 現状のエラーを対象限定で再現（例: `python -m mypy src/interactive/parameter_gui/gui.py`）
+- [x] mypy 用の stub 置き場として `typings/` を追加
+- [x] `typings/imgui/__init__.pyi` を追加（`__getattr__ -> Any` で全面 Any）
+- [x] `typings/imgui/integrations/__init__.pyi` を追加（必要なら）
+- [x] `typings/imgui/integrations/pyglet.pyi` を追加（必要なら）
+- [x] `mypy.ini` を追加して `mypy_path = typings` を設定
+- [x] 対象限定の mypy を再実行し、imgui 由来の警告が消えることを確認
+- [x] ついでに `src/interactive/parameter_gui/table.py` の型注釈を揃え、`src/interactive/parameter_gui/` 全体も mypy で通す
 
 ## 事前確認したい
 
-- [ ] stub の置き場は `typings/` + `mypy.ini` で進めて良い？（実行時 import を汚さないため）
+- [x] stub の置き場は `typings/` + `mypy.ini` で進めて良い？（実行時 import を汚さないため）
 
 ---
 
-状態: 未着手。
+状態: 完了。

@@ -95,11 +95,11 @@ def _render_cc_cell(
     imgui,
     *,
     rules,
-    cc_key: object,
+    cc_key: int | tuple[int | None, int | None, int | None] | None,
     override: bool,
     cc_key_width: int,
     width_spacer: int,
-) -> tuple[bool, object, bool]:
+) -> tuple[bool, int | tuple[int | None, int | None, int | None] | None, bool]:
     """cc/override 列を描画し、(changed, cc_key, override) を返す。"""
 
     imgui.table_set_column_index(3)
