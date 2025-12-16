@@ -11,6 +11,7 @@
 - `src.interactive` だけが window/GL/GUI 依存を持つ（依存が一箇所へ隔離される）。
 - 依存方向を「テスト」で機械的に検査し、破ったら即座に落ちる。
 - 既存テストは必要なら変更してよいが、依存境界と主要動作を担保するテストは維持/追加する（意図を明文化する）。
+- SVG/画像/G-code/動画の “実出力” は未実装でもよい（現段階では API の骨格＝空実装/スタブを用意する）。
 
 ## 1. 現状整理（依存の “混ざり” ポイント）
 
@@ -58,10 +59,11 @@ src/
     parameters/           # 旧 src/parameters
     primitives/           # 旧 src/primitives
     effects/              # 旧 src/effects
-  export/
+  export/                 # 出力 API（当面はスタブ）
     __init__.py
-    svg.py                # 最初のヘッドレス出力（優先）
-    (png.py / gcode.py)   # 後続（必要になったら）
+    svg.py                # SVG 出力（当面は空実装）
+    image.py              # 画像出力（当面は空実装）
+    gcode.py              # G-code 出力（当面は空実装）
   interactive/
     __init__.py
     runtime/              # 旧 src/app/runtime
@@ -110,10 +112,8 @@ src/
 
 ### 5.3 export 側の最小責務（最初は SVG）
 
-- `export.svg` が `RealizedLayer` を受けて
-  - offsets を polyline 群へ分解
-  - SVG の `<path>` もしくは `<polyline>` を生成
-  - 余計な依存を増やさず、まずは “確実に吐ける” を優先する
+- Phase 5 では、`export.svg/image/gcode` の API（関数/クラスのシグネチャ）だけ確定し、処理は空実装/スタブでよい。
+- 将来の実装では、`RealizedLayer` から polyline 群へ分解して SVG/PNG/G-code を生成する（ただし本計画の非ゴール）。
 
 ## 6. 段階的リファクタ手順（チェックリスト）
 
@@ -142,9 +142,9 @@ src/
 - [ ] `src/primitives` → `src/core/primitives`、`src/effects` → `src/core/effects` へ移動し、登録 import（`src/api/primitives.py`, `src/api/effects.py`）を更新。
 - [ ] （必要なら）`src/core/effects/AGENTS.md` を新設し、現 `src/effects/AGENTS.md` のルール（相互依存禁止等）を維持する。
 
-### Phase 5: export の最小実装（SVG を先に成立させる）
+### Phase 5: export API の骨格（スタブを先に置く）
 
-- [ ] `src/export/svg.py` を追加し、`RealizedLayer` → SVG 文字列/ファイルの最短経路を作る。
+- [ ] `src/export/svg.py` / `src/export/image.py` / `src/export/gcode.py` を追加し、公開したい関数/クラスのシグネチャだけ先に固定する（中身は空実装でよい）。
 - [ ] “ヘッドレス export” の入口を `src/api/export.py` に用意する（`Export(draw, t, fmt, path, ...)` の形）。
 - [ ] interactive 実行時の保存（画像/svg/g-code/動画）は Keyboard Shortcut 経由を基本とし、ユーザーが `from api import Export` しなくても保存できる導線にする。
 - [ ] export が `pyglet/moderngl/imgui` を import しないことをテストで保証する。
@@ -166,8 +166,10 @@ src/
 - [x] export の入口は A を採用（ただし関数ではなく `Export` を公開導線にする）。
   - `from api import Export`（例: `Export(draw, t, "svg", "data/outputs/svg/some_user_art.svg")`）
   - CLI は将来タスク（この計画では API 入口まで）
+- [x] SVG/画像/G-code/動画の出力処理は未実装でよい（当面は空実装/スタブ）。
 
 ## 8. 非ゴール（この計画ではやらない）
 
 - 画質/AA/録画などの高度なレンダリング品質改善（export の “成立” を優先）。
+- SVG/PNG/G-code/動画の具体的なファイル生成（Phase 5 では空実装/スタブまで）。
 - 依存管理（pyproject/extras）を整える作業（必要になった段階で別計画に切り出す）。
