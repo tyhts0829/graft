@@ -90,7 +90,7 @@
 - [x] `main.py` を `sketch/main.py` へ移動し、import を `from graft.api ...` に更新する
 - [x] `README.md` のサンプルを `from graft.api ...` に更新する
 - [x] `tests/` の import を `from graft...` に更新する
-- [x] 実行手順を README に明記する（例: `pip install -e ".[interactive]"` → `python sketch/main.py`）
+- [x] 実行手順を README に明記する（例: `pip install -e .` → `python sketch/main.py`）
 
 ### 5) 検証（最小）
 

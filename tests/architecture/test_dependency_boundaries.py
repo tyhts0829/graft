@@ -18,7 +18,71 @@ def _iter_py_files(root: Path) -> list[Path]:
     return sorted([p for p in root.rglob("*.py") if p.is_file()])
 
 
-def _import_modules_in_file(path: Path) -> set[str]:
+def _module_name_for_path(*, path: Path, src_root: Path) -> tuple[str, bool]:
+    rel = path.relative_to(src_root)
+    parts = list(rel.parts)
+    if not parts or not parts[-1].endswith(".py"):
+        raise ValueError(f"python ファイルではない: {rel}")
+
+    is_package = parts[-1] == "__init__.py"
+    if is_package:
+        parts = parts[:-1]
+    else:
+        parts[-1] = parts[-1].removesuffix(".py")
+
+    if not parts:
+        raise ValueError(f"src 直下の __init__.py はモジュール名にできない: {rel}")
+    return ".".join(parts), is_package
+
+
+def _resolve_importfrom_targets(
+    *,
+    current_module: str,
+    is_package: bool,
+    node: ast.ImportFrom,
+) -> set[str]:
+    level = int(node.level or 0)
+    if level == 0:
+        if node.module is None:
+            return set()
+        base = str(node.module)
+        targets = {base}
+        for alias in node.names:
+            if alias.name != "*":
+                targets.add(f"{base}.{alias.name}")
+        return targets
+
+    current_package = current_module if is_package else current_module.rsplit(".", 1)[0]
+    up = level - 1
+    parts = current_package.split(".")
+    if up > len(parts):
+        raise ValueError(
+            "相対 import の解決に失敗: "
+            f"current_module={current_module!r}, is_package={is_package}, "
+            f"level={level}, module={node.module!r}"
+        )
+
+    base_parts = parts[: len(parts) - up]
+    if not base_parts:
+        raise ValueError(
+            "相対 import の解決に失敗: "
+            f"current_module={current_module!r}, is_package={is_package}, "
+            f"level={level}, module={node.module!r}"
+        )
+
+    base = ".".join(base_parts)
+    if node.module is not None:
+        base = f"{base}.{node.module}"
+
+    targets = {base}
+    for alias in node.names:
+        if alias.name != "*":
+            targets.add(f"{base}.{alias.name}")
+    return targets
+
+
+def _import_modules_in_file(*, path: Path, src_root: Path) -> set[str]:
+    current_module, is_package = _module_name_for_path(path=path, src_root=src_root)
     tree = ast.parse(path.read_text(encoding="utf-8"))
     modules: set[str] = set()
 
@@ -28,11 +92,12 @@ def _import_modules_in_file(path: Path) -> set[str]:
                 modules.add(str(alias.name))
             continue
         if isinstance(node, ast.ImportFrom):
-            if node.level and int(node.level) > 0:
-                continue
-            if node.module is None:
-                continue
-            modules.add(str(node.module))
+            targets = _resolve_importfrom_targets(
+                current_module=current_module,
+                is_package=is_package,
+                node=node,
+            )
+            modules.update(targets)
 
     return modules
 
@@ -42,12 +107,19 @@ def _assert_no_forbidden_imports(
     root: Path,
     forbidden_prefixes: tuple[str, ...],
 ) -> None:
+    repo_root = _repo_root()
+    src_root = repo_root / "src"
     violations: list[str] = []
     for path in _iter_py_files(root):
-        modules = _import_modules_in_file(path)
+        rel = path.relative_to(repo_root)
+        try:
+            modules = _import_modules_in_file(path=path, src_root=src_root)
+        except ValueError as e:
+            violations.append(f"{rel}: {e}")
+            continue
+
         bad = sorted([m for m in modules if m.startswith(forbidden_prefixes)])
         if bad:
-            rel = path.relative_to(_repo_root())
             violations.append(f"{rel}: {', '.join(bad)}")
 
     if violations:
@@ -69,3 +141,72 @@ def test_export_does_not_depend_on_interactive() -> None:
         root=root / "src" / "graft" / "export",
         forbidden_prefixes=("graft.interactive", "pyglet", "moderngl", "imgui"),
     )
+
+
+def _parse_single_stmt(source: str) -> ast.stmt:
+    tree = ast.parse(source)
+    assert len(tree.body) == 1
+    assert isinstance(tree.body[0], ast.stmt)
+    return tree.body[0]
+
+
+def test__resolve_importfrom_targets_handles_relative_imports() -> None:
+    node = _parse_single_stmt("from ..export import svg\n")
+    assert isinstance(node, ast.ImportFrom)
+    got = _resolve_importfrom_targets(
+        current_module="graft.core.pipeline",
+        is_package=False,
+        node=node,
+    )
+    assert "graft.export" in got
+    assert "graft.export.svg" in got
+
+    node = _parse_single_stmt("from .. import interactive\n")
+    assert isinstance(node, ast.ImportFrom)
+    got = _resolve_importfrom_targets(
+        current_module="graft.core.pipeline",
+        is_package=False,
+        node=node,
+    )
+    assert "graft.interactive" in got
+
+    node = _parse_single_stmt("from graft import export\n")
+    assert isinstance(node, ast.ImportFrom)
+    got = _resolve_importfrom_targets(
+        current_module="graft.core.pipeline",
+        is_package=False,
+        node=node,
+    )
+    assert "graft.export" in got
+
+    node = _parse_single_stmt("from . import context\n")
+    assert isinstance(node, ast.ImportFrom)
+    got = _resolve_importfrom_targets(
+        current_module="graft.core.parameters.resolver",
+        is_package=False,
+        node=node,
+    )
+    assert "graft.core.parameters.context" in got
+
+    node = _parse_single_stmt("from ..export import *\n")
+    assert isinstance(node, ast.ImportFrom)
+    got = _resolve_importfrom_targets(
+        current_module="graft.core.pipeline",
+        is_package=False,
+        node=node,
+    )
+    assert got == {"graft.export"}
+
+
+def test__resolve_importfrom_targets_rejects_unresolvable_relative_imports() -> None:
+    node = _parse_single_stmt("from ...export import svg\n")
+    assert isinstance(node, ast.ImportFrom)
+    try:
+        _resolve_importfrom_targets(
+            current_module="graft.core",
+            is_package=True,
+            node=node,
+        )
+    except ValueError:
+        return
+    raise AssertionError("解決不能な相対 import は ValueError にする")

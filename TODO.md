@@ -6,3 +6,4 @@ Color Palette 統合
 Midi Controller 統合
 LFO 実装
 stub 生成
+displace amp と freq は傾きを成分指定

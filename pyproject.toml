@@ -12,15 +12,13 @@ license = { file = "LICENSE" }
 dependencies = [
   "numpy",
   "numba",
-]
-
-[project.optional-dependencies]
-shapely = ["shapely"]
-interactive = [
+  "shapely",
   "moderngl",
   "pyglet",
   "pyimgui",
 ]
+
+[project.optional-dependencies]
 dev = [
   "pytest",
   "ruff",

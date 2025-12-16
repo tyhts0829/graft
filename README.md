@@ -25,7 +25,13 @@ if __name__ == "__main__":
 Editable install (recommended):
 
 ```bash
-pip install -e ".[interactive]"
+pip install -e .
+```
+
+Dev tools (optional):
+
+```bash
+pip install -e ".[dev]"
 ```
 
 Run a sketch:
@@ -72,9 +78,17 @@ Notes:
 
 ## Dependencies
 
+Core (default):
+
 - numpy
 - numba
-- shapely (optional; required for some effects)
+- shapely
 - moderngl
 - pyglet
 - pyimgui
+
+Dev (optional):
+
+- pytest
+- ruff
+- mypy

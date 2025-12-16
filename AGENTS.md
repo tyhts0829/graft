@@ -15,8 +15,8 @@
 ## Build
 
 - src レイアウト: 本体パッケージは `src/graft/`（import 名は `graft`）
-- 推奨（GUI まで）: `pip install -e ".[interactive]"`
-- core のみ: `pip install -e .`
+- 推奨（描画/GUI まで）: `pip install -e .`
+- dev ツール: `pip install -e ".[dev]"`
 
 ## Test
 
