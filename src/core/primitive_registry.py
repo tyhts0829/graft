@@ -9,7 +9,7 @@ from collections.abc import ItemsView
 from typing import Any, Callable
 
 from src.core.realized_geometry import RealizedGeometry
-from src.parameters.meta import ParamMeta
+from src.core.parameters.meta import ParamMeta
 
 PrimitiveFunc = Callable[[tuple[tuple[str, Any], ...]], RealizedGeometry]
 
@@ -151,7 +151,7 @@ def primitive(
     ) -> Callable[..., RealizedGeometry]:
         module = str(f.__module__)
         if meta is None and (
-            module.startswith("src.primitives.") or module.startswith("primitives.")
+            module.startswith("src.core.primitives.") or module.startswith("core.primitives.")
         ):
             raise ValueError(
                 f"組み込み primitive は meta 必須: {f.__module__}.{f.__name__}"

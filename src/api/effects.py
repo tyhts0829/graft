@@ -11,20 +11,20 @@ from src.core.effect_registry import effect_registry
 from src.core.geometry import Geometry
 
 # effect 実装モジュールをインポートしてレジストリに登録させる。
-from src.effects import collapse as _effect_collapse  # noqa: F401
-from src.effects import scale as _effect_scale  # noqa: F401
-from src.effects import rotate as _effect_rotate  # noqa: F401
-from src.effects import fill as _effect_fill  # noqa: F401
-from src.effects import dash as _effect_dash  # noqa: F401
-from src.effects import displace as _effect_displace  # noqa: F401
-from src.effects import affine as _effect_affine  # noqa: F401
-from src.effects import subdivide as _effect_subdivide  # noqa: F401
-from src.effects import partition as _effect_partition  # noqa: F401
-from src.effects import mirror as _effect_mirror  # noqa: F401
-from src.effects import translate as _effect_translate  # noqa: F401
-from src.effects import repeat as _effect_repeat  # noqa: F401
-from src.effects import offset as _effect_offset  # noqa: F401
-from src.parameters import (
+from src.core.effects import collapse as _effect_collapse  # noqa: F401
+from src.core.effects import scale as _effect_scale  # noqa: F401
+from src.core.effects import rotate as _effect_rotate  # noqa: F401
+from src.core.effects import fill as _effect_fill  # noqa: F401
+from src.core.effects import dash as _effect_dash  # noqa: F401
+from src.core.effects import displace as _effect_displace  # noqa: F401
+from src.core.effects import affine as _effect_affine  # noqa: F401
+from src.core.effects import subdivide as _effect_subdivide  # noqa: F401
+from src.core.effects import partition as _effect_partition  # noqa: F401
+from src.core.effects import mirror as _effect_mirror  # noqa: F401
+from src.core.effects import translate as _effect_translate  # noqa: F401
+from src.core.effects import repeat as _effect_repeat  # noqa: F401
+from src.core.effects import offset as _effect_offset  # noqa: F401
+from src.core.parameters import (
     caller_site_id,
     current_frame_params,
     current_param_store,

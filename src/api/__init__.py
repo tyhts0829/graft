@@ -4,13 +4,14 @@
 
 from __future__ import annotations
 
+from .export import Export
 from .effects import E
 from .layers import L
 from .primitives import G
 from src.core.effect_registry import effect
 from src.core.primitive_registry import primitive
 
-__all__ = ["E", "G", "L", "effect", "primitive", "run"]
+__all__ = ["E", "Export", "G", "L", "effect", "primitive", "run"]
 
 
 def run(*args, **kwargs):

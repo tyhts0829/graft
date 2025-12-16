@@ -7,9 +7,9 @@ from __future__ import annotations
 from typing import Sequence
 
 from src.core.geometry import Geometry
-from src.parameters import caller_site_id, current_param_store
-from src.parameters.layer_style import LAYER_STYLE_OP
-from src.render.layer import Layer
+from src.core.parameters import caller_site_id, current_param_store
+from src.core.parameters.layer_style import LAYER_STYLE_OP
+from src.core.layer import Layer
 
 
 class LayerHelper:

@@ -10,17 +10,17 @@ from typing import Callable
 
 import pyglet
 
-from src.app.runtime.draw_window_system import DrawWindowSystem
-from src.app.runtime.window_loop import MultiWindowLoop, WindowTask
-from src.parameters import ParamStore
-from src.parameters.persistence import (
+from src.interactive.runtime.draw_window_system import DrawWindowSystem
+from src.interactive.runtime.window_loop import MultiWindowLoop, WindowTask
+from src.core.parameters import ParamStore
+from src.core.parameters.persistence import (
     default_param_store_path,
     load_param_store,
     save_param_store,
 )
-from src.render.layer import LayerStyleDefaults
-from src.render.render_settings import RenderSettings
-from src.render.scene import SceneItem
+from src.core.layer import LayerStyleDefaults
+from src.interactive.render_settings import RenderSettings
+from src.core.scene import SceneItem
 
 DRAW_WINDOW_POS = (25, 25)
 PARAMETER_GUI_POS = (950, 25)
@@ -108,7 +108,7 @@ def run(
 
     if parameter_gui:
         # Parameter GUI は依存が重い（pyimgui）ので、使うときだけ遅延 import する。
-        from src.app.runtime.parameter_gui_system import ParameterGUIWindowSystem
+        from src.interactive.runtime.parameter_gui_system import ParameterGUIWindowSystem
 
         gui = ParameterGUIWindowSystem(store=param_store)
         gui.window.set_location(*PARAMETER_GUI_POS)

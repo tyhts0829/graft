@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from _runner import PygletImGuiContext, run_pyglet_imgui
 
-from src.app.parameter_gui import render_parameter_table
-from src.parameters.view import ParameterRow
+from src.interactive.parameter_gui import render_parameter_table
+from src.core.parameters.view import ParameterRow
 
 
 def main() -> None:

@@ -8,7 +8,7 @@ from typing import Any, Callable
 
 from src.core.geometry import Geometry
 from src.core.primitive_registry import primitive_registry
-from src.parameters import (
+from src.core.parameters import (
     caller_site_id,
     current_frame_params,
     current_param_store,
@@ -16,13 +16,13 @@ from src.parameters import (
 )
 
 # primitive 実装モジュールをインポートしてレジストリに登録させる。
-from src.primitives import circle as _primitive_circle  # noqa: F401
-from src.primitives import grid as _primitive_grid  # noqa: F401
-from src.primitives import line as _primitive_line  # noqa: F401
-from src.primitives import polygon as _primitive_polygon  # noqa: F401
-from src.primitives import polyhedron as _primitive_polyhedron  # noqa: F401
-from src.primitives import sphere as _primitive_sphere  # noqa: F401
-from src.primitives import torus as _primitive_torus  # noqa: F401
+from src.core.primitives import circle as _primitive_circle  # noqa: F401
+from src.core.primitives import grid as _primitive_grid  # noqa: F401
+from src.core.primitives import line as _primitive_line  # noqa: F401
+from src.core.primitives import polygon as _primitive_polygon  # noqa: F401
+from src.core.primitives import polyhedron as _primitive_polyhedron  # noqa: F401
+from src.core.primitives import sphere as _primitive_sphere  # noqa: F401
+from src.core.primitives import torus as _primitive_torus  # noqa: F401
 
 
 class PrimitiveNamespace:

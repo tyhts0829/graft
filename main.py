@@ -14,11 +14,11 @@ def draw(t: float):
     ply1 = G.polyhedron()
     eff1 = (
         E(name="eff_ply1")
-        .affine(rotation=(t * 5, t * 5, t * 5))
-        # .fill()
-        # .subdivide()
+        .affine()
+        .fill()
+        .subdivide()
         .displace()
-        .rotate()
+        .rotate(rotation=(t * 5, t * 5, t * 5))
     )
 
     return L(eff1(ply1))

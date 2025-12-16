@@ -119,39 +119,39 @@ src/
 
 ### Phase 1: core へ「ドメイン概念」を集約（混ざりを解消）
 
-- [ ] `src/render/layer.py` を `src/core/layer.py` へ移動（Layer/LayerStyleDefaults/resolve_layer_style）。
-- [ ] `src/render/scene.py` を `src/core/scene.py` へ移動（SceneItem/normalize_scene）。
-- [ ] 参照箇所（`src/api/layers.py`, `src/api/run.py`, tests など）の import を更新。
-- [ ] “render という名前にドメイン概念が入っている” 状態を解消（以降 `render` という語を interactive/export の実装側にのみ残す）。
+- [x] `src/render/layer.py` を `src/core/layer.py` へ移動（Layer/LayerStyleDefaults/resolve_layer_style）。
+- [x] `src/render/scene.py` を `src/core/scene.py` へ移動（SceneItem/normalize_scene）。
+- [x] 参照箇所（`src/api/layers.py`, `src/api/run.py`, tests など）の import を更新。
+- [x] “render という名前にドメイン概念が入っている” 状態を解消（以降 `render` という語を interactive/export の実装側にのみ残す）。
 
 ### Phase 2: core.pipeline を確立（GL 非依存の最終形を返す）
 
-- [ ] `src/render/frame_pipeline.py` を `src/core/pipeline.py` へ再設計して移動（GL index 生成を削除）。
-- [ ] `tests/render/test_frame_pipeline.py` を core.pipeline の契約に合わせて更新（renderer スタブではなく “返り値” を検証する形へ）。
-- [ ] `build_line_indices` と `PRIMITIVE_RESTART_INDEX` 依存を interactive 側へ押し込む。
+- [x] `src/render/frame_pipeline.py` を `src/core/pipeline.py` へ再設計して移動（GL index 生成を削除）。
+- [x] `tests/core/test_pipeline.py` を core.pipeline の契約に合わせて更新（renderer スタブではなく “返り値” を検証する形へ）。
+- [x] `build_line_indices` と `PRIMITIVE_RESTART_INDEX` 依存を interactive 側へ押し込む。
 
 ### Phase 3: interactive を `src/interactive` へ移設（依存を隔離）
 
-- [ ] `src/app/*` を `src/interactive/*` へ移動（runtime/parameter_gui を保持）。
-- [ ] `src/render/*` のうち GL 実装（DrawRenderer/LineMesh/Shader/utils/index_buffer 等）を `src/interactive/gl/*` へ移動。
-- [ ] `src/api/run.py` から参照している import を新パスへ更新（公開 API は維持、ただし内部参照は更新）。
+- [x] `src/app/*` を `src/interactive/*` へ移動（runtime/parameter_gui を保持）。
+- [x] `src/render/*` のうち GL 実装（DrawRenderer/LineMesh/Shader/utils/index_buffer 等）を `src/interactive/gl/*` へ移動。
+- [x] `src/api/run.py` から参照している import を新パスへ更新（公開 API は維持、ただし内部参照は更新）。
 
 ### Phase 4: core の中核（parameters/primitives/effects）を core 配下へ集約
 
-- [ ] `src/parameters` → `src/core/parameters` へ移動し、全 import を更新。
-- [ ] `src/primitives` → `src/core/primitives`、`src/effects` → `src/core/effects` へ移動し、登録 import（`src/api/primitives.py`, `src/api/effects.py`）を更新。
-- [ ] （必要なら）`src/core/effects/AGENTS.md` を新設し、現 `src/effects/AGENTS.md` のルール（相互依存禁止等）を維持する。
+- [x] `src/parameters` → `src/core/parameters` へ移動し、全 import を更新。
+- [x] `src/primitives` → `src/core/primitives`、`src/effects` → `src/core/effects` へ移動し、登録 import（`src/api/primitives.py`, `src/api/effects.py`）を更新。
+- [x] （必要なら）`src/core/effects/AGENTS.md` を新設し、現 `src/effects/AGENTS.md` のルール（相互依存禁止等）を維持する。
 
 ### Phase 5: export API の骨格（スタブを先に置く）
 
-- [ ] `src/export/svg.py` / `src/export/image.py` / `src/export/gcode.py` を追加し、公開したい関数/クラスのシグネチャだけ先に固定する（中身は空実装でよい）。
-- [ ] “ヘッドレス export” の入口を `src/api/export.py` に用意する（`Export(draw, t, fmt, path, ...)` の形）。
+- [x] `src/export/svg.py` / `src/export/image.py` / `src/export/gcode.py` を追加し、公開したい関数/クラスのシグネチャだけ先に固定する（中身は空実装でよい）。
+- [x] “ヘッドレス export” の入口を `src/api/export.py` に用意する（`Export(draw, t, fmt, path, ...)` の形）。
 - [ ] interactive 実行時の保存（画像/svg/g-code/動画）は Keyboard Shortcut 経由を基本とし、ユーザーが `from api import Export` しなくても保存できる導線にする。
-- [ ] export が `pyglet/moderngl/imgui` を import しないことをテストで保証する。
+- [x] export が `pyglet/moderngl/imgui` を import しないことをテストで保証する。
 
 ### Phase 6: 依存方向の自動検査（壊れない仕組み）
 
-- [ ] `tests/test_dependency_boundaries.py` を追加し、`src/core` が `src/interactive` / `src/export` を import していないことを AST で検査。
+- [x] `tests/test_dependency_boundaries.py` を追加し、`src/core` が `src/interactive` / `src/export` を import していないことを AST で検査。
 - [ ] `import src.core` / `import src.export` が `pyglet/moderngl/imgui` を引かないことを smoke テスト化（必要なら `importlib` + `sys.modules` で確認）。
 
 ### Phase 7: ドキュメント更新
@@ -173,3 +173,9 @@ src/
 - 画質/AA/録画などの高度なレンダリング品質改善（export の “成立” を優先）。
 - SVG/PNG/G-code/動画の具体的なファイル生成（Phase 5 では空実装/スタブまで）。
 - 依存管理（pyproject/extras）を整える作業（必要になった段階で別計画に切り出す）。
+
+## 9. 追加: 後片付け（テスト配置/旧ディレクトリ削除）
+
+- [x] `src/app`, `src/render`, `src/parameters` が不要なことを確認し、残骸を削除する（tracked/untracked 両方）。
+- [x] `tests/` 配下を新レイヤ構造に合わせて整理する（`tests/core`, `tests/interactive` へ集約）。
+- [x] `pytest -q` を通し、結果をこの計画に記録する（177 passed, 2.97s）。

@@ -9,7 +9,7 @@ from collections.abc import ItemsView
 from typing import Any, Callable, Sequence
 
 from src.core.realized_geometry import RealizedGeometry
-from src.parameters.meta import ParamMeta
+from src.core.parameters.meta import ParamMeta
 
 EffectFunc = Callable[
     [Sequence[RealizedGeometry], tuple[tuple[str, Any], ...]],
@@ -153,7 +153,9 @@ def effect(
         f: Callable[..., RealizedGeometry],
     ) -> Callable[..., RealizedGeometry]:
         module = str(f.__module__)
-        if meta is None and (module.startswith("src.effects.") or module.startswith("effects.")):
+        if meta is None and (
+            module.startswith("src.core.effects.") or module.startswith("core.effects.")
+        ):
             raise ValueError(f"組み込み effect は meta 必須: {f.__module__}.{f.__name__}")
 
         def wrapper(
