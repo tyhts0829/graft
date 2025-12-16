@@ -12,7 +12,13 @@ CANVAS_HEIGHT = 300
 
 def draw(t: float):
     ply1 = G.polyhedron()
-    eff1 = E(name="eff_ply1").repeat().repeat()
+    eff1 = (
+        E(name="eff_ply1")
+        .affine(rotation=(t * 5, t * 5, t * 5))
+        .fill()
+        .subdivide()
+        .displace()
+    )
 
     return L(eff1(ply1))
 
