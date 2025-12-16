@@ -47,9 +47,9 @@ def _render_minmax_cell(
     imgui,
     *,
     rules,
-    ui_min: object | None,
-    ui_max: object | None,
-) -> tuple[bool, object | None, object | None]:
+    ui_min: float | int | None,
+    ui_max: float | int | None,
+) -> tuple[bool, float | int | None, float | int | None]:
     """min-max 列を描画し、(changed, ui_min, ui_max) を返す。"""
 
     imgui.table_set_column_index(2)
