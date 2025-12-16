@@ -164,6 +164,21 @@ def test_layer_style_site_id_change_hides_loaded_group_and_prunes_on_save_path()
     assert old_site_id not in layer_sites_full
 
 
+def test_from_json_compacts_ordinals_across_all_ops():
+    payload = json.dumps(
+        {
+            "ordinals": {
+                LAYER_STYLE_OP: {"layer-site": 3},
+                "polyhedron": {"a": 2, "b": 5},
+            }
+        }
+    )
+    store = ParamStore.from_json(payload)
+    assert store.get_ordinal(LAYER_STYLE_OP, "layer-site") == 1
+    assert store.get_ordinal("polyhedron", "a") == 1
+    assert store.get_ordinal("polyhedron", "b") == 2
+
+
 def test_reconcile_does_not_migrate_when_ambiguous():
     # 同じ op/args を持つ stale が複数あるときは誤マッチを避けて移行しない。
     original = ParamStore()

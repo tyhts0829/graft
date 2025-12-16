@@ -14,7 +14,7 @@ from .store_bridge import render_store_parameter_table
 from .table import COLUMN_WEIGHTS_DEFAULT
 
 _DEFAULT_GUI_FONT_PATH = Path("data/input/font/SFNS.ttf")
-_DEFAULT_GUI_FONT_SIZE_PX = 14.0
+_DEFAULT_GUI_FONT_SIZE_PX = 20.0
 
 
 class ParameterGUI:

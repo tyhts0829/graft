@@ -22,8 +22,8 @@ from src.render.layer import LayerStyleDefaults
 from src.render.render_settings import RenderSettings
 from src.render.scene import SceneItem
 
-DRAW_WINDOW_POS = (500, 100)
-PARAMETER_GUI_POS = (1800, 100)
+DRAW_WINDOW_POS = (25, 25)
+PARAMETER_GUI_POS = (950, 25)
 
 
 def run(

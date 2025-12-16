@@ -37,60 +37,108 @@ def _empty_geometry() -> RealizedGeometry:
 
 
 @njit(cache=True, fastmath=True)  # type: ignore[misc]
-def _apply_transform_to_coords_range(
-    coords: np.ndarray,
+def _repeat_fill_all(
+    base_coords: np.ndarray,
+    base_offsets_tail: np.ndarray,
+    n_dups: int,
+    curve: float,
+    cumulative_scale: bool,
+    cumulative_offset: bool,
+    cumulative_rotate: bool,
     center: np.ndarray,
-    scale: np.ndarray,
-    rotate: np.ndarray,
-    offset: np.ndarray,
     out_coords: np.ndarray,
-    out_start: int,
+    out_offsets: np.ndarray,
+    offset_end: np.ndarray,
+    scale_end: np.ndarray,
+    rotate_end: np.ndarray,
 ) -> None:
-    """中心移動→スケール→回転→平行移動→中心復帰を適用する。"""
-    rx = float(rotate[0])
-    ry = float(rotate[1])
-    rz = float(rotate[2])
+    """repeat の全コピーを 1 カーネルで生成する。"""
+    n_vertices = base_coords.shape[0]
+    n_lines = base_offsets_tail.shape[0]
+    copies = n_dups + 1
 
-    sin_x = math.sin(rx)
-    cos_x = math.cos(rx)
-    sin_y = math.sin(ry)
-    cos_y = math.cos(ry)
-    sin_z = math.sin(rz)
-    cos_z = math.cos(rz)
-
-    r00 = cos_y * cos_z
-    r01 = sin_x * sin_y * cos_z - cos_x * sin_z
-    r02 = cos_x * sin_y * cos_z + sin_x * sin_z
-    r10 = cos_y * sin_z
-    r11 = sin_x * sin_y * sin_z + cos_x * cos_z
-    r12 = cos_x * sin_y * sin_z - sin_x * cos_z
-    r20 = -sin_y
-    r21 = sin_x * cos_y
-    r22 = cos_x * cos_y
+    out_offsets[0] = 0
 
     cx = float(center[0])
     cy = float(center[1])
     cz = float(center[2])
-    sx = float(scale[0])
-    sy = float(scale[1])
-    sz = float(scale[2])
-    ox = float(offset[0])
-    oy = float(offset[1])
-    oz = float(offset[2])
 
-    n = coords.shape[0]
-    for i in range(n):
-        x = (float(coords[i, 0]) - cx) * sx
-        y = (float(coords[i, 1]) - cy) * sy
-        z = (float(coords[i, 2]) - cz) * sz
+    off_end_x = float(offset_end[0])
+    off_end_y = float(offset_end[1])
+    off_end_z = float(offset_end[2])
+    scale_end_x = float(scale_end[0])
+    scale_end_y = float(scale_end[1])
+    scale_end_z = float(scale_end[2])
+    rot_end_x = float(rotate_end[0])
+    rot_end_y = float(rotate_end[1])
+    rot_end_z = float(rotate_end[2])
+    curve_f = float(curve)
 
-        rx0 = x * r00 + y * r01 + z * r02
-        ry0 = x * r10 + y * r11 + z * r12
-        rz0 = x * r20 + y * r21 + z * r22
+    for k in range(copies):
+        v_start = k * n_vertices
 
-        out_coords[out_start + i, 0] = rx0 + cx + ox
-        out_coords[out_start + i, 1] = ry0 + cy + oy
-        out_coords[out_start + i, 2] = rz0 + cz + oz
+        o_start = 1 + k * n_lines
+        for li in range(n_lines):
+            out_offsets[o_start + li] = int(base_offsets_tail[li]) + int(v_start)
+
+        if k == 0:
+            for i in range(n_vertices):
+                out_coords[v_start + i, 0] = base_coords[i, 0]
+                out_coords[v_start + i, 1] = base_coords[i, 1]
+                out_coords[v_start + i, 2] = base_coords[i, 2]
+            continue
+
+        t = float(k) / float(n_dups)
+        if cumulative_scale or cumulative_offset or cumulative_rotate:
+            t_curve = t**curve_f
+        else:
+            t_curve = t
+
+        t_scale = t_curve if cumulative_scale else t
+        t_offset = t_curve if cumulative_offset else t
+        t_rotate = t_curve if cumulative_rotate else t
+
+        sx = 1.0 + (scale_end_x - 1.0) * t_scale
+        sy = 1.0 + (scale_end_y - 1.0) * t_scale
+        sz = 1.0 + (scale_end_z - 1.0) * t_scale
+
+        ox = off_end_x * t_offset
+        oy = off_end_y * t_offset
+        oz = off_end_z * t_offset
+
+        rx = rot_end_x * t_rotate
+        ry = rot_end_y * t_rotate
+        rz = rot_end_z * t_rotate
+
+        sin_x = math.sin(rx)
+        cos_x = math.cos(rx)
+        sin_y = math.sin(ry)
+        cos_y = math.cos(ry)
+        sin_z = math.sin(rz)
+        cos_z = math.cos(rz)
+
+        r00 = cos_y * cos_z
+        r01 = sin_x * sin_y * cos_z - cos_x * sin_z
+        r02 = cos_x * sin_y * cos_z + sin_x * sin_z
+        r10 = cos_y * sin_z
+        r11 = sin_x * sin_y * sin_z + cos_x * cos_z
+        r12 = cos_x * sin_y * sin_z - sin_x * cos_z
+        r20 = -sin_y
+        r21 = sin_x * cos_y
+        r22 = cos_x * cos_y
+
+        for i in range(n_vertices):
+            x = (float(base_coords[i, 0]) - cx) * sx
+            y = (float(base_coords[i, 1]) - cy) * sy
+            z = (float(base_coords[i, 2]) - cz) * sz
+
+            rx0 = x * r00 + y * r01 + z * r02
+            ry0 = x * r10 + y * r11 + z * r12
+            rz0 = x * r20 + y * r21 + z * r22
+
+            out_coords[v_start + i, 0] = rx0 + cx + ox
+            out_coords[v_start + i, 1] = ry0 + cy + oy
+            out_coords[v_start + i, 2] = rz0 + cz + oz
 
 
 @effect(meta=repeat_meta)
@@ -187,36 +235,21 @@ def repeat(
     copies = n_dups + 1
     out_coords = np.empty((n_vertices * copies, 3), dtype=np.float32)
     out_offsets = np.empty((n_lines * copies + 1,), dtype=np.int32)
-    out_offsets[0] = 0
-
     base_tail = base.offsets[1:]
-    base_scale = np.array([1.0, 1.0, 1.0], dtype=np.float32)
-    for k in range(copies):
-        v_start = k * n_vertices
-        v_end = v_start + n_vertices
-        if k == 0:
-            out_coords[v_start:v_end] = base.coords
-        else:
-            t = k / float(n_dups)
-            t_scale = t**curve if cumulative_scale else t
-            t_offset = t**curve if cumulative_offset else t
-            t_rotate = t**curve if cumulative_rotate else t
-
-            scale_step = base_scale + (scale_end - base_scale) * np.float32(t_scale)
-            offset_step = offset_end * np.float32(t_offset)
-            rotate_step = rotate_end * np.float32(t_rotate)
-            _apply_transform_to_coords_range(
-                base.coords,
-                center32,
-                scale_step,
-                rotate_step,
-                offset_step,
-                out_coords,
-                int(v_start),
-            )
-
-        o_start = 1 + k * n_lines
-        o_end = o_start + n_lines
-        out_offsets[o_start:o_end] = base_tail + v_start
+    _repeat_fill_all(
+        base.coords,
+        base_tail,
+        int(n_dups),
+        float(curve),
+        bool(cumulative_scale),
+        bool(cumulative_offset),
+        bool(cumulative_rotate),
+        center32,
+        out_coords,
+        out_offsets,
+        offset_end,
+        scale_end,
+        rotate_end,
+    )
 
     return RealizedGeometry(coords=out_coords, offsets=out_offsets)

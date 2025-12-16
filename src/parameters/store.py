@@ -89,6 +89,36 @@ class ParamStore:
         mapping[site_id] = ordinal
         return ordinal
 
+    @staticmethod
+    def _compact_ordinals_map_in_place(mapping: dict[str, int]) -> None:
+        """ordinal が 1..N の連番になるように詰め直す（相対順序は維持）。"""
+
+        def _sort_key(item: tuple[str, int]) -> tuple[int, str]:
+            site_id, ordinal = item
+            try:
+                ordinal_i = int(ordinal)
+            except Exception:
+                ordinal_i = 0
+            return ordinal_i, str(site_id)
+
+        ordered_site_ids = [site_id for site_id, _ in sorted(mapping.items(), key=_sort_key)]
+        mapping.clear()
+        for i, site_id in enumerate(ordered_site_ids, start=1):
+            mapping[str(site_id)] = int(i)
+
+    def _compact_all_ordinals(self) -> None:
+        """すべての op について ordinal を 1..N に詰め直す。"""
+
+        for op in list(self._ordinals.keys()):
+            mapping = self._ordinals.get(op)
+            if not isinstance(mapping, dict):
+                self._ordinals.pop(op, None)
+                continue
+            if not mapping:
+                self._ordinals.pop(op, None)
+                continue
+            self._compact_ordinals_map_in_place(mapping)
+
     def _assign_chain_ordinal(self, chain_id: str) -> int:
         if chain_id in self._chain_ordinals:
             return self._chain_ordinals[chain_id]
@@ -364,6 +394,8 @@ class ParamStore:
         if not groups:
             return
 
+        affected_ops: set[str] = set()
+
         for key in list(self._states.keys()):
             if (str(key.op), str(key.site_id)) in groups:
                 del self._states[key]
@@ -378,12 +410,18 @@ class ParamStore:
             self._labels.pop(group, None)
 
         for op, site_id in groups:
+            affected_ops.add(str(op))
             mapping = self._ordinals.get(op)
             if mapping is not None:
                 mapping.pop(site_id, None)
                 if not mapping:
                     self._ordinals.pop(op, None)
             self._effect_steps.pop((op, site_id), None)
+
+        for op in affected_ops:
+            mapping = self._ordinals.get(op)
+            if mapping is not None:
+                self._compact_ordinals_map_in_place(mapping)
 
         used_chain_ids = {str(chain_id) for chain_id, _step in self._effect_steps.values()}
         for chain_id in list(self._chain_ordinals.keys()):
@@ -479,6 +517,7 @@ class ParamStore:
         for item in obj.get("labels", []):
             store._labels[(item["op"], item["site_id"])] = item["label"]
         store._ordinals = obj.get("ordinals", {})
+        store._compact_all_ordinals()
         for item in obj.get("effect_steps", []):
             store._effect_steps[(item["op"], item["site_id"])] = (
                 item["chain_id"],
