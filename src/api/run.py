@@ -100,8 +100,8 @@ def run(
     )
     draw_window.window.set_location(*DRAW_WINDOW_POS)
 
-    # `systems` は teardown 用（close 順もここで管理する）。
-    systems = [draw_window]
+    # `closers` は teardown 用（close 順もここで管理する）。
+    closers: list[Callable[[], None]] = [draw_window.close]
 
     # `tasks` はループ駆動用（イベント処理→描画→flip の対象）。
     tasks = [WindowTask(window=draw_window.window, draw_frame=draw_window.draw_frame)]
@@ -112,7 +112,7 @@ def run(
 
         gui = ParameterGUIWindowSystem(store=param_store)
         gui.window.set_location(*PARAMETER_GUI_POS)
-        systems.append(gui)
+        closers.append(gui.close)
         tasks.append(WindowTask(window=gui.window, draw_frame=gui.draw_frame))
 
     # --- ループの実行 ---
@@ -128,5 +128,5 @@ def run(
         finally:
             # 例外でも確実に後始末する。
             # 作成順の逆で閉じることで、後に作ったサブシステム（GUI など）から先に破棄できる。
-            for system in reversed(systems):
-                system.close()
+            for close in reversed(closers):
+                close()
