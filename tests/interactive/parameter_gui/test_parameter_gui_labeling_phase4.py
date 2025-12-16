@@ -1,8 +1,8 @@
-from src.interactive.parameter_gui.labeling import format_layer_style_row_label
-from src.interactive.parameter_gui.store_bridge import _order_rows_for_display
-from src.core.parameters.layer_style import LAYER_STYLE_OP
-from src.core.parameters.style import STYLE_OP
-from src.core.parameters.view import ParameterRow
+from graft.interactive.parameter_gui.labeling import format_layer_style_row_label
+from graft.interactive.parameter_gui.store_bridge import _order_rows_for_display
+from graft.core.parameters.layer_style import LAYER_STYLE_OP
+from graft.core.parameters.style import STYLE_OP
+from graft.core.parameters.view import ParameterRow
 
 
 def test_format_layer_style_row_label():

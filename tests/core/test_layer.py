@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from src.core.geometry import Geometry
-from src.core.layer import Layer, LayerStyleDefaults, resolve_layer_style
+from graft.core.geometry import Geometry
+from graft.core.layer import Layer, LayerStyleDefaults, resolve_layer_style
 
 
 def _geometry() -> Geometry:

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from src.core.geometry import Geometry
-from src.core.realize import realize
-from src.core.primitives import line as _line_module  # noqa: F401
+from graft.core.geometry import Geometry
+from graft.core.realize import realize
+from graft.core.primitives import line as _line_module  # noqa: F401
 
 
 def test_line_default_is_centered_unit_segment() -> None:

@@ -1,9 +1,9 @@
-from src.interactive.parameter_gui.labeling import (
+from graft.interactive.parameter_gui.labeling import (
     dedup_display_names_in_order,
     format_param_row_label,
     primitive_header_display_names_from_snapshot,
 )
-from src.core.parameters import ParameterKey
+from graft.core.parameters import ParameterKey
 
 
 def test_format_param_row_label():

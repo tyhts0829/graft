@@ -1,6 +1,6 @@
 import pytest
 
-from src.core.parameters import (
+from graft.core.parameters import (
     ParameterKey,
     ParamMeta,
     ParamState,

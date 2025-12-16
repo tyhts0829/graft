@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from src.core.geometry import Geometry
-from src.core.realize import _inflight, _inflight_lock, realize, realize_cache
-from src.core.primitives import circle as _circle_module  # noqa: F401
+from graft.core.geometry import Geometry
+from graft.core.realize import _inflight, _inflight_lock, realize, realize_cache
+from graft.core.primitives import circle as _circle_module  # noqa: F401
 from tools.cache_check import (
     FrameRealizeLog,
     RealizeEventType,

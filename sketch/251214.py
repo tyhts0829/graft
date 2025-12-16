@@ -1,5 +1,5 @@
 """
-どこで: リポジトリ直下 `main.py`。
+どこで: `sketch/251214.py`。
 何を: API を用いた簡単なスケッチを定義し、run でプレビュー表示する。
 なぜ: 動作確認用の最小エントリポイントとして利用するため。
 """
@@ -8,7 +8,7 @@ import sys
 
 sys.path.append("src")
 
-from api import E, G, L, run
+from graft.api import E, G, L, run
 
 CANVAS_WIDTH = 300
 CANVAS_HEIGHT = 300

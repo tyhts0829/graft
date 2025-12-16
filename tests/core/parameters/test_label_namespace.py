@@ -1,6 +1,6 @@
-from src.api import E, G
-from src.core.parameters import ParamStore, ParameterKey
-from src.core.parameters.context import parameter_context
+from graft.api import E, G
+from graft.core.parameters import ParamStore, ParameterKey
+from graft.core.parameters.context import parameter_context
 
 
 def test_primitive_name_sets_label():

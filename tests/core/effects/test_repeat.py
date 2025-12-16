@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import numpy as np
 
-from src.api import E, G
-from src.core.primitive_registry import primitive
-from src.core.realize import realize
-from src.core.realized_geometry import RealizedGeometry
+from graft.api import E, G
+from graft.core.primitive_registry import primitive
+from graft.core.realize import realize
+from graft.core.realized_geometry import RealizedGeometry
 
 
 @primitive

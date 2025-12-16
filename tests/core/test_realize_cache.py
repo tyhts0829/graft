@@ -7,10 +7,10 @@ import time
 
 import pytest
 
-from src.core.geometry import Geometry
-from src.core.primitive_registry import primitive_registry
-from src.core.realize import _inflight, _inflight_lock, realize, realize_cache
-from src.core.primitives import circle as _circle_module  # noqa: F401
+from graft.core.geometry import Geometry
+from graft.core.primitive_registry import primitive_registry
+from graft.core.realize import _inflight, _inflight_lock, realize, realize_cache
+from graft.core.primitives import circle as _circle_module  # noqa: F401
 
 
 @pytest.fixture(autouse=True)

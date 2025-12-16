@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from src.core.geometry import Geometry
-from src.core.realize import realize
-from src.core.primitives import torus as _torus_module  # noqa: F401
+from graft.core.geometry import Geometry
+from graft.core.realize import realize
+from graft.core.primitives import torus as _torus_module  # noqa: F401
 
 
 def _assert_polylines_closed(coords: np.ndarray, offsets: np.ndarray) -> None:

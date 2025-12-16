@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from src.core.geometry import Geometry
-from src.core.realize import realize
-from src.core.primitives import circle as _circle_module  # noqa: F401
+from graft.core.geometry import Geometry
+from graft.core.realize import realize
+from graft.core.primitives import circle as _circle_module  # noqa: F401
 
 
 def test_circle_polyline_is_closed() -> None:

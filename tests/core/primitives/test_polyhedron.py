@@ -5,9 +5,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from src.core.geometry import Geometry
-from src.core.realize import realize
-from src.core.primitives import polyhedron as _polyhedron_module  # noqa: F401
+from graft.core.geometry import Geometry
+from graft.core.realize import realize
+from graft.core.primitives import polyhedron as _polyhedron_module  # noqa: F401
 
 
 @pytest.mark.parametrize(

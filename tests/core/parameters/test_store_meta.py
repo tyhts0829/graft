@@ -1,4 +1,4 @@
-from src.core.parameters import FrameParamRecord, ParamMeta, ParamState, ParamStore, ParameterKey
+from graft.core.parameters import FrameParamRecord, ParamMeta, ParamState, ParamStore, ParameterKey
 
 
 def test_snapshot_includes_meta_state_and_ordinal():

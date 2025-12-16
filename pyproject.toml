@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "graft"
+version = "0.0.0"
+description = "Line-based geometry toolkit with chained effects and real-time preview."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+dependencies = [
+  "numpy",
+  "numba",
+]
+
+[project.optional-dependencies]
+shapely = ["shapely"]
+interactive = [
+  "moderngl",
+  "pyglet",
+  "pyimgui",
+]
+dev = [
+  "pytest",
+  "ruff",
+  "mypy",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["graft*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true

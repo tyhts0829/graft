@@ -1,6 +1,6 @@
-from src.interactive.parameter_gui.group_blocks import group_blocks_from_rows
-from src.core.parameters.style import STYLE_OP
-from src.core.parameters.view import ParameterRow
+from graft.interactive.parameter_gui.group_blocks import group_blocks_from_rows
+from graft.core.parameters.style import STYLE_OP
+from graft.core.parameters.view import ParameterRow
 
 
 def _row(*, op: str, site_id: str, ordinal: int, arg: str) -> ParameterRow:

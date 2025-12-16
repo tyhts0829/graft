@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from src.core.parameters import ParamStore
-from src.core.parameters.style import (
+from graft.core.parameters import ParamStore
+from graft.core.parameters.style import (
     STYLE_BACKGROUND_COLOR,
     STYLE_GLOBAL_LINE_COLOR,
     STYLE_GLOBAL_THICKNESS,

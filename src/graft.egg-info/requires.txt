@@ -1,0 +1,15 @@
+numpy
+numba
+
+[dev]
+pytest
+ruff
+mypy
+
+[interactive]
+moderngl
+pyglet
+pyimgui
+
+[shapely]
+shapely

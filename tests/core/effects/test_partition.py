@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import numpy as np
 
-from src.api import G
-from src.core.primitive_registry import primitive
-from src.core.realize import realize
-from src.core.realized_geometry import RealizedGeometry
-from src.core.effects.partition import partition as partition_impl
-from src.core.effects.rotate import rotate as rotate_impl
+from graft.api import G
+from graft.core.primitive_registry import primitive
+from graft.core.realize import realize
+from graft.core.realized_geometry import RealizedGeometry
+from graft.core.effects.partition import partition as partition_impl
+from graft.core.effects.rotate import rotate as rotate_impl
 
 
 @primitive

@@ -58,14 +58,14 @@ def _assert_no_forbidden_imports(
 def test_core_does_not_depend_on_export_or_interactive() -> None:
     root = _repo_root()
     _assert_no_forbidden_imports(
-        root=root / "src" / "core",
-        forbidden_prefixes=("src.export", "src.interactive", "pyglet", "moderngl", "imgui"),
+        root=root / "src" / "graft" / "core",
+        forbidden_prefixes=("graft.export", "graft.interactive", "pyglet", "moderngl", "imgui"),
     )
 
 
 def test_export_does_not_depend_on_interactive() -> None:
     root = _repo_root()
     _assert_no_forbidden_imports(
-        root=root / "src" / "export",
-        forbidden_prefixes=("src.interactive", "pyglet", "moderngl", "imgui"),
+        root=root / "src" / "graft" / "export",
+        forbidden_prefixes=("graft.interactive", "pyglet", "moderngl", "imgui"),
     )

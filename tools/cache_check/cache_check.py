@@ -25,15 +25,15 @@ def main() -> None:
     script_dir = Path(__file__).resolve().parent
     project_root = script_dir.parents[1]
 
-    # src 配下の実装を import できるようにする。
+    # src レイアウトのパッケージ（graft）を import できるようにする。
     sys.path.append(str(project_root / "src"))
 
     # トレーサを先にインストールしてから realize を import する。
     install_realize_tracer()
 
-    from api import E, G  # type: ignore[import]
-    from src.core.geometry import Geometry  # type: ignore[import]
-    from src.core.realize import realize  # type: ignore[import]
+    from graft.api import E, G  # type: ignore[import]
+    from graft.core.geometry import Geometry  # type: ignore[import]
+    from graft.core.realize import realize  # type: ignore[import]
 
     # circle2 つと concat/scale からなる少し大きめの DAG を構築。
     base1 = G.circle(r=1.0)

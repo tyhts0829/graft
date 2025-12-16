@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import numpy as np
 
-from src.api import E, G
-from src.core.effect_registry import effect
-from src.core.primitive_registry import primitive
-from src.core.realized_geometry import RealizedGeometry
-from src.core.parameters import ParamStore, parameter_context
+from graft.api import E, G
+from graft.core.effect_registry import effect
+from graft.core.primitive_registry import primitive
+from graft.core.realized_geometry import RealizedGeometry
+from graft.core.parameters import ParamStore, parameter_context
 
 
 def _empty_geometry() -> RealizedGeometry:

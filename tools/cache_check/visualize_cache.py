@@ -11,8 +11,8 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Generator, Sequence
 
-import src.core.realize as _realize_module
-from src.core.geometry import Geometry
+import graft.core.realize as _realize_module
+from graft.core.geometry import Geometry
 
 
 class RealizeEventType(Enum):

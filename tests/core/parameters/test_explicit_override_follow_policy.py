@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import json
 
-from src.core.parameters import ParamMeta, ParamStore, ParameterKey
-from src.core.parameters.frame_params import FrameParamRecord
+from graft.core.parameters import ParamMeta, ParamStore, ParameterKey
+from graft.core.parameters.frame_params import FrameParamRecord
 
 
 def test_override_follows_implicit_to_explicit_change_when_still_default():

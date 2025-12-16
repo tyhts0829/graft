@@ -1,4 +1,4 @@
-from src.core.parameters import ParamMeta, ParamStore, parameter_context, resolve_params
+from graft.core.parameters import ParamMeta, ParamStore, parameter_context, resolve_params
 
 
 def test_merge_creates_state_and_ordinal():

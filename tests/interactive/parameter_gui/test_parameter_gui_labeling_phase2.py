@@ -1,11 +1,11 @@
-from src.api import E, G
-from src.interactive.parameter_gui.labeling import (
+from graft.api import E, G
+from graft.interactive.parameter_gui.labeling import (
     effect_chain_header_display_names_from_snapshot,
     effect_step_ordinals_by_site,
     format_param_row_label,
 )
-from src.core.effect_registry import effect_registry
-from src.core.parameters import ParamStore, ParameterKey, parameter_context
+from graft.core.effect_registry import effect_registry
+from graft.core.parameters import ParamStore, ParameterKey, parameter_context
 
 
 def test_effect_chain_header_and_step_ordinals():
