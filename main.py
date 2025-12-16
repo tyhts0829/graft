@@ -15,9 +15,10 @@ def draw(t: float):
     eff1 = (
         E(name="eff_ply1")
         .affine(rotation=(t * 5, t * 5, t * 5))
-        .fill()
-        .subdivide()
+        # .fill()
+        # .subdivide()
         .displace()
+        .rotate()
     )
 
     return L(eff1(ply1))
