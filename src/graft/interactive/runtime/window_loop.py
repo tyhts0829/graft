@@ -49,6 +49,8 @@ class MultiWindowLoop:
         # on_close ハンドラから停止させるためのフラグ。
         # （pyglet.app.run() を使わず手動ループにしているので、自前で停止条件を持つ）
         running = True
+        frame_dt = 1.0 / self._fps if self._fps > 0 else 0.0
+        next_frame_time = time.perf_counter()
 
         def stop_loop(*_: object) -> None:
             # pyglet の on_close から呼ばれるコールバックは引数が来る場合があるため *args を受ける。
@@ -89,5 +91,12 @@ class MultiWindowLoop:
                 task.window.flip()
 
             # 目標 FPS の簡易スロットリング。
-            # vsync と併用されることもあるが、ここでは「動作の安定/実装の単純さ」を優先して残す。
-            time.sleep(1.0 / self._fps)
+            # 重いフレームで既に遅れている場合は余計に sleep しない。
+            if frame_dt > 0.0:
+                next_frame_time += frame_dt
+                now = time.perf_counter()
+                sleep_time = next_frame_time - now
+                if sleep_time > 0.0:
+                    time.sleep(sleep_time)
+                else:
+                    next_frame_time = now

@@ -73,6 +73,11 @@
 - ほぼ `draw(t)` の CPU が支配的（`realize_scene` の残りはごく小さい）。
 - このタイプは **Phase 2（mp-draw）** が効く想定。
 
+再計測（Phase 1A/1B/1C 実装後）:
+
+- `frame≈49.6ms`, `draw≈48.2–48.7ms`, `scene≈48.3–48.7ms`, `render_layer≈1.0–1.2ms`, `indices≈0.005ms`
+- 支配項は変わらず `draw`。Phase 2 の go 条件を満たす。
+
 #### Case: `many_vertices`（indices 支配）
 
 実行:
@@ -88,6 +93,11 @@
 - `build_line_indices(offsets)` が支配的で、ここを削るのが最短。
 - このスケッチはトポロジが固定（`offsets` が毎フレーム同じ）なので、**indices キャッシュ**だけで大きく改善できる見込み。
 - `draw` が極小のため mp-draw はほぼ効かない。GPU 同期も小さく、GPU ボトルネックの可能性は低い。
+
+再計測（Phase 1A/1B/1C 実装後）:
+
+- `frame≈8.6–9.3ms`, `indices≈0.003ms`, `scene≈6.2–6.7ms`, `render_layer≈1.5–1.8ms`, `gpu_finish≈0.69–0.76ms`
+- `indices` は解消。新しい支配項は `scene`（主に realize 側）へ移動。
 
 #### Case: `many_layers`（render_layer 支配）
 
@@ -105,6 +115,12 @@
 - mp-draw を入れても支配項が動かないので優先度は低い。
 - **Phase 1B（GPU upload/VAO まわりの最適化）**が最優先。
   - 特に現状の `LineMesh._ensure_capacity()` が、容量が足りている場合でも毎回 VAO を作り直しているため、レイヤー数が多いと致命的になりやすい。
+
+再計測（Phase 1A/1B/1C 実装後）:
+
+- `frame≈222–225ms`, `render_layer≈196–199ms (500x)`, `indices≈0.63–0.64ms (500x)`, `scene≈20–21.5ms`
+- `indices` は半減したが、支配項は引き続き `render_layer`。
+- 500 回/フレームの upload+draw 呼び出しが支配的なので、次の打ち手は「同一 layer の upload スキップ（静的向け）」と「呼び出し回数削減（バッチ化等）」が本命。
 
 ### 再計測のタイミング（いつ・何を測るか）
 
@@ -179,13 +195,14 @@ Phase 2（mp-draw）実装前後:
 ### Phase 1 チェックリスト
 
 - [x] Phase 0 の区間計測を入れて支配項を把握する（CPU/GPU/転送の切り分け）
-- [ ] indices キャッシュ導入（キー方針も決める）
-- [ ] `build_line_indices` 高速化（必要なら）
+- [x] indices キャッシュ導入（offsets 内容ベース）
+- [x] `build_line_indices` 高速化（キャッシュミス時もポリライン単位 + NumPy）
+- [x] `LineMesh._ensure_capacity()` の VAO 張り直し条件を修正（毎フレーム/毎レイヤーの VAO 再生成を止める）
 - [ ] `build_line_indices` の numba 版追加（必要なら。JIT ヒッチ対策も検討）
 - [ ] Layer 単位の GPU バッファキャッシュ導入（`geometry.id` キーで upload をスキップ）
 - [ ] `tobytes()` を避けた upload を試す（可能なら memoryview 化。効果は計測で判断）
-- [ ] `MultiWindowLoop` の sleep 見直し
-- [ ] 小さなテスト追加（indices の同値性、キャッシュが効くこと）
+- [x] `MultiWindowLoop` の sleep 見直し
+- [x] 小さなテスト追加（indices の同値性、キャッシュが効くこと）
 
 ### Phase 1 変更ファイル（案）
 

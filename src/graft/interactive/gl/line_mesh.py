@@ -53,22 +53,27 @@ class LineMesh:
     # ---------- バッファ操作 ----------
     def _ensure_capacity(self, vbo_size: int, ibo_size: int) -> None:
         """データが大きくなったらGPUのバッファを再確保"""
+        vao_needs_rebuild = False
         if vbo_size > self.vbo.size:
             self.vbo.release()
             self.vbo = self.ctx.buffer(
                 reserve=max(vbo_size, self.initial_reserve), dynamic=True
             )
+            vao_needs_rebuild = True
 
         if ibo_size > self.ibo.size:
             self.ibo.release()
             self.ibo = self.ctx.buffer(
                 reserve=max(ibo_size, self.initial_reserve), dynamic=True
             )
+            vao_needs_rebuild = True
 
-        # VAO は VBO/IBO が差し替わるたびに張り直す
-        self.vao = self.ctx.simple_vertex_array(
-            self.program, self.vbo, "in_vert", index_buffer=self.ibo
-        )
+        # VAO は VBO/IBO が差し替わるときだけ張り直す（毎フレーム/毎レイヤーは重い）。
+        if vao_needs_rebuild:
+            self.vao.release()
+            self.vao = self.ctx.simple_vertex_array(
+                self.program, self.vbo, "in_vert", index_buffer=self.ibo
+            )
 
     def upload(self, vertices: np.ndarray, indices: np.ndarray) -> None:
         """実際にデータをGPUへ送り込む"""
