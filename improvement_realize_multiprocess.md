@@ -1,101 +1,98 @@
-# realize の multiprocessing 化（Queue 通信）実装計画
+# draw(t) の multiprocessing 化（Queue 通信）実装計画
 
 ## 目的
 
-- `graft.core.realize.realize()` による Geometry 評価をマルチプロセス化し、CPU 負荷の高いフレームでのスループットを上げる。
-- `graft.api.run(..., n_worker=...)` でワーカープロセス数を指定できるようにする。
+- interactive 描画ループの中で CPU 負荷の高い `draw(t)` をワーカープロセスへオフロードし、メインプロセス（イベント処理 + OpenGL 描画）の停止を避ける。
+- `graft.api.run(..., n_worker=...)` でプロセス数を指定できるようにする。
 
 ## 前提 / 制約（今回の前提として固定）
 
 - 通信は `multiprocessing.Queue` を使う（内部は pipe + pickle による serialize/deserialize）。
 - `spawn` 環境で動くことを前提にする（macOS / Windows）。
-  - 子プロセスへ渡す **Process target / コールバックは picklable**（= モジュールトップレベル定義）である必要がある。
+  - 子プロセスへ渡す `draw` は picklable（= モジュールトップレベル定義）である必要がある。
   - 追加で、ユーザースケッチ側は `if __name__ == "__main__":` ガード必須（README 例と同様）。
+- ワーカーは CPU 計算だけを行う。pyglet window / OpenGL / GPU リソースはメインプロセスのみで扱う。
+- Parameter GUI の実体 `ParamStore` はメインプロセスに残す。
+  - メインで作った `ParamStore.snapshot()` をワーカーへ渡し、`resolve_params` が参照する `current_param_snapshot` を固定する。
+  - ワーカーで観測した `FrameParamRecord` と `set_label(...)` 呼び出しをメインへ戻し、メインで `ParamStore` にマージする。
 - 「賢い」分散はやらず、まずは **シンプルで動く最小実装** を優先する（過度に防御的にしない）。
 
 ## スコープ（やる / やらない）
 
 ### やる
 
-- `realize` を「メインプロセス → ワーカープロセス」にオフロードする仕組みを追加する。
-- `run` に `n_worker` 引数を追加し、interactive 描画で利用できるようにする。
-- `pytest` で最低限の動作確認テストを追加する（spawn で動くことを担保）。
+- 「1フレーム = draw(t) + normalize_scene」 をタスクとして並列実行する `DrawProcessPool` を追加する。
+- interactive 描画ループでは non-blocking に結果を取り込み、描画は常にメインで行う。
+- `n_worker<=1` では現行の同期パス（既存挙動）を維持し、`n_worker>=2` で mp を有効化する。
+- `pytest` で最低限の動作確認テストを追加する（spawn で動くことを担保。GUI は立ち上げない）。
 
 ### やらない（初期版では見送る）
 
-- ノード単位（DAG 内部）の細粒度スケジューリング（依存解決・共有キャッシュなど）。
-  - Queue + pickle 前提だと中間 `RealizedGeometry(np.ndarray)` の往復が増えて逆効果になりやすい。
+- 1 回の `draw(t)` の内部を自動分割して並列化する（ユーザーコードの意味論に踏み込むため）。
+- `RealizedGeometry(np.ndarray)` を毎フレームワーカーから返す「draw+realize」モード（pickle 転送が重くなりやすいので後回し）。
 - 共有メモリ最適化（`shared_memory` / `memmap` / zero-copy）。
 - ワーカー死活監視・自動再起動・タイムアウト等（必要になってから足す）。
 
 ## 方式案（決定案）
 
-### 決定: 「レイヤー（root Geometry）単位」を並列化する
+### 決定: フレーム単位の非同期パイプライン（最新結果優先）
 
-- `draw(t)` / `normalize_scene` / style 解決は **メインプロセス**のまま。
-- 各 Layer の `geometry: Geometry` を **タスクとして Queue で送る**。
-- ワーカー側は受け取った `Geometry` に対して既存の `realize(geometry)` を実行し、`RealizedGeometry` を返す。
+- メインプロセスは「イベント処理」「Style 確定」「結果のレンダリング」を担当する。
+- ワーカーは `draw(t)` を実行（parameter snapshot を固定）→ `normalize_scene(scene)` → `list[Layer]` を返す。
+- 計算が追いつかない場合は「古い結果は捨てる」。UI の追従性を優先する。
 
-狙い:
-- 送受信する `RealizedGeometry` は「最終結果の分」だけに限定できる（中間結果を送らない）。
-- 既存の `realize_cache` / `_inflight` を大きく壊さずに導入できる（ただしキャッシュは “プロセス内”）。
+### スケジューリング（案）
 
-トレードオフ:
-- 1 枚の巨大 Geometry だけを描くケースでは並列化が効きにくい（将来の拡張ポイント）。
-- 異なるワーカー間でキャッシュ共有できないので、同一サブグラフが複数レイヤーに跨ると重複計算が起きうる。
+- `frame_id` を単調増加で付与する。
+- タスクキューは `maxsize = n_worker` とし、in-flight を増やしすぎない（キューを膨らませない）。
+- `DrawWindowSystem.draw_frame()` では以下を繰り返す:
+  - 結果キューを drain して最新 `frame_id` の結果だけ採用する。
+  - 空きがあれば現在時刻 `t` でタスク投入する（詰まっていれば投入しない）。
+  - 結果が無ければ前回の `RealizedLayer` を描画し続ける。
+
+## Parameter GUI と整合を保つ設計
+
+- ワーカーでは `ParamStore` 本体を持たない。
+- worker 用の context を用意し、contextvars を以下で固定する:
+  - `param_snapshot` = メインから渡された snapshot
+  - `frame_params` = `FrameParamsBuffer()`（終了時に records を回収）
+  - `param_store` = `ParamStoreSnapshotProxy`（`set_label` のみ収集）
+- メインで結果を採用したタイミングで:
+  - 収集された label を `store.set_label(...)` で反映する
+  - 収集された records と、メインで生成する layer_style_records を `store.store_frame_params(...)` でマージする
 
 ## 追加コンポーネント（新規）
 
-### `RealizeProcessPool`（仮）: ワーカープール + Queue
-
-- `multiprocessing.get_context("spawn")` で `Queue` と `Process` を作る（start method を固定）。
-- 役割:
-  - ワーカー起動 / 終了
-  - タスク投入（task_id 付与）
-  - 結果回収（task_id で突合して入力順に整列）
-  - 例外の伝播（traceback 文字列化してメインで `RealizeError` にする）
-
-### Worker の初期化（重要）
-
-- ワーカー側で `primitive_registry` / `effect_registry` が空だと `realize()` が失敗する。
-- そのため、ワーカー起動時に以下を import して “組み込み op の登録” を確実に行う:
-  - `graft.api.primitives`
-  - `graft.api.effects`
-- ユーザー定義 primitive/effect について:
-  - `spawn` では子プロセスがメインモジュール（= スケッチ）を import するため、
-    **トップレベルで decorator 実行されていれば登録される**（`if __name__ == "__main__":` 内に定義すると登録されない）。
-  - 初期版では「トップレベル定義を推奨」としてドキュメント化する（動的登録の同期はやらない）。
-
-## 変更点（ファイル案）
-
-- `src/graft/core/realize_mp.py`（新規）
-  - `RealizeTask` / `RealizeResult` の dataclass（picklable）
-  - ワーカーループ関数（トップレベル定義）
-  - `RealizeProcessPool` 本体
-- `src/graft/core/pipeline.py`
-  - `realize_scene(..., *, realizer=None)` のようにオプション注入で切替可能にする
-  - 既定は現状通りシングルプロセス `realize()`
-- `src/graft/interactive/runtime/draw_window_system.py`
-  - `DrawWindowSystem` が `realizer` を保持して `realize_scene` に渡す
-  - close 時に pool を終了（`finally` で確実に呼ぶ）
-- `src/graft/api/run.py`
-  - `run(..., *, n_worker: int = 0)` を追加（`0/1` は無効=単一、`>=2` で有効）
-  - `DrawWindowSystem` に `n_worker`（もしくは `realizer`）を渡して初期化
-- （任意）`src/graft/api/export.py`
-  - `Export(..., *, n_worker: int = 0)` を追加し、同じ仕組みで高速化
-- `tests/core/test_realize_multiprocess.py`（新規）
-  - spawn で pool を立ち上げ、`Geometry.create("circle", ...)` 等の結果一致を確認
+- `src/graft/core/draw_mp.py`（新規）
+  - `DrawTask` / `DrawResult` dataclass（picklable）
+  - ワーカーエントリポイント（トップレベル関数）
+  - `DrawProcessPool`（start/close, submit, poll）
+  - `ParamStoreSnapshotProxy`（label 収集）
+- `src/graft/core/parameters/context.py`（更新）
+  - store を持たない worker 用 context（snapshot を与えて records を回収）
+    - 例: `parameter_snapshot_context(snapshot, *, store_proxy, cc_snapshot)`
+- `src/graft/core/pipeline.py`（更新）
+  - `realize_scene(draw, ...)` を分割し、「layers から realize」できる関数を追加する
+    - 例: `realize_layers(layers, defaults, store) -> tuple[list[RealizedLayer], list[FrameParamRecord]]`
+- `src/graft/interactive/runtime/draw_window_system.py`（更新）
+  - `n_worker` に応じて mp を有効化し、非同期結果を使う。
+- `src/graft/api/run.py`（更新）
+  - `run(..., *, n_worker: int = 0)` 追加。
+- `tests/core/test_draw_multiprocess.py`（新規）
+  - spawn で `DrawProcessPool` を起動し、正常系/例外系/label 収集を確認する。
+- `README.md`（更新）
+  - `n_worker` の説明と制約（spawn / picklable / `__main__` ガード / プロセス分離）を追記する。
 
 ## キュー通信プロトコル（案）
 
 ### Task
 
-- `RealizeTask(task_id: int, geometry: Geometry)`
+- `DrawTask(frame_id: int, t: float, param_snapshot: dict, cc_snapshot: dict | None)`
 
 ### Result
 
-- `RealizeResult(task_id: int, ok: bool, payload: RealizedGeometry | str)`
-  - `ok=True` のとき `payload` は `RealizedGeometry`
+- `DrawResult(frame_id: int, ok: bool, payload: list[Layer] | str, records: list[FrameParamRecord], labels: list[tuple[str, str, str]])`
+  - `ok=True` のとき `payload` は `list[Layer]`
   - `ok=False` のとき `payload` は `traceback.format_exc()`（文字列）
 
 ### 終了シグナル
@@ -104,22 +101,19 @@
 
 ## 実装チェックリスト（最初の PR で達成したい最小単位）
 
-- [ ] `src/graft/core/realize_mp.py` を追加（spawn 固定 / Queue / ワーカーループはトップレベル）
+- [ ] `src/graft/core/draw_mp.py` を追加（spawn 固定 / Queue / ワーカーループはトップレベル）
 - [ ] ワーカー初期化で `graft.api.primitives` / `graft.api.effects` を import（組み込み op 登録）
-- [ ] `RealizeProcessPool.realize_many(geometries: Sequence[Geometry]) -> list[RealizedGeometry]` を実装
-- [ ] `pipeline.realize_scene` に `realizer` 注入（未指定なら既存 `realize()`）
+- [ ] worker 用 `parameter_snapshot_context` を追加し、records/labels を回収できるようにする
+- [ ] `pipeline` を `layers -> realize` に分割し、mp/非mp の両方で使う
 - [ ] `api.run.run` に `n_worker` を追加し、interactive で有効化できるようにする
-- [ ] `DrawWindowSystem` のクローズで pool を停止（run の finally でも担保）
-- [ ] `pytest` の最小テスト追加（spawn で動く / 例外伝播も確認）
-- [ ] README に `n_worker` と「__main__ ガード必須」「top-level 定義推奨」を追記
+- [ ] `DrawWindowSystem` で non-blocking に結果を取り込み、最新結果を描画する
+- [ ] close 時にワーカーを停止（例外でも必ず）
+- [ ] `pytest` の最小テスト追加（spawn で動く / 例外伝播 / label 収集を確認）
+- [ ] `README.md` に `n_worker` と制約（`__main__` ガード、top-level 定義、プロセス分離）を追記
 
 ## 事前に確認したいこと（あなたに質問）
 
-1. `n_worker` のデフォルトはどうする？
-   - 案A: `n_worker: int = 0`（既定は無効、明示指定時のみ mp）
-   - 案B: `n_worker: int | None = None`（None で `os.cpu_count()` など自動）
-2. 並列化粒度はまず「レイヤー単位」で問題ない？（巨大 1 ジオメトリを速くしたい要件が強いなら別案が必要）
-3. `Export` も同じ `n_worker` で同時に対応する？（スコープ内なら一緒にやるのが自然）
-4. ユーザー定義 primitive/effect は「トップレベル定義必須（推奨）」で進めてよい？
-   - 例: `draw()` 内で decorator 登録するような使い方は初期版では非対応扱い。
-
+1. `n_worker` のデフォルトは `0`（無効）で良い？
+2. 追いつかない場合は「最新結果優先（古い結果は捨てる）」で良い？
+3. 初期版は「ワーカーは draw+normalize だけ」に限定して良い？（draw+realize は次フェーズ）
+4. mp モードでは `draw` はプロセス分離される前提（グローバル状態に依存しない）で進めて良い？

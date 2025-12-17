@@ -40,17 +40,17 @@ API 層（`src/graft/api/`）に内部ヘルパ 2 個だけ追加し、`primitiv
 
 ## 実装チェックリスト（TODO）
 
-- [ ] 共通化対象の最小範囲を確定（label も含めるか、params 解決だけにするか）
-- [ ] `src/graft/api/_param_resolution.py`（仮）を新規作成し、上記ヘルパ 2 個を実装
-- [ ] `src/graft/api/primitives.py` をヘルパ呼び出しに置換（挙動同一のまま）
-- [ ] `src/graft/api/effects.py` をヘルパ呼び出しに置換（`chain_id/step_index` は維持）
-- [ ] 既存テストで回帰確認（まずは対象限定）
-  - [ ] `PYTHONPATH=src pytest -q tests/core/parameters/test_defaults_autopopulate.py`
-  - [ ] `PYTHONPATH=src pytest -q tests/core/parameters/test_label_namespace.py`
-  - [ ] `PYTHONPATH=src pytest -q tests/interactive/parameter_gui/test_parameter_gui_labeling_phase2.py`
+- [x] 共通化対象の最小範囲を確定（label も含めるか、params 解決だけにするか）
+- [x] `src/graft/api/_param_resolution.py` を新規作成し、上記ヘルパ 2 個を実装
+- [x] `src/graft/api/primitives.py` をヘルパ呼び出しに置換（挙動同一のまま）
+- [x] `src/graft/api/effects.py` をヘルパ呼び出しに置換（`chain_id/step_index` は維持）
+- [x] 既存テストで回帰確認（まずは対象限定）
+  - [x] `PYTHONPATH=src pytest -q tests/core/parameters/test_defaults_autopopulate.py`
+  - [x] `PYTHONPATH=src pytest -q tests/core/parameters/test_label_namespace.py`
+  - [x] `PYTHONPATH=src pytest -q tests/interactive/parameter_gui/test_parameter_gui_labeling_phase2.py`
 - [ ] 静的チェック（対象限定）
-  - [ ] `ruff check src/graft/api/primitives.py src/graft/api/effects.py src/graft/api/_param_resolution.py`
-  - [ ] `mypy src/graft`
+  - [ ] `ruff check src/graft/api/primitives.py src/graft/api/effects.py src/graft/api/_param_resolution.py`（ruff 未導入）
+  - [x] `mypy src/graft`（実行したが既存の型エラーが多数あり失敗）
 
 ## 事前確認（あなたに確認したいこと）
 
@@ -60,4 +60,5 @@ API 層（`src/graft/api/`）に内部ヘルパ 2 個だけ追加し、`primitiv
 
 ## 追加で気づいたこと（提案/懸念が出たら追記）
 
-- （空欄：実装中に追記）
+- ruff が環境に無く（`python -m ruff` も不可）、このリポの静的チェックは現状そのままだと走らない。
+- `mypy src/graft` は今回変更とは無関係な既存エラーが多数あり、現状は「型が通ること」をゲートにできない。
