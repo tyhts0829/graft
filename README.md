@@ -69,12 +69,12 @@ Notes:
 - `graft.api.L` lets you define layers so you can manage colors, stroke widths, and other styling attributes per layer.
 - `graft.api.run` lets you render any shapes, effects, and layers that a user-defined `draw(t)` function returns on each frame.
 - `Parameter GUI` lets you tweak parameters live while the sketch is running.
-- `graft.api.Export` provides a headless export entrypoint (SVG/image/G-code) as an API skeleton (currently unimplemented / stubs).
+- `graft.api.Export` provides a headless export entrypoint (SVG implemented; image/G-code are stubs).
 
 ## Not implemented yet
 
 - MIDI/CC input, LFOs, keyboard shortcuts, screenshot/video recording
-- SVG/PNG/G-code actual file generation (export stubs currently raise `NotImplementedError`)
+- PNG/G-code actual file generation (export stubs currently raise `NotImplementedError`)
 
 ## Dependencies
 

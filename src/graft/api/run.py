@@ -110,10 +110,19 @@ def run(
         # Parameter GUI は依存が重い（pyimgui）ので、使うときだけ遅延 import する。
         from graft.interactive.runtime.parameter_gui_system import ParameterGUIWindowSystem
 
+        from pyglet.window import key
+
         gui = ParameterGUIWindowSystem(store=param_store)
         gui.window.set_location(*PARAMETER_GUI_POS)
         closers.append(gui.close)
         tasks.append(WindowTask(window=gui.window, draw_frame=gui.draw_frame))
+
+        def _export_svg_on_s(symbol: int, _modifiers: int) -> None:
+            if symbol == key.S:
+                path = draw_window.save_svg()
+                print(f"Saved SVG: {path}")
+
+        gui.window.push_handlers(on_key_press=_export_svg_on_s)
 
     # --- ループの実行 ---
     # ここで複数ウィンドウを 1 つの手動ループで回す。

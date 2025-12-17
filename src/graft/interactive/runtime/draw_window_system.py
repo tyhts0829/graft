@@ -5,10 +5,14 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import Callable
+
+from pyglet.window import key
 
 from graft.interactive.draw_window import create_draw_window
 from graft.core.parameters import ParamStore, parameter_context
+from graft.core.parameters.persistence import default_param_store_path
 from graft.core.parameters.style import (
     ensure_style_entries,
     rgb01_to_rgb255,
@@ -19,6 +23,7 @@ from graft.interactive.gl.draw_renderer import DrawRenderer
 from graft.core.pipeline import realize_scene
 from graft.interactive.gl.index_buffer import build_line_indices
 from graft.core.layer import LayerStyleDefaults
+from graft.export.svg import export_svg
 from graft.interactive.render_settings import RenderSettings
 from graft.core.scene import SceneItem
 
@@ -60,8 +65,26 @@ class DrawWindowSystem:
         self.window = create_draw_window(settings)
         self._renderer = DrawRenderer(self.window, settings)
 
+        script_stem = default_param_store_path(self._draw).stem
+        self._svg_output_path = Path("data") / "output" / "svg" / f"{script_stem}.svg"
+        self._last_realized_layers = []
+        self.window.push_handlers(on_key_press=self._on_key_press)
+
         # draw(t) に渡す t の基準時刻。
         self._start_time = time.perf_counter()
+
+    def _on_key_press(self, symbol: int, _modifiers: int) -> None:
+        if symbol == key.S:
+            path = self.save_svg()
+            print(f"Saved SVG: {path}")
+
+    def save_svg(self) -> Path:
+        """最後に描画したフレームを SVG として保存し、保存先パスを返す。"""
+        return export_svg(
+            self._last_realized_layers,
+            self._svg_output_path,
+            canvas_size=self._settings.canvas_size,
+        )
 
     def draw_frame(self) -> None:
         """1 フレーム分の描画を行う（`flip()` は呼ばない）。"""
@@ -161,6 +184,7 @@ class DrawWindowSystem:
                 thickness=global_thickness,
             )
             realized_layers = realize_scene(self._draw, t, effective_defaults)
+            self._last_realized_layers = realized_layers
             for item in realized_layers:
                 indices = build_line_indices(item.realized.offsets)
                 self._renderer.render_layer(
