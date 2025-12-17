@@ -39,6 +39,12 @@
 
 狙い: 「CPU が詰まっている」のか「GPU/転送が詰まっている」のかで、打ち手が真逆になるため。
 
+- 有効化（interactive）:
+  - `GRAFT_PERF=1` で有効化（一定フレームごとに標準出力へ集計を出す）
+  - `GRAFT_PERF_EVERY=60` で出力間隔（フレーム数）
+  - `GRAFT_PERF_GPU_FINISH=1` で `ctx.finish()` を含む同期計測を有効化
+- 出力ラベル（現在）:
+  - `frame`（draw_frame 全体）, `draw`（user draw）, `scene`（realize_scene）, `indices`（build_line_indices）, `render_layer`（upload+draw 呼び出し）, `gpu_finish`（同期待ち）
 - 最低限の区間計測を入れて、フレーム内の割合を可視化する。
   - 例: `draw` / `realize` / `build_line_indices` / `LineMesh.upload` / `render`。
 - GPU 側が疑わしい場合の補助:
@@ -77,7 +83,7 @@
 
 ### Phase 1 チェックリスト
 
-- [ ] Phase 0 の区間計測を入れて支配項を把握する（CPU/GPU/転送の切り分け）
+- [x] Phase 0 の区間計測を入れて支配項を把握する（CPU/GPU/転送の切り分け）
 - [ ] indices キャッシュ導入（キー方針も決める）
 - [ ] `build_line_indices` 高速化（必要なら）
 - [ ] `build_line_indices` の numba 版追加（必要なら。JIT ヒッチ対策も検討）
