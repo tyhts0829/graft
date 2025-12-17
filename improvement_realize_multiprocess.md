@@ -1,119 +1,133 @@
-# draw(t) の multiprocessing 化（Queue 通信）実装計画
+# 描画パフォーマンス改善（段階的）実装計画
 
 ## 目的
 
-- interactive 描画ループの中で CPU 負荷の高い `draw(t)` をワーカープロセスへオフロードし、メインプロセス（イベント処理 + OpenGL 描画）の停止を避ける。
-- `graft.api.run(..., n_worker=...)` でプロセス数を指定できるようにする。
+- 線/頂点が多い複雑な描画でも「カクつき（フレーム落ち / 入力停止）」を抑える。
+- 実装・構造を汚さない（変更箇所を局所化、既存 API を壊さない）。
+- 効きやすい順に Phase 1 → 2 → 3 で進め、各 Phase の効果を確認してから次へ進む。
 
-## 前提 / 制約（今回の前提として固定）
+## 現状の 1 フレーム処理（概略）
 
-- 通信は `multiprocessing.Queue` を使う（内部は pipe + pickle による serialize/deserialize）。
-- `spawn` 環境で動くことを前提にする（macOS / Windows）。
-  - 子プロセスへ渡す `draw` は picklable（= モジュールトップレベル定義）である必要がある。
-  - 追加で、ユーザースケッチ側は `if __name__ == "__main__":` ガード必須（README 例と同様）。
-- ワーカーは CPU 計算だけを行う。pyglet window / OpenGL / GPU リソースはメインプロセスのみで扱う。
-- Parameter GUI の実体 `ParamStore` はメインプロセスに残す。
-  - メインで作った `ParamStore.snapshot()` をワーカーへ渡し、`resolve_params` が参照する `current_param_snapshot` を固定する。
-  - ワーカーで観測した `FrameParamRecord` と `set_label(...)` 呼び出しをメインへ戻し、メインで `ParamStore` にマージする。
-- 「賢い」分散はやらず、まずは **シンプルで動く最小実装** を優先する（過度に防御的にしない）。
+- `MultiWindowLoop` が window ごとに `dispatch_events()` → `draw_frame()` → `flip()` を繰り返す。
+- 描画ウィンドウの `draw_frame()` は概ね以下:
+  - Style（背景/線幅/線色）確定（store を直接参照）
+  - `parameter_context(store)` を張る
+  - `realize_scene(draw, t, defaults)`（内部で `draw(t)` / `normalize_scene` / `realize`）
+  - `build_line_indices(offsets)`（CPU）
+  - `LineMesh.upload(vertices, indices)`（GPU 転送）
+  - render
 
-## スコープ（やる / やらない）
+## ボトルネック候補（stutter に効きやすい順）
 
-### やる
+- indices 生成: `build_line_indices(offsets)` が Python ループで巨大配列を作る
+- GPU 転送: `LineMesh.upload()` が毎レイヤー毎フレーム orphan+write
+- `realize()` の CPU コスト（effect/primitive 次第）
+- `draw(t)` の CPU コスト
+- ループの固定 `sleep(1/fps)` が「重いフレーム時ほど」余計に遅くなる可能性
 
-- 「1フレーム = draw(t) + normalize_scene」 をタスクとして並列実行する `DrawProcessPool` を追加する。
-- interactive 描画ループでは non-blocking に結果を取り込み、描画は常にメインで行う。
-- `n_worker<=1` では現行の同期パス（既存挙動）を維持し、`n_worker>=2` で mp を有効化する。
-- `pytest` で最低限の動作確認テストを追加する（spawn で動くことを担保。GUI は立ち上げない）。
+## 構造を汚さないための原則
 
-### やらない（初期版では見送る）
+- 変更は 3 箇所に寄せる:
+  - `src/graft/interactive/runtime/`（ループ/スケジューリング/非同期）
+  - `src/graft/interactive/gl/`（indices/GPU 転送の最適化とキャッシュ）
+  - `src/graft/core/pipeline.py`（関数分割のみ。mp の知識は入れない）
+- mp の分岐は `DrawWindowSystem` に散らさず「同期/非同期 Scene 供給器」を差し替える形に寄せる。
+- Parameter/GUI は「ワーカーは snapshot を読むだけ」「観測（records/labels）を返すだけ」「マージはメインで 1 箇所」に固定する。
+- 依存追加はしない（既存の numpy/numba などは利用可）。
 
-- 1 回の `draw(t)` の内部を自動分割して並列化する（ユーザーコードの意味論に踏み込むため）。
-- `RealizedGeometry(np.ndarray)` を毎フレームワーカーから返す「draw+realize」モード（pickle 転送が重くなりやすいので後回し）。
-- 共有メモリ最適化（`shared_memory` / `memmap` / zero-copy）。
-- ワーカー死活監視・自動再起動・タイムアウト等（必要になってから足す）。
+## Phase 1（最優先）: mp なしで “毎フレームの仕事” を減らす
 
-## 方式案（決定案）
+狙い: 頂点数が増えたときの stutter は、mp より先に「indices 生成」と「GPU 転送」を削ると効きやすい。
 
-### 決定: フレーム単位の非同期パイプライン（最新結果優先）
+### 1A. indices を再計算しない / 速くする
 
-- メインプロセスは「イベント処理」「Style 確定」「結果のレンダリング」を担当する。
-- ワーカーは `draw(t)` を実行（parameter snapshot を固定）→ `normalize_scene(scene)` → `list[Layer]` を返す。
-- 計算が追いつかない場合は「古い結果は捨てる」。UI の追従性を優先する。
+- indices は `offsets` だけで決まるので、同じ `offsets` ならキャッシュできる。
+  - 例: `offsets.tobytes()` の hash をキーにする、または `RealizedGeometry` の同一性をキーにする。
+- まずはキャッシュを優先し、必要なら `build_line_indices` の実装を「頂点ごとのループ」から「ポリラインごとのループ」へ寄せて Python ループ回数を減らす（変更は `index_buffer.py` に閉じる）。
 
-### スケジューリング（案）
+### 1B. GPU upload を減らす（同じジオメトリは再転送しない）
 
-- `frame_id` を単調増加で付与する。
-- タスクキューは `maxsize = n_worker` とし、in-flight を増やしすぎない（キューを膨らませない）。
-- `DrawWindowSystem.draw_frame()` では以下を繰り返す:
-  - 結果キューを drain して最新 `frame_id` の結果だけ採用する。
-  - 空きがあれば現在時刻 `t` でタスク投入する（詰まっていれば投入しない）。
-  - 結果が無ければ前回の `RealizedLayer` を描画し続ける。
+- `DrawRenderer` 側に「`geometry.id`（または `RealizedGeometry` の同一性）→ GPU バッファ」を持つ小さなキャッシュを導入する。
+- 変化したときだけ upload し、それ以外は VAO の render だけにする。
+- キャッシュは LRU + 上限（件数/推定バイト）でよい。解放は renderer の `release()` に閉じる。
 
-## Parameter GUI と整合を保つ設計
+### 1C. ループ sleep の見直し（追いつかないときは余計に寝ない）
 
-- ワーカーでは `ParamStore` 本体を持たない。
-- worker 用の context を用意し、contextvars を以下で固定する:
-  - `param_snapshot` = メインから渡された snapshot
-  - `frame_params` = `FrameParamsBuffer()`（終了時に records を回収）
-  - `param_store` = `ParamStoreSnapshotProxy`（`set_label` のみ収集）
-- メインで結果を採用したタイミングで:
-  - 収集された label を `store.set_label(...)` で反映する
-  - 収集された records と、メインで生成する layer_style_records を `store.store_frame_params(...)` でマージする
+- 現状の `sleep(1/fps)` は、重いフレームの後にさらに遅延を積みやすい。
+- 「次の予定時刻までだけ sleep」「遅れていたら sleep しない」に変更するのが最小。
 
-## 追加コンポーネント（新規）
+### Phase 1 チェックリスト
 
-- `src/graft/core/draw_mp.py`（新規）
-  - `DrawTask` / `DrawResult` dataclass（picklable）
-  - ワーカーエントリポイント（トップレベル関数）
-  - `DrawProcessPool`（start/close, submit, poll）
-  - `ParamStoreSnapshotProxy`（label 収集）
-- `src/graft/core/parameters/context.py`（更新）
-  - store を持たない worker 用 context（snapshot を与えて records を回収）
-    - 例: `parameter_snapshot_context(snapshot, *, store_proxy, cc_snapshot)`
-- `src/graft/core/pipeline.py`（更新）
-  - `realize_scene(draw, ...)` を分割し、「layers から realize」できる関数を追加する
-    - 例: `realize_layers(layers, defaults, store) -> tuple[list[RealizedLayer], list[FrameParamRecord]]`
-- `src/graft/interactive/runtime/draw_window_system.py`（更新）
-  - `n_worker` に応じて mp を有効化し、非同期結果を使う。
-- `src/graft/api/run.py`（更新）
-  - `run(..., *, n_worker: int = 0)` 追加。
-- `tests/core/test_draw_multiprocess.py`（新規）
-  - spawn で `DrawProcessPool` を起動し、正常系/例外系/label 収集を確認する。
-- `README.md`（更新）
-  - `n_worker` の説明と制約（spawn / picklable / `__main__` ガード / プロセス分離）を追記する。
+- [ ] indices キャッシュ導入（キー方針も決める）
+- [ ] `build_line_indices` 高速化（必要なら）
+- [ ] GPU バッファキャッシュ導入（upload 削減）
+- [ ] `MultiWindowLoop` の sleep 見直し
+- [ ] 小さなテスト追加（indices の同値性、キャッシュが効くこと）
 
-## キュー通信プロトコル（案）
+### Phase 1 変更ファイル（案）
 
-### Task
+- `src/graft/interactive/gl/index_buffer.py`（indices キャッシュ/高速化）
+- `src/graft/interactive/gl/draw_renderer.py`（GPU キャッシュ）
+- `src/graft/interactive/gl/line_mesh.py`（必要なら最小の分離・再利用 API 追加）
+- `src/graft/interactive/runtime/window_loop.py`（sleep 見直し）
+- `tests/interactive/...` or `tests/core/...`（小テスト）
 
-- `DrawTask(frame_id: int, t: float, param_snapshot: dict, cc_snapshot: dict | None)`
+## Phase 2: `draw(t)` の multiprocessing 化（Queue, spawn）
 
-### Result
+狙い: `draw(t)` が支配的なケースで CPU を分散しつつ、メイン（イベント + GL）を詰まらせない。
 
-- `DrawResult(frame_id: int, ok: bool, payload: list[Layer] | str, records: list[FrameParamRecord], labels: list[tuple[str, str, str]])`
-  - `ok=True` のとき `payload` は `list[Layer]`
-  - `ok=False` のとき `payload` は `traceback.format_exc()`（文字列）
+### 前提 / 制約（固定）
 
-### 終了シグナル
+- 通信は `multiprocessing.Queue` を使う（pipe + pickle）。
+- `spawn` 前提（macOS/Windows）。
+  - 子プロセスへ渡す `draw` は picklable（モジュールトップレベル定義）。
+  - ユーザースケッチ側は `if __name__ == "__main__":` ガード必須。
+- ワーカーは CPU 計算のみ。pyglet/pyimgui/OpenGL は触らない。
+  - `draw` が pyglet/pyimgui/OpenGL を触るスケッチは mp 無効（`n_worker<=1`）を前提とする。
 
-- `None` を sentinel として投入（n_worker 個）し、ワーカーは受信したら break。
+### 設計: フレーム単位の非同期パイプライン（最新結果優先）
 
-## 実装チェックリスト（最初の PR で達成したい最小単位）
+- メイン: イベント処理 + Style 確定 + `realize` + indices/GPU キャッシュ + render。
+- ワーカー: `draw(t)` 実行（parameter snapshot を固定）→ `normalize_scene` → `list[Layer]` を返す。
+- 追いつかない場合は「古い結果は捨てる」。
+  - `frame_id` を単調増加で付与し、result queue を drain して最新だけ採用。
+  - task queue は `maxsize = n_worker`（in-flight が増えすぎない）。
 
-- [ ] `src/graft/core/draw_mp.py` を追加（spawn 固定 / Queue / ワーカーループはトップレベル）
+### Parameter GUI と整合を保つ
+
+- `ParamStore` 本体はメインに残す。
+- メインで作った `ParamStore.snapshot()` をワーカーへ渡し、`resolve_params` が参照する `current_param_snapshot` を固定する。
+- ワーカーで観測した `FrameParamRecord` と `set_label(...)` 呼び出し履歴を返し、メインで `ParamStore` にマージする。
+
+### Phase 2 チェックリスト
+
+- [ ] `src/graft/core/draw_mp.py` を追加（Queue + spawn。ワーカー target はトップレベル関数）
 - [ ] ワーカー初期化で `graft.api.primitives` / `graft.api.effects` を import（組み込み op 登録）
-- [ ] worker 用 `parameter_snapshot_context` を追加し、records/labels を回収できるようにする
-- [ ] `pipeline` を `layers -> realize` に分割し、mp/非mp の両方で使う
-- [ ] `api.run.run` に `n_worker` を追加し、interactive で有効化できるようにする
-- [ ] `DrawWindowSystem` で non-blocking に結果を取り込み、最新結果を描画する
-- [ ] close 時にワーカーを停止（例外でも必ず）
-- [ ] `pytest` の最小テスト追加（spawn で動く / 例外伝播 / label 収集を確認）
-- [ ] `README.md` に `n_worker` と制約（`__main__` ガード、top-level 定義、プロセス分離）を追記
+- [ ] worker 用の snapshot context を追加（records/labels を回収できる形）
+- [ ] `run(..., n_worker=...)` を追加（`<=1` は無効、`>=2` で有効）
+- [ ] `DrawWindowSystem` は Scene 供給器差し替えに寄せる（mp 分岐を散らさない）
+- [ ] `pytest` の最小テスト追加（spawn 動作 / 例外伝播 / label 収集）
+- [ ] README に制約（`__main__` ガード、top-level 定義、プロセス分離）を追記
 
-## 事前に確認したいこと（あなたに質問）
+## Phase 3（必要なら）: `realize`/indices を含めた並列化を検討
 
-1. `n_worker` のデフォルトは `0`（無効）で良い？
-2. 追いつかない場合は「最新結果優先（古い結果は捨てる）」で良い？
-3. 初期版は「ワーカーは draw+normalize だけ」に限定して良い？（draw+realize は次フェーズ）
-4. mp モードでは `draw` はプロセス分離される前提（グローバル状態に依存しない）で進めて良い？
+狙い: Phase 1/2 後も `realize` が支配的なケースで追加の打ち手を検討する。
+
+注意:
+- `multiprocessing.Queue` で `RealizedGeometry(np.ndarray)` を毎フレーム往復すると pickle コストが増える。
+- 先に計測して「本当に `realize` が支配的か」「転送のほうが高くないか」を確認してから判断する。
+
+候補:
+- 3A. ワーカーで `realize` まで実行し、メインは GPU upload+draw のみにする（pickle コストとトレードオフ）。
+- 3B. indices 生成だけをワーカーへ（ただし配列往復があるので効果は要計測）。
+
+### Phase 3 チェックリスト（検討）
+
+- [ ] Phase 1/2 後のボトルネックを整理（draw/realize/indices/upload）
+- [ ] Queue+pickle 往復を含む設計で得か、試作で確認
+
+## 事前に決めたいこと（確認）
+
+1. Phase 1 → 2 → 3 の順で進めてよい？（まず “汚さず効く” 手当てを優先）
+2. mp の `n_worker` デフォルトは `0`（無効）で良い？
+3. 追いつかない場合は「最新結果優先（古い結果は捨てる）」で良い？
