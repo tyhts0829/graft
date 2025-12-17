@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import pytest
+
 from graft.core.parameters import ParamStore
 from graft.core.parameters.style import (
     STYLE_BACKGROUND_COLOR,
     STYLE_GLOBAL_LINE_COLOR,
     STYLE_GLOBAL_THICKNESS,
+    coerce_rgb255,
     ensure_style_entries,
     rgb01_to_rgb255,
     rgb255_to_rgb01,
@@ -22,6 +25,19 @@ def test_rgb255_to_rgb01_converts():
     assert r == 0.0
     assert g == 128.0 / 255.0
     assert b == 1.0
+
+
+def test_coerce_rgb255_returns_rgb255_tuple():
+    assert coerce_rgb255((0, 128, 255)) == (0, 128, 255)
+
+
+def test_coerce_rgb255_converts_and_clamps():
+    assert coerce_rgb255((-1, 256, 0.2)) == (0, 255, 0)
+
+
+def test_coerce_rgb255_rejects_non_length3():
+    with pytest.raises(ValueError):
+        coerce_rgb255((1, 2))
 
 
 def test_ensure_style_entries_creates_state_and_meta():

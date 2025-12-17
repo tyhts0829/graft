@@ -10,7 +10,7 @@
   - `parameter_context` 内なら `resolve_params(...)` を呼び、観測レコードを積む
   - `name="..."` 指定時に `ParamStore.set_label(...)` を行う（ストア無しなら例外）
 - Effect は追加で `chain_id` / `step_index` を `resolve_params` に渡す必要があるため、完全共通化は難しいが、
-  「defaults 補完→resolve_params 呼び出し（条件分岐込み）」と「label 設定」の最小単位は共通化できる。
+  「defaults 補完 →resolve_params 呼び出し（条件分岐込み）」と「label 設定」の最小単位は共通化できる。
 
 ## 目的（ゴール）
 
@@ -29,12 +29,12 @@ API 層（`src/graft/api/`）に内部ヘルパ 2 個だけ追加し、`primitiv
 
 ### 追加するヘルパ案
 
-1) `set_api_label(op, site_id, label)`  
-`label is None` なら何もしない。そうでなければ `current_param_store()` を取得し、無ければ現行と同じ例外メッセージで `RuntimeError`。あれば `store.set_label(...)`。
+1. `set_api_label(op, site_id, label)`  
+   `label is None` なら何もしない。そうでなければ `current_param_store()` を取得し、無ければ現行と同じ例外メッセージで `RuntimeError`。あれば `store.set_label(...)`。
 
-2) `resolve_api_params(op, site_id, user_params, defaults, meta, *, chain_id=None, step_index=None)`  
-`explicit_args = set(user_params.keys())` を取り、`base_params = dict(defaults); base_params.update(user_params)` を作る。  
-`current_frame_params() is not None and meta` の場合のみ `resolve_params(...)` を呼ぶ（Effect の場合は `chain_id/step_index` も渡す）。それ以外は `base_params` を返す。
+2. `resolve_api_params(op, site_id, user_params, defaults, meta, *, chain_id=None, step_index=None)`  
+   `explicit_args = set(user_params.keys())` を取り、`base_params = dict(defaults); base_params.update(user_params)` を作る。  
+   `current_frame_params() is not None and meta` の場合のみ `resolve_params(...)` を呼ぶ（Effect の場合は `chain_id/step_index` も渡す）。それ以外は `base_params` を返す。
 
 ※ `meta`/`defaults` の取得（レジストリ参照）は現行どおり各ファイルで行い、ヘルパは「共通の組み立て」だけを担う。
 
@@ -54,11 +54,10 @@ API 層（`src/graft/api/`）に内部ヘルパ 2 個だけ追加し、`primitiv
 
 ## 事前確認（あなたに確認したいこと）
 
-1. ヘルパの共通化範囲は「params 解決 + label 設定」まで含めてよい？（params だけに絞る案も可）
-2. ヘルパの置き場所/名前は `src/graft/api/_param_resolution.py` でよい？（別名希望があれば合わせる）
-3. `E(name="...")` のラベル付けは現状どおり「各ステップに同じラベルを付ける」を維持でよい？
+1. ヘルパの共通化範囲は「params 解決 + label 設定」まで含めてよい？（params だけに絞る案も可）；はい
+2. ヘルパの置き場所/名前は `src/graft/api/_param_resolution.py` でよい？（別名希望があれば合わせる）；\_param_resolution.py でいいよ。
+3. `E(name="...")` のラベル付けは現状どおり「各ステップに同じラベルを付ける」を維持でよい？；はい
 
 ## 追加で気づいたこと（提案/懸念が出たら追記）
 
 - （空欄：実装中に追記）
-

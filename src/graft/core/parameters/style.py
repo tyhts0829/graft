@@ -26,6 +26,40 @@ def style_key(arg: str) -> ParameterKey:
     return ParameterKey(op=STYLE_OP, site_id=STYLE_SITE_ID, arg=str(arg))
 
 
+def coerce_rgb255(value: object) -> tuple[int, int, int]:
+    """値を RGB255 タプル `(r, g, b)`（0..255）に正規化して返す。
+
+    Parameters
+    ----------
+    value : object
+        `(r, g, b)` の 3 要素シーケンス。
+
+    Returns
+    -------
+    tuple[int, int, int]
+        `int()` 化 + 0..255 clamp 済みの RGB。
+
+    Raises
+    ------
+    ValueError
+        長さ 3 のシーケンスでない場合。
+    """
+
+    r: Any
+    g: Any
+    b: Any
+    try:
+        r, g, b = value  # type: ignore[misc]
+    except Exception as exc:
+        raise ValueError(f"rgb value must be a length-3 sequence: {value!r}") from exc
+
+    def _clamp(v: Any) -> int:
+        iv = int(v)
+        return 0 if iv < 0 else 255 if iv > 255 else iv
+
+    return _clamp(r), _clamp(g), _clamp(b)
+
+
 def rgb01_to_rgb255(rgb: tuple[float, float, float]) -> tuple[int, int, int]:
     """0..1 float の RGB を 0..255 int の RGB に変換して返す。"""
 

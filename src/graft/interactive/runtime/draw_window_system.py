@@ -14,13 +14,14 @@ from graft.interactive.draw_window import create_draw_window
 from graft.core.parameters import ParamStore, parameter_context
 from graft.core.parameters.persistence import default_param_store_path
 from graft.core.parameters.style import (
+    coerce_rgb255,
     ensure_style_entries,
     rgb01_to_rgb255,
     rgb255_to_rgb01,
     style_key,
 )
 from graft.interactive.gl.draw_renderer import DrawRenderer
-from graft.core.pipeline import realize_scene
+from graft.core.pipeline import RealizedLayer, realize_scene
 from graft.interactive.gl.index_buffer import build_line_indices
 from graft.core.layer import LayerStyleDefaults
 from graft.export.svg import export_svg
@@ -67,7 +68,7 @@ class DrawWindowSystem:
 
         script_stem = default_param_store_path(self._draw).stem
         self._svg_output_path = Path("data") / "output" / "svg" / f"{script_stem}.svg"
-        self._last_realized_layers = []
+        self._last_realized_layers: list[RealizedLayer] = []
         self.window.push_handlers(on_key_press=self._on_key_press)
 
         # draw(t) に渡す t の基準時刻。
@@ -109,23 +110,6 @@ class DrawWindowSystem:
         # - style を resolve_params 経由にすると量子化などが絡みやすい
         # - 背景クリアは draw(t) の外（フレームの冒頭）で確定したい
         # という理由で、ここでは store を直接参照している。
-        def _coerce_rgb255(value: object) -> tuple[int, int, int]:
-            # GUI の値は「(r,g,b) の 3 要素」であることを期待する。
-            # widget 側や JSON ロードなどで int/float が混ざっても扱えるように
-            # int 化 + 0..255 clamp をしてから描画側（0..1 float）へ変換する。
-            try:
-                r, g, b = value  # type: ignore[misc]
-            except Exception as exc:
-                raise ValueError(
-                    f"rgb value must be a length-3 sequence: {value!r}"
-                ) from exc
-
-            out: list[int] = []
-            for v in (r, g, b):
-                iv = int(v)
-                iv = max(0, min(255, iv))
-                out.append(iv)
-            return int(out[0]), int(out[1]), int(out[2])
 
         # 背景色:
         # - store に state が無い場合（想定外）や override=False の場合は “run 引数のベース値” を使う。
@@ -134,7 +118,7 @@ class DrawWindowSystem:
         bg255 = (
             self._style_base_background
             if bg_state is None or not bg_state.override
-            else _coerce_rgb255(bg_state.ui_value)
+            else coerce_rgb255(bg_state.ui_value)
         )
         # renderer.clear は 0..1 float を要求するため、ここで変換する。
         bg_color = rgb255_to_rgb01(bg255)
@@ -145,7 +129,7 @@ class DrawWindowSystem:
         line255 = (
             self._style_base_line_color
             if line_state is None or not line_state.override
-            else _coerce_rgb255(line_state.ui_value)
+            else coerce_rgb255(line_state.ui_value)
         )
         global_line_color = rgb255_to_rgb01(line255)
 

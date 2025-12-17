@@ -21,7 +21,7 @@ from graft.core.parameters.layer_style import (
     layer_style_key,
     layer_style_records,
 )
-from graft.core.parameters.style import rgb255_to_rgb01
+from graft.core.parameters.style import coerce_rgb255, rgb255_to_rgb01
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,21 +61,6 @@ def realize_scene(
 
     store = current_param_store()
 
-    def _coerce_rgb255(value: object) -> tuple[int, int, int]:
-        try:
-            r, g, b = value  # type: ignore[misc]
-        except Exception as exc:
-            raise ValueError(
-                f"rgb value must be a length-3 sequence: {value!r}"
-            ) from exc
-
-        out: list[int] = []
-        for v in (r, g, b):
-            iv = int(v)
-            iv = max(0, min(255, iv))
-            out.append(iv)
-        return int(out[0]), int(out[1]), int(out[2])
-
     out: list[RealizedLayer] = []
     for layer in layers:
         resolved = resolve_layer_style(layer, defaults)
@@ -110,7 +95,7 @@ def realize_scene(
                 layer_style_key(layer.site_id, LAYER_STYLE_LINE_COLOR)
             )
             if color_state is not None and color_state.override:
-                rgb255 = _coerce_rgb255(color_state.ui_value)
+                rgb255 = coerce_rgb255(color_state.ui_value)
                 color = rgb255_to_rgb01(rgb255)
 
         geometry = resolved.layer.geometry
