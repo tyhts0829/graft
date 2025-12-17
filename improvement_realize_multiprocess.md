@@ -51,6 +51,101 @@
   - 計測用に `ctx.finish()`（または同等）で同期して “その区間が GPU 待ちを含むか” をざっくり見る。
   - （注意）同期計測は挙動を変えるので、恒常的な処理にはしない。
 
+### 計測結果（2025-12-17, `sketch/perf_sketch.py`）
+
+前提:
+
+- `draw` は `scene` の内側（subset）として計測されるため、`draw + scene` のように足さない。
+- `GRAFT_PERF_GPU_FINISH=1` は同期待ちを強制するため、数値は「診断用の目安」として扱う。
+
+#### Case: `cpu_draw`（draw 支配）
+
+実行:
+
+- `GRAFT_SKETCH_CASE=cpu_draw GRAFT_SKETCH_CPU_ITERS=500000 GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf_sketch.py`
+
+結果（代表値）:
+
+- `frame≈50ms`, `draw≈48.7ms`, `scene≈48.8ms`, `render_layer≈1.0–1.2ms`, `indices≈0.03ms`
+
+解釈:
+
+- ほぼ `draw(t)` の CPU が支配的（`realize_scene` の残りはごく小さい）。
+- このタイプは **Phase 2（mp-draw）** が効く想定。
+
+#### Case: `many_vertices`（indices 支配）
+
+実行:
+
+- `GRAFT_SKETCH_CASE=many_vertices GRAFT_SKETCH_SEGMENTS=200000 GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF_GPU_FINISH=1 GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf_sketch.py`
+
+結果（代表値）:
+
+- `frame≈26.6–28.6ms`, `indices≈17.8–18.1ms`, `scene≈6.0–7.8ms`, `render_layer≈1.7–2.1ms`, `gpu_finish≈0.69ms`, `draw≈0.09ms`
+
+解釈:
+
+- `build_line_indices(offsets)` が支配的で、ここを削るのが最短。
+- このスケッチはトポロジが固定（`offsets` が毎フレーム同じ）なので、**indices キャッシュ**だけで大きく改善できる見込み。
+- `draw` が極小のため mp-draw はほぼ効かない。GPU 同期も小さく、GPU ボトルネックの可能性は低い。
+
+#### Case: `many_layers`（render_layer 支配）
+
+実行:
+
+- `GRAFT_SKETCH_CASE=many_layers GRAFT_SKETCH_LAYERS=500 GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf_sketch.py`
+
+結果（代表値）:
+
+- `frame≈229–232ms`, `render_layer≈200–203ms (500x)`, `scene≈21ms`, `draw≈10–11.5ms`, `indices≈1.42–1.44ms (500x)`
+
+解釈:
+
+- 1 フレームで `render_layer()` を 500 回呼んでおり、upload/VAO/GL 呼び出しのオーバーヘッドが支配的。
+- mp-draw を入れても支配項が動かないので優先度は低い。
+- **Phase 1B（GPU upload/VAO まわりの最適化）**が最優先。
+  - 特に現状の `LineMesh._ensure_capacity()` が、容量が足りている場合でも毎回 VAO を作り直しているため、レイヤー数が多いと致命的になりやすい。
+
+### 再計測のタイミング（いつ・何を測るか）
+
+原則:
+
+- 「変更 → 同じ条件で再計測 → 支配項の移動を確認」のループで進める。
+- 1 回目の出力はウォームアップが混ざりやすいので、**2 回目以降**（安定後）を比較対象にする。
+- 計測はまず `GRAFT_SKETCH_PARAMETER_GUI=0` を推奨（ノイズ低減）。GUI 影響も見たいときだけ `=1` で別枠計測する。
+
+ベースライン（Phase 0 完了時 / 大きな方向性の確認）:
+
+- `cpu_draw` / `many_vertices` / `many_layers` を一通り測って「どれが支配的か」を把握する。
+
+Phase 1A（indices キャッシュ/高速化）後:
+
+- `many_vertices` を再計測して `indices` が下がることを確認する。
+  - 例: `GRAFT_SKETCH_CASE=many_vertices GRAFT_SKETCH_SEGMENTS=200000 GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf_sketch.py`
+- `indices` が支配のままなら 1A を深掘り（キャッシュキー/実装/numba）。支配項が `render_layer` や `scene` に移ったら次の項目へ進む。
+
+Phase 1B（GPU upload/VAO まわり）後:
+
+- `many_layers` を再計測して `render_layer` が下がることを確認する。
+  - 例: `GRAFT_SKETCH_CASE=many_layers GRAFT_SKETCH_LAYERS=500 GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf_sketch.py`
+- ここで `gpu_finish` が急に増える場合だけ、診断用に `GRAFT_PERF_GPU_FINISH=1` を付けて GPU 待ちの可能性を確認する（常用しない）。
+
+Phase 1C（sleep 見直し）後:
+
+- 軽いケース（既定 `polyhedron` など）で `frame` の平均が改善/悪化していないことと、重いケースで「余計に遅くなっていない」ことを確認する。
+
+Phase 2（mp-draw）実装前後:
+
+- `cpu_draw` を再計測して、メインスレッドが詰まらず入力/描画が滑らかになるかを確認する。
+  - 例: `GRAFT_SKETCH_CASE=cpu_draw GRAFT_SKETCH_CPU_ITERS=500000 GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf_sketch.py`
+- go/no-go:
+  - Phase 1 後も **実スケッチで `draw` が支配的**なら Phase 2 を進める。
+  - `indices` / `render_layer` が支配的なら Phase 2 の優先度は低い（Phase 1 を深掘り）。
+
+実スケッチ（ユーザーの描画）での再計測:
+
+- Phase 1 の各サブ項目を入れるたびに 1 回、そして Phase 1 完了時に 1 回、同じ環境変数で測って差分を見る。
+
 ## Phase 1（最優先）: mp なしで “毎フレームの仕事” を減らす
 
 狙い: 頂点数が増えたときの stutter は、mp より先に「indices 生成」と「GPU 転送」を削ると効きやすい。

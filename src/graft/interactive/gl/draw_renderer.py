@@ -63,3 +63,7 @@ class DrawRenderer:
         self.mesh.release()
         self.program.release()
         self.ctx.release()
+
+    def finish(self) -> None:
+        """GPU の完了を待つ（計測用）。"""
+        self.ctx.finish()

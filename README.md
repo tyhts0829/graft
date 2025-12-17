@@ -37,7 +37,7 @@ pip install -e ".[dev]"
 Run a sketch:
 
 ```bash
-python sketch/main.py
+python sketch/perf_sketch.py
 ```
 
 ## Extending (custom primitives / effects)

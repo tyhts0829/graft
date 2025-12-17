@@ -27,6 +27,7 @@ from graft.core.layer import LayerStyleDefaults
 from graft.export.svg import export_svg
 from graft.interactive.render_settings import RenderSettings
 from graft.core.scene import SceneItem
+from graft.interactive.runtime.perf import PerfCollector
 
 
 class DrawWindowSystem:
@@ -73,6 +74,7 @@ class DrawWindowSystem:
 
         # draw(t) に渡す t の基準時刻。
         self._start_time = time.perf_counter()
+        self._perf = PerfCollector.from_env()
 
     def _on_key_press(self, symbol: int, _modifiers: int) -> None:
         if symbol == key.S:
@@ -90,93 +92,109 @@ class DrawWindowSystem:
     def draw_frame(self) -> None:
         """1 フレーム分の描画を行う（`flip()` は呼ばない）。"""
 
-        # 注: 呼び出し側（MultiWindowLoop）が事前に self.window.switch_to() 済みである前提。
-        # その前提が崩れると、別 window のコンテキストへ描いてしまう可能性がある。
+        perf = self._perf
+        with perf.frame():
+            # 注: 呼び出し側（MultiWindowLoop）が事前に self.window.switch_to() 済みである前提。
+            # その前提が崩れると、別 window のコンテキストへ描いてしまう可能性がある。
 
-        # --- 1) ビューポート更新 ---
-        #
-        # ウィンドウの論理解像度（width/height）はフレームごとに参照し、
-        # 現在のサイズに合わせて OpenGL の viewport を更新する。
-        # （resizable=False でも、内部事情や将来の変更に備えて毎フレーム更新している）
-        self._renderer.viewport(self.window.width, self.window.height)
+            # --- 1) ビューポート更新 ---
+            #
+            # ウィンドウの論理解像度（width/height）はフレームごとに参照し、
+            # 現在のサイズに合わせて OpenGL の viewport を更新する。
+            # （resizable=False でも、内部事情や将来の変更に備えて毎フレーム更新している）
+            self._renderer.viewport(self.window.width, self.window.height)
 
-        # --- 2) Style（背景色 / グローバル線幅 / グローバル線色）の確定 ---
-        #
-        # Style は ParamStore の “特殊キー” に入っており、GUI から編集できる。
-        # ここでは「override=True なら ui_value を採用」「override=False ならベース値へ戻す」という
-        # 単純な規則で、そのフレームで使う style を決める。
-        #
-        # 注: Style は Geometry の param 解決（resolve_params）とは別系統として扱う。
-        # - style を resolve_params 経由にすると量子化などが絡みやすい
-        # - 背景クリアは draw(t) の外（フレームの冒頭）で確定したい
-        # という理由で、ここでは store を直接参照している。
+            # --- 2) Style（背景色 / グローバル線幅 / グローバル線色）の確定 ---
+            #
+            # Style は ParamStore の “特殊キー” に入っており、GUI から編集できる。
+            # ここでは「override=True なら ui_value を採用」「override=False ならベース値へ戻す」という
+            # 単純な規則で、そのフレームで使う style を決める。
+            #
+            # 注: Style は Geometry の param 解決（resolve_params）とは別系統として扱う。
+            # - style を resolve_params 経由にすると量子化などが絡みやすい
+            # - 背景クリアは draw(t) の外（フレームの冒頭）で確定したい
+            # という理由で、ここでは store を直接参照している。
 
-        # 背景色:
-        # - store に state が無い場合（想定外）や override=False の場合は “run 引数のベース値” を使う。
-        # - override=True の場合は GUI の ui_value（RGB 0..255）を使う。
-        bg_state = self._store.get_state(self._style_key_background)
-        bg255 = (
-            self._style_base_background
-            if bg_state is None or not bg_state.override
-            else coerce_rgb255(bg_state.ui_value)
-        )
-        # renderer.clear は 0..1 float を要求するため、ここで変換する。
-        bg_color = rgb255_to_rgb01(bg255)
-
-        # グローバル線色:
-        # Layer.color が None のときに、この色が既定色として適用される。
-        line_state = self._store.get_state(self._style_key_line_color)
-        line255 = (
-            self._style_base_line_color
-            if line_state is None or not line_state.override
-            else coerce_rgb255(line_state.ui_value)
-        )
-        global_line_color = rgb255_to_rgb01(line255)
-
-        # グローバル線幅:
-        # Layer.thickness が None のときに、この値が既定線幅として適用される。
-        # 0 以下は仕様違反（resolve_layer_style が例外）なので、GUI 側で正の値にクランプする前提。
-        thickness_state = self._store.get_state(self._style_key_thickness)
-        global_thickness = (
-            float(self._style_base_thickness)
-            if thickness_state is None or not thickness_state.override
-            else float(thickness_state.ui_value)
-        )
-
-        # --- 3) 背景クリア ---
-        #
-        # まず背景色でクリアしてから、このフレームのシーンを描く。
-        self._renderer.clear(bg_color)
-
-        # --- 4) 時刻 t の算出 ---
-        #
-        # draw(t) は “開始時刻からの経過秒” を受け取る。
-        # これを使ってユーザー側でアニメーション等を表現できる。
-        t = time.perf_counter() - self._start_time
-
-        # --- 5) Geometry の param 解決 + 描画 ---
-        #
-        # parameter_context は “このフレームで参照する ParamStore のスナップショット” を固定し、
-        # draw(t) の途中で GUI が動いても、このフレームの解決結果がブレないようにする。
-        #
-        # さらに finally で FrameParamsBuffer を ParamStore にマージすることで、
-        # 「このフレームで観測されたパラメータ」を次フレーム以降の GUI に出せるようにする。
-        with parameter_context(self._store, cc_snapshot=None):
-            # resolve_layer_style が参照する既定スタイルを、このフレームの style で差し替える。
-            effective_defaults = LayerStyleDefaults(
-                color=global_line_color,
-                thickness=global_thickness,
+            # 背景色:
+            # - store に state が無い場合（想定外）や override=False の場合は “run 引数のベース値” を使う。
+            # - override=True の場合は GUI の ui_value（RGB 0..255）を使う。
+            bg_state = self._store.get_state(self._style_key_background)
+            bg255 = (
+                self._style_base_background
+                if bg_state is None or not bg_state.override
+                else coerce_rgb255(bg_state.ui_value)
             )
-            realized_layers = realize_scene(self._draw, t, effective_defaults)
-            self._last_realized_layers = realized_layers
-            for item in realized_layers:
-                indices = build_line_indices(item.realized.offsets)
-                self._renderer.render_layer(
-                    realized=item.realized,
-                    indices=indices,
-                    color=item.color,
-                    thickness=item.thickness,
+            # renderer.clear は 0..1 float を要求するため、ここで変換する。
+            bg_color = rgb255_to_rgb01(bg255)
+
+            # グローバル線色:
+            # Layer.color が None のときに、この色が既定色として適用される。
+            line_state = self._store.get_state(self._style_key_line_color)
+            line255 = (
+                self._style_base_line_color
+                if line_state is None or not line_state.override
+                else coerce_rgb255(line_state.ui_value)
+            )
+            global_line_color = rgb255_to_rgb01(line255)
+
+            # グローバル線幅:
+            # Layer.thickness が None のときに、この値が既定線幅として適用される。
+            # 0 以下は仕様違反（resolve_layer_style が例外）なので、GUI 側で正の値にクランプする前提。
+            thickness_state = self._store.get_state(self._style_key_thickness)
+            global_thickness = (
+                float(self._style_base_thickness)
+                if thickness_state is None or not thickness_state.override
+                else float(thickness_state.ui_value)
+            )
+
+            # --- 3) 背景クリア ---
+            #
+            # まず背景色でクリアしてから、このフレームのシーンを描く。
+            self._renderer.clear(bg_color)
+
+            # --- 4) 時刻 t の算出 ---
+            #
+            # draw(t) は “開始時刻からの経過秒” を受け取る。
+            # これを使ってユーザー側でアニメーション等を表現できる。
+            t = time.perf_counter() - self._start_time
+
+            # --- 5) Geometry の param 解決 + 描画 ---
+            #
+            # parameter_context は “このフレームで参照する ParamStore のスナップショット” を固定し、
+            # draw(t) の途中で GUI が動いても、このフレームの解決結果がブレないようにする。
+            #
+            # さらに finally で FrameParamsBuffer を ParamStore にマージすることで、
+            # 「このフレームで観測されたパラメータ」を次フレーム以降の GUI に出せるようにする。
+            with parameter_context(self._store, cc_snapshot=None):
+                # resolve_layer_style が参照する既定スタイルを、このフレームの style で差し替える。
+                effective_defaults = LayerStyleDefaults(
+                    color=global_line_color,
+                    thickness=global_thickness,
                 )
+                draw_fn = self._draw
+                if perf.enabled:
+                    def draw_fn_timed(t_arg: float) -> SceneItem:
+                        with perf.section("draw"):
+                            return self._draw(t_arg)
+
+                    draw_fn = draw_fn_timed
+                with perf.section("scene"):
+                    realized_layers = realize_scene(draw_fn, t, effective_defaults)
+                self._last_realized_layers = realized_layers
+                for item in realized_layers:
+                    with perf.section("indices"):
+                        indices = build_line_indices(item.realized.offsets)
+                    with perf.section("render_layer"):
+                        self._renderer.render_layer(
+                            realized=item.realized,
+                            indices=indices,
+                            color=item.color,
+                            thickness=item.thickness,
+                        )
+
+            if perf.enabled and perf.gpu_finish:
+                with perf.section("gpu_finish"):
+                    self._renderer.finish()
 
     def close(self) -> None:
         """GPU / window 資源を解放する。"""

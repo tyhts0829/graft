@@ -6,3 +6,4 @@ tools/cache_check/*.dot
 **/.DS_Store
 data
 .mypy_cache/
+src/graft.egg-info/

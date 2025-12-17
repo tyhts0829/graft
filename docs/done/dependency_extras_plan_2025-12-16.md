@@ -74,7 +74,7 @@
 ### 5) 検証（最小）
 
 - [ ] （クリーン環境で）`pip install -e .` だけで `python -c "import graft.api; from graft.api import E, G, L, Export, run"` が通る
-- [ ] `python sketch/main.py` が起動できる（Parameter GUI も含む）
+- [ ] `python sketch/perf_sketch.py` が起動できる（Parameter GUI も含む）
 - [ ] shapely 必須 effect（`partition/offset` 等）が実行できる
 
 ## 事前確認したいこと（追加で気づいたら追記）

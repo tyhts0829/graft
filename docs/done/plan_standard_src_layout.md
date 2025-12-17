@@ -48,7 +48,7 @@
 ├── data/
 ├── tools/
 ├── sketch/
-│   ├── main.py
+│   ├── perf_sketch.py
 │   └── 251214.py
 └── README.md
 ```
@@ -61,7 +61,7 @@
 
 - [x] パッケージ名は `graft` で確定する
 - [x] 互換 import（`src`）は残さない方針で合意する
-- [x] エントリポイントは `sketch/main.py` へ移す（旧 `main.py` は削除）
+- [x] エントリポイントは `sketch/perf_sketch.py` へ移す（旧 `main.py` は削除）
 
 ### 1) パッケージングの土台を作る
 
@@ -87,10 +87,10 @@
 
 ### 4) 実行/テスト/ドキュメントを更新する
 
-- [x] `main.py` を `sketch/main.py` へ移動し、import を `from graft.api ...` に更新する
+- [x] `main.py` を `sketch/perf_sketch.py` へ移動し、import を `from graft.api ...` に更新する
 - [x] `README.md` のサンプルを `from graft.api ...` に更新する
 - [x] `tests/` の import を `from graft...` に更新する
-- [x] 実行手順を README に明記する（例: `pip install -e .` → `python sketch/main.py`）
+- [x] 実行手順を README に明記する（例: `pip install -e .` → `python sketch/perf_sketch.py`）
 
 ### 5) 検証（最小）
 
