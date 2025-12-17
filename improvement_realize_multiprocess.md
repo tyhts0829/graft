@@ -35,6 +35,16 @@
 - Parameter/GUI は「ワーカーは snapshot を読むだけ」「観測（records/labels）を返すだけ」「マージはメインで 1 箇所」に固定する。
 - 依存追加はしない（既存の numpy/numba などは利用可）。
 
+## Phase 0（先にやる）: 計測で CPU/GPU の支配項を切り分ける
+
+狙い: 「CPU が詰まっている」のか「GPU/転送が詰まっている」のかで、打ち手が真逆になるため。
+
+- 最低限の区間計測を入れて、フレーム内の割合を可視化する。
+  - 例: `draw` / `realize` / `build_line_indices` / `LineMesh.upload` / `render`。
+- GPU 側が疑わしい場合の補助:
+  - 計測用に `ctx.finish()`（または同等）で同期して “その区間が GPU 待ちを含むか” をざっくり見る。
+  - （注意）同期計測は挙動を変えるので、恒常的な処理にはしない。
+
 ## Phase 1（最優先）: mp なしで “毎フレームの仕事” を減らす
 
 狙い: 頂点数が増えたときの stutter は、mp より先に「indices 生成」と「GPU 転送」を削ると効きやすい。
@@ -44,12 +54,21 @@
 - indices は `offsets` だけで決まるので、同じ `offsets` ならキャッシュできる。
   - 例: `offsets.tobytes()` の hash をキーにする、または `RealizedGeometry` の同一性をキーにする。
 - まずはキャッシュを優先し、必要なら `build_line_indices` の実装を「頂点ごとのループ」から「ポリラインごとのループ」へ寄せて Python ループ回数を減らす（変更は `index_buffer.py` に閉じる）。
+- さらに必要なら `build_line_indices` を numba 化する（2 パス: 出力長カウント → `np.empty` へ書き込み）。
+  - 注意: 初回 JIT の一瞬のヒッチが出る可能性があるため、必要なら起動時にウォームアップする。
 
 ### 1B. GPU upload を減らす（同じジオメトリは再転送しない）
 
-- `DrawRenderer` 側に「`geometry.id`（または `RealizedGeometry` の同一性）→ GPU バッファ」を持つ小さなキャッシュを導入する。
-- 変化したときだけ upload し、それ以外は VAO の render だけにする。
+- **Layer 単位**で「その Layer の描画データが変わったか？」を判定し、変わっていなければ upload をスキップして前回の GPU データのまま描画する。
+  - 判定キーはまず `Layer.geometry.id` を採用する（内容署名なので “同じなら同じ” を素直に表現できる）。
+  - 色/線幅だけ変わった場合は頂点/インデックスは不変なので、upload は不要で uniform 更新だけで足りる。
+- `DrawRenderer` 側に「`geometry.id` → (VBO/IBO/VAO など)」の小さなキャッシュを導入する。
+  - 現状は `LineMesh` が 1 個で毎レイヤー上書きしているため、**複数メッシュ（またはメッシュキャッシュ）**へ寄せる必要がある。
+  - キャッシュヒット時は upload せずに `vao.render(...)` のみ実行する。
 - キャッシュは LRU + 上限（件数/推定バイト）でよい。解放は renderer の `release()` に閉じる。
+- `tobytes()` 由来のコピー削減を検討する。
+  - `moderngl.Buffer.write()` が許すなら `memoryview(ndarray)`（または `ndarray` そのもの）を渡し、`ndarray.tobytes()` を避ける。
+  - 配列は contiguous 前提になるので、必要なら `np.ascontiguousarray` を使う（ただし余計な copy を増やさないように計測して判断する）。
 
 ### 1C. ループ sleep の見直し（追いつかないときは余計に寝ない）
 
@@ -58,9 +77,12 @@
 
 ### Phase 1 チェックリスト
 
+- [ ] Phase 0 の区間計測を入れて支配項を把握する（CPU/GPU/転送の切り分け）
 - [ ] indices キャッシュ導入（キー方針も決める）
 - [ ] `build_line_indices` 高速化（必要なら）
-- [ ] GPU バッファキャッシュ導入（upload 削減）
+- [ ] `build_line_indices` の numba 版追加（必要なら。JIT ヒッチ対策も検討）
+- [ ] Layer 単位の GPU バッファキャッシュ導入（`geometry.id` キーで upload をスキップ）
+- [ ] `tobytes()` を避けた upload を試す（可能なら memoryview 化。効果は計測で判断）
 - [ ] `MultiWindowLoop` の sleep 見直し
 - [ ] 小さなテスト追加（indices の同値性、キャッシュが効くこと）
 
