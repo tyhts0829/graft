@@ -59,8 +59,21 @@ class DrawRenderer:
         thickness: float,
     ) -> None:
         """RealizedGeometry をライン描画する。"""
-        if indices.size == 0:
+        mesh = self.prepare_layer_mesh(realized, indices, geometry_id=geometry_id)
+        if mesh is None:
             return
+        self.draw_prepared_mesh(mesh, color=color, thickness=thickness)
+
+    def prepare_layer_mesh(
+        self,
+        realized: RealizedGeometry,
+        indices: np.ndarray,
+        *,
+        geometry_id: str,
+    ) -> LineMesh | None:
+        """upload（必要なら）を行い、描画に使う LineMesh を返す。"""
+        if indices.size == 0:
+            return None
 
         mesh = self._mesh_cache.get(geometry_id)
         if mesh is not None:
@@ -85,9 +98,20 @@ class DrawRenderer:
                 mesh = self._scratch_mesh
                 mesh.upload(vertices=realized.coords, indices=indices)
 
+        return mesh
+
+    def draw_prepared_mesh(
+        self,
+        mesh: LineMesh,
+        *,
+        color: tuple[float, float, float],
+        thickness: float,
+    ) -> None:
+        """LineMesh を draw call で描画する。"""
         self.program["line_thickness"].value = float(thickness)
         self.program["color"].value = (*color, 1.0)
 
+        # ボトルネックになりやすい: 多レイヤー/多 draw call 時はここ（ドライバ/GL 呼び出し）が支配しやすい。
         mesh.vao.render(mode=self.ctx.LINE_STRIP, vertices=mesh.index_count)
 
     def release(self) -> None:
