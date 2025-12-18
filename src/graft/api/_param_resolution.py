@@ -28,9 +28,14 @@ def set_api_label(*, op: str, site_id: str, label: str | None) -> None:
     if label is None:
         return
     store = current_param_store()
-    if store is None:
-        raise RuntimeError(_NO_STORE_FOR_LABEL_ERROR)
-    store.set_label(op, site_id, label)
+    if store is not None:
+        store.set_label(op, site_id, label)
+        return
+    frame_params = current_frame_params()
+    if frame_params is not None:
+        frame_params.set_label(op=op, site_id=site_id, label=label)
+        return
+    raise RuntimeError(_NO_STORE_FOR_LABEL_ERROR)
 
 
 def resolve_api_params(
@@ -68,4 +73,3 @@ def resolve_api_params(
 
 
 __all__ = ["resolve_api_params", "set_api_label"]
-

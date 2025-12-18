@@ -153,7 +153,9 @@ Phase 1C（sleep 見直し）後:
 Phase 2（mp-draw）実装前後:
 
 - `cpu_draw` を再計測して、メインスレッドが詰まらず入力/描画が滑らかになるかを確認する。
-  - 例: `GRAFT_SKETCH_CASE=cpu_draw GRAFT_SKETCH_CPU_ITERS=500000 GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf_sketch.py`
+  - mp 無効（比較用）: `GRAFT_SKETCH_CASE=cpu_draw GRAFT_SKETCH_CPU_ITERS=500000 GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf_sketch.py`
+  - mp 有効: `GRAFT_SKETCH_CASE=cpu_draw GRAFT_SKETCH_CPU_ITERS=500000 GRAFT_SKETCH_N_WORKER=4 GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf_sketch.py`
+  - 注意: mp 有効時は `draw` 区間が worker 側へ移るため、メインの perf 出力では `draw` は測れない（`scene` は主に realize 側になる）。
 - go/no-go:
   - Phase 1 後も **実スケッチで `draw` が支配的**なら Phase 2 を進める。
   - `indices` / `render_layer` が支配的なら Phase 2 の優先度は低い（Phase 1 を深掘り）。
@@ -241,11 +243,11 @@ Phase 2（mp-draw）実装前後:
 
 ### Phase 2 チェックリスト
 
-- [ ] `src/graft/core/draw_mp.py` を追加（Queue + spawn。ワーカー target はトップレベル関数）
-- [ ] ワーカー初期化で `graft.api.primitives` / `graft.api.effects` を import（組み込み op 登録）
-- [ ] worker 用の snapshot context を追加（records/labels を回収できる形）
-- [ ] `run(..., n_worker=...)` を追加（`<=1` は無効、`>=2` で有効）
-- [ ] `DrawWindowSystem` は Scene 供給器差し替えに寄せる（mp 分岐を散らさない）
+- [x] `src/graft/interactive/runtime/mp_draw.py` を追加（Queue + spawn。ワーカー target はトップレベル関数）
+- [x] ワーカー初期化で `graft.api.primitives` / `graft.api.effects` を import（組み込み op 登録）
+- [x] worker 用の snapshot context を追加（records/labels を回収できる形）
+- [x] `run(..., n_worker=...)` を追加（`<=1` は無効、`>=2` で有効）
+- [x] `DrawWindowSystem` に mp-draw 分岐を追加（結果をマージして描画）
 - [ ] `pytest` の最小テスト追加（spawn 動作 / 例外伝播 / label 収集）
 - [ ] README に制約（`__main__` ガード、top-level 定義、プロセス分離）を追記
 

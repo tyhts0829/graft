@@ -44,6 +44,7 @@ _CPU_ITERS = _env_int("GRAFT_SKETCH_CPU_ITERS", 0)
 _CIRCLE_SEGMENTS = _env_int("GRAFT_SKETCH_SEGMENTS", 50_000)
 _MANY_LAYERS = _env_int("GRAFT_SKETCH_LAYERS", 200)
 _PARAMETER_GUI = _env_flag("GRAFT_SKETCH_PARAMETER_GUI", True)
+_N_WORKER = _env_int("GRAFT_SKETCH_N_WORKER", 0)
 
 
 def draw(t: float):
@@ -60,6 +61,10 @@ def draw(t: float):
         `cpu_draw` の負荷（0 で無効）。
     GRAFT_SKETCH_LAYERS : int
         `many_layers` のレイヤー数。
+    GRAFT_SKETCH_PARAMETER_GUI : bool
+        Parameter GUI を有効化する（既定 True）。
+    GRAFT_SKETCH_N_WORKER : int
+        `run(..., n_worker=...)` に渡す worker 数（既定 0）。
     """
 
     if _CASE == "many_vertices":
@@ -105,4 +110,5 @@ if __name__ == "__main__":
         render_scale=3.0,
         canvas_size=(CANVAS_WIDTH, CANVAS_HEIGHT),
         parameter_gui=_PARAMETER_GUI,
+        n_worker=_N_WORKER,
     )

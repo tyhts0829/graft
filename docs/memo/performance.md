@@ -69,8 +69,17 @@ GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf
 
 - `GRAFT_SKETCH_CASE=polyhedron`（既定）: ほどよい総合例
 - `GRAFT_SKETCH_CASE=cpu_draw` : `draw(t)` を意図的に重くして mp-draw の検証をする
-- `GRAFT_SKETCH_CASE=many_vertices` : 1 本の巨大ポリラインで indices/転送を重くする
+- `GRAFT_SKETCH_CASE=many_vertices` : 1 本の巨大ポリラインで indices/realize/転送の支配項を観測する
 - `GRAFT_SKETCH_CASE=many_layers` : 多レイヤーで upload/draw 呼び出し回数を重くする
+
+`GRAFT_SKETCH_N_WORKER` を 2 以上にすると `run(..., n_worker=...)` を通じて mp-draw を有効化できる。
+
+- 注意（spawn 前提）:
+  - `draw` はモジュールトップレベル定義（picklable）である必要がある。
+  - スケッチ側は `if __name__ == "__main__":` ガード必須。
+  - ワーカーは CPU 計算のみ（pyglet/pyimgui/OpenGL は触らない）。
+- 重要: mp-draw 有効時、`draw` 区間はメインでは計測されない（worker 側で実行されるため）。
+  - `scene` は「realize_scene のうち draw 以外」（主に realize 側）になる。
 
 ### cpu_draw（draw 支配）
 
@@ -89,7 +98,14 @@ GRAFT_SKETCH_CASE=cpu_draw GRAFT_SKETCH_CPU_ITERS=500000 GRAFT_SKETCH_PARAMETER_
 
 - `draw` が支配的 → mp-draw（Phase 2）が効くタイプ。
 
-### many_vertices（indices 支配）
+mp-draw を有効にして再計測する例:
+
+```bash
+GRAFT_SKETCH_CASE=cpu_draw GRAFT_SKETCH_CPU_ITERS=500000 GRAFT_SKETCH_N_WORKER=4 \
+  GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf_sketch.py
+```
+
+### many_vertices（巨大ポリライン）
 
 ```bash
 GRAFT_SKETCH_CASE=many_vertices GRAFT_SKETCH_SEGMENTS=200000 GRAFT_SKETCH_PARAMETER_GUI=0 \
@@ -99,12 +115,13 @@ GRAFT_SKETCH_CASE=many_vertices GRAFT_SKETCH_SEGMENTS=200000 GRAFT_SKETCH_PARAME
 代表値（例）:
 
 ```text
-[graft-perf] frame=26.8ms draw=0.09ms gpu_finish=0.69ms indices=17.9ms render_layer=1.8ms scene=6.2ms
+[graft-perf] frame=9.0ms draw=0.08ms gpu_finish=0.72ms indices=0.003ms render_layer=1.6ms scene=6.5ms
 ```
 
 読み:
 
-- `indices` が支配的 → indices キャッシュ/高速化（Phase 1A）が最優先。
+- Phase 1A（indices キャッシュ）後は `indices` がほぼ消え、支配項が `scene`（realize）へ移動する。
+- もし `indices` が大きいままなら、indices キャッシュが外れている（または無効化されている）可能性が高い。
 
 ### many_layers（render_layer 支配）
 

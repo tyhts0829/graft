@@ -36,6 +36,7 @@ def run(
     canvas_size: tuple[int, int] = (800, 800),
     parameter_gui: bool = True,
     parameter_persistence: bool = True,
+    n_worker: int = 0,
 ) -> None:
     """pyglet ウィンドウを生成し `draw(t)` のシーンをリアルタイム描画する。
 
@@ -58,6 +59,9 @@ def run(
     parameter_persistence : bool
         True の場合、ParamStore を `data/output/param_store/` に JSON 保存し、次回起動時に復元する。
         保存ファイル名には draw の定義元ファイル名（stem）を含める。
+    n_worker : int
+        `draw(t)` を multiprocessing で実行するワーカープロセス数。
+        `<=1` の場合は無効。`>=2` の場合は spawn + Queue（pickle）で非同期化する。
 
     Returns
     -------
@@ -97,6 +101,7 @@ def run(
         settings=settings,
         defaults=defaults,
         store=param_store,
+        n_worker=int(n_worker),
     )
     draw_window.window.set_location(*DRAW_WINDOW_POS)
 

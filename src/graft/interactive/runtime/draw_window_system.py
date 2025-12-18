@@ -28,6 +28,8 @@ from graft.export.svg import export_svg
 from graft.interactive.render_settings import RenderSettings
 from graft.core.scene import SceneItem
 from graft.interactive.runtime.perf import PerfCollector
+from graft.interactive.runtime.mp_draw import MpDraw
+from graft.core.parameters import current_frame_params, current_param_snapshot
 
 
 class DrawWindowSystem:
@@ -40,6 +42,7 @@ class DrawWindowSystem:
         settings: RenderSettings,
         defaults: LayerStyleDefaults,
         store: ParamStore,
+        n_worker: int = 0,
     ) -> None:
         """描画用の window/renderer を初期化する。"""
 
@@ -75,6 +78,7 @@ class DrawWindowSystem:
         # draw(t) に渡す t の基準時刻。
         self._start_time = time.perf_counter()
         self._perf = PerfCollector.from_env()
+        self._mp_draw: MpDraw | None = MpDraw(draw, n_worker=int(n_worker)) if int(n_worker) > 1 else None
 
     def _on_key_press(self, symbol: int, _modifiers: int) -> None:
         if symbol == key.S:
@@ -171,15 +175,40 @@ class DrawWindowSystem:
                     color=global_line_color,
                     thickness=global_thickness,
                 )
-                draw_fn = self._draw
-                if perf.enabled:
-                    def draw_fn_timed(t_arg: float) -> SceneItem:
-                        with perf.section("draw"):
-                            return self._draw(t_arg)
+                mp_draw = self._mp_draw
+                if mp_draw is None:
+                    draw_fn = self._draw
+                    if perf.enabled:
+                        def draw_fn_timed(t_arg: float) -> SceneItem:
+                            with perf.section("draw"):
+                                return self._draw(t_arg)
 
-                    draw_fn = draw_fn_timed
-                with perf.section("scene"):
-                    realized_layers = realize_scene(draw_fn, t, effective_defaults)
+                        draw_fn = draw_fn_timed
+                    with perf.section("scene"):
+                        realized_layers = realize_scene(draw_fn, t, effective_defaults)
+                else:
+                    mp_draw.submit(t=t, snapshot=current_param_snapshot())
+                    new_result = mp_draw.poll_latest()
+                    if new_result is not None:
+                        if new_result.error is not None:
+                            raise RuntimeError(
+                                "mp-draw worker で例外が発生しました:\n"
+                                f"{new_result.error}"
+                            )
+                        frame_params = current_frame_params()
+                        if frame_params is not None:
+                            frame_params.records.extend(new_result.records)
+                            frame_params.labels.extend(new_result.labels)
+
+                    layers = mp_draw.latest_layers()
+                    if layers is None:
+                        realized_layers = []
+                    else:
+                        def draw_from_mp(_t_arg: float) -> SceneItem:
+                            return layers
+
+                        with perf.section("scene"):
+                            realized_layers = realize_scene(draw_from_mp, t, effective_defaults)
                 self._last_realized_layers = realized_layers
                 for item in realized_layers:
                     with perf.section("indices"):
@@ -198,6 +227,9 @@ class DrawWindowSystem:
 
     def close(self) -> None:
         """GPU / window 資源を解放する。"""
+
+        if self._mp_draw is not None:
+            self._mp_draw.close()
 
         # renderer が保持している GPU リソースを破棄してから window を閉じる。
         self._renderer.release()
