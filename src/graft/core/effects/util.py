@@ -4,25 +4,21 @@ import numpy as np
 from numba import njit
 
 
-@njit
+@njit(cache=True)
 def _dot3(a: np.ndarray, b: np.ndarray) -> float:
     return float(a[0] * b[0] + a[1] * b[1] + a[2] * b[2])
 
 
-@njit
+@njit(cache=True)
 def _matmul3(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     out = np.empty((3, 3), dtype=np.float64)
     for i in range(3):
         for j in range(3):
-            out[i, j] = (
-                a[i, 0] * b[0, j]
-                + a[i, 1] * b[1, j]
-                + a[i, 2] * b[2, j]
-            )
+            out[i, j] = a[i, 0] * b[0, j] + a[i, 1] * b[1, j] + a[i, 2] * b[2, j]
     return out
 
 
-@njit
+@njit(cache=True)
 def _apply_row_mat(points: np.ndarray, mat: np.ndarray) -> np.ndarray:
     out = np.empty_like(points)
     for i in range(points.shape[0]):
@@ -35,7 +31,7 @@ def _apply_row_mat(points: np.ndarray, mat: np.ndarray) -> np.ndarray:
     return out
 
 
-@njit
+@njit(cache=True)
 def transform_to_xy_plane(vertices: np.ndarray) -> tuple[np.ndarray, np.ndarray, float]:
     """頂点をXY平面（z=0）に変換する。
 
@@ -142,7 +138,7 @@ def transform_to_xy_plane(vertices: np.ndarray) -> tuple[np.ndarray, np.ndarray,
     return transformed_points, R, z_offset
 
 
-@njit
+@njit(cache=True)
 def transform_back(
     vertices: np.ndarray, rotation_matrix: np.ndarray, z_offset: float
 ) -> np.ndarray:
