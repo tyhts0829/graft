@@ -16,6 +16,9 @@ dependencies = [
   "moderngl",
   "pyglet",
   "imgui",
+  "fontPens",
+  "fontTools",
+  "PyYAML",
 ]
 
 [project.optional-dependencies]
