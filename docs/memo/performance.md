@@ -71,6 +71,8 @@ GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf
 - `GRAFT_SKETCH_CASE=cpu_draw` : `draw(t)` を意図的に重くして mp-draw の検証をする
 - `GRAFT_SKETCH_CASE=many_vertices` : 1 本の巨大ポリラインで indices/realize/転送の支配項を観測する
 - `GRAFT_SKETCH_CASE=many_layers` : 多レイヤーで upload/draw 呼び出し回数を重くする
+- `GRAFT_SKETCH_CASE=static_layers` : 多レイヤーだがジオメトリは静的（GPU upload skip の効果確認用）
+- `GRAFT_SKETCH_CASE=upload_skip` : 少数レイヤー + 巨大静的ジオメトリ（upload skip が効くかを確認する）
 
 `GRAFT_SKETCH_N_WORKER` を 2 以上にすると `run(..., n_worker=...)` を通じて mp-draw を有効化できる。
 
@@ -139,3 +141,27 @@ GRAFT_SKETCH_CASE=many_layers GRAFT_SKETCH_LAYERS=500 GRAFT_SKETCH_PARAMETER_GUI
 読み:
 
 - `render_layer` が支配的で呼び出し回数も多い → upload/VAO/描画呼び出し回数の削減（Phase 1B）が最優先。
+
+### static_layers（静的ジオメトリ多レイヤー）
+
+```bash
+GRAFT_SKETCH_CASE=static_layers GRAFT_SKETCH_LAYERS=500 GRAFT_SKETCH_STATIC_UNIQUE=64 \
+  GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf_sketch.py
+```
+
+読み:
+
+- `geometry_id` が安定するため、GPU メッシュキャッシュ（upload skip）が効く状況を作れる。
+- `GRAFT_SKETCH_STATIC_UNIQUE` を小さくするほど同一ジオメトリが繰り返され、upload skip が効きやすい。
+
+### upload_skip（静的 upload の有無を見分ける）
+
+```bash
+GRAFT_SKETCH_CASE=upload_skip GRAFT_SKETCH_UPLOAD_SEGMENTS=500000 GRAFT_SKETCH_UPLOAD_LAYERS=2 \
+  GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF=1 GRAFT_PERF_EVERY=1 python sketch/perf_sketch.py
+```
+
+読み:
+
+- 1 フレーム目は upload が走る（重い）→ 2 フレーム目以降は GPU メッシュキャッシュで upload が消える（軽い）ことを期待する。
+- `GRAFT_PERF_EVERY=1` にして「フレームごとの変化」を見ると分かりやすい。

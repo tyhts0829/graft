@@ -217,6 +217,7 @@ class DrawWindowSystem:
                         self._renderer.render_layer(
                             realized=item.realized,
                             indices=indices,
+                            geometry_id=item.layer.geometry.id,
                             color=item.color,
                             thickness=item.thickness,
                         )

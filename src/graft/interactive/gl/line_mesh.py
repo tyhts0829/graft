@@ -77,15 +77,17 @@ class LineMesh:
 
     def upload(self, vertices: np.ndarray, indices: np.ndarray) -> None:
         """実際にデータをGPUへ送り込む"""
-        self._ensure_capacity(vertices.nbytes, indices.nbytes)
+        vertices_f32 = np.ascontiguousarray(vertices, dtype=np.float32)
+        indices_u32 = np.ascontiguousarray(indices, dtype=np.uint32)
+        self._ensure_capacity(vertices_f32.nbytes, indices_u32.nbytes)
 
         self.vbo.orphan()
-        self.vbo.write(vertices.tobytes())
+        self.vbo.write(vertices_f32)
 
         self.ibo.orphan()
-        self.ibo.write(indices.tobytes())
+        self.ibo.write(indices_u32)
 
-        self.index_count = len(indices)
+        self.index_count = len(indices_u32)
 
     def release(self) -> None:
         """GPUのメモリを解放する（終了時に使う）"""

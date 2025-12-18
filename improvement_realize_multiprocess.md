@@ -201,8 +201,8 @@ Phase 2（mp-draw）実装前後:
 - [x] `build_line_indices` 高速化（キャッシュミス時もポリライン単位 + NumPy）
 - [x] `LineMesh._ensure_capacity()` の VAO 張り直し条件を修正（毎フレーム/毎レイヤーの VAO 再生成を止める）
 - [ ] `build_line_indices` の numba 版追加（必要なら。JIT ヒッチ対策も検討）
-- [ ] Layer 単位の GPU バッファキャッシュ導入（`geometry.id` キーで upload をスキップ）
-- [ ] `tobytes()` を避けた upload を試す（可能なら memoryview 化。効果は計測で判断）
+- [x] GPU メッシュキャッシュ導入（`geometry.id` キーで同一ジオメトリの upload をスキップ）
+- [x] `tobytes()` を避けた upload（NumPy 配列をそのまま `write()`）
 - [x] `MultiWindowLoop` の sleep 見直し
 - [x] 小さなテスト追加（indices の同値性、キャッシュが効くこと）
 

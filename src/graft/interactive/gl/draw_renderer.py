@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
+
 import moderngl
 import numpy as np
 from pyglet.window import Window
@@ -22,7 +24,15 @@ class DrawRenderer:
         window.switch_to()
         self.ctx = moderngl.create_context(require=410)
         self.program = Shader.create_shader(self.ctx)
-        self.mesh = LineMesh(self.ctx, self.program)
+        # 動的更新用（キャッシュに乗らないケース）に 1 つだけ使い回す。
+        self._scratch_mesh = LineMesh(self.ctx, self.program)
+        # 静的ジオメトリ用の GPU メッシュキャッシュ（LRU）。
+        self._mesh_cache: OrderedDict[str, LineMesh] = OrderedDict()
+        # 初見を即キャッシュすると「毎フレーム別 id」ケースで逆効果になりうるため、
+        # 2 回目以降にキャッシュへ昇格させる。
+        self._mesh_candidates: OrderedDict[str, None] = OrderedDict()
+        self._mesh_cache_max_items = 256
+        self._mesh_candidates_max_items = 512
         self._canvas_w, self._canvas_h = settings.canvas_size
         # 射影行列はキャンバス寸法にのみ依存するため初期化時に一度設定する。
         projection = render_utils.build_projection(
@@ -44,6 +54,7 @@ class DrawRenderer:
         realized: RealizedGeometry,
         indices: np.ndarray,
         *,
+        geometry_id: str,
         color: tuple[float, float, float],
         thickness: float,
     ) -> None:
@@ -51,16 +62,41 @@ class DrawRenderer:
         if indices.size == 0:
             return
 
-        self.mesh.upload(vertices=realized.coords, indices=indices)
+        mesh = self._mesh_cache.get(geometry_id)
+        if mesh is not None:
+            self._mesh_cache.move_to_end(geometry_id)
+        else:
+            if geometry_id in self._mesh_candidates:
+                # 2 回目以降の登場なのでキャッシュへ昇格し、以後の upload をスキップする。
+                self._mesh_candidates.pop(geometry_id, None)
+                reserve = max(int(realized.coords.nbytes), int(indices.nbytes), 4096)
+                mesh = LineMesh(self.ctx, self.program, initial_reserve=reserve)
+                mesh.upload(vertices=realized.coords, indices=indices)
+                self._mesh_cache[geometry_id] = mesh
+                while len(self._mesh_cache) > int(self._mesh_cache_max_items):
+                    _, evicted = self._mesh_cache.popitem(last=False)
+                    evicted.release()
+            else:
+                # 初見は候補として覚えておき、描画は scratch に upload して行う。
+                self._mesh_candidates[geometry_id] = None
+                self._mesh_candidates.move_to_end(geometry_id)
+                while len(self._mesh_candidates) > int(self._mesh_candidates_max_items):
+                    self._mesh_candidates.popitem(last=False)
+                mesh = self._scratch_mesh
+                mesh.upload(vertices=realized.coords, indices=indices)
 
         self.program["line_thickness"].value = float(thickness)
         self.program["color"].value = (*color, 1.0)
 
-        self.mesh.vao.render(mode=self.ctx.LINES, vertices=self.mesh.index_count)
+        mesh.vao.render(mode=self.ctx.LINES, vertices=mesh.index_count)
 
     def release(self) -> None:
         """GPU リソースを解放する。"""
-        self.mesh.release()
+        self._scratch_mesh.release()
+        for mesh in self._mesh_cache.values():
+            mesh.release()
+        self._mesh_cache.clear()
+        self._mesh_candidates.clear()
         self.program.release()
         self.ctx.release()
 
