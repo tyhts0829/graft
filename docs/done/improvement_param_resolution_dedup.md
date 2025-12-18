@@ -25,7 +25,7 @@
 
 ## 方針（最小の共通化）
 
-API 層（`src/graft/api/`）に内部ヘルパ 2 個だけ追加し、`primitives.py` / `effects.py` から呼ぶ。
+API 層（`src/grafix/api/`）に内部ヘルパ 2 個だけ追加し、`primitives.py` / `effects.py` から呼ぶ。
 
 ### 追加するヘルパ案
 
@@ -41,24 +41,24 @@ API 層（`src/graft/api/`）に内部ヘルパ 2 個だけ追加し、`primitiv
 ## 実装チェックリスト（TODO）
 
 - [x] 共通化対象の最小範囲を確定（label も含めるか、params 解決だけにするか）
-- [x] `src/graft/api/_param_resolution.py` を新規作成し、上記ヘルパ 2 個を実装
-- [x] `src/graft/api/primitives.py` をヘルパ呼び出しに置換（挙動同一のまま）
-- [x] `src/graft/api/effects.py` をヘルパ呼び出しに置換（`chain_id/step_index` は維持）
+- [x] `src/grafix/api/_param_resolution.py` を新規作成し、上記ヘルパ 2 個を実装
+- [x] `src/grafix/api/primitives.py` をヘルパ呼び出しに置換（挙動同一のまま）
+- [x] `src/grafix/api/effects.py` をヘルパ呼び出しに置換（`chain_id/step_index` は維持）
 - [x] 既存テストで回帰確認（まずは対象限定）
   - [x] `PYTHONPATH=src pytest -q tests/core/parameters/test_defaults_autopopulate.py`
   - [x] `PYTHONPATH=src pytest -q tests/core/parameters/test_label_namespace.py`
   - [x] `PYTHONPATH=src pytest -q tests/interactive/parameter_gui/test_parameter_gui_labeling_phase2.py`
 - [ ] 静的チェック（対象限定）
-  - [ ] `ruff check src/graft/api/primitives.py src/graft/api/effects.py src/graft/api/_param_resolution.py`（ruff 未導入）
-  - [x] `mypy src/graft`（実行したが既存の型エラーが多数あり失敗）
+  - [ ] `ruff check src/grafix/api/primitives.py src/grafix/api/effects.py src/grafix/api/_param_resolution.py`（ruff 未導入）
+  - [x] `mypy src/grafix`（実行したが既存の型エラーが多数あり失敗）
 
 ## 事前確認（あなたに確認したいこと）
 
 1. ヘルパの共通化範囲は「params 解決 + label 設定」まで含めてよい？（params だけに絞る案も可）；はい
-2. ヘルパの置き場所/名前は `src/graft/api/_param_resolution.py` でよい？（別名希望があれば合わせる）；\_param_resolution.py でいいよ。
+2. ヘルパの置き場所/名前は `src/grafix/api/_param_resolution.py` でよい？（別名希望があれば合わせる）；\_param_resolution.py でいいよ。
 3. `E(name="...")` のラベル付けは現状どおり「各ステップに同じラベルを付ける」を維持でよい？；はい
 
 ## 追加で気づいたこと（提案/懸念が出たら追記）
 
 - ruff が環境に無く（`python -m ruff` も不可）、このリポの静的チェックは現状そのままだと走らない。
-- `mypy src/graft` は今回変更とは無関係な既存エラーが多数あり、現状は「型が通ること」をゲートにできない。
+- `mypy src/grafix` は今回変更とは無関係な既存エラーが多数あり、現状は「型が通ること」をゲートにできない。

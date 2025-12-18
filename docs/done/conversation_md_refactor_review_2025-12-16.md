@@ -1,5 +1,7 @@
 # どこで: `docs/memo/conversation_md_refactor_review_2025-12-16.md`。
+
 # 何を: `docs/conversation.md` の方針が現実装で“本当に”実現できているかを、依存分離と理解容易性の観点で厳しめにレビューした結果。
+
 # なぜ: 「形だけの分割」に留まっていないか、次に直すべき本質（設計上の穴）を明確にするため。
 
 # `docs/conversation.md` 準拠レビュー（2025-12-16）
@@ -12,17 +14,17 @@
 
 ## 対応表（`docs/conversation.md` → 現実装）
 
-| 会話文の要点 | 判定 | 現実装での根拠 / コメント |
-|---|---:|---|
-| Core / Export(Render) / Interactive の 3 層に分離する | ✅ | `src/core/`, `src/export/`, `src/interactive/` が明確に存在。責務も概ねその通り。 |
-| core と作品スクリプトから GPU/Window 依存を追い出す | ✅ | `tests/architecture/test_dependency_boundaries.py` が core の `pyglet/moderngl/imgui` import を禁止。`src/api/__init__.py` の `run()` は遅延 import で、`import src.api` 時点では GUI 依存が入らない。 |
-| “render/export は後段アダプタ”として隔離する | ⚠️ | 形は `src/export/` に隔離できているが、出力実装が未着手（スタブ）。「隔離した」ことは成立、しかし「隔離したことでヘッドレス出力が回る」は未成立。 |
-| まず SVG を正として吐けるようにする | ❌ | `src/export/svg.py` が未実装。現状の Export 経路は必ず例外で落ちる。 |
-| SVG→PNG 等のラスタライズは後段に押し込む | ❌ | `src/export/image.py` も未実装。方針としては README/architecture.md に明記されているが、コードとしては無い。 |
-| renderer の import を動的にして、必要時だけ依存を要求する | ⚠️ | `src.api.run` は公開 API からは遅延 import される（良い）。一方で renderer 選択（例: `--renderer gl/svg`）や `load_renderer()` 相当の “プラグイン読み込み” は未導入。 |
-| `graft thumbs` 的なヘッドレス一括パイプライン（build→realize→export→index） | ❌ | CLI/バッチ実装は見当たらない。`src/core/pipeline.py` の土台はあるが、export が未実装なので成立しない。 |
-| 依存方向をルール化して守る（機械的に検査） | ✅ | `tests/architecture/test_dependency_boundaries.py` により core/export の境界は検査できている。 |
-| 依存ライブラリも層で分け、extras 等で “入れなくてよい” 状態にする | ❌ | 依存管理ファイル（pyproject/requirements 等）が無く、extras 分離は未着手。現状 README の Dependencies は一括列挙。 |
+| 会話文の要点                                                                 | 判定 | 現実装での根拠 / コメント                                                                                                                                                                              |
+| ---------------------------------------------------------------------------- | ---: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Core / Export(Render) / Interactive の 3 層に分離する                        |   ✅ | `src/core/`, `src/export/`, `src/interactive/` が明確に存在。責務も概ねその通り。                                                                                                                      |
+| core と作品スクリプトから GPU/Window 依存を追い出す                          |   ✅ | `tests/architecture/test_dependency_boundaries.py` が core の `pyglet/moderngl/imgui` import を禁止。`src/api/__init__.py` の `run()` は遅延 import で、`import src.api` 時点では GUI 依存が入らない。 |
+| “render/export は後段アダプタ”として隔離する                                 |   ⚠️ | 形は `src/export/` に隔離できているが、出力実装が未着手（スタブ）。「隔離した」ことは成立、しかし「隔離したことでヘッドレス出力が回る」は未成立。                                                      |
+| まず SVG を正として吐けるようにする                                          |   ❌ | `src/export/svg.py` が未実装。現状の Export 経路は必ず例外で落ちる。                                                                                                                                   |
+| SVG→PNG 等のラスタライズは後段に押し込む                                     |   ❌ | `src/export/image.py` も未実装。方針としては README/architecture.md に明記されているが、コードとしては無い。                                                                                           |
+| renderer の import を動的にして、必要時だけ依存を要求する                    |   ⚠️ | `src.api.run` は公開 API からは遅延 import される（良い）。一方で renderer 選択（例: `--renderer gl/svg`）や `load_renderer()` 相当の “プラグイン読み込み” は未導入。                                  |
+| `grafix thumbs` 的なヘッドレス一括パイプライン（build→realize→export→index） |   ❌ | CLI/バッチ実装は見当たらない。`src/core/pipeline.py` の土台はあるが、export が未実装なので成立しない。                                                                                                 |
+| 依存方向をルール化して守る（機械的に検査）                                   |   ✅ | `tests/architecture/test_dependency_boundaries.py` により core/export の境界は検査できている。                                                                                                         |
+| 依存ライブラリも層で分け、extras 等で “入れなくてよい” 状態にする            |   ❌ | 依存管理ファイル（pyproject/requirements 等）が無く、extras 分離は未着手。現状 README の Dependencies は一括列挙。                                                                                     |
 
 ## 「形だけ」になっていないか？（依存分離の厳しめ評価）
 
@@ -70,4 +72,3 @@
    「ルールがあるのに抜け道がある」状態を解消する。
 3. **“入口” の明確化**（ドキュメント/サンプルの import を統一）  
    headless と interactive の使い分けが一目で分かる導線にする。
-

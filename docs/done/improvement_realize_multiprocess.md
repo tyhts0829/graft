@@ -28,9 +28,9 @@
 ## 構造を汚さないための原則
 
 - 変更は 3 箇所に寄せる:
-  - `src/graft/interactive/runtime/`（ループ/スケジューリング/非同期）
-  - `src/graft/interactive/gl/`（indices/GPU 転送の最適化とキャッシュ）
-  - `src/graft/core/pipeline.py`（関数分割のみ。mp の知識は入れない）
+  - `src/grafix/interactive/runtime/`（ループ/スケジューリング/非同期）
+  - `src/grafix/interactive/gl/`（indices/GPU 転送の最適化とキャッシュ）
+  - `src/grafix/core/pipeline.py`（関数分割のみ。mp の知識は入れない）
 - mp の分岐は `DrawWindowSystem` に散らさず「同期/非同期 Scene 供給器」を差し替える形に寄せる。
 - Parameter/GUI は「ワーカーは snapshot を読むだけ」「観測（records/labels）を返すだけ」「マージはメインで 1 箇所」に固定する。
 - 依存追加はしない（既存の numpy/numba などは利用可）。
@@ -40,9 +40,9 @@
 狙い: 「CPU が詰まっている」のか「GPU/転送が詰まっている」のかで、打ち手が真逆になるため。
 
 - 有効化（interactive）:
-  - `GRAFT_PERF=1` で有効化（一定フレームごとに標準出力へ集計を出す）
-  - `GRAFT_PERF_EVERY=60` で出力間隔（フレーム数）
-  - `GRAFT_PERF_GPU_FINISH=1` で `ctx.finish()` を含む同期計測を有効化
+  - `GRAFIX_PERF=1` で有効化（一定フレームごとに標準出力へ集計を出す）
+  - `GRAFIX_PERF_EVERY=60` で出力間隔（フレーム数）
+  - `GRAFIX_PERF_GPU_FINISH=1` で `ctx.finish()` を含む同期計測を有効化
 - 出力ラベル（現在）:
   - `frame`（draw_frame 全体）, `draw`（user draw）, `scene`（realize_scene）, `indices`（build_line_indices）, `render_layer`（upload+draw 呼び出し）, `gpu_finish`（同期待ち）
 - 最低限の区間計測を入れて、フレーム内の割合を可視化する。
@@ -56,13 +56,13 @@
 前提:
 
 - `draw` は `scene` の内側（subset）として計測されるため、`draw + scene` のように足さない。
-- `GRAFT_PERF_GPU_FINISH=1` は同期待ちを強制するため、数値は「診断用の目安」として扱う。
+- `GRAFIX_PERF_GPU_FINISH=1` は同期待ちを強制するため、数値は「診断用の目安」として扱う。
 
 #### Case: `cpu_draw`（draw 支配）
 
 実行:
 
-- `GRAFT_SKETCH_CASE=cpu_draw GRAFT_SKETCH_CPU_ITERS=500000 GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf_sketch.py`
+- `GRAFIX_SKETCH_CASE=cpu_draw GRAFIX_SKETCH_CPU_ITERS=500000 GRAFIX_SKETCH_PARAMETER_GUI=0 GRAFIX_PERF=1 GRAFIX_PERF_EVERY=60 python sketch/perf_sketch.py`
 
 結果（代表値）:
 
@@ -82,7 +82,7 @@
 
 実行:
 
-- `GRAFT_SKETCH_CASE=many_vertices GRAFT_SKETCH_SEGMENTS=200000 GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF_GPU_FINISH=1 GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf_sketch.py`
+- `GRAFIX_SKETCH_CASE=many_vertices GRAFIX_SKETCH_SEGMENTS=200000 GRAFIX_SKETCH_PARAMETER_GUI=0 GRAFIX_PERF_GPU_FINISH=1 GRAFIX_PERF=1 GRAFIX_PERF_EVERY=60 python sketch/perf_sketch.py`
 
 結果（代表値）:
 
@@ -103,7 +103,7 @@
 
 実行:
 
-- `GRAFT_SKETCH_CASE=many_layers GRAFT_SKETCH_LAYERS=500 GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf_sketch.py`
+- `GRAFIX_SKETCH_CASE=many_layers GRAFIX_SKETCH_LAYERS=500 GRAFIX_SKETCH_PARAMETER_GUI=0 GRAFIX_PERF=1 GRAFIX_PERF_EVERY=60 python sketch/perf_sketch.py`
 
 結果（代表値）:
 
@@ -128,7 +128,7 @@
 
 - 「変更 → 同じ条件で再計測 → 支配項の移動を確認」のループで進める。
 - 1 回目の出力はウォームアップが混ざりやすいので、**2 回目以降**（安定後）を比較対象にする。
-- 計測はまず `GRAFT_SKETCH_PARAMETER_GUI=0` を推奨（ノイズ低減）。GUI 影響も見たいときだけ `=1` で別枠計測する。
+- 計測はまず `GRAFIX_SKETCH_PARAMETER_GUI=0` を推奨（ノイズ低減）。GUI 影響も見たいときだけ `=1` で別枠計測する。
 
 ベースライン（Phase 0 完了時 / 大きな方向性の確認）:
 
@@ -137,14 +137,14 @@
 Phase 1A（indices キャッシュ/高速化）後:
 
 - `many_vertices` を再計測して `indices` が下がることを確認する。
-  - 例: `GRAFT_SKETCH_CASE=many_vertices GRAFT_SKETCH_SEGMENTS=200000 GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf_sketch.py`
+  - 例: `GRAFIX_SKETCH_CASE=many_vertices GRAFIX_SKETCH_SEGMENTS=200000 GRAFIX_SKETCH_PARAMETER_GUI=0 GRAFIX_PERF=1 GRAFIX_PERF_EVERY=60 python sketch/perf_sketch.py`
 - `indices` が支配のままなら 1A を深掘り（キャッシュキー/実装/numba）。支配項が `render_layer` や `scene` に移ったら次の項目へ進む。
 
 Phase 1B（GPU upload/VAO まわり）後:
 
 - `many_layers` を再計測して `render_layer` が下がることを確認する。
-  - 例: `GRAFT_SKETCH_CASE=many_layers GRAFT_SKETCH_LAYERS=500 GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf_sketch.py`
-- ここで `gpu_finish` が急に増える場合だけ、診断用に `GRAFT_PERF_GPU_FINISH=1` を付けて GPU 待ちの可能性を確認する（常用しない）。
+  - 例: `GRAFIX_SKETCH_CASE=many_layers GRAFIX_SKETCH_LAYERS=500 GRAFIX_SKETCH_PARAMETER_GUI=0 GRAFIX_PERF=1 GRAFIX_PERF_EVERY=60 python sketch/perf_sketch.py`
+- ここで `gpu_finish` が急に増える場合だけ、診断用に `GRAFIX_PERF_GPU_FINISH=1` を付けて GPU 待ちの可能性を確認する（常用しない）。
 
 Phase 1C（sleep 見直し）後:
 
@@ -153,8 +153,8 @@ Phase 1C（sleep 見直し）後:
 Phase 2（mp-draw）実装前後:
 
 - `cpu_draw` を再計測して、メインスレッドが詰まらず入力/描画が滑らかになるかを確認する。
-  - mp 無効（比較用）: `GRAFT_SKETCH_CASE=cpu_draw GRAFT_SKETCH_CPU_ITERS=500000 GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf_sketch.py`
-  - mp 有効: `GRAFT_SKETCH_CASE=cpu_draw GRAFT_SKETCH_CPU_ITERS=500000 GRAFT_SKETCH_N_WORKER=4 GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf_sketch.py`
+  - mp 無効（比較用）: `GRAFIX_SKETCH_CASE=cpu_draw GRAFIX_SKETCH_CPU_ITERS=500000 GRAFIX_SKETCH_PARAMETER_GUI=0 GRAFIX_PERF=1 GRAFIX_PERF_EVERY=60 python sketch/perf_sketch.py`
+  - mp 有効: `GRAFIX_SKETCH_CASE=cpu_draw GRAFIX_SKETCH_CPU_ITERS=500000 GRAFIX_SKETCH_N_WORKER=4 GRAFIX_SKETCH_PARAMETER_GUI=0 GRAFIX_PERF=1 GRAFIX_PERF_EVERY=60 python sketch/perf_sketch.py`
   - 注意: mp 有効時は `draw` 区間が worker 側へ移るため、メインの perf 出力では `draw` は測れない（`scene` は主に realize 側になる）。
 - go/no-go:
   - Phase 1 後も **実スケッチで `draw` が支配的**なら Phase 2 を進める。
@@ -208,10 +208,10 @@ Phase 2（mp-draw）実装前後:
 
 ### Phase 1 変更ファイル（案）
 
-- `src/graft/interactive/gl/index_buffer.py`（indices キャッシュ/高速化）
-- `src/graft/interactive/gl/draw_renderer.py`（GPU キャッシュ）
-- `src/graft/interactive/gl/line_mesh.py`（必要なら最小の分離・再利用 API 追加）
-- `src/graft/interactive/runtime/window_loop.py`（sleep 見直し）
+- `src/grafix/interactive/gl/index_buffer.py`（indices キャッシュ/高速化）
+- `src/grafix/interactive/gl/draw_renderer.py`（GPU キャッシュ）
+- `src/grafix/interactive/gl/line_mesh.py`（必要なら最小の分離・再利用 API 追加）
+- `src/grafix/interactive/runtime/window_loop.py`（sleep 見直し）
 - `tests/interactive/...` or `tests/core/...`（小テスト）
 
 ## Phase 2: `draw(t)` の multiprocessing 化（Queue, spawn）
@@ -243,8 +243,8 @@ Phase 2（mp-draw）実装前後:
 
 ### Phase 2 チェックリスト
 
-- [x] `src/graft/interactive/runtime/mp_draw.py` を追加（Queue + spawn。ワーカー target はトップレベル関数）
-- [x] ワーカー初期化で `graft.api.primitives` / `graft.api.effects` を import（組み込み op 登録）
+- [x] `src/grafix/interactive/runtime/mp_draw.py` を追加（Queue + spawn。ワーカー target はトップレベル関数）
+- [x] ワーカー初期化で `grafix.api.primitives` / `grafix.api.effects` を import（組み込み op 登録）
 - [x] worker 用の snapshot context を追加（records/labels を回収できる形）
 - [x] `run(..., n_worker=...)` を追加（`<=1` は無効、`>=2` で有効）
 - [x] `DrawWindowSystem` に mp-draw 分岐を追加（結果をマージして描画）
@@ -256,10 +256,12 @@ Phase 2（mp-draw）実装前後:
 狙い: Phase 1/2 後も `realize` が支配的なケースで追加の打ち手を検討する。
 
 注意:
+
 - `multiprocessing.Queue` で `RealizedGeometry(np.ndarray)` を毎フレーム往復すると pickle コストが増える。
 - 先に計測して「本当に `realize` が支配的か」「転送のほうが高くないか」を確認してから判断する。
 
 候補:
+
 - 3A. ワーカーで `realize` まで実行し、メインは GPU upload+draw のみにする（pickle コストとトレードオフ）。
 - 3B. indices 生成だけをワーカーへ（ただし配列往復があるので効果は要計測）。
 

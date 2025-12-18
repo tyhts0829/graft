@@ -2,13 +2,13 @@
 
 対象（旧実装）:
 
-- `src/graft/core/primitives/from_previous_project/text.py`
-- `src/graft/core/primitives/from_previous_project/fonts.py`
-- `src/graft/core/primitives/from_previous_project/utils.py`
+- `src/grafix/core/primitives/from_previous_project/text.py`
+- `src/grafix/core/primitives/from_previous_project/fonts.py`
+- `src/grafix/core/primitives/from_previous_project/utils.py`
 
 目的:
 
-- 旧 `text.py` を基本的に踏襲しつつ、現プロジェクト（Graft）の `primitive` 仕様（`RealizedGeometry(coords, offsets)`）で使える `text` モジュールを新規作成する。
+- 旧 `text.py` を基本的に踏襲しつつ、現プロジェクト（Grafix）の `primitive` 仕様（`RealizedGeometry(coords, offsets)`）で使える `text` モジュールを新規作成する。
 - フォントは **OS 探索や config ではなく**、リポ内の `data/input/font/` から読む（この要件を優先）。
 
 非目的（今回やらない）:
@@ -26,7 +26,7 @@
   - `coords`: `float32 (N,3)`、`offsets`: `int32 (M+1,)`（先頭 0 / 末尾 N）。
 - 描画座標系:
   - `build_projection(canvas_w, canvas_h)` が **(0,0) = 左上 / Y+ 下** の射影を採用。
-  - 旧実装の “フォント座標（Y+上）→描画座標（Y+下）” 反転は、そのまま相性が良い。
+  - 旧実装の “フォント座標（Y+上）→ 描画座標（Y+下）” 反転は、そのまま相性が良い。
 - 依存:
   - 現状 `fontTools` が環境に無い（`pyproject.toml` に未追加）。旧仕様のアウトライン取得/平坦化に必要。
   - 依存追加は Safety ルール上 Ask-first（ネットワーク）なので、実装前に承認が必要。
@@ -35,7 +35,7 @@
 
 ## 旧仕様（踏襲する API と挙動）
 
-旧 `text(...)` の引数（概念）を Graft の primitive として持つ:
+旧 `text(...)` の引数（概念）を Grafix の primitive として持つ:
 
 - `text: str`（`\n` 区切りで複数行）
 - `em_size_mm: float`（1em の高さ [mm]）
@@ -71,9 +71,9 @@
 - 列挙:
   - `data/input/font/**` を再帰 `glob` し、`Path.resolve()` で重複除去、`sorted()` で安定順
 - `font` 引数の解釈:
-  1) `Path(font)` が存在する場合: そのパスを優先（相対パスは CWD 依存になるので、テスト/実行は repo root 前提）
-  2) そうでなければ `data/input/font` 内のファイル名（stem + suffix）を対象に部分一致（大文字小文字無視）
-  3) それでも見つからない場合はエラー（fallback を勝手に OS から拾わない）
+  1. `Path(font)` が存在する場合: そのパスを優先（相対パスは CWD 依存になるので、テスト/実行は repo root 前提）
+  2. そうでなければ `data/input/font` 内のファイル名（stem + suffix）を対象に部分一致（大文字小文字無視）
+  3. それでも見つからない場合はエラー（fallback を勝手に OS から拾わない）
 - 既定フォント:
   - `data/input/font/SFNS.ttf` があればそれを既定にする
   - 無ければ列挙結果の先頭（安定ソート）を既定にする
@@ -91,7 +91,7 @@
 
 ### 1) 新規 primitive モジュール追加
 
-- [ ] `src/graft/core/primitives/text.py` を新規作成
+- [ ] `src/grafix/core/primitives/text.py` を新規作成
   - [ ] 先頭ヘッダ（どこで/何を/なぜ）を付与
   - [ ] `text_meta`（`ParamMeta`）を定義
     - [ ] `text`: `kind="str"`（GUI は単一行だが、`\n` を含む文字列自体は許容）
@@ -102,7 +102,7 @@
 
 ### 2) API へ露出（G.text）
 
-- [ ] `src/graft/api/primitives.py` に `from graft.core.primitives import text as _primitive_text` を追加
+- [ ] `src/grafix/api/primitives.py` に `from grafix.core.primitives import text as _primitive_text` を追加
 
 ### 3) フォント列挙・解決（旧 fonts.py 参考）
 
@@ -119,12 +119,12 @@
 - [ ] `flatten_tol_em` → `approximateSegmentLength` 変換:
   - `units_per_em * flatten_tol_em`（旧 `seg_len_units = max(1.0, tol * units_per_em)` を踏襲）
 
-### 5) advance 幅（旧 _get_char_advance_em 踏襲）
+### 5) advance 幅（旧 \_get_char_advance_em 踏襲）
 
 - [ ] `hmtx.metrics[glyph_name][0] / unitsPerEm` を `advance_em` とする
 - [ ] `" "` は `"space"` の metrics を優先し、無ければ 0.25em を fallback（旧挙動）
 
-### 6) グリフ→ポリライン（mm / Y 反転）
+### 6) グリフ → ポリライン（mm / Y 反転）
 
 - [ ] 旧 `_glyph_commands_to_vertices_mm(...)` 相当を実装
   - [ ] `moveTo/lineTo/closePath` を polyline（`(N,2)`）へ変換
@@ -151,14 +151,14 @@
 ### 9) テスト（最小）
 
 - [ ] `tests/core/test_text_primitive.py`（仮）を追加
-  - [ ] `G.text(text="A", font="SFNS.ttf")` を `realize(...)` して配列不変条件（dtype/shape/offsets整合）を検証
+  - [ ] `G.text(text="A", font="SFNS.ttf")` を `realize(...)` して配列不変条件（dtype/shape/offsets 整合）を検証
   - [ ] `text_align` の違いで bbox の X が変わることを検証（厳密値ではなく大小比較でよい）
   - [ ] `text="A\\nA"` で Y が増えることを検証
 
 ### 10) 仕上げ（確認コマンド）
 
 - [ ] `ruff check .`
-- [ ] `mypy src/graft`
+- [ ] `mypy src/grafix`
 - [ ] `pytest -q`
 
 ---
@@ -167,4 +167,3 @@
 
 - Parameter GUI の multiline 対応（`imgui.input_text_multiline`）を入れると旧の “複数行テキスト入力” 体験に近づく。
 - `font` を `choice` にすると UI がラジオで肥大化しやすいので、フォント数が増えるなら combobox/検索 UI が必要。
-

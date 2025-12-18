@@ -11,7 +11,7 @@
 - `src/grafix/interactive/runtime/draw_window_system.py` が `draw_frame()` 内で以下を計測する:
   - `frame`: `draw_frame()` 全体
   - `scene`: `realize_scene(...)` 全体（内部で `draw(t)` を含む）
-  - `draw`: user `draw(t)`（`scene` の内側＝subset）
+  - `draw`: user `draw(t)`（`scene` の内側＝ subset）
   - `indices`: `build_line_indices(offsets)`
   - `render_layer`: `render_layer(...)`（upload + draw 呼び出し）
   - `gpu_finish`: `ctx.finish()`（診断用。明示的同期待ち）
@@ -21,26 +21,26 @@
 ### 最小の実行例
 
 ```bash
-GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf_sketch.py
+GRAFIX_PERF=1 GRAFIX_PERF_EVERY=60 python sketch/perf_sketch.py
 ```
 
 ### GPU 側が怪しいとき（診断用）
 
 ```bash
-GRAFT_PERF=1 GRAFT_PERF_EVERY=60 GRAFT_PERF_GPU_FINISH=1 python sketch/perf_sketch.py
+GRAFIX_PERF=1 GRAFIX_PERF_EVERY=60 GRAFIX_PERF_GPU_FINISH=1 python sketch/perf_sketch.py
 ```
 
 ### Parameter GUI を切って測る（任意）
 
 ```bash
-GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf_sketch.py
+GRAFIX_SKETCH_PARAMETER_GUI=0 GRAFIX_PERF=1 GRAFIX_PERF_EVERY=60 python sketch/perf_sketch.py
 ```
 
 ## 環境変数（Perf）
 
-- `GRAFT_PERF=1` : 計測を有効化する（既定は無効）。
-- `GRAFT_PERF_EVERY=60` : 何フレームごとに出力するか（既定 60）。
-- `GRAFT_PERF_GPU_FINISH=1` : `ctx.finish()` を呼び、GPU 同期待ち込みで計測する（既定は無効）。
+- `GRAFIX_PERF=1` : 計測を有効化する（既定は無効）。
+- `GRAFIX_PERF_EVERY=60` : 何フレームごとに出力するか（既定 60）。
+- `GRAFIX_PERF_GPU_FINISH=1` : `ctx.finish()` を呼び、GPU 同期待ち込みで計測する（既定は無効）。
   - 注意: 同期待ちは挙動を変えるので、常用の計測には使わない。
 
 ## 出力の読み方
@@ -59,22 +59,22 @@ GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf
 ## 計測時の注意
 
 - 最初の 1 回（最初の出力ウィンドウ）は import/初期化/キャッシュ等が混ざるので、安定した 2 回目以降を重視する。
-- `GRAFT_PERF_GPU_FINISH=1` は「GPU 待ちが発生しているか」を見るための粗い診断。
+- `GRAFIX_PERF_GPU_FINISH=1` は「GPU 待ちが発生しているか」を見るための粗い診断。
   - `gpu_finish` が大きい ≒ GPU/ドライバ待ちの可能性が上がる。
   - ただし `finish()` 自体が待ちを作るので、値は“目安”として扱う。
 
 ## 計測用スケッチ（負荷の作り分け）
 
-`sketch/perf_sketch.py` は `GRAFT_SKETCH_CASE` で負荷タイプを切り替えられる。
+`sketch/perf_sketch.py` は `GRAFIX_SKETCH_CASE` で負荷タイプを切り替えられる。
 
-- `GRAFT_SKETCH_CASE=polyhedron`（既定）: ほどよい総合例
-- `GRAFT_SKETCH_CASE=cpu_draw` : `draw(t)` を意図的に重くして mp-draw の検証をする
-- `GRAFT_SKETCH_CASE=many_vertices` : 1 本の巨大ポリラインで indices/realize/転送の支配項を観測する
-- `GRAFT_SKETCH_CASE=many_layers` : 多レイヤーで upload/draw 呼び出し回数を重くする
-- `GRAFT_SKETCH_CASE=static_layers` : 多レイヤーだがジオメトリは静的（GPU upload skip の効果確認用）
-- `GRAFT_SKETCH_CASE=upload_skip` : 少数レイヤー + 巨大静的ジオメトリ（upload skip が効くかを確認する）
+- `GRAFIX_SKETCH_CASE=polyhedron`（既定）: ほどよい総合例
+- `GRAFIX_SKETCH_CASE=cpu_draw` : `draw(t)` を意図的に重くして mp-draw の検証をする
+- `GRAFIX_SKETCH_CASE=many_vertices` : 1 本の巨大ポリラインで indices/realize/転送の支配項を観測する
+- `GRAFIX_SKETCH_CASE=many_layers` : 多レイヤーで upload/draw 呼び出し回数を重くする
+- `GRAFIX_SKETCH_CASE=static_layers` : 多レイヤーだがジオメトリは静的（GPU upload skip の効果確認用）
+- `GRAFIX_SKETCH_CASE=upload_skip` : 少数レイヤー + 巨大静的ジオメトリ（upload skip が効くかを確認する）
 
-`GRAFT_SKETCH_N_WORKER` を 2 以上にすると `run(..., n_worker=...)` を通じて mp-draw を有効化できる。
+`GRAFIX_SKETCH_N_WORKER` を 2 以上にすると `run(..., n_worker=...)` を通じて mp-draw を有効化できる。
 
 - 注意（spawn 前提）:
   - `draw` はモジュールトップレベル定義（picklable）である必要がある。
@@ -86,8 +86,8 @@ GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf
 ### cpu_draw（draw 支配）
 
 ```bash
-GRAFT_SKETCH_CASE=cpu_draw GRAFT_SKETCH_CPU_ITERS=500000 GRAFT_SKETCH_PARAMETER_GUI=0 \
-  GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf_sketch.py
+GRAFIX_SKETCH_CASE=cpu_draw GRAFIX_SKETCH_CPU_ITERS=500000 GRAFIX_SKETCH_PARAMETER_GUI=0 \
+  GRAFIX_PERF=1 GRAFIX_PERF_EVERY=60 python sketch/perf_sketch.py
 ```
 
 代表値（例）:
@@ -103,15 +103,15 @@ GRAFT_SKETCH_CASE=cpu_draw GRAFT_SKETCH_CPU_ITERS=500000 GRAFT_SKETCH_PARAMETER_
 mp-draw を有効にして再計測する例:
 
 ```bash
-GRAFT_SKETCH_CASE=cpu_draw GRAFT_SKETCH_CPU_ITERS=500000 GRAFT_SKETCH_N_WORKER=4 \
-  GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf_sketch.py
+GRAFIX_SKETCH_CASE=cpu_draw GRAFIX_SKETCH_CPU_ITERS=500000 GRAFIX_SKETCH_N_WORKER=4 \
+  GRAFIX_SKETCH_PARAMETER_GUI=0 GRAFIX_PERF=1 GRAFIX_PERF_EVERY=60 python sketch/perf_sketch.py
 ```
 
 ### many_vertices（巨大ポリライン）
 
 ```bash
-GRAFT_SKETCH_CASE=many_vertices GRAFT_SKETCH_SEGMENTS=200000 GRAFT_SKETCH_PARAMETER_GUI=0 \
-  GRAFT_PERF=1 GRAFT_PERF_EVERY=60 GRAFT_PERF_GPU_FINISH=1 python sketch/perf_sketch.py
+GRAFIX_SKETCH_CASE=many_vertices GRAFIX_SKETCH_SEGMENTS=200000 GRAFIX_SKETCH_PARAMETER_GUI=0 \
+  GRAFIX_PERF=1 GRAFIX_PERF_EVERY=60 GRAFIX_PERF_GPU_FINISH=1 python sketch/perf_sketch.py
 ```
 
 代表値（例）:
@@ -128,8 +128,8 @@ GRAFT_SKETCH_CASE=many_vertices GRAFT_SKETCH_SEGMENTS=200000 GRAFT_SKETCH_PARAME
 ### many_layers（render_layer 支配）
 
 ```bash
-GRAFT_SKETCH_CASE=many_layers GRAFT_SKETCH_LAYERS=500 GRAFT_SKETCH_PARAMETER_GUI=0 \
-  GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf_sketch.py
+GRAFIX_SKETCH_CASE=many_layers GRAFIX_SKETCH_LAYERS=500 GRAFIX_SKETCH_PARAMETER_GUI=0 \
+  GRAFIX_PERF=1 GRAFIX_PERF_EVERY=60 python sketch/perf_sketch.py
 ```
 
 代表値（例）:
@@ -145,23 +145,23 @@ GRAFT_SKETCH_CASE=many_layers GRAFT_SKETCH_LAYERS=500 GRAFT_SKETCH_PARAMETER_GUI
 ### static_layers（静的ジオメトリ多レイヤー）
 
 ```bash
-GRAFT_SKETCH_CASE=static_layers GRAFT_SKETCH_LAYERS=500 GRAFT_SKETCH_STATIC_UNIQUE=64 \
-  GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf_sketch.py
+GRAFIX_SKETCH_CASE=static_layers GRAFIX_SKETCH_LAYERS=500 GRAFIX_SKETCH_STATIC_UNIQUE=64 \
+  GRAFIX_SKETCH_PARAMETER_GUI=0 GRAFIX_PERF=1 GRAFIX_PERF_EVERY=60 python sketch/perf_sketch.py
 ```
 
 読み:
 
 - `geometry_id` が安定するため、GPU メッシュキャッシュ（upload skip）が効く状況を作れる。
-- `GRAFT_SKETCH_STATIC_UNIQUE` を小さくするほど同一ジオメトリが繰り返され、upload skip が効きやすい。
+- `GRAFIX_SKETCH_STATIC_UNIQUE` を小さくするほど同一ジオメトリが繰り返され、upload skip が効きやすい。
 
 ### upload_skip（静的 upload の有無を見分ける）
 
 ```bash
-GRAFT_SKETCH_CASE=upload_skip GRAFT_SKETCH_UPLOAD_SEGMENTS=500000 GRAFT_SKETCH_UPLOAD_LAYERS=2 \
-  GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF=1 GRAFT_PERF_EVERY=1 python sketch/perf_sketch.py
+GRAFIX_SKETCH_CASE=upload_skip GRAFIX_SKETCH_UPLOAD_SEGMENTS=500000 GRAFIX_SKETCH_UPLOAD_LAYERS=2 \
+  GRAFIX_SKETCH_PARAMETER_GUI=0 GRAFIX_PERF=1 GRAFIX_PERF_EVERY=1 python sketch/perf_sketch.py
 ```
 
 読み:
 
 - 1 フレーム目は upload が走る（重い）→ 2 フレーム目以降は GPU メッシュキャッシュで upload が消える（軽い）ことを期待する。
-- `GRAFT_PERF_EVERY=1` にして「フレームごとの変化」を見ると分かりやすい。
+- `GRAFIX_PERF_EVERY=1` にして「フレームごとの変化」を見ると分かりやすい。

@@ -10,13 +10,13 @@
 「依存ライブラリも層で分け…」のうち、**“extras で入れなくてよい” は採用せず**、
 代わりに「入れたらすぐ描画できる」UX を優先して core に寄せる方針に変更する。
 
-注: `docs/plan_standard_src_layout.md` の実施により、import 名は `graft` に統一し、
-ディレクトリ構成は `src/graft/` を正とする（`src` パッケージは廃止）。
+注: `docs/plan_standard_src_layout.md` の実施により、import 名は `grafix` に統一し、
+ディレクトリ構成は `src/grafix/` を正とする（`src` パッケージは廃止）。
 
 ## 前提（現在地）
 
 - `pyproject.toml` があり、core 依存と extras（optional-dependencies）が宣言済み。
-- 標準 src レイアウト（`src/graft/`）へ移行済みで、公開 import は `graft.*`。
+- 標準 src レイアウト（`src/grafix/`）へ移行済みで、公開 import は `grafix.*`。
 - `README.md` は `pip install -e .` で描画までの導線があり、Dependencies は core / dev を区別している。
 - core/export/interactive の依存方向はテストで守れている（= “コード上の層” はある）。
 
@@ -42,16 +42,16 @@
 
 ### 0) 事前合意（ここだけ先に確認）
 
-- [x] 配布名（`project.name`）は `graft` で確定する
+- [x] 配布名（`project.name`）は `grafix` で確定する
 - [x] Python 最低対応バージョンは `>=3.11` とする
-- [x] import パスは `graft.*` に統一する（標準 src レイアウトへ移行済み）
+- [x] import パスは `grafix.*` に統一する（標準 src レイアウトへ移行済み）
 - [x] numba は core 必須のままにする
 - [x] shapely / pyglet / moderngl / pyimgui を core 必須にする（UX 優先）
 
 ### 1) 依存の棚卸し（層ごと）
 
 - [x] core vs extras を確定する（core: numpy/numba/shapely/pyglet/moderngl/pyimgui, extras: dev）
-- [x] `import graft.api` が GUI 依存無しで通ることを確認する（run は遅延 importのまま）
+- [x] `import grafix.api` が GUI 依存無しで通ることを確認する（run は遅延 import のまま）
 
 ### 2) `pyproject.toml` を追加して依存を宣言する
 
@@ -59,11 +59,11 @@
   - [x] `[project.dependencies]` に core 依存（numpy/numba）を記述
   - [x] `[project.dependencies]` に shapely / pyglet / moderngl / pyimgui を追加する
   - [x] `[project.optional-dependencies]` は dev のみにする
-  - [x] パッケージ検出を `src/` 起点で `graft*` に設定する
+  - [x] パッケージ検出を `src/` 起点で `grafix*` に設定する
 
 ### 3) 実行時 UX を成立させる（必要なら最小修正）
 
-- [x] `graft.api` は遅延 import を維持し、`import graft.api` が軽く済む
+- [x] `grafix.api` は遅延 import を維持し、`import grafix.api` が軽く済む
 - [ ] （任意）起動時の失敗（OpenGL/ドライバ/環境差）を README に追記する
 
 ### 4) ドキュメントを更新する
@@ -73,7 +73,7 @@
 
 ### 5) 検証（最小）
 
-- [ ] （クリーン環境で）`pip install -e .` だけで `python -c "import graft.api; from graft.api import E, G, L, Export, run"` が通る
+- [ ] （クリーン環境で）`pip install -e .` だけで `python -c "import grafix.api; from grafix.api import E, G, L, Export, run"` が通る
 - [ ] `python sketch/perf_sketch.py` が起動できる（Parameter GUI も含む）
 - [ ] shapely 必須 effect（`partition/offset` 等）が実行できる
 

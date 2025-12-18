@@ -40,15 +40,15 @@ def _cpu_burn(t: float, iters: int) -> float:
     return x
 
 
-_CASE = os.environ.get("GRAFT_SKETCH_CASE", "polyhedron").strip().lower()
-_CPU_ITERS = _env_int("GRAFT_SKETCH_CPU_ITERS", 0)
-_CIRCLE_SEGMENTS = _env_int("GRAFT_SKETCH_SEGMENTS", 50_000)
-_MANY_LAYERS = _env_int("GRAFT_SKETCH_LAYERS", 200)
-_STATIC_UNIQUE = _env_int("GRAFT_SKETCH_STATIC_UNIQUE", 64)
-_UPLOAD_SEGMENTS = _env_int("GRAFT_SKETCH_UPLOAD_SEGMENTS", 500_000)
-_UPLOAD_LAYERS = _env_int("GRAFT_SKETCH_UPLOAD_LAYERS", 2)
-_PARAMETER_GUI = _env_flag("GRAFT_SKETCH_PARAMETER_GUI", True)
-_N_WORKER = _env_int("GRAFT_SKETCH_N_WORKER", 0)
+_CASE = os.environ.get("GRAFIX_SKETCH_CASE", "polyhedron").strip().lower()
+_CPU_ITERS = _env_int("GRAFIX_SKETCH_CPU_ITERS", 0)
+_CIRCLE_SEGMENTS = _env_int("GRAFIX_SKETCH_SEGMENTS", 50_000)
+_MANY_LAYERS = _env_int("GRAFIX_SKETCH_LAYERS", 200)
+_STATIC_UNIQUE = _env_int("GRAFIX_SKETCH_STATIC_UNIQUE", 64)
+_UPLOAD_SEGMENTS = _env_int("GRAFIX_SKETCH_UPLOAD_SEGMENTS", 500_000)
+_UPLOAD_LAYERS = _env_int("GRAFIX_SKETCH_UPLOAD_LAYERS", 2)
+_PARAMETER_GUI = _env_flag("GRAFIX_SKETCH_PARAMETER_GUI", True)
+_N_WORKER = _env_int("GRAFIX_SKETCH_N_WORKER", 0)
 
 _STATIC_LAYERS_CACHE: list[Layer] | None = None
 _UPLOAD_SKIP_LAYERS_CACHE: list[Layer] | None = None
@@ -107,24 +107,24 @@ def draw(t: float):
 
     環境変数
     --------
-    GRAFT_SKETCH_CASE : str
+    GRAFIX_SKETCH_CASE : str
         `polyhedron`（既定）, `many_vertices`, `cpu_draw`, `many_layers`, `static_layers`, `upload_skip`。
-    GRAFT_SKETCH_SEGMENTS : int
+    GRAFIX_SKETCH_SEGMENTS : int
         `many_vertices` の分割数。
-    GRAFT_SKETCH_CPU_ITERS : int
+    GRAFIX_SKETCH_CPU_ITERS : int
         `cpu_draw` の負荷（0 で無効）。
-    GRAFT_SKETCH_LAYERS : int
+    GRAFIX_SKETCH_LAYERS : int
         `many_layers` のレイヤー数。
-    GRAFT_SKETCH_STATIC_UNIQUE : int
+    GRAFIX_SKETCH_STATIC_UNIQUE : int
         `static_layers` のユニークジオメトリ数（既定 64）。
         - 小さいほど geometry_id が繰り返され、GPU upload skip が効きやすい。
-    GRAFT_SKETCH_UPLOAD_SEGMENTS : int
+    GRAFIX_SKETCH_UPLOAD_SEGMENTS : int
         `upload_skip` の頂点数（既定 500_000）。
-    GRAFT_SKETCH_UPLOAD_LAYERS : int
+    GRAFIX_SKETCH_UPLOAD_LAYERS : int
         `upload_skip` の同一ジオメトリ描画回数（既定 2）。
-    GRAFT_SKETCH_PARAMETER_GUI : bool
+    GRAFIX_SKETCH_PARAMETER_GUI : bool
         Parameter GUI を有効化する（既定 True）。
-    GRAFT_SKETCH_N_WORKER : int
+    GRAFIX_SKETCH_N_WORKER : int
         `run(..., n_worker=...)` に渡す worker 数（既定 0）。
     """
 

@@ -37,11 +37,11 @@
 
 ## 実装チェックリスト
 
-- [ ] `src/graft/core/realized_geometry.py` の `RealizedGeometry.__post_init__()` で:
+- [ ] `src/grafix/core/realized_geometry.py` の `RealizedGeometry.__post_init__()` で:
   - [ ] `coords` を `np.ascontiguousarray(coords, dtype=np.float32)` にする（2D→3D 補完後）
   - [ ] `offsets` を `np.ascontiguousarray(offsets, dtype=np.int32)` にする
   - [ ] `writeable=False` は維持する
-- [ ] `src/graft/interactive/gl/line_mesh.py` の `upload()` で:
+- [ ] `src/grafix/interactive/gl/line_mesh.py` の `upload()` で:
   - [ ] `vertices_f32 = np.ascontiguousarray(...)` / `indices_u32 = ...` を削る（または `np.asarray` 程度に縮める）
   - [ ] `vertices` は `float32` contiguous、`indices` は整数 contiguous を前提として扱う
 - [ ] 既存テストが壊れないことを確認する（最低限: `pytest -q tests/interactive/test_index_buffer.py`）。
@@ -49,7 +49,7 @@
 
 ## 再計測
 
-- [ ] `GRAFT_PERF=1` で `polyhedron` と `upload_skip` を再計測し、`render_layer`（または `render_upload`）が下がることを確認する。
+- [ ] `GRAFIX_PERF=1` で `polyhedron` と `upload_skip` を再計測し、`render_layer`（または `render_upload`）が下がることを確認する。
 
 ---
 
@@ -71,11 +71,11 @@
 
 ## 実装チェックリスト
 
-- [ ] `src/graft/interactive/gl/draw_renderer.py` で:
+- [ ] `src/grafix/interactive/gl/draw_renderer.py` で:
   - [ ] `self._scratch_mesh` を `self._scratch_meshes: list[LineMesh]` に変更（例: 2 個）
   - [ ] `render_layer()` 内で scratch を round-robin で選ぶ
   - [ ] 「このフレームで scratch が何回使われたか」をローカルに把握し、同フレーム再利用が起きる場合の挙動（orphan へフォールバック等）を決める
-- [ ] `src/graft/interactive/gl/line_mesh.py` で:
+- [ ] `src/grafix/interactive/gl/line_mesh.py` で:
   - [ ] `upload()` に `use_orphan: bool` を足す（または `upload_orphan()` / `upload_write()` に分ける）
   - [ ] `use_orphan=False` のときは `orphan()` を呼ばず `write()` のみにする
 - [ ] `upload_skip`（2 layer 同一 geometry）と `many_layers/static_layers` を含めて「見た目が壊れない」ことを確認する。
@@ -106,13 +106,13 @@
 
 ## 実装チェックリスト
 
-- [ ] `src/graft/interactive/gl/line_mesh.py` で:
+- [ ] `src/grafix/interactive/gl/line_mesh.py` で:
   - [ ] `index_element_size`（2 or 4）を `LineMesh` の状態として持つ
   - [ ] upload 時に「u16 でいけるか」判定し、必要なら indices を u16 化する
   - [ ] `simple_vertex_array(..., index_element_size=...)` を使い分ける（変更時は VAO を作り直す）
-- [ ] `src/graft/interactive/gl/draw_renderer.py` で:
+- [ ] `src/grafix/interactive/gl/draw_renderer.py` で:
   - [ ] 描画直前に `ctx.primitive_restart_index` をメッシュの index サイズに合わせて設定する（混在に対応）
-- [ ] `sketch/perf_sketch.py` で `segments < 65535` のケース（例: `GRAFT_SKETCH_SEGMENTS=50000`）を流し、IBO が支配する状況で差が出るか確認する。
+- [ ] `sketch/perf_sketch.py` で `segments < 65535` のケース（例: `GRAFIX_SKETCH_SEGMENTS=50000`）を流し、IBO が支配する状況で差が出るか確認する。
 
 ## 再計測
 
@@ -135,17 +135,17 @@
 ---
 
 改善前の perf record
-(gl5) tyhts0829@HitoshinoMacBook-Pro Graft % GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf_sketch.py
-[graft-perf] frame=3.782ms draw=0.225ms indices=0.031ms render_layer=1.351ms scene=2.066ms
-[graft-perf] frame=2.319ms draw=0.310ms indices=0.005ms render_layer=1.294ms scene=0.556ms
-[graft-perf] frame=2.549ms draw=0.360ms indices=0.006ms render_layer=1.387ms scene=0.639ms
-[graft-perf] frame=2.629ms draw=0.447ms indices=0.006ms render_layer=1.271ms scene=0.737ms
-[graft-perf] frame=1.949ms draw=0.238ms indices=0.004ms render_layer=1.152ms scene=0.432ms
-[graft-perf] frame=2.481ms draw=0.366ms indices=0.005ms render_layer=1.299ms scene=0.636ms
-(gl5) tyhts0829@HitoshinoMacBook-Pro Graft % GRAFT_PERF=1 GRAFT_PERF_EVERY=60 GRAFT_PERF_GPU_FINISH=1 python sketch/perf_sketch.py
-[graft-perf] frame=3.781ms draw=0.230ms gpu_finish=0.265ms indices=0.030ms render_layer=1.254ms scene=2.000ms
-[graft-perf] frame=2.059ms draw=0.234ms gpu_finish=0.323ms indices=0.004ms render_layer=1.093ms scene=0.410ms
-[graft-perf] frame=2.987ms draw=0.417ms gpu_finish=0.329ms indices=0.007ms render_layer=1.503ms scene=0.753ms
-[graft-perf] frame=2.232ms draw=0.248ms gpu_finish=0.337ms indices=0.005ms render_layer=1.183ms scene=0.435ms
-[graft-perf] frame=3.186ms draw=0.506ms gpu_finish=0.313ms indices=0.008ms render_layer=1.520ms scene=0.872ms
-[graft-perf] frame=2.337ms draw=0.319ms gpu_finish=0.298ms indices=0.005ms render_layer=1.166ms scene=0.549ms
+(gl5) tyhts0829@HitoshinoMacBook-Pro Grafix % GRAFIX_PERF=1 GRAFIX_PERF_EVERY=60 python sketch/perf_sketch.py
+[grafix-perf] frame=3.782ms draw=0.225ms indices=0.031ms render_layer=1.351ms scene=2.066ms
+[grafix-perf] frame=2.319ms draw=0.310ms indices=0.005ms render_layer=1.294ms scene=0.556ms
+[grafix-perf] frame=2.549ms draw=0.360ms indices=0.006ms render_layer=1.387ms scene=0.639ms
+[grafix-perf] frame=2.629ms draw=0.447ms indices=0.006ms render_layer=1.271ms scene=0.737ms
+[grafix-perf] frame=1.949ms draw=0.238ms indices=0.004ms render_layer=1.152ms scene=0.432ms
+[grafix-perf] frame=2.481ms draw=0.366ms indices=0.005ms render_layer=1.299ms scene=0.636ms
+(gl5) tyhts0829@HitoshinoMacBook-Pro Grafix % GRAFIX_PERF=1 GRAFIX_PERF_EVERY=60 GRAFIX_PERF_GPU_FINISH=1 python sketch/perf_sketch.py
+[grafix-perf] frame=3.781ms draw=0.230ms gpu_finish=0.265ms indices=0.030ms render_layer=1.254ms scene=2.000ms
+[grafix-perf] frame=2.059ms draw=0.234ms gpu_finish=0.323ms indices=0.004ms render_layer=1.093ms scene=0.410ms
+[grafix-perf] frame=2.987ms draw=0.417ms gpu_finish=0.329ms indices=0.007ms render_layer=1.503ms scene=0.753ms
+[grafix-perf] frame=2.232ms draw=0.248ms gpu_finish=0.337ms indices=0.005ms render_layer=1.183ms scene=0.435ms
+[grafix-perf] frame=3.186ms draw=0.506ms gpu_finish=0.313ms indices=0.008ms render_layer=1.520ms scene=0.872ms
+[grafix-perf] frame=2.337ms draw=0.319ms gpu_finish=0.298ms indices=0.005ms render_layer=1.166ms scene=0.549ms

@@ -70,14 +70,14 @@ class PerfCollector:
     def from_env(cls) -> "PerfCollector":
         """環境変数から設定して作成する。
 
-        - `GRAFT_PERF=1` で有効化する。
-        - `GRAFT_PERF_EVERY=60` で何フレームごとに出力するかを指定する。
-        - `GRAFT_PERF_GPU_FINISH=1` で `ctx.finish()` を含む GPU 同期計測を有効化する。
+        - `GRAFIX_PERF=1` で有効化する。
+        - `GRAFIX_PERF_EVERY=60` で何フレームごとに出力するかを指定する。
+        - `GRAFIX_PERF_GPU_FINISH=1` で `ctx.finish()` を含む GPU 同期計測を有効化する。
         """
         return cls(
-            enabled=_env_flag("GRAFT_PERF"),
-            print_every=_env_int("GRAFT_PERF_EVERY", 60),
-            gpu_finish=_env_flag("GRAFT_PERF_GPU_FINISH"),
+            enabled=_env_flag("GRAFIX_PERF"),
+            print_every=_env_int("GRAFIX_PERF_EVERY", 60),
+            gpu_finish=_env_flag("GRAFIX_PERF_GPU_FINISH"),
         )
 
     def section(self, name: str) -> contextlib.AbstractContextManager[None]:
@@ -132,4 +132,3 @@ class PerfCollector:
         self._window_frames = 0
         self._sum_ns.clear()
         self._calls.clear()
-

@@ -1,6 +1,6 @@
 # どこで: `docs/memo/export_svg_implementation_plan_2025-12-16_v2.md`。
 
-# 何を: `src/graft/export/svg.py:export_svg()` の実装計画（チェックリスト）をまとめる。
+# 何を: `src/grafix/export/svg.py:export_svg()` の実装計画（チェックリスト）をまとめる。
 
 # なぜ: headless export（SVG）を最小実装で通し、core/export/interactive の依存境界を保ったまま反復できる状態にするため。
 
@@ -8,14 +8,14 @@
 
 ## 0. 前提（現在地）
 
-- 入口: `src/graft/api/export.py:Export` → `src/graft/export/svg.py:export_svg`。
-- 入力: `Sequence[RealizedLayer]`（`src/graft/core/pipeline.py`）。
+- 入口: `src/grafix/api/export.py:Export` → `src/grafix/export/svg.py:export_svg`。
+- 入力: `Sequence[RealizedLayer]`（`src/grafix/core/pipeline.py`）。
   - `realized.coords: (N,3) float32`
   - `realized.offsets: (M+1,) int32`（ポリライン境界）
   - `color: (r,g,b)`（0..1 float）
   - `thickness: float`（interactive の shader にそのまま渡している “clip 空間” 相当の値）
-- 制約: `src/graft/export` は headless（`src/graft/interactive` / `pyglet` / `moderngl` / `imgui` を import しない）。
-- 現状: `src/graft/export/svg.py` は実装済み（2025-12-16）。
+- 制約: `src/grafix/export` は headless（`src/grafix/interactive` / `pyglet` / `moderngl` / `imgui` を import しない）。
+- 現状: `src/grafix/export/svg.py` は実装済み（2025-12-16）。
 
 ## 1. ゴール（成功条件）
 
@@ -27,7 +27,7 @@
 
 ### 2.1 座標系
 
-- interactive の投影（`src/graft/interactive/gl/utils.py:build_projection`）に合わせる。
+- interactive の投影（`src/grafix/interactive/gl/utils.py:build_projection`）に合わせる。
   - 原点 `(0,0)` は左上
   - `x` 右向き、`y` 下向き
   - `z` は無視（`coords[:, :2]` のみ使用）
@@ -69,10 +69,10 @@ SVG にそのまま `thickness` を入れると細すぎる可能性が高い。
 
 - [x] 1. `canvas_size=None` は例外にする（当面禁止）
 - [x] 2. `stroke_width = thickness * min(W,H)/2` を採用
-- [x] 3. `src/graft/export/svg.py` に純粋関数を追加
+- [x] 3. `src/grafix/export/svg.py` に純粋関数を追加
   - [x] offsets→polyline 走査（`coords[start:end]` の列挙）
   - [x] float→ 文字列（桁数・`-0` 正規化）
-  - [x] RGB01→`#RRGGBB`（`src/graft/core/parameters/style.rgb01_to_rgb255` を使用）
+  - [x] RGB01→`#RRGGBB`（`src/grafix/core/parameters/style.rgb01_to_rgb255` を使用）
   - [x] thickness→stroke-width（`canvas_size` を使う）
 - [x] 4. SVG 文字列生成を実装し、UTF-8 で保存
   - [x] 親ディレクトリ `mkdir(parents=True, exist_ok=True)`

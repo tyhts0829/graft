@@ -8,7 +8,7 @@
 
 背景（なぜ起きるか）:
 
-- `fill` は 3D 入力でも「平面なら 2D に整列してハッチ生成」する。`transform_to_xy_plane()` が **先頭 3 点**で法線を推定する。  
+- `fill` は 3D 入力でも「平面なら 2D に整列してハッチ生成」する。`transform_to_xy_plane()` が **先頭 3 点**で法線を推定する。
 - text 輪郭は「長い直線エッジ上」から始まることがあり、先頭 3 点が共線になって法線が作れず、平面判定が不安定になる。
 - `polygon` は先頭 3 点が非共線になりやすく、この問題が出にくい。
 
@@ -23,7 +23,7 @@
 
 ### A) 対象
 
-- `src/graft/core/primitives/text.py` が生成する **各輪郭ポリライン（閉曲線）**に対して適用する。
+- `src/grafix/core/primitives/text.py` が生成する **各輪郭ポリライン（閉曲線）**に対して適用する。
 - 開曲線（閉じていない polyline）には適用しない（始端/終端の意味が変わりうるため）。
 
 ### B) いつ適用するか
@@ -59,7 +59,7 @@
 
 ### 1) ヘルパ関数追加
 
-- [x] `src/graft/core/primitives/text.py` に `_rotate_closed_polyline_start_for_fill(polyline: np.ndarray) -> np.ndarray` を追加
+- [x] `src/grafix/core/primitives/text.py` に `_rotate_closed_polyline_start_for_fill(polyline: np.ndarray) -> np.ndarray` を追加
   - [x] 入力は `(N,3)` float32 を想定（内部計算は float64）
   - [x] `N < 4`（= ユニーク点が 3 未満）なら何もしない
   - [x] `P[0]` と `P[-1]` が一致（または十分近い）しない場合は何もしない

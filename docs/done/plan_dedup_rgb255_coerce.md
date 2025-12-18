@@ -3,8 +3,9 @@
 目的: `_coerce_rgb255`（GUI 由来の RGB 値を int 化 + 0..255 clamp する処理）の重複を解消し、仕様変更時の修正漏れリスクを下げる。
 
 対象:
-- `src/graft/core/pipeline.py`（Layer style の override）
-- `src/graft/interactive/runtime/draw_window_system.py`（背景色/グローバル線色の override）
+
+- `src/grafix/core/pipeline.py`（Layer style の override）
+- `src/grafix/interactive/runtime/draw_window_system.py`（背景色/グローバル線色の override）
 
 ---
 
@@ -12,20 +13,20 @@
 
 ### 0) 事前合意（ここだけ先に確認）
 
-- [x] 置き場所は `graft.core.parameters.style` で良い
+- [x] 置き場所は `grafix.core.parameters.style` で良い
 - [x] 関数名は `coerce_rgb255`（候補: `as_rgb255`）で良い
 - [x] 例外方針は現状維持（長さ 3 でない場合 `ValueError`）
 - [x] 変換方針は現状維持（`int()` 化 + 0..255 clamp、float 混在も許容）
 
 ### 1) コアユーティリティを追加する
 
-- [x] `src/graft/core/parameters/style.py` に `coerce_rgb255(value: object) -> tuple[int, int, int]` を追加する
+- [x] `src/grafix/core/parameters/style.py` に `coerce_rgb255(value: object) -> tuple[int, int, int]` を追加する
 - [x] NumPy スタイル docstring（日本語）を付ける
 
 ### 2) 呼び出し側の重複を除去する
 
-- [x] `src/graft/core/pipeline.py` のローカル `_coerce_rgb255` を削除し、`coerce_rgb255` を使う
-- [x] `src/graft/interactive/runtime/draw_window_system.py` のローカル `_coerce_rgb255` を削除し、`coerce_rgb255` を使う
+- [x] `src/grafix/core/pipeline.py` のローカル `_coerce_rgb255` を削除し、`coerce_rgb255` を使う
+- [x] `src/grafix/interactive/runtime/draw_window_system.py` のローカル `_coerce_rgb255` を削除し、`coerce_rgb255` を使う
 
 ### 3) テストを追加/更新する（最小）
 
@@ -44,7 +45,7 @@
 
 ## 事前確認したいこと / 追加提案
 
-- [x] GUI 側にも同様の処理がある（`src/graft/interactive/parameter_gui/widgets.py` の `_as_rgb255`）。今回は A を採用し、widgets 側は据え置く。
+- [x] GUI 側にも同様の処理がある（`src/grafix/interactive/parameter_gui/widgets.py` の `_as_rgb255`）。今回は A を採用し、widgets 側は据え置く。
   - A: 今回は pipeline/runtime の 2 箇所に限定する
   - B: 3 箇所まとめて `coerce_rgb255` に統一する
 - [ ] 例外メッセージを 3 箇所で統一するか（現状は文言が少し違う）

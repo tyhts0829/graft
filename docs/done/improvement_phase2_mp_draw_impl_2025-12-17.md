@@ -22,5 +22,5 @@
 
 ## 最小検証（手元計測）
 
-- [ ] `cpu_draw` でメインフレーム時間が改善する（`GRAFT_SKETCH_CASE=cpu_draw ... GRAFT_SKETCH_N_WORKER=4 ...`）
+- [ ] `cpu_draw` でメインフレーム時間が改善する（`GRAFIX_SKETCH_CASE=cpu_draw ... GRAFIX_SKETCH_N_WORKER=4 ...`）
 - [ ] 既存の単プロセス（`n_worker<=1`）挙動が壊れていない

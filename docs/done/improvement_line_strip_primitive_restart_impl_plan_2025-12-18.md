@@ -15,7 +15,7 @@
 
 ## 現状整理（このリポの状態）
 
-- `src/graft/interactive/gl/index_buffer.py` の `build_line_indices(offsets)` は現在 `GL_LINES` 前提の “エッジ列” を生成している。
+- `src/grafix/interactive/gl/index_buffer.py` の `build_line_indices(offsets)` は現在 `GL_LINES` 前提の “エッジ列” を生成している。
 - `LineMesh` は `primitive_restart=True` と `primitive_restart_index=0xFFFFFFFF` を設定済み。
 - `DrawRenderer` は `vao.render(mode=ctx.LINES, ...)` で描画している。
 
@@ -35,7 +35,7 @@
 
 ### 1) index 生成を LINE_STRIP 方式へ
 
-- [x] `src/graft/interactive/gl/index_buffer.py` に `LINE_STRIP + PR` 用の indices 生成を実装する
+- [x] `src/grafix/interactive/gl/index_buffer.py` に `LINE_STRIP + PR` 用の indices 生成を実装する
   - [x] “頂点が 2 未満の polyline はスキップ”の扱いを明確化（スキップしても polyline 間が繋がらないよう PR を入れる）
   - [x] dtype は `np.uint32` を維持（`PR=0xFFFFFFFF` と一致）
   - [x] offsets 内容ベースの LRU キャッシュは維持（同一 offsets なら再計算しない）
@@ -58,9 +58,9 @@
 ### 4) 再計測（期待値の確認）
 
 - [ ] `many_vertices`（巨大ポリライン）で IBO 量が減った分、`render_layer` が下がるか確認する
-  - `GRAFT_SKETCH_CASE=many_vertices GRAFT_SKETCH_SEGMENTS=200000 GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf_sketch.py`
+  - `GRAFIX_SKETCH_CASE=many_vertices GRAFIX_SKETCH_SEGMENTS=200000 GRAFIX_SKETCH_PARAMETER_GUI=0 GRAFIX_PERF=1 GRAFIX_PERF_EVERY=60 python sketch/perf_sketch.py`
 - [ ] `upload_skip` で 1 フレーム目の “upload あり” コストが下がるかを見る（indices 半減の影響を見たい）
-  - `GRAFT_SKETCH_CASE=upload_skip GRAFT_SKETCH_UPLOAD_SEGMENTS=500000 GRAFT_SKETCH_UPLOAD_LAYERS=2 GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF=1 GRAFT_PERF_EVERY=1 python sketch/perf_sketch.py`
+  - `GRAFIX_SKETCH_CASE=upload_skip GRAFIX_SKETCH_UPLOAD_SEGMENTS=500000 GRAFIX_SKETCH_UPLOAD_LAYERS=2 GRAFIX_SKETCH_PARAMETER_GUI=0 GRAFIX_PERF=1 GRAFIX_PERF_EVERY=1 python sketch/perf_sketch.py`
 
 ## リスク / 注意点
 

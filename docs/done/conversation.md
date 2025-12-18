@@ -1,12 +1,12 @@
 方向性は正しいです。いま pyglet や moderngl を“作品生成の入口”側でインポートしているなら、そこがヘッドレス一括出力の最大の障害になります。解決策は単純で、「幾何生成（DAG→RealizedGeometry）と描画（PNG/SVG などへのレンダリング）を、依存関係として完全に分離する」ことです。描画は後段の“アダプタ”に押し込み、作品スクリプトとコアは GPU/Window 依存をゼロにします。
 
-設計としては、graft を少なくとも次の 3 層に分けるのが堅いです。まず Core 層は Geometry/Effector/Realize/Layer/Parameter など、純粋にデータと計算だけを持ちます。次に Export/Render 層は、Core の出力（例えば Layer 列と RealizedGeometry）を受け取って、SVG/PNG/G-code などに変換します。最後に Interactive 層が pyglet / moderngl を使ってウィンドウ表示やリアルタイム操作を提供します。Interactive は「あると便利」だが「なくても作品は生成できる」を徹底します。
+設計としては、grafix を少なくとも次の 3 層に分けるのが堅いです。まず Core 層は Geometry/Effector/Realize/Layer/Parameter など、純粋にデータと計算だけを持ちます。次に Export/Render 層は、Core の出力（例えば Layer 列と RealizedGeometry）を受け取って、SVG/PNG/G-code などに変換します。最後に Interactive 層が pyglet / moderngl を使ってウィンドウ表示やリアルタイム操作を提供します。Interactive は「あると便利」だが「なくても作品は生成できる」を徹底します。
 
 現実的な最短ルートは「まず SVG を吐けるようにする」です。SVG はヘッドレスで確実に生成でき、あなたの“線の作品”と相性が良い。サムネ PNG が必要なら、SVG→PNG のラスタライズを後段で行えばよい（この後段だけに cairo などを依存させれば、GPU 依存は消えます）。さらに、ペンプロッタやベクタ資産とも一貫します。将来的に GL レンダラを足すのも容易です（SVG と GL が同じレンダラ・インターフェースを実装するだけ）。
 
-実装の勘所は「インポートを動的にする」ことです。Core や作品スクリプトで pyglet を import してしまうと、その時点でヘッドレス実行が壊れます。GL/Window 系は graft/renderers/gl_pyglet.py のようなモジュールに閉じ込め、CLI で --renderer gl を指定したときだけ遅延 import される形にします。例えばこうです。
+実装の勘所は「インポートを動的にする」ことです。Core や作品スクリプトで pyglet を import してしまうと、その時点でヘッドレス実行が壊れます。GL/Window 系は grafix/renderers/gl_pyglet.py のようなモジュールに閉じ込め、CLI で --renderer gl を指定したときだけ遅延 import される形にします。例えばこうです。
 
-# graft/rendering/load_renderer.py
+# grafix/rendering/load_renderer.py
 
 def load_renderer(name: str):
 if name == "svg":
@@ -17,7 +17,7 @@ from .gl_pyglet_renderer import GlPygletRenderer # ここで初めて pyglet/mod
 return GlPygletRenderer()
 raise ValueError(name)
 
-この分離ができると、graft thumbs は「作品スクリプトを読み込む →build()して Layer を得る →realize→SVG/PNG に吐く → 一覧 HTML/インデックス JSON 生成」という単純なパイプラインになります。Codex にやらせるときも、ここが安定しているほど反復が回ります。
+この分離ができると、grafix thumbs は「作品スクリプトを読み込む →build()して Layer を得る →realize→SVG/PNG に吐く → 一覧 HTML/インデックス JSON 生成」という単純なパイプラインになります。Codex にやらせるときも、ここが安定しているほど反復が回ります。
 
 もう一段だけ現実的な注意点があります。PNG に直接レンダする CPU レンダラを自作する場合、ポリラインの太さ、結合（join）、端点（cap）、アンチエイリアスをどうするかで品質差が出ます。これを自前でやるのは意外に面倒なので、当面は「SVG を正として出す」か、CPU レンダは既存の 2D 描画バックエンド（Cairo や Skia 等）に任せる方がコストが低いです。あなたの目的はまず“サムネ一括出力で作品の探索を回す”ことなので、品質が完全でなくても、安定して大量に吐ける方が価値が高いです。
 
@@ -33,10 +33,10 @@ src ディレクトリ配下に core、export、interactive の 3 つのディ�
 
 ただし、ディレクトリを切るだけでは境界は守られません。結局は依存方向（core が interactive/export を絶対に import しない）を設計として固定し、必要なら機械的に検査するところまでセットでやるのが本質です。したがって「ディレクトリ構成とは切り離すべきか」という問いに対しては、切り離す必要はなく、むしろ構成で境界を表現しつつ、依存方向をルール化して守るのが現実解です。
 
-実務的には、src/graft/ の下を大きく 3 層に切って問題ありません。ただし名前は export より render / io / formats の方が意図が明確になりやすいです（export は“何でも入る”箱になりがちです）。例えばこういう形が運用しやすいです。
+実務的には、src/grafix/ の下を大きく 3 層に切って問題ありません。ただし名前は export より render / io / formats の方が意図が明確になりやすいです（export は“何でも入る”箱になりがちです）。例えばこういう形が運用しやすいです。
 
 src/
-graft/
+grafix/
 core/
 geometry.py
 effects.py

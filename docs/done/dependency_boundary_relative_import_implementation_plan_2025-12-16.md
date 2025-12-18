@@ -12,16 +12,16 @@
 - 現状の `_import_modules_in_file()` は `ast.ImportFrom` のうち `node.level > 0`（相対 import）を `continue` でスキップしている。
   - その結果、`from ..export import svg` のような “境界またぎ相対 import” を検出できない。
 - さらに、`ast.ImportFrom` で `modules.add(node.module)` しかしていないため、次の形も見逃す。
-  - 例: `from graft import export`（`node.module == "graft"` なので `"graft.export"` を拾えない）
-- `src/graft/` 配下には `from .foo import ...` の相対 import が既に多数ある（相対 import 自体を禁止する方向は現実的ではない）。
+  - 例: `from grafix import export`（`node.module == "grafix"` なので `"grafix.export"` を拾えない）
+- `src/grafix/` 配下には `from .foo import ...` の相対 import が既に多数ある（相対 import 自体を禁止する方向は現実的ではない）。
 
 ## ゴール（成功条件）
 
-- `src/graft/core` で次が書かれたらテストが落ちる:
+- `src/grafix/core` で次が書かれたらテストが落ちる:
   - `from ..export import ...` / `from .. import export`
   - `from ..interactive import ...` / `from .. import interactive`
-  - `from graft import export` / `from graft import interactive`
-- 既存の “同一層内” 相対 import（例: `src/graft/core/**` の `from .key import ...`）では落ちない。
+  - `from grafix import export` / `from grafix import interactive`
+- 既存の “同一層内” 相対 import（例: `src/grafix/core/**` の `from .key import ...`）では落ちない。
 - 失敗時メッセージに「どのファイルが」「どの解決後モジュール名で」違反したかが出る。
 
 ## 方針（採用案）
@@ -29,8 +29,8 @@
 ### 相対 import を “解決後の絶対モジュール名” として扱う
 
 - ファイルパスから “現在モジュール名” を決める:
-  - 例: `repo_root/src/graft/core/pipeline.py` → `graft.core.pipeline`
-  - 例: `repo_root/src/graft/core/__init__.py` → `graft.core`（`.__init__` は落とす）
+  - 例: `repo_root/src/grafix/core/pipeline.py` → `grafix.core.pipeline`
+  - 例: `repo_root/src/grafix/core/__init__.py` → `grafix.core`（`.__init__` は落とす）
 - `ast.ImportFrom` を次のルールで “検査対象モジュール名の集合” に変換する:
   - `level == 0`（絶対 import）:
     - `base = node.module`（`None` は無視）
@@ -38,19 +38,19 @@
     - “現在パッケージ” を `current_module` から作り、`level` に従って親へ移動して `base` を作る
     - `base = <移動後パッケージ> + ("." + node.module if node.module else "")`
   - 追加で、`from X import Y` の “Y 側” も候補として足す（`Y != "*"` のとき）:
-    - `base + "." + name`（`from graft import export` → `graft.export` を拾うため）
+    - `base + "." + name`（`from grafix import export` → `grafix.export` を拾うため）
 - 解決不能（ドットが深すぎる等）の相対 import は「テスト側の不備で黙殺」せず、違反として明示的に落とす（＝穴を残さない）。
 
 ## テスト計画（最小）
 
 既存テストファイル内に “ヘルパーのユニットテスト” を足す（依存追加なし、対象限定で高速）。
 
-- [ ] `current_module="graft.core.pipeline"` + `from ..export import svg` → `{"graft.export", "graft.export.svg"}` を含む
-- [ ] `current_module="graft.core.pipeline"` + `from .. import interactive` → `{"graft.interactive"}` を含む
-- [ ] `current_module="graft.core.pipeline"` + `from graft import export` → `{"graft.export"}` を含む
-- [ ] `current_module="graft.core.parameters.resolver"` + `from . import context` → `{"graft.core.parameters.context"}` を含む
-- [ ] `from ..export import *` は `{"graft.export"}` のみ（`*` は展開しない）
-- [ ] 解決不能な相対 import（例: `current_module="graft.core"` で `from ...export import svg`）は AssertionError（もしくは明示メッセージ）になる
+- [ ] `current_module="grafix.core.pipeline"` + `from ..export import svg` → `{"grafix.export", "grafix.export.svg"}` を含む
+- [ ] `current_module="grafix.core.pipeline"` + `from .. import interactive` → `{"grafix.interactive"}` を含む
+- [ ] `current_module="grafix.core.pipeline"` + `from grafix import export` → `{"grafix.export"}` を含む
+- [ ] `current_module="grafix.core.parameters.resolver"` + `from . import context` → `{"grafix.core.parameters.context"}` を含む
+- [ ] `from ..export import *` は `{"grafix.export"}` のみ（`*` は展開しない）
+- [ ] 解決不能な相対 import（例: `current_module="grafix.core"` で `from ...export import svg`）は AssertionError（もしくは明示メッセージ）になる
 
 ## 実装チェックリスト（合意後に着手）
 
@@ -63,7 +63,7 @@
 
 ## 事前確認したいこと（判断ポイント）
 
-- `from graft import export` を「境界違反として検出する」方針で問題ないか（意図どおりなら穴が一段減る）。；はい
+- `from grafix import export` を「境界違反として検出する」方針で問題ないか（意図どおりなら穴が一段減る）。；はい
 - 非パッケージ扱いのサブディレクトリ（`__init__.py` が無い場所）についても、境界検査のため “パス由来の擬似モジュール名” で解決してよいか。；はい
   - ここで厳密な import 解決（実在確認）を始めると複雑化するため、今回は行わない想定。
 
@@ -71,4 +71,4 @@
 
 - `importlib` / `__import__` / `exec` 等の動的 import 検出
 - 実在モジュールの検証（ファイル/ディレクトリ存在チェック）
-- 依存境界ルール自体の拡張（`src/graft/interactive` など別領域の追加）
+- 依存境界ルール自体の拡張（`src/grafix/interactive` など別領域の追加）
