@@ -31,6 +31,9 @@ include = ["graft*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+filterwarnings = [
+  "ignore:The py23 module has been deprecated.*:DeprecationWarning:fontTools\\.misc\\.py23",
+]
 
 [tool.ruff]
 line-length = 100
