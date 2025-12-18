@@ -1,7 +1,9 @@
 # twist effect 移植チェックリスト（2025-12-18）
 
 # どこで: `twist_effect_migration_checklist_2025-12-18.md`。
+
 # 何を: `src/grafix/core/effects/from_previous_project/twist.py`（旧 twist）を現行コア（RealizedGeometry/effect_registry/ParamMeta）へ移植するためのチェックリスト。
+
 # なぜ: 旧プロジェクト依存（`engine.*` / 旧 registry / 旧 Geometry API）を排除し、`grafix.api.E.twist(...)` をこのリポジトリで利用可能にするため。
 
 ## ゴール
@@ -31,11 +33,11 @@
 
 ## 仕様確定（あなたの確認が必要）
 
-- [ ] 公開引数名は旧仕様踏襲で `angle` / `axis` のままにする（`angle_deg` 等へは改名しない）。
-- [ ] `axis` 不正値は旧仕様踏襲で `"y"` にフォールバックする（例外にしない / no-op にしない）。
-- [ ] `angle` は旧仕様同様「degree 入力」とし、値域クランプはしない（`ParamMeta.ui_min/ui_max` は UI 範囲のみ）。
-- [ ] `rng <= 1e-9` のとき no-op（旧実装の閾値踏襲）。
-- [ ] 軸方向の min/max は「全頂点の一括 min/max」（ポリラインごとのリセットはしない）。
+- [ ] 公開引数名は旧仕様踏襲で `angle` / `axis` のままにする（`angle_deg` 等へは改名しない）。；はい
+- [ ] `axis` 不正値は旧仕様踏襲で `"y"` にフォールバックする（例外にしない / no-op にしない）；raise で
+- [ ] `angle` は旧仕様同様「degree 入力」とし、値域クランプはしない（`ParamMeta.ui_min/ui_max` は UI 範囲のみ）。；はい
+- [ ] `rng <= 1e-9` のとき no-op（旧実装の閾値踏襲）。；はい
+- [ ] 軸方向の min/max は「全頂点の一括 min/max」（ポリラインごとのリセットはしない）。；はい
 
 ## 作業チェックリスト
 
@@ -55,7 +57,7 @@
   - [ ] ねじり:
     - [ ] 軸インデックス選択（x=0,y=1,z=2）
     - [ ] `t=(coord-lo)/rng` → `twist_rad=(t-0.5)*2*max_rad`
-    - [ ] 各軸ごとの回転（np.cos/np.sin をベクトルで計算、float64 計算→float32 出力）
+    - [ ] 各軸ごとの回転（np.cos/np.sin をベクトルで計算、float64 計算 →float32 出力）
     - [ ] offsets は `base.offsets` をそのまま保持
 - [ ] 登録
   - [ ] `src/grafix/api/effects.py` に `from grafix.core.effects import twist as _effect_twist  # noqa: F401` を追加

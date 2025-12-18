@@ -7,16 +7,16 @@
 ## 0) 事前に決める（あなたの確認が必要）
 
 - [ ] `frequency` の型:
-  - A: `vec3` 固定（`(fx, fy, fz)`）。等方は `(f, f, f)` で表現（推奨: GUI と整合する）
+  - A: `vec3` 固定（`(fx, fy, fz)`）。等方は `(f, f, f)` で表現（推奨: GUI と整合する）；はい
   - B: `float | vec3` を受けたい（この場合、GUI/ParamStore 側も壊さない手当が必要）
 - [ ] z 方向の扱い（旧挙動の再現方法）:
   - A: 「入力が実質 2D（例: z が全て 0）」なら z は保持し、xy のみ wobble（旧の “2D は z を触らない” 意図を優先）
-  - B: 常に xyz を wobble（新コア的に一貫。2D 図形でも z が動き得る）
+  - B: 常に xyz を wobble（新コア的に一貫。2D 図形でも z が動き得る）；こちらで
 - [ ] パラメータ名（単位表記）:
-  - A: `amplitude / frequency / phase`（旧名踏襲）
+  - A: `amplitude / frequency / phase`（旧名踏襲）；こちらで
   - B: `amplitude_mm / frequency / phase_deg`（単位を明示）
 - [ ] UI レンジ（`ParamMeta.ui_min/ui_max`）:
-  - A: 旧 `amplitude<=20, frequency<=0.2, phase<=360` を踏襲
+  - A: 旧 `amplitude<=20, frequency<=0.2, phase<=360` を踏襲;こちらで
   - B: 新プロジェクトの他 effect に合わせて再調整（例: displace の `spatial_freq<=0.1` 等）
 
 ## 1) 旧仕様の要点（参照実装の挙動）
@@ -37,6 +37,7 @@
 ## 3) 実装チェックリスト
 
 - [ ] `src/grafix/core/effects/wobble.py` を追加
+
   - [ ] モジュール docstring: 「どのような効果か」を簡潔に（`src/grafix/core/effects/AGENTS.md` に従う）
   - [ ] `wobble_meta` を `ParamMeta` で定義（built-in effect は meta 必須）
   - [ ] `@effect(meta=wobble_meta)` で `wobble(inputs, *, ...)` を実装
