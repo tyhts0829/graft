@@ -12,49 +12,49 @@ from graft.interactive.gl.line_mesh import LineMesh
 
 
 def build_line_indices(offsets: np.ndarray) -> np.ndarray:
-    """RealizedGeometry.offsets から GL_LINES 用インデックス配列を生成する。
+    """RealizedGeometry.offsets から GL_LINE_STRIP 用インデックス配列を生成する。
 
     Notes
     -----
     - indices は offsets の内容だけで決まるため、内容ベースで LRU キャッシュする。
-    - キャッシュミス時も「頂点ごとの Python ループ」を避け、ポリライン単位の処理に寄せる。
+    - 複数ポリラインを 1 draw call で描くため、polyline 間に PRIMITIVE_RESTART_INDEX を挿入する。
     """
     offsets_i32 = np.asarray(offsets, dtype=np.int32)
     if offsets_i32.size < 2:
         return np.zeros((0,), dtype=np.uint32)
-    return _build_line_indices_cached(offsets_i32.tobytes())
+    return _build_line_strip_indices_cached(offsets_i32.tobytes())
 
 
 @lru_cache(maxsize=64)
-def _build_line_indices_cached(offsets_bytes: bytes) -> np.ndarray:
+def _build_line_strip_indices_cached(offsets_bytes: bytes) -> np.ndarray:
     offsets = np.frombuffer(offsets_bytes, dtype=np.int32)
     if offsets.size < 2:
         return np.zeros((0,), dtype=np.uint32)
 
     lengths = offsets[1:] - offsets[:-1]
-    edges = np.maximum(0, lengths - 1).astype(np.int64, copy=False)
-
-    total_edges = int(edges.sum())
-    if total_edges <= 0:
+    emitted = lengths >= 2
+    polyline_count = int(np.count_nonzero(emitted))
+    if polyline_count <= 0:
         return np.zeros((0,), dtype=np.uint32)
 
-    restarts = int(np.count_nonzero(edges[:-1] > 0)) if edges.size > 1 else 0
-    total_count = 2 * total_edges + restarts
-
+    total_vertices = int(lengths[emitted].astype(np.int64, copy=False).sum())
+    total_count = total_vertices + (polyline_count - 1)
     out = np.empty((total_count,), dtype=np.uint32)
+
     cursor = 0
-    for i in range(edges.size):
-        e = int(edges[i])
-        if e <= 0:
+    emitted_any = False
+    for i in range(lengths.size):
+        length = int(lengths[i])
+        if length < 2:
             continue
         start = int(offsets[i])
-        base = np.arange(start, start + e, dtype=np.uint32)
-        out[cursor : cursor + 2 * e : 2] = base
-        out[cursor + 1 : cursor + 2 * e : 2] = base + 1
-        cursor += 2 * e
-        if i < offsets.size - 2:
+        end = start + length
+        if emitted_any:
             out[cursor] = LineMesh.PRIMITIVE_RESTART_INDEX
             cursor += 1
+        out[cursor : cursor + length] = np.arange(start, end, dtype=np.uint32)
+        cursor += length
+        emitted_any = True
 
     assert cursor == total_count
 

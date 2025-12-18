@@ -88,7 +88,7 @@ class DrawRenderer:
         self.program["line_thickness"].value = float(thickness)
         self.program["color"].value = (*color, 1.0)
 
-        mesh.vao.render(mode=self.ctx.LINES, vertices=mesh.index_count)
+        mesh.vao.render(mode=self.ctx.LINE_STRIP, vertices=mesh.index_count)
 
     def release(self) -> None:
         """GPU リソースを解放する。"""

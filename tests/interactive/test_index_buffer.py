@@ -16,10 +16,10 @@ def test_build_line_indices_empty() -> None:
 
 
 def test_build_line_indices_single_polyline() -> None:
-    # 3 vertices => 2 edges => 4 indices
+    # 3 vertices => 3 indices
     offsets = np.array([0, 3], dtype=np.int32)
     indices = build_line_indices(offsets)
-    assert indices.tolist() == [0, 1, 1, 2]
+    assert indices.tolist() == [0, 1, 2]
 
 
 def test_build_line_indices_multiple_polylines_with_restart() -> None:
@@ -27,7 +27,6 @@ def test_build_line_indices_multiple_polylines_with_restart() -> None:
     indices = build_line_indices(offsets)
     assert indices.tolist() == [
         0,
-        1,
         1,
         2,
         LineMesh.PRIMITIVE_RESTART_INDEX,
@@ -40,7 +39,7 @@ def test_build_line_indices_skips_short_polylines() -> None:
     # [0, 1) は 1 頂点なのでスキップし、[1, 4) のみ出力される
     offsets = np.array([0, 1, 4], dtype=np.int32)
     indices = build_line_indices(offsets)
-    assert indices.tolist() == [1, 2, 2, 3]
+    assert indices.tolist() == [1, 2, 3]
 
 
 def test_build_line_indices_is_cached_by_offsets_content() -> None:
@@ -49,4 +48,3 @@ def test_build_line_indices_is_cached_by_offsets_content() -> None:
     indices1 = build_line_indices(offsets1)
     indices2 = build_line_indices(offsets2)
     assert indices1 is indices2
-
