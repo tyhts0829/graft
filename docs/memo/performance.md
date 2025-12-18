@@ -7,8 +7,8 @@
 
 ## 仕組み（実装）
 
-- `src/graft/interactive/runtime/perf.py` の `PerfCollector` が、区間時間を集計して N フレームごとに平均値を出力する。
-- `src/graft/interactive/runtime/draw_window_system.py` が `draw_frame()` 内で以下を計測する:
+- `src/grafix/interactive/runtime/perf.py` の `PerfCollector` が、区間時間を集計して N フレームごとに平均値を出力する。
+- `src/grafix/interactive/runtime/draw_window_system.py` が `draw_frame()` 内で以下を計測する:
   - `frame`: `draw_frame()` 全体
   - `scene`: `realize_scene(...)` 全体（内部で `draw(t)` を含む）
   - `draw`: user `draw(t)`（`scene` の内側＝subset）
@@ -48,7 +48,7 @@ GRAFT_SKETCH_PARAMETER_GUI=0 GRAFT_PERF=1 GRAFT_PERF_EVERY=60 python sketch/perf
 出力例:
 
 ```text
-[graft-perf] frame=26.900ms draw=0.090ms indices=17.850ms render_layer=1.780ms scene=6.200ms
+[grafix-perf] frame=26.900ms draw=0.090ms indices=17.850ms render_layer=1.780ms scene=6.200ms
 ```
 
 - すべて「直近 N フレームの平均（ms/frame）」。
@@ -93,7 +93,7 @@ GRAFT_SKETCH_CASE=cpu_draw GRAFT_SKETCH_CPU_ITERS=500000 GRAFT_SKETCH_PARAMETER_
 代表値（例）:
 
 ```text
-[graft-perf] frame=50.1ms draw=48.8ms indices=0.03ms render_layer=1.05ms scene=48.8ms
+[grafix-perf] frame=50.1ms draw=48.8ms indices=0.03ms render_layer=1.05ms scene=48.8ms
 ```
 
 読み:
@@ -117,7 +117,7 @@ GRAFT_SKETCH_CASE=many_vertices GRAFT_SKETCH_SEGMENTS=200000 GRAFT_SKETCH_PARAME
 代表値（例）:
 
 ```text
-[graft-perf] frame=9.0ms draw=0.08ms gpu_finish=0.72ms indices=0.003ms render_layer=1.6ms scene=6.5ms
+[grafix-perf] frame=9.0ms draw=0.08ms gpu_finish=0.72ms indices=0.003ms render_layer=1.6ms scene=6.5ms
 ```
 
 読み:
@@ -135,7 +135,7 @@ GRAFT_SKETCH_CASE=many_layers GRAFT_SKETCH_LAYERS=500 GRAFT_SKETCH_PARAMETER_GUI
 代表値（例）:
 
 ```text
-[graft-perf] frame=231ms draw=11ms indices=1.43ms (500.0x) render_layer=202ms (500.0x) scene=22ms
+[grafix-perf] frame=231ms draw=11ms indices=1.43ms (500.0x) render_layer=202ms (500.0x) scene=22ms
 ```
 
 読み:

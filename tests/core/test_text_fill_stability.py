@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from graft.api import E, G
-from graft.core.realize import realize
+from grafix.api import E, G
+from grafix.core.realize import realize
 
 
 def _polyline_count(realized) -> int:

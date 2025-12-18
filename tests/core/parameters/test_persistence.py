@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from graft.core.parameters import ParamMeta, ParamStore, ParameterKey
-from graft.core.parameters.persistence import (
+from grafix.core.parameters import ParamMeta, ParamStore, ParameterKey
+from grafix.core.parameters.persistence import (
     default_param_store_path,
     load_param_store,
     save_param_store,

@@ -7,8 +7,8 @@
 import math
 import os
 
-from graft.api import E, G, L, run
-from graft.core.layer import Layer
+from grafix.api import E, G, L, run
+from grafix.core.layer import Layer
 
 CANVAS_WIDTH = 300
 CANVAS_HEIGHT = 300

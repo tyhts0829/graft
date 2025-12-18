@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from graft.api import L
-from graft.core.geometry import Geometry
+from grafix.api import L
+from grafix.core.geometry import Geometry
 
 
 def _g(name: str = "circle") -> Geometry:

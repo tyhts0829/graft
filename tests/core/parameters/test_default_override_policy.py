@@ -1,5 +1,5 @@
-from graft.api import G
-from graft.core.parameters import ParamStore, parameter_context
+from grafix.api import G
+from grafix.core.parameters import ParamStore, parameter_context
 
 
 def _override_by_arg(store: ParamStore, *, op: str) -> dict[str, bool]:

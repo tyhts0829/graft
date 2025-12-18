@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from graft.core.parameters import ParamStore
-from graft.core.parameters.style import (
+from grafix.core.parameters import ParamStore
+from grafix.core.parameters.style import (
     STYLE_BACKGROUND_COLOR,
     STYLE_GLOBAL_LINE_COLOR,
     STYLE_GLOBAL_THICKNESS,

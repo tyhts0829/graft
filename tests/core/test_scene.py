@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from graft.core.geometry import Geometry
-from graft.core.layer import Layer
-from graft.core.scene import normalize_scene
+from grafix.core.geometry import Geometry
+from grafix.core.layer import Layer
+from grafix.core.scene import normalize_scene
 
 
 def _g(name: str = "circle") -> Geometry:

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from graft.core.geometry import Geometry
-from graft.core.realize import realize
-from graft.core.primitives import sphere as _sphere_module  # noqa: F401
+from grafix.core.geometry import Geometry
+from grafix.core.realize import realize
+from grafix.core.primitives import sphere as _sphere_module  # noqa: F401
 
 
 def test_sphere_realize_returns_valid_realized_geometry() -> None:

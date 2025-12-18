@@ -130,16 +130,16 @@ def _assert_no_forbidden_imports(
 def test_core_does_not_depend_on_export_or_interactive() -> None:
     root = _repo_root()
     _assert_no_forbidden_imports(
-        root=root / "src" / "graft" / "core",
-        forbidden_prefixes=("graft.export", "graft.interactive", "pyglet", "moderngl", "imgui"),
+        root=root / "src" / "grafix" / "core",
+        forbidden_prefixes=("grafix.export", "grafix.interactive", "pyglet", "moderngl", "imgui"),
     )
 
 
 def test_export_does_not_depend_on_interactive() -> None:
     root = _repo_root()
     _assert_no_forbidden_imports(
-        root=root / "src" / "graft" / "export",
-        forbidden_prefixes=("graft.interactive", "pyglet", "moderngl", "imgui"),
+        root=root / "src" / "grafix" / "export",
+        forbidden_prefixes=("grafix.interactive", "pyglet", "moderngl", "imgui"),
     )
 
 
@@ -154,48 +154,48 @@ def test__resolve_importfrom_targets_handles_relative_imports() -> None:
     node = _parse_single_stmt("from ..export import svg\n")
     assert isinstance(node, ast.ImportFrom)
     got = _resolve_importfrom_targets(
-        current_module="graft.core.pipeline",
+        current_module="grafix.core.pipeline",
         is_package=False,
         node=node,
     )
-    assert "graft.export" in got
-    assert "graft.export.svg" in got
+    assert "grafix.export" in got
+    assert "grafix.export.svg" in got
 
     node = _parse_single_stmt("from .. import interactive\n")
     assert isinstance(node, ast.ImportFrom)
     got = _resolve_importfrom_targets(
-        current_module="graft.core.pipeline",
+        current_module="grafix.core.pipeline",
         is_package=False,
         node=node,
     )
-    assert "graft.interactive" in got
+    assert "grafix.interactive" in got
 
-    node = _parse_single_stmt("from graft import export\n")
+    node = _parse_single_stmt("from grafix import export\n")
     assert isinstance(node, ast.ImportFrom)
     got = _resolve_importfrom_targets(
-        current_module="graft.core.pipeline",
+        current_module="grafix.core.pipeline",
         is_package=False,
         node=node,
     )
-    assert "graft.export" in got
+    assert "grafix.export" in got
 
     node = _parse_single_stmt("from . import context\n")
     assert isinstance(node, ast.ImportFrom)
     got = _resolve_importfrom_targets(
-        current_module="graft.core.parameters.resolver",
+        current_module="grafix.core.parameters.resolver",
         is_package=False,
         node=node,
     )
-    assert "graft.core.parameters.context" in got
+    assert "grafix.core.parameters.context" in got
 
     node = _parse_single_stmt("from ..export import *\n")
     assert isinstance(node, ast.ImportFrom)
     got = _resolve_importfrom_targets(
-        current_module="graft.core.pipeline",
+        current_module="grafix.core.pipeline",
         is_package=False,
         node=node,
     )
-    assert got == {"graft.export"}
+    assert got == {"grafix.export"}
 
 
 def test__resolve_importfrom_targets_rejects_unresolvable_relative_imports() -> None:
@@ -203,7 +203,7 @@ def test__resolve_importfrom_targets_rejects_unresolvable_relative_imports() -> 
     assert isinstance(node, ast.ImportFrom)
     try:
         _resolve_importfrom_targets(
-            current_module="graft.core",
+            current_module="grafix.core",
             is_package=True,
             node=node,
         )

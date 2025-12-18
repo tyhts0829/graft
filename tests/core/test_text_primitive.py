@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from graft.api import G
-from graft.core.realize import realize
+from grafix.api import G
+from grafix.core.realize import realize
 
 
 def test_text_empty_returns_empty_geometry() -> None:

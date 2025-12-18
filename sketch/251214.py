@@ -8,7 +8,7 @@ import sys
 
 sys.path.append("src")
 
-from graft.api import E, G, L, run
+from grafix.api import E, G, L, run
 
 CANVAS_WIDTH = 300
 CANVAS_HEIGHT = 300

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import numpy as np
 
-from graft.core.geometry import Geometry
-from graft.core.pipeline import realize_scene
-from graft.core.layer import Layer, LayerStyleDefaults
-from graft.core.primitives import circle as _circle_module  # noqa: F401
+from grafix.core.geometry import Geometry
+from grafix.core.pipeline import realize_scene
+from grafix.core.layer import Layer, LayerStyleDefaults
+from grafix.core.primitives import circle as _circle_module  # noqa: F401
 
 
 def test_realize_scene_normalizes_and_realizes_layers() -> None:

@@ -1,5 +1,5 @@
-from graft.core.parameters import ParamStore
-from graft.core.parameters.layer_style import (
+from grafix.core.parameters import ParamStore
+from grafix.core.parameters.layer_style import (
     LAYER_STYLE_LINE_COLOR,
     LAYER_STYLE_LINE_THICKNESS,
     LAYER_STYLE_OP,

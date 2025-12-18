@@ -1,4 +1,4 @@
-from graft.core.parameters import (
+from grafix.core.parameters import (
     ParamMeta,
     ParamState,
     ParamStore,

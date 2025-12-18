@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from graft.core.geometry import Geometry
-from graft.core.realize import realize
-from graft.core.primitives import grid as _grid_module  # noqa: F401
+from grafix.core.geometry import Geometry
+from grafix.core.realize import realize
+from grafix.core.primitives import grid as _grid_module  # noqa: F401
 
 
 def test_grid_line_count_and_offsets() -> None:

@@ -4,7 +4,7 @@
 なぜ: 動作確認用の最小エントリポイントとして利用するため。
 """
 
-from graft.api import E, G, L, run
+from grafix.api import E, G, L, run
 
 CANVAS_WIDTH = 300
 CANVAS_HEIGHT = 300

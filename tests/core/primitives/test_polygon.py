@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from graft.core.geometry import Geometry
-from graft.core.realize import realize
-from graft.core.primitives import polygon as _polygon_module  # noqa: F401
+from grafix.core.geometry import Geometry
+from grafix.core.realize import realize
+from grafix.core.primitives import polygon as _polygon_module  # noqa: F401
 
 
 def test_polygon_polyline_is_closed() -> None:

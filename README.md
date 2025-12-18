@@ -1,13 +1,13 @@
-# Graft
+# Grafix
 
-Graft is a lightweight toolkit for building line-based geometries, applying chained effects, and viewing the result in real time.
+Grafix is a lightweight toolkit for building line-based geometries, applying chained effects, and viewing the result in real time.
 
-Shapes and effects are registered through the public API (`graft.api`), allowing sketches to be composed by combining `G.<shape>()` calls with pipelines built from `E.<effect>()`.
+Shapes and effects are registered through the public API (`grafix.api`), allowing sketches to be composed by combining `G.<shape>()` calls with pipelines built from `E.<effect>()`.
 
 ## Examples
 
 ```python
-from graft.api import E, G, run
+from grafix.api import E, G, run
 
 
 def draw(t: float):
@@ -45,7 +45,7 @@ python sketch/perf_sketch.py
 You can register your own primitives and effects via decorators:
 
 ```python
-from graft.api import effect, primitive
+from grafix.api import effect, primitive
 
 
 @primitive
@@ -64,12 +64,12 @@ Notes:
 
 ## Features (current)
 
-- `graft.api.G` lets you generate primitive shapes such as `sphere`, `polyhedron`, `grid`, and more.
-- `graft.api.E` lets you modulate and transform shapes such as `affine`, `fill`, `repeat`, and more.
-- `graft.api.L` lets you define layers so you can manage colors, stroke widths, and other styling attributes per layer.
-- `graft.api.run` lets you render any shapes, effects, and layers that a user-defined `draw(t)` function returns on each frame.
+- `grafix.api.G` lets you generate primitive shapes such as `sphere`, `polyhedron`, `grid`, and more.
+- `grafix.api.E` lets you modulate and transform shapes such as `affine`, `fill`, `repeat`, and more.
+- `grafix.api.L` lets you define layers so you can manage colors, stroke widths, and other styling attributes per layer.
+- `grafix.api.run` lets you render any shapes, effects, and layers that a user-defined `draw(t)` function returns on each frame.
 - `Parameter GUI` lets you tweak parameters live while the sketch is running.
-- `graft.api.Export` provides a headless export entrypoint (SVG implemented; image/G-code are stubs).
+- `grafix.api.Export` provides a headless export entrypoint (SVG implemented; image/G-code are stubs).
 
 ## Not implemented yet
 

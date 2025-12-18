@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import json
 
-from graft.core.parameters import ParamMeta, ParamStore, ParameterKey
-from graft.core.parameters.context import parameter_context
-from graft.core.parameters.frame_params import FrameParamRecord
-from graft.core.parameters.layer_style import LAYER_STYLE_OP, layer_style_records
+from grafix.core.parameters import ParamMeta, ParamStore, ParameterKey
+from grafix.core.parameters.context import parameter_context
+from grafix.core.parameters.frame_params import FrameParamRecord
+from grafix.core.parameters.layer_style import LAYER_STYLE_OP, layer_style_records
 
 
 def _roundtrip_store(store: ParamStore) -> ParamStore:
@@ -264,7 +264,7 @@ def test_reconcile_handles_g_polyhedron_kwargs_edit_without_gui_duplication():
     # 1回目: G.polyhedron() を実行し、GUI 相当の調整値を保存する。
     draw_v1 = _compile_draw(
         """
-from graft.api.primitives import G
+from grafix.api.primitives import G
 
 def draw():
     G.polyhedron()
@@ -287,7 +287,7 @@ def draw():
     # 2回目: 同じ draw のつもりで kwargs を明示（バイトコードが変わって site_id が変わり得る）。
     draw_v2 = _compile_draw(
         """
-from graft.api.primitives import G
+from grafix.api.primitives import G
 
 def draw():
     G.polyhedron(type_index=2)

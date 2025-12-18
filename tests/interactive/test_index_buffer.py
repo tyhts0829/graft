@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from graft.interactive.gl.index_buffer import build_line_indices
-from graft.interactive.gl.line_mesh import LineMesh
+from grafix.interactive.gl.index_buffer import build_line_indices
+from grafix.interactive.gl.line_mesh import LineMesh
 
 
 def test_build_line_indices_empty() -> None:

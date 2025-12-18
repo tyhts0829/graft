@@ -1,4 +1,4 @@
-"""SVG export（`graft.export.svg.export_svg`）のテスト。"""
+"""SVG export（`grafix.export.svg.export_svg`）のテスト。"""
 
 from __future__ import annotations
 
@@ -7,11 +7,11 @@ import xml.etree.ElementTree as ET
 import numpy as np
 import pytest
 
-from graft.core.geometry import Geometry
-from graft.core.layer import Layer
-from graft.core.pipeline import RealizedLayer
-from graft.core.realized_geometry import RealizedGeometry
-from graft.export.svg import export_svg
+from grafix.core.geometry import Geometry
+from grafix.core.layer import Layer
+from grafix.core.pipeline import RealizedLayer
+from grafix.core.realized_geometry import RealizedGeometry
+from grafix.export.svg import export_svg
 
 _SVG_NS = "http://www.w3.org/2000/svg"
 _NS = {"svg": _SVG_NS}

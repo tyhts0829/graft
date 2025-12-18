@@ -1,6 +1,6 @@
 import pytest
 
-from graft.core.parameters import ParamMeta, normalize_input
+from grafix.core.parameters import ParamMeta, normalize_input
 
 
 @pytest.mark.parametrize(

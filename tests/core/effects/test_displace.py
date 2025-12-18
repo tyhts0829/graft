@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import numpy as np
 
-from graft.api import E, G
-from graft.core.primitive_registry import primitive
-from graft.core.realize import realize
-from graft.core.realized_geometry import RealizedGeometry
-from graft.core.effects.displace import displace as displace_impl
+from grafix.api import E, G
+from grafix.core.primitive_registry import primitive
+from grafix.core.realize import realize
+from grafix.core.realized_geometry import RealizedGeometry
+from grafix.core.effects.displace import displace as displace_impl
 
 
 @primitive

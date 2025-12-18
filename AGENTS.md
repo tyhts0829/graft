@@ -14,7 +14,7 @@
 
 ## Build
 
-- src レイアウト: 本体パッケージは `src/graft/`（import 名は `graft`）
+- src レイアウト: 本体パッケージは `src/grafix/`（import 名は `grafix`）
 - 推奨（描画/GUI まで）: `pip install -e .`
 - dev ツール: `pip install -e ".[dev]"`
 
@@ -26,7 +26,7 @@
 ## Style
 
 - ruff: `ruff check .`
-- mypy: `mypy src/graft`
+- mypy: `mypy src/grafix`
 
 ## Safety & Permissions（許可境界）
 

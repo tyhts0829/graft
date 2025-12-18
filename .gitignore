@@ -7,3 +7,4 @@ tools/cache_check/*.dot
 data
 .mypy_cache/
 src/graft.egg-info/
+src/grafix.egg-info/

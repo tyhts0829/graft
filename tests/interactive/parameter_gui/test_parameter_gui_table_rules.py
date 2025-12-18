@@ -1,7 +1,7 @@
-from graft.interactive.parameter_gui.rules import ui_rules_for_row
-from graft.core.parameters.layer_style import LAYER_STYLE_OP
-from graft.core.parameters.style import STYLE_OP
-from graft.core.parameters.view import ParameterRow
+from grafix.interactive.parameter_gui.rules import ui_rules_for_row
+from grafix.core.parameters.layer_style import LAYER_STYLE_OP
+from grafix.core.parameters.style import STYLE_OP
+from grafix.core.parameters.view import ParameterRow
 
 
 def _row(*, op: str, arg: str, kind: str) -> ParameterRow:

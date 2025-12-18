@@ -1,6 +1,6 @@
 import pytest
 
-from graft.core.parameters import ParameterKey, ParamMeta, ParamState, rows_from_snapshot
+from grafix.core.parameters import ParameterKey, ParamMeta, ParamState, rows_from_snapshot
 
 
 def test_rows_sorted_by_op_and_ordinal():
