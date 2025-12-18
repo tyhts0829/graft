@@ -7,10 +7,10 @@
 ## 0) 事前に決める（あなたの確認が必要）
 
 - [ ] 置換スコープ（ドキュメント）:
-  - A: README/architecture/spec 等の「現行ドキュメントのみ」を `grafix` に更新（推奨）
+  - A: README/architecture/spec 等の「現行ドキュメントのみ」を `grafix` に更新（推奨）；こちらで。
   - B: `docs/done/` など履歴も含め、全ドキュメントを一括で `grafix` に更新（差分が大きくなる）
 - [ ] ログ/識別子の文字列も改名するか:
-  - 例: `"graft-mp-draw-"`, `"[graft-perf]"` を `grafix` にする/しない
+  - 例: `"graft-mp-draw-"`, `"[graft-perf]"` を `grafix` にする/しない；する。
 
 ## 1) パッケージ設定（pyproject）
 
@@ -21,7 +21,7 @@
 ## 2) ディレクトリの rename（破壊的・Ask-first）
 
 - [ ] `src/graft/` → `src/grafix/` に移動（`git mv` 相当）
-- [ ] 先頭ヘッダコメント等のパス表記（例: ``src/graft/...``）を `src/grafix/...` に更新
+- [ ] 先頭ヘッダコメント等のパス表記（例: `src/graft/...`）を `src/grafix/...` に更新
 
 ## 3) import / 参照の更新
 
@@ -54,4 +54,3 @@
 - [ ] `graft` の残骸確認（0) の方針に合わせて検索範囲を調整）
   - 例: `rg -n "\\bgraft\\b" pyproject.toml README.md src tests sketch tools`
 - [ ] `pip install -e .` 済みの venv を使っている場合、手元で再インストール（パスが変わるため）
-
