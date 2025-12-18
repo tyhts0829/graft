@@ -18,6 +18,7 @@ from graft.core.primitives import line as _primitive_line  # noqa: F401
 from graft.core.primitives import polygon as _primitive_polygon  # noqa: F401
 from graft.core.primitives import polyhedron as _primitive_polyhedron  # noqa: F401
 from graft.core.primitives import sphere as _primitive_sphere  # noqa: F401
+from graft.core.primitives import text as _primitive_text  # noqa: F401
 from graft.core.primitives import torus as _primitive_torus  # noqa: F401
 
 
