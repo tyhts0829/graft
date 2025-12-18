@@ -248,16 +248,15 @@ def _get_char_advance_em(char: str, tt_font: Any) -> float:
         return 0.0
 
 
-def _glyph_commands_to_polylines_mm(
+def _glyph_commands_to_polylines_em(
     glyph_commands: Iterable,
     *,
     units_per_em: float,
-    em_size_mm: float,
     x_em: float,
     y_em: float,
 ) -> list[np.ndarray]:
-    """RecordingPen.value から mm 単位のポリライン列へ変換して返す。"""
-    scale = float(em_size_mm) / float(units_per_em)
+    """RecordingPen.value から「1em=1」の座標系でポリライン列へ変換して返す。"""
+    scale = 1.0 / float(units_per_em)
     x_offset = float(x_em) * float(units_per_em)
     y_offset = float(y_em) * float(units_per_em)
 
@@ -303,7 +302,12 @@ def _glyph_commands_to_polylines_mm(
     return polylines
 
 
-def _polylines_to_realized(polylines: list[np.ndarray]) -> RealizedGeometry:
+def _polylines_to_realized(
+    polylines: list[np.ndarray],
+    *,
+    center: tuple[float, float, float],
+    scale: tuple[float, float, float],
+) -> RealizedGeometry:
     """ポリライン列を RealizedGeometry へ変換して返す。"""
     filtered = [p.astype(np.float32, copy=False) for p in polylines if int(p.shape[0]) >= 2]
     if not filtered:
@@ -317,18 +321,39 @@ def _polylines_to_realized(polylines: list[np.ndarray]) -> RealizedGeometry:
         acc += int(line.shape[0])
         offsets[i + 1] = acc
 
+    try:
+        cx, cy, cz = center
+    except Exception as exc:
+        raise ValueError("text の center は長さ 3 のシーケンスである必要がある") from exc
+    try:
+        sx, sy, sz = scale
+    except Exception as exc:
+        raise ValueError("text の scale は長さ 3 のシーケンスである必要がある") from exc
+
+    cx_f, cy_f, cz_f = float(cx), float(cy), float(cz)
+    sx_f, sy_f, sz_f = float(sx), float(sy), float(sz)
+    if (cx_f, cy_f, cz_f) != (0.0, 0.0, 0.0) or (sx_f, sy_f, sz_f) != (
+        1.0,
+        1.0,
+        1.0,
+    ):
+        center_vec = np.array([cx_f, cy_f, cz_f], dtype=np.float32)
+        scale_vec = np.array([sx_f, sy_f, sz_f], dtype=np.float32)
+        coords = coords * scale_vec + center_vec
+
     return RealizedGeometry(coords=coords, offsets=offsets)
 
 
 text_meta = {
     "text": ParamMeta(kind="str"),
-    "em_size_mm": ParamMeta(kind="float", ui_min=1.0, ui_max=100.0),
     "font": ParamMeta(kind="str"),
     "font_index": ParamMeta(kind="int", ui_min=0, ui_max=32),
     "text_align": ParamMeta(kind="choice", choices=("left", "center", "right")),
-    "tracking_em": ParamMeta(kind="float", ui_min=0.0, ui_max=0.5),
+    "letter_spacing_em": ParamMeta(kind="float", ui_min=0.0, ui_max=0.5),
     "line_height": ParamMeta(kind="float", ui_min=0.8, ui_max=3.0),
-    "flatten_tol_em": ParamMeta(kind="float", ui_min=0.001, ui_max=0.1),
+    "tolerance": ParamMeta(kind="float", ui_min=0.001, ui_max=0.1),
+    "center": ParamMeta(kind="vec3", ui_min=-500.0, ui_max=500.0),
+    "scale": ParamMeta(kind="vec3", ui_min=0.0, ui_max=200.0),
 }
 
 
@@ -336,13 +361,14 @@ text_meta = {
 def text(
     *,
     text: str = "HELLO",
-    em_size_mm: float = 10.0,
     font: str = "SFNS.ttf",
     font_index: int | float = 0,
     text_align: str = "left",
-    tracking_em: float = 0.0,
+    letter_spacing_em: float = 0.0,
     line_height: float = 1.2,
-    flatten_tol_em: float = 0.01,
+    tolerance: float = 0.01,
+    center: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
 ) -> RealizedGeometry:
     """フォントアウトラインからテキストのポリライン列を生成する。
 
@@ -350,20 +376,22 @@ def text(
     ----------
     text : str, optional
         描画する文字列。`\\n` 区切りで複数行を表す。
-    em_size_mm : float, optional
-        1em の高さ [mm]。
     font : str, optional
         `data/input/font/` から解決するフォント指定（ファイル名/ステム/部分一致）。
     font_index : int | float, optional
         `.ttc` の subfont 番号（0 以上）。`.ttf/.otf` では無視される。
     text_align : str, optional
         行揃え（`left|center|right`）。
-    tracking_em : float, optional
-        文字間の追加トラッキング（em 比）。
+    letter_spacing_em : float, optional
+        文字間の追加スペーシング（em 比）。
     line_height : float, optional
         行送り（em 比）。
-    flatten_tol_em : float, optional
+    tolerance : float, optional
         平坦化許容差（em 基準の近似セグメント長）。
+    center : tuple[float, float, float], optional
+        平行移動ベクトル (cx, cy, cz)。
+    scale : tuple[float, float, float], optional
+        成分ごとのスケール (sx, sy, sz)。
 
     Returns
     -------
@@ -374,6 +402,10 @@ def text(
     ------
     FileNotFoundError
         `data/input/font/` からフォントを解決できない場合。
+
+    Notes
+    -----
+    基準の座標系は「1em=1.0」で生成し、最後に `scale` と `center` を適用する。
     """
     fi = int(font_index)
     if fi < 0:
@@ -382,7 +414,7 @@ def text(
     font_path = _resolve_font_path(font)
     tt_font = TEXT_RENDERER.get_font(font_path, fi)
     units_per_em = float(tt_font["head"].unitsPerEm)  # type: ignore[index]
-    seg_len_units = max(1.0, float(flatten_tol_em) * units_per_em)
+    seg_len_units = max(1.0, float(tolerance) * units_per_em)
 
     lines = str(text).split("\n")
     polylines: list[np.ndarray] = []
@@ -391,9 +423,9 @@ def text(
     for li, line_str in enumerate(lines):
         width_em = 0.0
         for ch in line_str:
-            width_em += _get_char_advance_em(ch, tt_font) + float(tracking_em)
+            width_em += _get_char_advance_em(ch, tt_font) + float(letter_spacing_em)
         if line_str:
-            width_em -= float(tracking_em)
+            width_em -= float(letter_spacing_em)
 
         if text_align == "center":
             x_em = -width_em / 2.0
@@ -413,17 +445,16 @@ def text(
                 )
                 if cmds:
                     polylines.extend(
-                        _glyph_commands_to_polylines_mm(
+                        _glyph_commands_to_polylines_em(
                             cmds,
                             units_per_em=units_per_em,
-                            em_size_mm=float(em_size_mm),
                             x_em=cur_x_em,
                             y_em=y_em,
                         )
                     )
-            cur_x_em += _get_char_advance_em(ch, tt_font) + float(tracking_em)
+            cur_x_em += _get_char_advance_em(ch, tt_font) + float(letter_spacing_em)
 
         if li < len(lines) - 1:
             y_em += float(line_height)
 
-    return _polylines_to_realized(polylines)
+    return _polylines_to_realized(polylines, center=center, scale=scale)
