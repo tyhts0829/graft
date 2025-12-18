@@ -1,5 +1,5 @@
 # どこで: `src/graft/interactive/gl/index_buffer.py`。
-# 何を: RealizedGeometry.offsets から GL_LINES 用インデックス配列を生成する。
+# 何を: RealizedGeometry.offsets から GL_LINE_STRIP 用インデックス配列を生成する。
 # なぜ: インデックス生成を純粋関数として切り出し、テストしやすくするため。
 
 from __future__ import annotations
@@ -7,6 +7,7 @@ from __future__ import annotations
 from functools import lru_cache
 
 import numpy as np
+from numba import njit  # type: ignore[attr-defined]
 
 from graft.interactive.gl.line_mesh import LineMesh
 
@@ -28,35 +29,52 @@ def build_line_indices(offsets: np.ndarray) -> np.ndarray:
 @lru_cache(maxsize=64)
 def _build_line_strip_indices_cached(offsets_bytes: bytes) -> np.ndarray:
     offsets = np.frombuffer(offsets_bytes, dtype=np.int32)
-    if offsets.size < 2:
-        return np.zeros((0,), dtype=np.uint32)
+    out = _build_line_strip_indices_numba(
+        offsets,
+        np.uint32(LineMesh.PRIMITIVE_RESTART_INDEX),
+    )
+    out.setflags(write=False)
+    return out
 
-    lengths = offsets[1:] - offsets[:-1]
-    emitted = lengths >= 2
-    polyline_count = int(np.count_nonzero(emitted))
-    if polyline_count <= 0:
-        return np.zeros((0,), dtype=np.uint32)
 
-    total_vertices = int(lengths[emitted].astype(np.int64, copy=False).sum())
+@njit(cache=True)  # type: ignore[misc]
+def _build_line_strip_indices_numba(offsets: np.ndarray, restart_index: np.uint32) -> np.ndarray:
+    """GL_LINE_STRIP + primitive restart 用の indices を生成する（Numba 版）。"""
+    n = offsets.shape[0]
+    if n < 2:
+        return np.empty((0,), dtype=np.uint32)
+
+    total_vertices = 0
+    polyline_count = 0
+    for i in range(n - 1):
+        length = offsets[i + 1] - offsets[i]
+        if length >= 2:
+            total_vertices += length
+            polyline_count += 1
+
+    if polyline_count == 0:
+        return np.empty((0,), dtype=np.uint32)
+
     total_count = total_vertices + (polyline_count - 1)
     out = np.empty((total_count,), dtype=np.uint32)
 
     cursor = 0
     emitted_any = False
-    for i in range(lengths.size):
-        length = int(lengths[i])
+    for i in range(n - 1):
+        start = offsets[i]
+        end = offsets[i + 1]
+        length = end - start
         if length < 2:
             continue
-        start = int(offsets[i])
-        end = start + length
+
         if emitted_any:
-            out[cursor] = LineMesh.PRIMITIVE_RESTART_INDEX
+            out[cursor] = restart_index
             cursor += 1
-        out[cursor : cursor + length] = np.arange(start, end, dtype=np.uint32)
-        cursor += length
+
+        for j in range(length):
+            out[cursor] = start + j
+            cursor += 1
+
         emitted_any = True
 
-    assert cursor == total_count
-
-    out.setflags(write=False)
     return out

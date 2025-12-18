@@ -10,17 +10,17 @@ from typing import Callable
 
 import pyglet
 
-from graft.interactive.runtime.draw_window_system import DrawWindowSystem
-from graft.interactive.runtime.window_loop import MultiWindowLoop, WindowTask
+from graft.core.layer import LayerStyleDefaults
 from graft.core.parameters import ParamStore
 from graft.core.parameters.persistence import (
     default_param_store_path,
     load_param_store,
     save_param_store,
 )
-from graft.core.layer import LayerStyleDefaults
-from graft.interactive.render_settings import RenderSettings
 from graft.core.scene import SceneItem
+from graft.interactive.render_settings import RenderSettings
+from graft.interactive.runtime.draw_window_system import DrawWindowSystem
+from graft.interactive.runtime.window_loop import MultiWindowLoop, WindowTask
 
 DRAW_WINDOW_POS = (25, 25)
 PARAMETER_GUI_POS = (950, 25)
@@ -36,7 +36,7 @@ def run(
     canvas_size: tuple[int, int] = (800, 800),
     parameter_gui: bool = True,
     parameter_persistence: bool = True,
-    n_worker: int = 0,
+    n_worker: int = 4,
 ) -> None:
     """pyglet ウィンドウを生成し `draw(t)` のシーンをリアルタイム描画する。
 
@@ -113,9 +113,11 @@ def run(
 
     if parameter_gui:
         # Parameter GUI は依存が重い（pyimgui）ので、使うときだけ遅延 import する。
-        from graft.interactive.runtime.parameter_gui_system import ParameterGUIWindowSystem
-
         from pyglet.window import key
+
+        from graft.interactive.runtime.parameter_gui_system import (
+            ParameterGUIWindowSystem,
+        )
 
         gui = ParameterGUIWindowSystem(store=param_store)
         gui.window.set_location(*PARAMETER_GUI_POS)
