@@ -59,33 +59,33 @@
 
 ### 1) ヘルパ関数追加
 
-- [ ] `src/graft/core/primitives/text.py` に `_rotate_closed_polyline_start_for_fill(polyline: np.ndarray) -> np.ndarray` を追加
-  - [ ] 入力は `(N,3)` float32 を想定（内部計算は float64）
-  - [ ] `N < 4`（= ユニーク点が 3 未満）なら何もしない
-  - [ ] `P[0]` と `P[-1]` が一致（または十分近い）しない場合は何もしない
-  - [ ] `max(area2)` が閾値以下なら何もしない
-  - [ ] それ以外は上記ローテーションを適用して返す
+- [x] `src/graft/core/primitives/text.py` に `_rotate_closed_polyline_start_for_fill(polyline: np.ndarray) -> np.ndarray` を追加
+  - [x] 入力は `(N,3)` float32 を想定（内部計算は float64）
+  - [x] `N < 4`（= ユニーク点が 3 未満）なら何もしない
+  - [x] `P[0]` と `P[-1]` が一致（または十分近い）しない場合は何もしない
+  - [x] `max(area2)` が閾値以下なら何もしない
+  - [x] それ以外は上記ローテーションを適用して返す
 
 ### 2) text 生成パスへ組み込み
 
-- [ ] glyph→polyline 生成（`closePath` flush）で、生成した閉曲線に対してヘルパを適用する
-- [ ] 出力の polyline 群を `RealizedGeometry` 化する既存フローは維持する
+- [x] glyph→polyline 生成（`closePath` flush）で、生成した閉曲線に対してヘルパを適用する
+- [x] 出力の polyline 群を `RealizedGeometry` 化する既存フローは維持する
 
 ### 3) 退行テスト（現象の再現と改善の確認）
 
-- [ ] `tests/core/test_text_fill_stability.py`（仮）を追加
-  - [ ] `base = G.text(text="HELLO", font="SFNS.ttf", scale=(100,100,1))`
-  - [ ] `boundary_count = realize(base).offsets.size - 1`
-  - [ ] 問題が出やすい角度例（rx=105/118/120/135 など）で
-    - `out = realize(E.affine(rotation=(rx,0,0)).fill()(base))`
-    - `out_count = out.offsets.size - 1`
-    - `out_count > boundary_count`（= fill 線が生成されている）を確認
-  - [ ] 既存の `text` テストは維持（align/center/scale）
+- [x] `tests/core/test_text_fill_stability.py`（仮）を追加
+  - [x] `base = G.text(text="HELLO", font="SFNS.ttf", scale=(100,100,1))`
+  - [x] `boundary_count = realize(base).offsets.size - 1`
+  - [x] 問題が出やすい角度例（rx=105/120/135）で
+    - [x] `out = realize(E.affine(rotation=(rx,0,0)).fill()(base))`
+    - [x] `out_count = out.offsets.size - 1`
+    - [x] `out_count > boundary_count`（= fill 線が生成されている）を確認
+  - [x] 既存の `text` テストは維持（align/center/scale）
 
 ### 4) 確認コマンド
 
-- [ ] `PYTHONPATH=src pytest -q tests/core/test_text_primitive.py`
-- [ ] `PYTHONPATH=src pytest -q tests/core/test_text_fill_stability.py`（追加後）
+- [x] `PYTHONPATH=src pytest -q tests/core/test_text_primitive.py`
+- [x] `PYTHONPATH=src pytest -q tests/core/test_text_fill_stability.py`（追加後）
 
 ---
 
@@ -99,5 +99,4 @@
 ## 事前確認（これで進めてよいか）
 
 - 「閉曲線のみ開始点を回す」「角（最大 area2）を開始点にする」「閾値以下は no-op」の方針で OK か？
-- 退行テストの角度セット（rx=105/118/120/135）はこのままで良いか？
-
+- 退行テストの角度セット（rx=105/120/135）はこのままで良いか？

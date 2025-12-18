@@ -22,7 +22,7 @@ def draw(t: float):
     )
 
     ply2 = G.text()
-    eff2 = E.fill().affine()
+    eff2 = E.affine().fill()
 
     return L(eff1(ply1)), L(eff2(ply2))
 

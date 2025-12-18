@@ -30,6 +30,64 @@ def _empty_geometry() -> RealizedGeometry:
     return RealizedGeometry(coords=coords, offsets=offsets)
 
 
+def _rotate_closed_polyline_start_for_fill(polyline: np.ndarray) -> np.ndarray:
+    """閉ポリラインの開始点を「角に近い」位置へ回して返す。
+
+    目的: `fill` 側の `transform_to_xy_plane` が先頭 3 点だけで法線を推定するため、
+    先頭が直線（共線）になりやすい輪郭だと平面判定が不安定になる。
+    ここでは polyline の点列自体は変えず、開始点だけを回して「非共線な 3 点」になりやすくする。
+    """
+    if polyline.ndim != 2 or polyline.shape[1] != 3:
+        raise ValueError("polyline は shape (N,3) の配列である必要がある")
+
+    n = int(polyline.shape[0])
+    if n < 4:
+        return polyline
+
+    # 閉曲線のみ対象（終点が始点と一致する前提）。
+    if not np.allclose(polyline[0], polyline[-1], atol=1e-6, rtol=0.0):
+        return polyline
+
+    unique = polyline[:-1]
+    m = int(unique.shape[0])
+    if m < 3:
+        return polyline
+
+    xy = unique[:, :2].astype(np.float64, copy=False)
+    mins = np.min(xy, axis=0)
+    maxs = np.max(xy, axis=0)
+    diag = float(np.linalg.norm(maxs - mins))
+    if not np.isfinite(diag) or diag <= 0.0:
+        return polyline
+
+    best_i = 0
+    best_area2 = 0.0
+    for i in range(m):
+        a = xy[i]
+        b = xy[(i + 1) % m]
+        c = xy[(i + 2) % m]
+        v1x = float(b[0] - a[0])
+        v1y = float(b[1] - a[1])
+        v2x = float(c[0] - a[0])
+        v2y = float(c[1] - a[1])
+        area2 = abs(v1x * v2y - v1y * v2x)
+        if area2 > best_area2:
+            best_area2 = area2
+            best_i = int(i)
+
+    # 図形スケールに対して十分な “曲がり” が無いなら回さない（ほぼ直線など）。
+    eps = max(1e-12, (diag * diag) * 1e-10)
+    if not np.isfinite(best_area2) or best_area2 <= eps:
+        return polyline
+    if best_i == 0:
+        return polyline
+
+    rotated = np.concatenate(
+        [unique[best_i:], unique[:best_i], unique[best_i : best_i + 1]], axis=0
+    ).astype(np.float32, copy=False)
+    return rotated
+
+
 class _LRU:
     """単純な上限付き LRU キャッシュ（キー: str）。"""
 
@@ -281,6 +339,8 @@ def _glyph_commands_to_polylines_em(
 
         arr3 = np.zeros((arr2.shape[0], 3), dtype=np.float32)
         arr3[:, :2] = arr2
+        if close:
+            arr3 = _rotate_closed_polyline_start_for_fill(arr3)
         polylines.append(arr3)
         current = []
 
