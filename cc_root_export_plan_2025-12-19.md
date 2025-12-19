@@ -11,22 +11,21 @@
 
 ## 0) 事前に決める（あなたの確認が必要）
 
-- [ ] マルチプロセス時の同期方式（重要）
-  - A: **メインで作った `cc_snapshot` を task に同梱して worker に渡す**（推奨。単純・安全）
+- [x] マルチプロセス時の同期方式（重要）
+  - A: **メインで作った `cc_snapshot` を task に同梱して worker に渡す**（推奨。単純・安全）；これで
   - B: `multiprocessing.Manager().dict()` 等で共有する（遅い/複雑なので非推奨）
   - C: worker で MIDI ポートを読む（ポート競合しやすいので非推奨）
-- [ ] `cc` の意味
+- [x] `cc` の意味
   - A: 「プロセス内の最新値」を保持する共有辞書（メイン/worker でそれぞれ更新が必要）
-  - B: **「フレーム内で固定された snapshot」へのビュー**（推奨。`parameter_context` と一致）
-- [ ] `cc` の実体
+  - B: **「フレーム内で固定された snapshot」へのビュー**（推奨。`parameter_context` と一致）；これで
+- [x] `cc` の実体
   - A: `Mapping` 互換のビュー（`current_cc_snapshot()` を読む。推奨。mp でも自然に動く）
   - B: 実 `dict[int, float]`（各プロセスで `clear()/update()` 更新する前提）
-- [ ] `cc[cc_number]` が未設定キーのとき
-  - A: **0.0 を返す**（推奨。`cc[0]` を気軽に使える）
+- [x] `cc[cc_number]` が未設定キーのとき
+  - A: **0.0 を返す**（推奨。`cc[0]` を気軽に使える）；これで
   - B: `KeyError`（厳密だが扱いにくい）
-- [ ] 参照の安定性
-  - A: **同一 dict オブジェクトを維持**し、更新は `clear()/update()` で行う（推奨）
-  - B: `cc = {...}` のように再代入して更新（`from grafix import cc` の参照が古くなるので非推奨）
+- [x] 参照の安定性
+  - 採用案では `cc` は dict ではなく **読み取り専用ビュー（オブジェクト）**のため、参照は常に安定（これで）
 - [ ] 追加 API（任意）
   - A: `cc` のみ公開（最小）
   - B: `cc_snapshot()` も公開（`dict(cc)` を返す。parameter_context 用に安全）
@@ -35,7 +34,9 @@
 
 - [ ] `src/grafix/cc.py` を新規作成
   - [ ] 先頭 3 行ヘッダ（どこで/何を/なぜ）
-  - [ ] （0) で「実体 A: ビュー」を選ぶ場合: `cc = CcView()` を定義（`cc[0]` が動く）
+  - [ ] （採用）`cc = CcView()` を定義（`cc[0]` が動く / 未設定は 0.0）
+    - `CcView.__getitem__` は `current_cc_snapshot()` が `None` の場合も 0.0 を返す
+    - `CcView` は読み取り専用（ユーザーが `cc[...] = ...` しない前提を型で担保）
   - [ ] （0) で「実体 B: dict」を選ぶ場合: `cc: dict[int, float] = {}` を定義
   - [ ] （0) で「未設定キーは 0.0」を選ぶ場合: `__getitem__` / `get` の既定値を 0.0 に寄せる
   - [ ] （任意）`def cc_snapshot() -> dict[int, float]` を定義（`dict(...)` のコピーを返す）
@@ -53,8 +54,9 @@
     - これで `current_cc_snapshot()` が worker 内でも有効になり、cc ビュー方式が成立する
 - [ ] `src/grafix/interactive/runtime/draw_window_system.py` を更新
   - [ ] メインプロセスで MIDI をポーリングして `cc_snapshot` を作る（例: `MidiController.snapshot()`）
-  - [ ] `parameter_context(self._store, cc_snapshot=cc_snapshot)` に渡す（非 mp 実行でも cc が使える）
-  - [ ] `mp_draw.submit(..., snapshot=current_param_snapshot(), cc_snapshot=cc_snapshot)` で worker に同梱
+  - [ ] `parameter_context(self._store, cc_snapshot=cc_snapshot)` に渡す（非 mp 実行でも cc が使える）；今回やる
+  - [ ] `mp_draw.submit(..., snapshot=current_param_snapshot(), cc_snapshot=cc_snapshot)` で worker に同梱；今回やる
+  - [ ] `cc_snapshot` は「未受信 CC を含めない疎な dict」でよい（`cc[1]` の既定 0.0 はビュー側で担保する）
 
 ## 3) MIDI 入力（任意だが現実的には必要）
 
@@ -86,7 +88,7 @@
 
 ## 6) 受け入れ条件（Done の定義）
 
-- [ ] `PYTHONPATH=src python -c "from grafix import cc; _ = cc[0]"` が通る
+- [ ] `PYTHONPATH=src python -c "from grafix import cc; assert cc[0] == 0.0"` が通る
 - [ ] mp-draw でも `cc` が参照できる（unit or integration test で確認）
 - [ ] MIDI 入力の更新で `cc` の値が変わる（少なくとも unit test で確認）
 - [ ] `PYTHONPATH=src pytest -q` の関連テストが通る
