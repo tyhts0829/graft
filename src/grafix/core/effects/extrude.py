@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import Sequence
 
 import numpy as np
+from numba import njit  # type: ignore[import-untyped]
 
 from grafix.core.effect_registry import effect
 from grafix.core.parameters.meta import ParamMeta
@@ -33,6 +34,7 @@ extrude_meta = {
 }
 
 _CONNECT_ATOL = 1e-8
+_CONNECT_RTOL = 1e-5
 
 
 def _empty_geometry() -> RealizedGeometry:
@@ -41,18 +43,41 @@ def _empty_geometry() -> RealizedGeometry:
     return RealizedGeometry(coords=coords, offsets=offsets)
 
 
+@njit(cache=True)
 def _subdivide_midpoints(vertices: np.ndarray, subdivisions: int) -> np.ndarray:
-    """各セグメントへ中点挿入を繰り返す（旧 extrude の仕様踏襲）。"""
-    v = vertices
-    for _ in range(int(subdivisions)):
-        if v.shape[0] < 2:
-            break
-        n = int(v.shape[0])
-        out = np.empty((2 * n - 1, 3), dtype=np.float32)
-        out[::2] = v
-        out[1::2] = (v[:-1] + v[1:]) / 2.0
-        v = out
-    return v
+    """各セグメントへ中点挿入を繰り返す（旧 extrude の仕様踏襲、Numba 実装）。"""
+    if subdivisions <= 0 or vertices.shape[0] < 2:
+        return vertices
+
+    steps = 1 << int(subdivisions)
+    n0 = int(vertices.shape[0])
+    out_n = (n0 - 1) * steps + 1
+    out = np.empty((out_n, 3), dtype=np.float32)
+
+    out_i = 0
+    for i in range(n0 - 1):
+        ax = float(vertices[i, 0])
+        ay = float(vertices[i, 1])
+        az = float(vertices[i, 2])
+        bx = float(vertices[i + 1, 0])
+        by = float(vertices[i + 1, 1])
+        bz = float(vertices[i + 1, 2])
+
+        dx = (bx - ax) / float(steps)
+        dy = (by - ay) / float(steps)
+        dz = (bz - az) / float(steps)
+
+        for t in range(steps):
+            ft = float(t)
+            out[out_i, 0] = np.float32(ax + dx * ft)
+            out[out_i, 1] = np.float32(ay + dy * ft)
+            out[out_i, 2] = np.float32(az + dz * ft)
+            out_i += 1
+
+    out[out_i, 0] = np.float32(vertices[n0 - 1, 0])
+    out[out_i, 1] = np.float32(vertices[n0 - 1, 1])
+    out[out_i, 2] = np.float32(vertices[n0 - 1, 2])
+    return out
 
 
 @effect(meta=extrude_meta)
@@ -101,8 +126,9 @@ def extrude(
 
     dx, dy, dz = float(delta[0]), float(delta[1]), float(delta[2])
     extrude_vec = np.array([dx, dy, dz], dtype=np.float32)
-    norm = float(np.linalg.norm(extrude_vec))
-    if norm > MAX_DISTANCE:
+    norm_sq = dx * dx + dy * dy + dz * dz
+    if norm_sq > MAX_DISTANCE * MAX_DISTANCE:
+        norm = float(np.sqrt(norm_sq))
         extrude_vec = extrude_vec * np.float32(MAX_DISTANCE / norm)
 
     if (
@@ -119,51 +145,113 @@ def extrude(
     if offsets.size < 2:
         return base
 
+    use_auto_center = center_mode == "auto"
+    scale32 = np.float32(scale_clamped)
+    is_scale_one = scale_clamped == 1.0
+    has_translation = dx != 0.0 or dy != 0.0 or dz != 0.0
+
     lines: list[np.ndarray] = []
+    extruded_lines: list[np.ndarray] = []
+    changed_masks: list[np.ndarray | None] = []
+    changed_counts: list[int] = []
+
+    # 1st pass: 入力ラインを抽出し、複製線と接続エッジ数を決める。
     for i in range(int(offsets.size) - 1):
         s = int(offsets[i])
         e = int(offsets[i + 1])
         line = coords[s:e]
         if line.shape[0] < 2:
             continue
+
         v = np.asarray(line, dtype=np.float32)
         if subdivisions_int > 0:
             v = _subdivide_midpoints(v, subdivisions_int)
-        lines.append(v)
 
-    if not lines:
+        if is_scale_one:
+            v_ex = v + extrude_vec
+            if has_translation:
+                n_changed = int(v.shape[0])
+                mask = None
+            else:
+                n_changed = 0
+                mask = None
+        else:
+            if use_auto_center:
+                centroid = v.mean(axis=0, dtype=np.float64).astype(np.float32, copy=False)
+                v_ex = (v - centroid) * scale32 + centroid + extrude_vec
+            else:
+                v_ex = (v + extrude_vec) * scale32
+
+            close = np.isclose(v, v_ex, rtol=_CONNECT_RTOL, atol=_CONNECT_ATOL)
+            mask_all = ~np.all(close, axis=1)
+            n_changed = int(mask_all.sum())
+            if n_changed == 0 or n_changed == int(v.shape[0]):
+                mask = None
+            else:
+                mask = mask_all
+
+        lines.append(v)
+        extruded_lines.append(np.asarray(v_ex, dtype=np.float32))
+        changed_masks.append(mask)
+        changed_counts.append(int(n_changed))
+
+    n_lines = len(lines)
+    if n_lines == 0:
         return base
 
-    out_lines: list[np.ndarray] = []
-    out_lines.extend(lines)
+    total_vertices = 0
+    total_edges = 0
+    for v, n_changed in zip(lines, changed_counts, strict=True):
+        n = int(v.shape[0])
+        total_vertices += 2 * n
+        total_edges += int(n_changed)
 
-    use_auto_center = center_mode == "auto"
-    scale64 = float(scale_clamped)
-    extrude64 = extrude_vec.astype(np.float64, copy=False)
+    total_vertices += 2 * total_edges
+    total_polylines = 2 * n_lines + total_edges
 
-    for line in lines:
-        extruded_base = line.astype(np.float64, copy=False) + extrude64
-        if use_auto_center:
-            centroid = extruded_base.mean(axis=0)
-            extruded_line64 = (extruded_base - centroid) * scale64 + centroid
-        else:
-            extruded_line64 = extruded_base * scale64
-
-        extruded_line = extruded_line64.astype(np.float32, copy=False)
-        out_lines.append(extruded_line)
-
-        for j in range(int(line.shape[0])):
-            if np.allclose(line[j], extruded_line[j], atol=_CONNECT_ATOL):
-                continue
-            seg = np.asarray([line[j], extruded_line[j]], dtype=np.float32)
-            out_lines.append(seg)
-
-    out_coords = np.concatenate(out_lines, axis=0).astype(np.float32, copy=False)
-    out_offsets = np.empty((len(out_lines) + 1,), dtype=np.int32)
+    out_coords = np.empty((total_vertices, 3), dtype=np.float32)
+    out_offsets = np.empty((total_polylines + 1,), dtype=np.int32)
     out_offsets[0] = 0
-    acc = 0
-    for i, line in enumerate(out_lines):
-        acc += int(line.shape[0])
-        out_offsets[i + 1] = acc
+
+    # 2nd pass: 旧実装の順序（全 original → 各 line の extruded + edges）で出力を詰める。
+    vc = 0
+    oc = 0
+
+    for v in lines:
+        n = int(v.shape[0])
+        out_coords[vc : vc + n] = v
+        vc += n
+        oc += 1
+        out_offsets[oc] = vc
+
+    for v, v_ex, mask, n_changed in zip(
+        lines, extruded_lines, changed_masks, changed_counts, strict=True
+    ):
+        n = int(v.shape[0])
+        out_coords[vc : vc + n] = v_ex
+        vc += n
+        oc += 1
+        out_offsets[oc] = vc
+
+        m = int(n_changed)
+        if m <= 0:
+            continue
+
+        edges_start = int(vc)
+        edges_end = edges_start + 2 * m
+        edges_view = out_coords[edges_start:edges_end]
+        if mask is None and m == n:
+            edges_view[0::2] = v
+            edges_view[1::2] = v_ex
+        else:
+            assert mask is not None
+            edges_view[0::2] = v[mask]
+            edges_view[1::2] = v_ex[mask]
+
+        vc = edges_end
+        out_offsets[oc + 1 : oc + m + 1] = edges_start + 2 * np.arange(
+            1, m + 1, dtype=np.int32
+        )
+        oc += m
 
     return RealizedGeometry(coords=out_coords, offsets=out_offsets)
