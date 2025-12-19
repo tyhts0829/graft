@@ -20,7 +20,7 @@ dependencies = [
   "fontTools",
   "PyYAML",
   "mido",
-  "rtmidi",
+  "python-rtmidi",
 ]
 
 [project.optional-dependencies]

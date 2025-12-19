@@ -59,6 +59,7 @@ def user_eff(inputs, *, amount=1.0):
 ```
 
 Notes:
+
 - Built-in primitives/effects must provide `meta=...` (enforced).
 - For user-defined ops, `meta` is optional. If omitted, parameters are not shown in the Parameter GUI.
 
@@ -85,7 +86,12 @@ Core (default):
 - shapely
 - moderngl
 - pyglet
-- pyimgui
+- imgui
+- fontPens
+- fontTools
+- PyYAML
+- mido
+- python-rtmidi
 
 Dev (optional):
 
