@@ -35,6 +35,16 @@ def weave_test_empty() -> RealizedGeometry:
     return RealizedGeometry(coords=coords, offsets=offsets)
 
 
+@primitive
+def weave_test_open_long() -> RealizedGeometry:
+    """長い開ポリラインを返す（weave は閉曲線のみ対象）。"""
+    n = 50_000
+    x = np.arange(n, dtype=np.float32)
+    coords = np.stack([x, np.zeros_like(x), np.zeros_like(x)], axis=1)
+    offsets = np.array([0, n], dtype=np.int32)
+    return RealizedGeometry(coords=coords, offsets=offsets)
+
+
 def test_weave_empty_geometry_is_noop() -> None:
     g = G.weave_test_empty()
     out = realize(E.weave(num_candidate_lines=10, relaxation_iterations=10, step=0.1)(g))
@@ -50,6 +60,14 @@ def test_weave_zero_candidates_is_near_noop() -> None:
     out = realize(E.weave(num_candidate_lines=0, relaxation_iterations=0, step=0.5)(g))
     np.testing.assert_allclose(out.coords, base.coords, rtol=0.0, atol=1e-6)
     assert out.offsets.tolist() == base.offsets.tolist()
+
+
+def test_weave_open_polyline_is_noop() -> None:
+    g = G.weave_test_open_long()
+    base = realize(g)
+    out = realize(E.weave(num_candidate_lines=10, relaxation_iterations=10, step=0.1)(g))
+
+    assert out is base
 
 
 def test_weave_generates_more_than_boundary() -> None:
@@ -70,4 +88,3 @@ def test_weave_clamps_parameters_without_crashing() -> None:
     assert np.isfinite(out.coords).all()
     assert out.offsets[0] == 0
     assert out.offsets[-1] == out.coords.shape[0]
-
