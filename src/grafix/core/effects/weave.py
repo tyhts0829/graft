@@ -65,6 +65,12 @@ def _lines_to_realized(lines: Sequence[np.ndarray]) -> RealizedGeometry:
     return RealizedGeometry(coords=coords, offsets=offsets)
 
 
+def _is_closed_polyline(vertices: np.ndarray) -> bool:
+    if vertices.shape[0] < 2:
+        return False
+    return bool(np.allclose(vertices[0], vertices[-1], rtol=0.0, atol=1e-6))
+
+
 @effect(meta=weave_meta)
 def weave(
     inputs: Sequence[RealizedGeometry],
@@ -90,6 +96,10 @@ def weave(
     -------
     RealizedGeometry
         ウェブ構造を含むポリライン集合。
+
+    Notes
+    -----
+    開ポリライン（始点と終点が一致しない線）は対象外とし、そのまま返す。
     """
     if not inputs:
         return _empty_geometry()
@@ -111,10 +121,15 @@ def weave(
         step_size = MAX_STEP
 
     out_lines: list[np.ndarray] = []
+    did_webify = False
     for vertices in _iter_polylines(base):
         if vertices.shape[0] < 3:
             out_lines.append(vertices)
             continue
+        if not _is_closed_polyline(vertices):
+            out_lines.append(vertices)
+            continue
+        did_webify = True
         out_lines.extend(
             _webify_single_polyline(
                 vertices,
@@ -124,6 +139,8 @@ def weave(
             )
         )
 
+    if not did_webify:
+        return base
     return _lines_to_realized(out_lines)
 
 
@@ -254,79 +271,87 @@ def elastic_relaxation_nb(positions, edges, fixed, iterations, step):
 
 @njit(fastmath=True, cache=True)
 def build_adjacency_arrays(num_nodes, edges):
-    """辞書ではなく配列で隣接リストを構築する。"""
+    """辞書ではなく配列で隣接リストを構築する。
+
+    Notes
+    -----
+    visited 管理を O(num_nodes^2) から O(num_edges) に落とすため、
+    近傍ノードだけでなく「その近傍へ接続する edge_id」も同じ並びで保持する。
+    """
     degrees = np.zeros(num_nodes, dtype=np.int32)
     for i in range(edges.shape[0]):
         a, b = edges[i, 0], edges[i, 1]
         degrees[a] += 1
         degrees[b] += 1
 
-    max_degree = 10
+    max_degree = 0
+    for i in range(num_nodes):
+        d = degrees[i]
+        if d > max_degree:
+            max_degree = d
+
     adjacency = np.full((num_nodes, max_degree), -1, dtype=np.int32)
+    adjacency_edge_ids = np.full((num_nodes, max_degree), -1, dtype=np.int32)
     adj_counts = np.zeros(num_nodes, dtype=np.int32)
 
     for i in range(edges.shape[0]):
         a, b = edges[i, 0], edges[i, 1]
-        adjacency[a, adj_counts[a]] = b
+        slot_a = adj_counts[a]
+        adjacency[a, slot_a] = b
+        adjacency_edge_ids[a, slot_a] = i
         adj_counts[a] += 1
-        adjacency[b, adj_counts[b]] = a
+
+        slot_b = adj_counts[b]
+        adjacency[b, slot_b] = a
+        adjacency_edge_ids[b, slot_b] = i
         adj_counts[b] += 1
 
-    return adjacency, degrees
-
-
-@njit(fastmath=True, cache=True)
-def edge_key_hash(a, b, num_nodes):
-    if a > b:
-        a, b = b, a
-    return a * num_nodes + b
-
-
-@njit(fastmath=True, cache=True)
-def mark_edge_visited(visited_edges, a, b, num_nodes):
-    hash_val = edge_key_hash(a, b, num_nodes)
-    visited_edges[hash_val] = True
-
-
-@njit(fastmath=True, cache=True)
-def is_edge_visited(visited_edges, a, b, num_nodes):
-    hash_val = edge_key_hash(a, b, num_nodes)
-    return visited_edges[hash_val]
+    return adjacency, adjacency_edge_ids, degrees
 
 
 @njit(fastmath=True, cache=True)
 def trace_chain(
-    start, first_neighbor, adjacency, degrees, visited_edges, num_nodes, max_chain_length=10000
+    start,
+    first_neighbor,
+    first_edge_id,
+    adjacency,
+    adjacency_edge_ids,
+    degrees,
+    visited_edges,
+    max_chain_length=10000,
 ):
     chain = np.empty(max_chain_length, dtype=np.int32)
     chain[0] = start
     chain[1] = first_neighbor
     chain_length = 2
 
-    mark_edge_visited(visited_edges, start, first_neighbor, num_nodes)
+    visited_edges[first_edge_id] = True
 
     prev = start
     current = first_neighbor
 
     while degrees[current] == 2 and chain_length < max_chain_length:
         next_node = -1
+        next_edge_id = -1
         for i in range(adjacency.shape[1]):
             neighbor = adjacency[current, i]
             if neighbor == -1:
                 break
-            if neighbor != prev:
-                next_node = neighbor
-                break
+            if neighbor == prev:
+                continue
+            edge_id = adjacency_edge_ids[current, i]
+            if visited_edges[edge_id]:
+                continue
+            next_node = neighbor
+            next_edge_id = edge_id
+            break
 
         if next_node == -1:
             break
 
-        if is_edge_visited(visited_edges, current, next_node, num_nodes):
-            break
-
         chain[chain_length] = next_node
         chain_length += 1
-        mark_edge_visited(visited_edges, current, next_node, num_nodes)
+        visited_edges[next_edge_id] = True
 
         prev = current
         current = next_node
@@ -335,18 +360,21 @@ def trace_chain(
 
 
 @njit(fastmath=True, cache=True)
-def trace_cycle(start, adjacency, visited_edges, num_nodes, max_cycle_length=10000):
+def trace_cycle(start, adjacency, adjacency_edge_ids, visited_edges, max_cycle_length=10000):
     cycle = np.empty(max_cycle_length, dtype=np.int32)
     cycle[0] = start
     cycle_length = 1
 
     first_neighbor = -1
+    first_edge_id = -1
     for i in range(adjacency.shape[1]):
         neighbor = adjacency[start, i]
         if neighbor == -1:
             break
-        if not is_edge_visited(visited_edges, start, neighbor, num_nodes):
+        edge_id = adjacency_edge_ids[start, i]
+        if not visited_edges[edge_id]:
             first_neighbor = neighbor
+            first_edge_id = edge_id
             break
 
     if first_neighbor == -1:
@@ -354,20 +382,26 @@ def trace_cycle(start, adjacency, visited_edges, num_nodes, max_cycle_length=100
 
     cycle[1] = first_neighbor
     cycle_length = 2
-    mark_edge_visited(visited_edges, start, first_neighbor, num_nodes)
+    visited_edges[first_edge_id] = True
 
     prev = start
     current = first_neighbor
 
     while cycle_length < max_cycle_length:
         next_node = -1
+        next_edge_id = -1
         for i in range(adjacency.shape[1]):
             neighbor = adjacency[current, i]
             if neighbor == -1:
                 break
-            if neighbor != prev and not is_edge_visited(visited_edges, current, neighbor, num_nodes):
-                next_node = neighbor
-                break
+            if neighbor == prev:
+                continue
+            edge_id = adjacency_edge_ids[current, i]
+            if visited_edges[edge_id]:
+                continue
+            next_node = neighbor
+            next_edge_id = edge_id
+            break
 
         if next_node == -1:
             for i in range(adjacency.shape[1]):
@@ -375,17 +409,18 @@ def trace_cycle(start, adjacency, visited_edges, num_nodes, max_cycle_length=100
                 if neighbor == -1:
                     break
                 if neighbor == start:
-                    mark_edge_visited(visited_edges, current, start, num_nodes)
+                    edge_id = adjacency_edge_ids[current, i]
+                    visited_edges[edge_id] = True
                     return cycle[:cycle_length], cycle_length
             break
 
         if next_node == start:
-            mark_edge_visited(visited_edges, current, start, num_nodes)
+            visited_edges[next_edge_id] = True
             return cycle[:cycle_length], cycle_length
 
         cycle[cycle_length] = next_node
         cycle_length += 1
-        mark_edge_visited(visited_edges, current, next_node, num_nodes)
+        visited_edges[next_edge_id] = True
 
         prev = current
         current = next_node
@@ -401,9 +436,9 @@ def trace_cycle(start, adjacency, visited_edges, num_nodes, max_cycle_length=100
 def merge_edges_into_polylines(nodes, edges):
     """ノード集合とエッジから連結成分をポリラインへ変換する。"""
     num_nodes = nodes.shape[0]
-    adjacency, degrees = build_adjacency_arrays(num_nodes, edges)
+    adjacency, adjacency_edge_ids, degrees = build_adjacency_arrays(num_nodes, edges)
 
-    visited_edges = np.zeros(num_nodes * num_nodes, dtype=np.bool_)
+    visited_edges = np.zeros(edges.shape[0], dtype=np.bool_)
     polylines = List.empty_list(types.float64[:, :])
 
     for i in range(num_nodes):
@@ -412,32 +447,40 @@ def merge_edges_into_polylines(nodes, edges):
                 neighbor = adjacency[i, j]
                 if neighbor == -1:
                     break
-                if not is_edge_visited(visited_edges, i, neighbor, num_nodes):
-                    chain, chain_length = trace_chain(
-                        i, neighbor, adjacency, degrees, visited_edges, num_nodes
-                    )
-                    if chain_length >= 2:
-                        polyline = np.empty((chain_length, 3), dtype=np.float64)
-                        for k in range(chain_length):
-                            node_idx = chain[k]
-                            polyline[k, 0] = nodes[node_idx, 0]
-                            polyline[k, 1] = nodes[node_idx, 1]
-                            polyline[k, 2] = 0.0
-                        polylines.append(polyline)
+                edge_id = adjacency_edge_ids[i, j]
+                if visited_edges[edge_id]:
+                    continue
+                chain, chain_length = trace_chain(
+                    i,
+                    neighbor,
+                    edge_id,
+                    adjacency,
+                    adjacency_edge_ids,
+                    degrees,
+                    visited_edges,
+                )
+                if chain_length >= 2:
+                    polyline = np.empty((chain_length, 3), dtype=np.float64)
+                    for k in range(chain_length):
+                        node_idx = chain[k]
+                        polyline[k, 0] = nodes[node_idx, 0]
+                        polyline[k, 1] = nodes[node_idx, 1]
+                        polyline[k, 2] = 0.0
+                    polylines.append(polyline)
 
     for i in range(num_nodes):
         if degrees[i] == 2:
             has_unvisited = False
             for j in range(adjacency.shape[1]):
-                neighbor = adjacency[i, j]
-                if neighbor == -1:
+                edge_id = adjacency_edge_ids[i, j]
+                if edge_id == -1:
                     break
-                if not is_edge_visited(visited_edges, i, neighbor, num_nodes):
+                if not visited_edges[edge_id]:
                     has_unvisited = True
                     break
 
             if has_unvisited:
-                cycle, cycle_length = trace_cycle(i, adjacency, visited_edges, num_nodes)
+                cycle, cycle_length = trace_cycle(i, adjacency, adjacency_edge_ids, visited_edges)
                 if cycle_length >= 2:
                     polyline = np.empty((cycle_length, 3), dtype=np.float64)
                     for k in range(cycle_length):
