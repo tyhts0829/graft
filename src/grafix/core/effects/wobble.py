@@ -11,7 +11,7 @@ from grafix.core.parameters.meta import ParamMeta
 from grafix.core.realized_geometry import RealizedGeometry
 
 wobble_meta = {
-    "amplitude": ParamMeta(kind="float", ui_min=0.0, ui_max=20.0),
+    "amplitude": ParamMeta(kind="vec3", ui_min=0.0, ui_max=20.0),
     "frequency": ParamMeta(kind="vec3", ui_min=0.0, ui_max=0.2),
     "phase": ParamMeta(kind="float", ui_min=0.0, ui_max=360.0),
 }
@@ -27,7 +27,7 @@ def _empty_geometry() -> RealizedGeometry:
 def wobble(
     inputs: Sequence[RealizedGeometry],
     *,
-    amplitude: float = 2.0,
+    amplitude: tuple[float, float, float] = (2.0, 2.0, 2.0),
     frequency: tuple[float, float, float] = (0.1, 0.1, 0.1),
     phase: float = 0.0,
 ) -> RealizedGeometry:
@@ -37,8 +37,8 @@ def wobble(
     ----------
     inputs : Sequence[RealizedGeometry]
         変形対象の実体ジオメトリ列。通常は 1 要素。
-    amplitude : float, default 2.0
-        変位量 [mm] 相当。
+    amplitude : tuple[float, float, float], default (2.0, 2.0, 2.0)
+        変位量 [mm] 相当（各軸別）。
     frequency : tuple[float, float, float], default (0.1, 0.1, 0.1)
         空間周波数（各軸別）。
     phase : float, default 0.0
@@ -56,8 +56,10 @@ def wobble(
     if base.coords.shape[0] == 0:
         return base
 
-    amp = float(amplitude)
-    if amp == 0.0:
+    ax = float(amplitude[0])
+    ay = float(amplitude[1])
+    az = float(amplitude[2])
+    if ax == 0.0 and ay == 0.0 and az == 0.0:
         return base
 
     fx = float(frequency[0])
@@ -71,13 +73,12 @@ def wobble(
     x = v[:, 0]
     y = v[:, 1]
     z = v[:, 2]
-    out[:, 0] = x + amp * np.sin(2.0 * np.pi * fx * x + phase_rad)
-    out[:, 1] = y + amp * np.sin(2.0 * np.pi * fy * y + phase_rad)
-    out[:, 2] = z + amp * np.sin(2.0 * np.pi * fz * z + phase_rad)
+    out[:, 0] = x + ax * np.sin(2.0 * np.pi * fx * x + phase_rad)
+    out[:, 1] = y + ay * np.sin(2.0 * np.pi * fy * y + phase_rad)
+    out[:, 2] = z + az * np.sin(2.0 * np.pi * fz * z + phase_rad)
 
     coords = out.astype(np.float32, copy=False)
     return RealizedGeometry(coords=coords, offsets=base.offsets)
 
 
 __all__ = ["wobble", "wobble_meta"]
-

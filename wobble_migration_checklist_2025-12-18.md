@@ -6,6 +6,9 @@
 
 ## 0) 事前に決める（あなたの確認が必要）
 
+- [x] `amplitude` の型:
+  - A: `float`（旧のまま）
+  - B: `vec3` 固定（`(ax, ay, az)`）。スカラーは許容しない；こちらで
 - [x] `frequency` の型:
   - A: `vec3` 固定（`(fx, fy, fz)`）。等方は `(f, f, f)` で表現（推奨: GUI と整合する）；はい
   - B: `float | vec3` を受けたい（この場合、GUI/ParamStore 側も壊さない手当が必要）
@@ -44,7 +47,7 @@
   - [x] no-op:
     - [x] `inputs` が空 → 空ジオメトリ
     - [x] `coords` が空 → `base` を返す
-    - [x] `amplitude == 0` → `base` を返す
+    - [x] `amplitude == (0,0,0)` → `base` を返す
   - [x] 数値実装:
     - [x] `phase` を deg→rad 変換
     - [x] `coords` をコピーして xyz へベクトル化演算で加算（最後は `float32` に戻す）
