@@ -4,7 +4,7 @@
 なぜ: 動作確認用の最小エントリポイントとして利用するため。
 """
 
-from grafix.api import E, G, L, run
+from grafix import E, G, L, run
 
 CANVAS_WIDTH = 300
 CANVAS_HEIGHT = 300
@@ -12,7 +12,7 @@ CANVAS_HEIGHT = 300
 
 def draw(t: float):
     ply1 = G.polyhedron()
-    eff1 = E(name="polyhedron_effect").rotate().subdivide().weave()
+    eff1 = E(name="polyhedron_effect").rotate().extrude()
 
     ply2 = G.text()
     eff2 = E.affine().fill()
