@@ -64,7 +64,14 @@ def twist_test_empty() -> RealizedGeometry:
 
 def test_twist_y_axis_90_at_ends_and_zero_in_middle() -> None:
     g = G.twist_test_line_y3()
-    realized = realize(E.twist(angle=90.0, axis="y", auto_center=False, pivot=(0.0, 0.0, 0.0))(g))
+    realized = realize(
+        E.twist(
+            angle=90.0,
+            axis_dir=(0.0, 1.0, 0.0),
+            auto_center=False,
+            pivot=(0.0, 0.0, 0.0),
+        )(g)
+    )
 
     expected = np.array([[0.0, 0.0, -1.0], [1.0, 0.5, 0.0], [0.0, 1.0, 1.0]], dtype=np.float32)
     np.testing.assert_allclose(realized.coords, expected, rtol=0.0, atol=1e-6)
@@ -74,7 +81,7 @@ def test_twist_y_axis_90_at_ends_and_zero_in_middle() -> None:
 def test_twist_angle_zero_is_noop() -> None:
     g = G.twist_test_line_y3()
     base = realize(g)
-    realized = realize(E.twist(angle=0.0, axis="y")(g))
+    realized = realize(E.twist(angle=0.0, axis_dir=(0.0, 1.0, 0.0))(g))
     np.testing.assert_allclose(realized.coords, base.coords, rtol=0.0, atol=0.0)
     assert realized.offsets.tolist() == base.offsets.tolist()
 
@@ -82,35 +89,42 @@ def test_twist_angle_zero_is_noop() -> None:
 def test_twist_axis_range_zero_is_noop() -> None:
     g = G.twist_test_same_y()
     base = realize(g)
-    realized = realize(E.twist(angle=90.0, axis="y")(g))
+    realized = realize(E.twist(angle=90.0, axis_dir=(0.0, 1.0, 0.0))(g))
     np.testing.assert_allclose(realized.coords, base.coords, rtol=0.0, atol=0.0)
     assert realized.offsets.tolist() == base.offsets.tolist()
 
 
 def test_twist_preserves_offsets_for_multiple_polylines() -> None:
     g = G.twist_test_two_lines_y2()
-    realized = realize(E.twist(angle=90.0, axis="y")(g))
+    realized = realize(E.twist(angle=90.0, axis_dir=(0.0, 1.0, 0.0))(g))
     assert realized.coords.shape == (4, 3)
     assert realized.offsets.tolist() == [0, 2, 4]
 
 
 def test_twist_empty_geometry_is_noop() -> None:
     g = G.twist_test_empty()
-    realized = realize(E.twist(angle=90.0, axis="y")(g))
+    realized = realize(E.twist(angle=90.0, axis_dir=(0.0, 1.0, 0.0))(g))
     assert realized.coords.shape == (0, 3)
     assert realized.offsets.tolist() == [0]
 
 
-def test_twist_invalid_axis_raises() -> None:
+def test_twist_axis_dir_zero_raises() -> None:
     g = G.twist_test_line_y3()
     with pytest.raises(RealizeError) as exc:
-        _ = realize(E.twist(angle=90.0, axis="q")(g))
+        _ = realize(E.twist(angle=90.0, axis_dir=(0.0, 0.0, 0.0))(g))
     assert isinstance(exc.value.__cause__, ValueError)
 
 
 def test_twist_pivot_changes_rotation_center() -> None:
     g = G.twist_test_line_y3_x2()
-    realized = realize(E.twist(angle=90.0, axis="y", auto_center=False, pivot=(1.0, 0.0, 0.0))(g))
+    realized = realize(
+        E.twist(
+            angle=90.0,
+            axis_dir=(0.0, 1.0, 0.0),
+            auto_center=False,
+            pivot=(1.0, 0.0, 0.0),
+        )(g)
+    )
 
     expected = np.array([[1.0, 0.0, -1.0], [2.0, 0.5, 0.0], [1.0, 1.0, 1.0]], dtype=np.float32)
     np.testing.assert_allclose(realized.coords, expected, rtol=0.0, atol=1e-6)
@@ -122,6 +136,20 @@ def test_twist_auto_center_matches_explicit_pivot_mean() -> None:
     center = base.coords.astype(np.float64, copy=False).mean(axis=0)
     pivot = (float(center[0]), float(center[1]), float(center[2]))
 
-    out_auto_center = realize(E.twist(angle=90.0, axis="y", auto_center=True)(g))
-    out_pivot = realize(E.twist(angle=90.0, axis="y", auto_center=False, pivot=pivot)(g))
+    out_auto_center = realize(E.twist(angle=90.0, axis_dir=(0.0, 1.0, 0.0), auto_center=True)(g))
+    out_pivot = realize(
+        E.twist(
+            angle=90.0,
+            axis_dir=(0.0, 1.0, 0.0),
+            auto_center=False,
+            pivot=pivot,
+        )(g)
+    )
     np.testing.assert_allclose(out_auto_center.coords, out_pivot.coords, rtol=0.0, atol=1e-6)
+
+
+def test_twist_axis_dir_sign_flip_is_equivalent() -> None:
+    g = G.twist_test_line_y3_x2()
+    out_pos = realize(E.twist(angle=90.0, axis_dir=(0.0, 1.0, 0.0))(g))
+    out_neg = realize(E.twist(angle=90.0, axis_dir=(0.0, -1.0, 0.0))(g))
+    np.testing.assert_allclose(out_pos.coords, out_neg.coords, rtol=0.0, atol=1e-6)
