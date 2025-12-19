@@ -80,6 +80,118 @@ def _point_in_polygon(point: np.ndarray, polygon: np.ndarray) -> bool:
     return inside
 
 
+def _estimate_global_xy_transform_pca(
+    coords: np.ndarray,
+    offsets: np.ndarray,
+    *,
+    threshold: float,
+) -> tuple[np.ndarray, np.ndarray, float] | None:
+    """全点から平面を推定し、XY 平面へ整列した座標と変換を返す。
+
+    - PCA（最小分散軸）で法線を推定し、Z 軸へ合わせる回転を作る。
+    - 面内回転は「代表リングの最長辺」を +X に合わせて固定する。
+    - 返す座標は z=0 に寄せる（代表リング先頭点の z を 0 に合わせる）。
+    """
+    if coords.shape[0] < 3 or offsets.size <= 1:
+        return None
+
+    coords64 = coords.astype(np.float64, copy=False)
+    centroid = np.mean(coords64, axis=0)
+    centered = coords64 - centroid
+    cov = centered.T @ centered
+
+    _, eigvecs = np.linalg.eigh(cov)
+    if eigvecs.shape != (3, 3):
+        return None
+
+    normal = eigvecs[:, 0]
+    n_norm = float(np.linalg.norm(normal))
+    if not np.isfinite(n_norm) or n_norm <= 0.0:
+        return None
+    normal = normal / n_norm
+
+    if float(normal[2]) < 0.0:
+        normal = -normal
+
+    z_axis = np.array([0.0, 0.0, 1.0], dtype=np.float64)
+    rotation_axis = np.cross(normal, z_axis)
+    axis_norm = float(np.linalg.norm(rotation_axis))
+    if axis_norm <= 1e-12:
+        r0 = np.eye(3, dtype=np.float64)
+    else:
+        rotation_axis = rotation_axis / axis_norm
+        cos_theta = float(np.dot(normal, z_axis))
+        cos_theta = float(np.clip(cos_theta, -1.0, 1.0))
+        angle = float(np.arccos(cos_theta))
+
+        k = np.zeros((3, 3), dtype=np.float64)
+        k[0, 1] = -rotation_axis[2]
+        k[0, 2] = rotation_axis[1]
+        k[1, 0] = rotation_axis[2]
+        k[1, 2] = -rotation_axis[0]
+        k[2, 0] = -rotation_axis[1]
+        k[2, 1] = rotation_axis[0]
+
+        r0 = np.eye(3, dtype=np.float64) + np.sin(angle) * k + (1.0 - np.cos(angle)) * (k @ k)
+
+    ring_indices = [
+        i
+        for i in range(int(offsets.size) - 1)
+        if int(offsets[i + 1]) - int(offsets[i]) >= 3
+    ]
+    if not ring_indices:
+        return None
+
+    ref_ring_i = ring_indices[0]
+    ref_area = -1.0
+    for ring_i in ring_indices:
+        start = int(offsets[ring_i])
+        end = int(offsets[ring_i + 1])
+        poly = coords64[start:end]
+        if poly.shape[0] < 3:
+            continue
+        aligned0 = poly @ r0.T
+        a = _polygon_area_abs(aligned0[:, :2])
+        if a > ref_area:
+            ref_area = a
+            ref_ring_i = ring_i
+
+    s_ref = int(offsets[ref_ring_i])
+    e_ref = int(offsets[ref_ring_i + 1])
+    ref_poly = coords64[s_ref:e_ref]
+    if ref_poly.shape[0] < 2:
+        return None
+
+    aligned_ref = ref_poly @ r0.T
+    xy = aligned_ref[:, :2]
+    phi: float | None = None
+    for i in range(int(xy.shape[0]) - 1):
+        dx = float(xy[i + 1, 0] - xy[i, 0])
+        dy = float(xy[i + 1, 1] - xy[i, 1])
+        if dx * dx + dy * dy > 1e-12:
+            phi = float(np.arctan2(dy, dx))
+            break
+    if phi is None:
+        return None
+
+    cos_phi = float(np.cos(phi))
+    sin_phi = float(np.sin(phi))
+    rz = np.eye(3, dtype=np.float64)
+    rz[0, 0] = cos_phi
+    rz[0, 1] = sin_phi
+    rz[1, 0] = -sin_phi
+    rz[1, 1] = cos_phi
+
+    rot = rz @ r0
+    aligned_all = coords64 @ rot.T
+    z_offset = float(aligned_all[s_ref, 2])
+    aligned_all[:, 2] -= z_offset
+    residual = float(np.max(np.abs(aligned_all[:, 2])))
+    if residual > threshold:
+        return None
+    return aligned_all, rot, z_offset
+
+
 def _build_evenodd_groups(coords_2d_all: np.ndarray, offsets: np.ndarray) -> list[list[int]]:
     """外周＋穴を even-odd でグルーピングし、[outer, hole...] のリストを返す。"""
     ring_indices = [
@@ -193,28 +305,6 @@ def _generate_y_values(
     return np.asarray(y_values, dtype=np.float32)
 
 
-def _find_line_intersections(polygon: np.ndarray, y: float) -> list[float]:
-    """水平線 y とポリゴンの交点 x 座標列を返す（旧仕様条件）。"""
-    n = int(polygon.shape[0])
-    if n < 2:
-        return []
-
-    out: list[float] = []
-    for i in range(n):
-        p1 = polygon[i]
-        p2 = polygon[(i + 1) % n]
-        y1 = float(p1[1])
-        y2 = float(p2[1])
-        if (y1 <= y < y2) or (y2 <= y < y1):
-            if y2 == y1:
-                continue
-            x1 = float(p1[0])
-            x2 = float(p2[0])
-            x = x1 + (y - y1) * (x2 - x1) / (y2 - y1)
-            out.append(float(x))
-    return out
-
-
 def _generate_line_fill_evenodd_multi(
     coords_2d: np.ndarray,
     offsets: np.ndarray,
@@ -256,26 +346,46 @@ def _generate_line_fill_evenodd_multi(
     y_values = _generate_y_values(min_y, max_y, spacing, float(spacing_gradient))
     out_lines: list[np.ndarray] = []
 
-    for y in y_values:
-        intersections_all: list[float] = []
-        for i in range(int(offsets.size) - 1):
-            s = int(offsets[i])
-            e = int(offsets[i + 1])
-            if e - s < 2:
-                continue
-            poly = work[s:e]
-            intersections_all.extend(_find_line_intersections(poly, float(y)))
+    edges_list: list[np.ndarray] = []
+    for i in range(int(offsets.size) - 1):
+        s = int(offsets[i])
+        e = int(offsets[i + 1])
+        if e - s < 2:
+            continue
+        poly = work[s:e]
+        if poly.shape[0] < 2:
+            continue
+        nxt = np.roll(poly, -1, axis=0)
+        edges_list.append(np.concatenate([poly, nxt], axis=1))
 
-        if len(intersections_all) < 2:
+    if not edges_list:
+        return []
+    edges = np.concatenate(edges_list, axis=0).astype(np.float32, copy=False)
+    ex1 = edges[:, 0]
+    ey1 = edges[:, 1]
+    ex2 = edges[:, 2]
+    ey2 = edges[:, 3]
+    edy = ey2 - ey1
+    edx = ex2 - ex1
+
+    for y in y_values:
+        yy = float(y)
+        mask = ((ey1 <= yy) & (yy < ey2)) | ((ey2 <= yy) & (yy < ey1))
+        mask &= edy != 0.0
+        if not np.any(mask):
             continue
 
-        xs_sorted = np.sort(np.asarray(intersections_all, dtype=np.float32))
+        xs = ex1[mask] + (yy - ey1[mask]) * edx[mask] / edy[mask]
+        if xs.size < 2:
+            continue
+
+        xs_sorted = np.sort(xs.astype(np.float32, copy=False))
         for j in range(0, int(xs_sorted.size) - 1, 2):
-            x1 = float(xs_sorted[j])
-            x2 = float(xs_sorted[j + 1])
-            if x2 - x1 <= 1e-9:
+            x_a = float(xs_sorted[j])
+            x_b = float(xs_sorted[j + 1])
+            if x_b - x_a <= 1e-9:
                 continue
-            seg2d = np.array([[x1, float(y)], [x2, float(y)]], dtype=np.float32)
+            seg2d = np.array([[x_a, float(y)], [x_b, float(y)]], dtype=np.float32)
             if rot_fwd is not None:
                 seg2d = (seg2d - center) @ rot_fwd.T + center
             out_lines.append(seg2d)
@@ -359,32 +469,14 @@ def fill(
 
     # 1) 全体がほぼ平面なら、外周＋穴をグルーピングして even-odd 塗りを行う。
     # 3D -> XY 平面への整列で 2D 化し、生成した線分を元姿勢へ戻す。
-    planar_global = False
-    coords_xy_all: np.ndarray | None = None
-    rot_global: np.ndarray | None = None
-    z_global: float = 0.0
-
     global_threshold = _planarity_threshold(base.coords)
-    for poly_i in range(int(base.offsets.size) - 1):
-        s = int(base.offsets[poly_i])
-        e = int(base.offsets[poly_i + 1])
-        if e - s < 3:
-            continue
-        vertices = base.coords[s:e]
-        _vxy, rot, z_off = transform_to_xy_plane(vertices)
-
-        coords64 = base.coords.astype(np.float64, copy=False)
-        aligned = coords64 @ rot.T
-        aligned[:, 2] -= float(z_off)
-        residual = float(np.max(np.abs(aligned[:, 2])))
-        if residual <= global_threshold:
-            planar_global = True
-            coords_xy_all = aligned
-            rot_global = rot
-            z_global = float(z_off)
-            break
-
-    if planar_global and coords_xy_all is not None and rot_global is not None:
+    global_est = _estimate_global_xy_transform_pca(
+        base.coords,
+        base.offsets,
+        threshold=float(global_threshold),
+    )
+    if global_est is not None:
+        coords_xy_all, rot_global, z_global = global_est
         coords2d_all = coords_xy_all[:, :2].astype(np.float32, copy=False)
         groups = _build_evenodd_groups(coords2d_all, base.offsets)
         if not groups:
@@ -427,9 +519,8 @@ def fill(
                     spacing_gradient=float(spacing_gradient),
                 )
                 for seg in segs2d:
-                    seg3 = np.concatenate(
-                        [seg, np.zeros((int(seg.shape[0]), 1), dtype=np.float32)], axis=1
-                    )
+                    seg3 = np.zeros((int(seg.shape[0]), 3), dtype=np.float32)
+                    seg3[:, :2] = seg
                     out_lines.append(transform_back(seg3, rot_global, z_global))
 
         return _lines_to_realized(out_lines)
@@ -466,9 +557,8 @@ def fill(
                 spacing_gradient=float(spacing_gradient),
             )
             for seg in segs2d:
-                seg3 = np.concatenate(
-                    [seg, np.zeros((int(seg.shape[0]), 1), dtype=np.float32)], axis=1
-                )
+                seg3 = np.zeros((int(seg.shape[0]), 3), dtype=np.float32)
+                seg3[:, :2] = seg
                 out_lines.append(transform_back(seg3, rot, float(z_off)))
 
     return _lines_to_realized(out_lines)

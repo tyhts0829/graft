@@ -33,8 +33,11 @@
   - 候補 A: 既存テストが通る範囲で OK（順序や微小差は許容）；OK
   - 候補 B: できる限り同一（順序まで固定したい）
 - 高速化のために numba を `fill.py` 側にも導入してよいか（初回実行時のコンパイル増）；OK
-- 「全体平面性」判定を 1 回の推定（PCA/最小二乗平面）へ置換してよいか
-  - 置換する場合、面内回転自由度の固定（ハッチ方向の安定）をどう定義するか
+- 「全体平面性」判定を 1 回の推定（PCA/最小二乗平面）へ置換してよいか；OK
+  - 置換する場合、面内回転自由度の固定（ハッチ方向の安定）をどう定義するか；以下で。
+    - 形状由来の方向で固定
+      - 例: 代表リングの「最初の非ゼロ辺」や「最長辺」方向を平面に射影して u にする
+      - 形状を回転させると参照方向も一緒に回るので、ハッチが“形に貼り付く”
 
 ## 実装 TODO（チェックリスト）
 
@@ -51,18 +54,18 @@
 
 ### 2) Quick wins（挙動を変えない小改善）
 
-- [ ] `fill` の全体平面性判定で `coords64 = base.coords.astype(np.float64, copy=False)` をループ外へ移動
+- [x] `fill` の全体平面性判定で `coords64 = base.coords.astype(np.float64, copy=False)` をループ外へ移動（※候補ループ自体を廃止）
 - [ ] 角度セット `k` と `base_angle_rad` の正規化を早めに行い、不要分岐を減らす
 - [ ] 交点計算用に、リングごとの `work[s:e]` スライス生成回数を減らす（事前に view を持つ等）
 
 ### 3) 交点計算の高速化（最重要）
 
-- [ ] `_generate_line_fill_evenodd_multi` を「辺配列の前計算 + ベクトル化」に置換
-  - [ ] `offsets` から全辺の `(x1,y1,x2,y2)` を 1 回で組み立てる（リング単位の wrap を含む）
-  - [ ] スキャンライン `y` ごとに、全辺へ一括でマスク → 交点 `x` を算出（NumPy）
-  - [ ] 既存の半開区間条件 `(y1 <= y < y2) or (y2 <= y < y1)` を同等に保つ
-  - [ ] 交点 `x` の `np.sort` 後、ペア化して線分を生成（偶奇規則）
-- [ ] 交点リストの Python `list` を廃止（`np.ndarray` ベースにする）
+- [x] `_generate_line_fill_evenodd_multi` を「辺配列の前計算 + ベクトル化」に置換
+  - [x] `offsets` から全辺の `(x1,y1,x2,y2)` を 1 回で組み立てる（リング単位の wrap を含む）
+  - [x] スキャンライン `y` ごとに、全辺へ一括でマスク → 交点 `x` を算出（NumPy）
+  - [x] 既存の半開区間条件 `(y1 <= y < y2) or (y2 <= y < y1)` を同等に保つ
+  - [x] 交点 `x` の `np.sort` 後、ペア化して線分を生成（偶奇規則）
+- [x] 交点リストの Python `list` を廃止（`np.ndarray` ベースにする）
 - [ ] 角度回転ありの場合の `rot_fwd` 適用を、線分 1 本ずつではなくまとめて行う（可能なら）
 
 ### 4) even-odd グルーピングの高速化（輪郭が多い入力向け）
@@ -73,27 +76,29 @@
 
 ### 5) 全体平面性判定の見直し（点数が多い入力向け）
 
-- [ ] 現状の「候補ポリラインごとに全点へ回転」をやめて、全点から 1 回で判定する案を比較
+- [x] 現状の「候補ポリラインごとに全点へ回転」をやめて、全点から 1 回で判定する案へ置換（案B）
   - [ ] 案 A: いまのやり方を維持しつつ候補選びを改善（最大面積リングなど 1 回だけ試す）
-  - [ ] 案 B: PCA/最小二乗平面を 1 回推定 → residual で判定（高速だが回転自由度の固定が課題）
+  - [x] 案 B: PCA/最小二乗平面を 1 回推定 → residual で判定（高速だが回転自由度の固定が課題）
+  - [x] 面内回転の固定: 代表リングの「最初の非ゼロ辺」を +X に合わせる
 
 ### 6) 生成線分の post-process 最適化
 
-- [ ] `seg3 = np.concatenate([...])` をやめ、(2,3) を直接確保して z=0 を埋める（小配列の削減）
+- [x] `seg3 = np.concatenate([...])` をやめ、(2,3) を直接確保して z=0 を埋める（小配列の削減）
 - [ ] `transform_back` の呼び出し回数を減らす（線分をまとめて 1 回で戻す）方針を検討
   - [ ] まとめ戻し後に offsets を組み直す（線分は全部 2 点なので比較的簡単）
 
 ### 7) テスト/検証（対象限定で実行）
 
-- [ ] 既存テストが通ること
-  - [ ] `PYTHONPATH=src pytest -q tests/core/effects/test_fill.py`
-  - [ ] `PYTHONPATH=src pytest -q tests/core/test_text_fill_stability.py`
+- [x] 既存テストが通ること
+  - [x] `PYTHONPATH=src pytest -q tests/core/effects/test_fill.py`
+  - [x] `PYTHONPATH=src pytest -q tests/core/test_text_fill_stability.py`
 - [ ] 追加で「穴が多い」「輪郭が多い」ケースの回帰テストを足す（必要なら）
 - [ ] 静的チェック
-  - [ ] `mypy src/grafix/core/effects/fill.py`
-  - [ ] `ruff check src/grafix/core/effects/fill.py`
+  - [x] `mypy src/grafix/core/effects/fill.py`
+  - [ ] `ruff check src/grafix/core/effects/fill.py`（環境に ruff が無い: command not found）
 
-## 事前確認したいこと
+## 事前確認したいこと（解決済）
 
-- 上の「変更候補（要確認）」で、どの方針（A/B）で進めたいか。
-- numba を `fill.py` の hot path に増やすのは許容か（初回実行が重くなる可能性）。
+- [x] 出力互換の厳しさ: 候補A（既存テストが通ればOK）
+- [x] numba 導入: OK（今回の hot path は NumPy ベクトル化で実装）
+- [x] 全体平面性: PCA/最小二乗平面で 1 回推定 + 面内回転は形状由来（代表リングの最初の非ゼロ辺）
