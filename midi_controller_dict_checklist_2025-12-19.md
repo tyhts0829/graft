@@ -34,39 +34,39 @@
 
 ## 1) 設計（DualKeyDict なしの最小構成に落とす）
 
-- [ ] 「辞書」をどこまで責務にするか決める
+- [x] 「辞書」をどこまで責務にするか決める
   - 値は **常に 0.0–1.0** に正規化して `dict[int, float]` に格納（core 側の `cc_snapshot` に直結）
   - 14bit の MSB 待ち状態は `msb_by_cc: dict[int, int]`（0–31 → 0–127）で保持
-- [ ] MIDI メッセージの型（mido 依存を外へ漏らさない）
+- [x] MIDI メッセージの型（mido 依存を外へ漏らさない）
   - `Protocol` or 「必要属性だけ読む」（`type`, `control`, `value`, `note`, `velocity`）
   - mido は利用箇所でローカル import（未インストールでも import 可能な設計）
-- [ ] 14bit CC の正規化を単純化
+- [x] 14bit CC の正規化を単純化
   - 旧: 0–16383 → 0–127 → /127
   - 新: **0–16383 → /16383**（同等でより直感的）
-- [ ] 例外方針を決める
+- [x] 例外方針を決める
   - 不正ポートは `InvalidPortError`
   - JSON 破損は「初期化して続行」か「例外」かを決める（シンプル優先）
 
 ## 2) 新規実装（ファイル追加）
 
-- [ ] `src/grafix/interactive/midi/__init__.py` を追加してパッケージ化
-- [ ] `src/grafix/interactive/midi/midi_controller.py` を新規作成
-  - [ ] ファイル先頭の 3 行ヘッダ（どこで/何を/なぜ）
-  - [ ] 公開 API に NumPy スタイル docstring + 型ヒント
-  - [ ] `open_input(port_name)` / `iter_pending()` / `close()`（必要なら）
-  - [ ] `update(msg)`（CC のみ更新、必要なら note も返す）
-  - [ ] `snapshot()`（`dict[int, float]` を返す。必要ならコピー）
-- [ ] 永続化（必要なら）
-  - [ ] `load()` / `save()` を `save_dir` と `snapshot_id`（0) の決定）で分離
-  - [ ] JSON のキーは文字列になる点（`"64": 0.5`）を吸収する
+- [x] `src/grafix/interactive/midi/__init__.py` を追加してパッケージ化
+- [x] `src/grafix/interactive/midi/midi_controller.py` を新規作成
+  - [x] ファイル先頭の 3 行ヘッダ（どこで/何を/なぜ）
+  - [x] 公開 API に NumPy スタイル docstring + 型ヒント
+  - [x] `validate_and_open_port(port_name)` / `iter_pending()` / `close()`
+  - [x] `update(msg)`（CC のみ更新）
+  - [x] `snapshot()`（`dict[int, float]` を返す）
+- [x] 永続化（JSON）
+  - [x] `load()` / `save()` を `save_dir` と `snapshot_id`（profile+port）で分離
+  - [x] JSON のキーが文字列になる点（`"64": 0.5`）を吸収する
 
 ## 3) テスト（mido 無しで回す）
 
-- [ ] `tests/interactive/midi/test_midi_controller.py` を追加
-  - [ ] 7bit: `value=0/127` が `0.0/1.0` になる
-  - [ ] 14bit: MSB→LSB の順で更新され、片方だけでは更新されない
-  - [ ] 14bit: 端点（0, 16383）で `0.0/1.0`
-  - [ ] 永続化: `tmp_path` で save/load 往復（採用する場合のみ）
+- [x] `tests/interactive/midi/test_midi_controller.py` を追加
+  - [x] 7bit: `value=0/127` が `0.0/1.0` になる
+  - [x] 14bit: MSB→LSB の順で更新され、片方だけでは更新されない
+  - [x] 14bit: 端点（0, 16383）で `0.0/1.0`
+  - [x] 永続化: `tmp_path` で save/load 往復
 
 ## 4) interactive への接続（必要なら）
 
@@ -75,7 +75,7 @@
 
 ## 5) 仕上げ
 
-- [ ] `PYTHONPATH=src pytest -q tests/interactive -k midi`
-- [ ] `ruff check src/grafix/interactive/midi`
-- [ ] `mypy src/grafix`（必要なら対象限定でも可）
+- [x] `PYTHONPATH=src pytest -q tests/interactive -k midi`（実際は対象ファイルを直接実行）
+- [ ] `ruff check src/grafix/interactive/midi`（ruff 未インストールのため未実行）
+- [x] `mypy src/grafix`（対象限定で実行）
 - [ ] 旧ファイルの扱いを決める（残す/移動/削除。削除/移動は Ask-first）

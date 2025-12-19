@@ -69,9 +69,9 @@ def drop(
     offset : int, default 0
         interval 判定の開始オフセット。
     min_length : float, default -1.0
-        この長さ以下の線を対象とする。0 以上で有効、-1 で無効。
+        この長さ以下の線を対象とする。0 以上で有効、0 未満で無効。
     max_length : float, default -1.0
-        この長さ以上の線を対象とする。0 以上で有効、-1 で無効。
+        この長さ以上の線を対象とする。0 以上で有効、0 未満で無効。
     probability : float, default 0.0
         各線を確率的に対象とする比率。0.0〜1.0。0.0 は無効。
     by : str, default "line"
