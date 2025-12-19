@@ -28,6 +28,13 @@ def normalize_scene(scene: SceneItem) -> list[Layer]:
     list[Layer]
         描画順を保った Layer の一次元リスト。
 
+    Notes
+    -----
+    - `Geometry` は暗黙に `Layer` へ包む。このとき `Layer.site_id` は
+      ``"implicit:{index}"``（index は 1..N の連番）とする。
+      目的: parameter_gui の Layer style 行（line_thickness/line_color）を、
+      Geometry 内容（`Geometry.id`）の変化に影響されず安定化させる。
+
     Raises
     ------
     TypeError
@@ -35,13 +42,16 @@ def normalize_scene(scene: SceneItem) -> list[Layer]:
     """
 
     result: list[Layer] = []
+    implicit_index = 0
 
     def _walk(item: SceneItem) -> None:
+        nonlocal implicit_index
         if isinstance(item, Layer):
             result.append(item)
             return
         if isinstance(item, Geometry):
-            result.append(Layer(geometry=item, site_id=f"implicit:{item.id}"))
+            implicit_index += 1
+            result.append(Layer(geometry=item, site_id=f"implicit:{implicit_index}"))
             return
         if isinstance(item, Sequence) and not isinstance(item, (str, bytes)):
             for child in item:
