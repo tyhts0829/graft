@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Sequence
 
 import numpy as np
+from numba import njit  # type: ignore[import-untyped, attr-defined]
 
 from grafix.core.effect_registry import effect
 from grafix.core.parameters.meta import ParamMeta
@@ -37,85 +38,184 @@ def _lines_to_realized(lines: Sequence[np.ndarray]) -> RealizedGeometry:
     if not lines:
         return _empty_geometry()
 
-    offsets: list[int] = [0]
     coords_list: list[np.ndarray] = []
+    offsets = np.zeros((len(lines) + 1,), dtype=np.int32)
     cursor = 0
-    for line in lines:
+    for i, line in enumerate(lines):
         v = np.asarray(line)
         if v.ndim != 2 or v.shape[1] != 3:
             raise ValueError("trim: polyline は shape (N,3) が必要")
         coords_list.append(v.astype(np.float32, copy=False))
         cursor += int(v.shape[0])
-        offsets.append(cursor)
+        offsets[i + 1] = cursor
 
     coords = np.concatenate(coords_list, axis=0) if coords_list else np.zeros((0, 3), np.float32)
-    return RealizedGeometry(coords=coords, offsets=np.asarray(offsets, dtype=np.int32))
+    return RealizedGeometry(coords=coords, offsets=offsets)
 
 
-def _build_arc_length(vertices: np.ndarray) -> np.ndarray:
-    n = int(vertices.shape[0])
-    distances = np.empty((n,), dtype=np.float64)
-    distances[0] = 0.0
-    for i in range(n - 1):
-        d = vertices[i + 1].astype(np.float64) - vertices[i].astype(np.float64)
-        distances[i + 1] = distances[i] + float(np.linalg.norm(d))
-    return distances
+@njit(cache=True, fastmath=True)  # type: ignore[misc]
+def _build_arc_length_nb(v: np.ndarray) -> np.ndarray:
+    n = v.shape[0]
+    s = np.empty(n, dtype=np.float64)
+    s[0] = 0.0
+    for j in range(n - 1):
+        dx = v[j + 1, 0] - v[j, 0]
+        dy = v[j + 1, 1] - v[j, 1]
+        dz = v[j + 1, 2] - v[j, 2]
+        s[j + 1] = s[j] + np.sqrt(dx * dx + dy * dy + dz * dz)
+    return s
 
 
-def _interpolate_at_distance(
+@njit(cache=True, fastmath=True)  # type: ignore[misc]
+def _lower_bound(a: np.ndarray, x: float) -> int:
+    lo = 0
+    hi = a.shape[0]
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if a[mid] < x:
+            lo = mid + 1
+        else:
+            hi = mid
+    return lo
+
+
+@njit(cache=True, fastmath=True)  # type: ignore[misc]
+def _upper_bound(a: np.ndarray, x: float) -> int:
+    lo = 0
+    hi = a.shape[0]
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if a[mid] <= x:
+            lo = mid + 1
+        else:
+            hi = mid
+    return lo
+
+
+@njit(cache=True, fastmath=True)  # type: ignore[misc]
+def _interpolate_at_distance_nb(
     vertices: np.ndarray,
     distances: np.ndarray,
     target_dist: float,
-) -> np.ndarray | None:
+) -> tuple[float, float, float]:
     if target_dist <= 0.0:
-        return vertices[0]
-    total = float(distances[-1])
-    if target_dist >= total:
-        return vertices[-1]
+        return float(vertices[0, 0]), float(vertices[0, 1]), float(vertices[0, 2])
 
-    for i in range(int(distances.shape[0]) - 1):
-        d0 = float(distances[i])
-        d1 = float(distances[i + 1])
-        if d0 <= target_dist <= d1:
-            seg_len = d1 - d0
-            if seg_len == 0.0:
-                return vertices[i]
-            t = (target_dist - d0) / seg_len
-            return vertices[i] + float(t) * (vertices[i + 1] - vertices[i])
-    return None
+    total = float(distances[distances.shape[0] - 1])
+    if target_dist >= total:
+        n1 = vertices.shape[0] - 1
+        return float(vertices[n1, 0]), float(vertices[n1, 1]), float(vertices[n1, 2])
+
+    j = _lower_bound(distances, float(target_dist))
+    if j <= 0:
+        return float(vertices[0, 0]), float(vertices[0, 1]), float(vertices[0, 2])
+    if j >= distances.shape[0]:
+        n1 = vertices.shape[0] - 1
+        return float(vertices[n1, 0]), float(vertices[n1, 1]), float(vertices[n1, 2])
+
+    i = j - 1
+    d0 = float(distances[i])
+    d1 = float(distances[i + 1])
+    seg_len = d1 - d0
+    if seg_len == 0.0:
+        return float(vertices[i, 0]), float(vertices[i, 1]), float(vertices[i, 2])
+
+    t = (float(target_dist) - d0) / seg_len
+    x0 = float(vertices[i, 0])
+    y0 = float(vertices[i, 1])
+    z0 = float(vertices[i, 2])
+    x1 = float(vertices[i + 1, 0])
+    y1 = float(vertices[i + 1, 1])
+    z1 = float(vertices[i + 1, 2])
+    return x0 + t * (x1 - x0), y0 + t * (y1 - y0), z0 + t * (z1 - z0)
+
+
+@njit(cache=True, fastmath=True)  # type: ignore[misc]
+def _allclose3(a0: float, a1: float, a2: float, b0: float, b1: float, b2: float) -> bool:
+    rtol = 1e-05
+    atol = 1e-08
+    if np.abs(a0 - b0) > (atol + rtol * np.abs(b0)):
+        return False
+    if np.abs(a1 - b1) > (atol + rtol * np.abs(b1)):
+        return False
+    if np.abs(a2 - b2) > (atol + rtol * np.abs(b2)):
+        return False
+    return True
+
+
+@njit(cache=True, fastmath=True)  # type: ignore[misc]
+def _trim_polyline_nb(
+    vertices: np.ndarray,
+    start_param: float,
+    end_param: float,
+) -> np.ndarray:
+    n = vertices.shape[0]
+    distances = _build_arc_length_nb(vertices)
+    total = float(distances[n - 1])
+    if total == 0.0:
+        out = np.empty((n, 3), dtype=np.float32)
+        for j in range(n):
+            out[j, 0] = vertices[j, 0]
+            out[j, 1] = vertices[j, 1]
+            out[j, 2] = vertices[j, 2]
+        return out
+
+    start_dist = float(start_param) * total
+    end_dist = float(end_param) * total
+
+    sx, sy, sz = _interpolate_at_distance_nb(vertices, distances, start_dist)
+    ex, ey, ez = _interpolate_at_distance_nb(vertices, distances, end_dist)
+
+    start_i = _upper_bound(distances, start_dist)
+    end_i = _lower_bound(distances, end_dist)
+    if end_i < start_i:
+        interior_count = 0
+    else:
+        interior_count = end_i - start_i
+
+    last_x = sx
+    last_y = sy
+    last_z = sz
+    if interior_count > 0:
+        li = end_i - 1
+        last_x = float(vertices[li, 0])
+        last_y = float(vertices[li, 1])
+        last_z = float(vertices[li, 2])
+
+    add_end = not _allclose3(last_x, last_y, last_z, ex, ey, ez)
+    out_n = 1 + interior_count + (1 if add_end else 0)
+    if out_n < 2:
+        return np.empty((0, 3), dtype=np.float32)
+
+    out = np.empty((out_n, 3), dtype=np.float32)
+    out[0, 0] = np.float32(sx)
+    out[0, 1] = np.float32(sy)
+    out[0, 2] = np.float32(sz)
+
+    for j in range(interior_count):
+        src = start_i + j
+        dst = 1 + j
+        out[dst, 0] = vertices[src, 0]
+        out[dst, 1] = vertices[src, 1]
+        out[dst, 2] = vertices[src, 2]
+
+    if add_end:
+        di = out_n - 1
+        out[di, 0] = np.float32(ex)
+        out[di, 1] = np.float32(ey)
+        out[di, 2] = np.float32(ez)
+
+    return out
 
 
 def _trim_polyline(vertices: np.ndarray, start_param: float, end_param: float) -> np.ndarray | None:
     if vertices.shape[0] < 2:
         return vertices
 
-    distances = _build_arc_length(vertices)
-    total_length = float(distances[-1])
-    if total_length == 0.0:
-        return vertices
-
-    start_dist = float(start_param) * total_length
-    end_dist = float(end_param) * total_length
-
-    trimmed_vertices: list[np.ndarray] = []
-    start_point = _interpolate_at_distance(vertices, distances, start_dist)
-    if start_point is not None:
-        trimmed_vertices.append(start_point)
-
-    for i in range(int(distances.shape[0])):
-        dist_val = float(distances[i])
-        if start_dist < dist_val < end_dist:
-            trimmed_vertices.append(vertices[i])
-
-    end_point = _interpolate_at_distance(vertices, distances, end_dist)
-    if end_point is not None and (
-        not trimmed_vertices or not np.allclose(trimmed_vertices[-1], end_point)
-    ):
-        trimmed_vertices.append(end_point)
-
-    if len(trimmed_vertices) < 2:
+    out = _trim_polyline_nb(vertices.astype(np.float32, copy=False), start_param, end_param)
+    if out.shape[0] < 2:
         return None
-    return np.asarray(trimmed_vertices, dtype=np.float32)
+    return out
 
 
 @effect(meta=trim_meta)
@@ -186,4 +286,3 @@ def trim(
 
 
 __all__ = ["trim", "trim_meta"]
-
