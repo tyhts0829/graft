@@ -10,7 +10,7 @@ import re
 import sys
 from pathlib import Path
 
-_DEFAULT_SAVE_DIR = Path("data") / "output" / "midi_cc"
+_DEFAULT_SAVE_DIR = Path("data") / "output" / "midi"
 
 
 def _sanitize_filename_fragment(text: str) -> str:
@@ -29,15 +29,12 @@ def _default_profile_name() -> str:
     return stem or "unknown"
 
 
-def default_cc_snapshot_path(
-    *, port_name: str, profile_name: str, save_dir: Path | None
-) -> Path:
+def default_cc_snapshot_path(*, profile_name: str, save_dir: Path | None) -> Path:
     """CC スナップショットの既定保存パスを返す。"""
 
     base = save_dir if save_dir is not None else _DEFAULT_SAVE_DIR
-    port_fragment = _sanitize_filename_fragment(port_name)
     profile_fragment = _sanitize_filename_fragment(profile_name)
-    return base / f"{profile_fragment}_{port_fragment}.json"
+    return base / f"{profile_fragment}.json"
 
 
 def load_cc_snapshot(path: Path) -> dict[int, float]:
@@ -55,16 +52,11 @@ def load_cc_snapshot(path: Path) -> dict[int, float]:
     except json.JSONDecodeError:
         return {}
 
-    if isinstance(data, dict) and "cc" in data:
-        cc_raw = data.get("cc")
-    else:
-        cc_raw = data
-
-    if not isinstance(cc_raw, dict):
+    if not isinstance(data, dict):
         return {}
 
     out: dict[int, float] = {}
-    for key, value in cc_raw.items():
+    for key, value in data.items():
         try:
             cc_number = int(key)
             out[cc_number] = float(value)
@@ -77,7 +69,7 @@ def save_cc_snapshot(snapshot: dict[int, float], path: Path) -> None:
     """CC スナップショットを JSON として保存する。"""
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {"cc": {str(k): float(v) for k, v in sorted(snapshot.items())}}
+    payload = {str(k): float(v) for k, v in sorted(snapshot.items())}
     path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
@@ -100,9 +92,11 @@ class MidiController:
     mode
         `"7bit"` または `"14bit"`。
     profile_name
-        永続化ファイル名に埋め込む profile 名。未指定時は実行スクリプト名から推定する。
+        永続化ファイル名（stem）に埋め込む profile 名。未指定時は実行スクリプト名から推定する。
     save_dir
-        永続化ディレクトリ。未指定時は `data/output/midi_cc/` を使う。
+        永続化ディレクトリ。未指定時は `data/output/midi/` を使う。
+    persistence_path
+        永続化ファイルパス。指定時は profile_name/save_dir より優先する。
     inport
         既存の入力ポート（テスト用）。指定時は mido を使ってポートを開かない。
     """
@@ -118,6 +112,7 @@ class MidiController:
         mode: str = "7bit",
         profile_name: str | None = None,
         save_dir: Path | None = None,
+        persistence_path: Path | None = None,
         inport: object | None = None,
     ) -> None:
         if mode not in ("7bit", "14bit"):
@@ -129,10 +124,13 @@ class MidiController:
             str(profile_name) if profile_name is not None else _default_profile_name()
         )
         self._save_dir = save_dir
-        self._path = default_cc_snapshot_path(
-            port_name=self.port_name,
-            profile_name=self.profile_name,
-            save_dir=self._save_dir,
+        self._path = (
+            Path(persistence_path)
+            if persistence_path is not None
+            else default_cc_snapshot_path(
+                profile_name=self.profile_name,
+                save_dir=self._save_dir,
+            )
         )
 
         self._logger = logging.getLogger(__name__)

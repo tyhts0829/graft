@@ -464,6 +464,8 @@ def generate_stubs_str() -> str:
         "    canvas_size: tuple[int, int] = ...,\n"
         "    parameter_gui: bool = ...,\n"
         "    parameter_persistence: bool = ...,\n"
+        "    midi_port_name: str | None = ...,\n"
+        "    midi_mode: str = ...,\n"
         "    n_worker: int = ...,\n"
         ") -> None:\n"
         '    """pyglet ウィンドウを生成し `draw(t)` のシーンをリアルタイム描画する。"""\n'

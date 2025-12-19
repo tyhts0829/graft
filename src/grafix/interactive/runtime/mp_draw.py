@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import multiprocessing as mp
+import multiprocessing.process as mp_process
 import queue
 import traceback
 from dataclasses import dataclass
@@ -23,6 +24,7 @@ class _DrawTask:
     frame_id: int
     t: float
     snapshot: dict
+    cc_snapshot: dict[int, float] | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,7 +51,9 @@ def _draw_worker_main(
         if task is None:
             return
         try:
-            with parameter_context_from_snapshot(task.snapshot) as frame_params:
+            with parameter_context_from_snapshot(
+                task.snapshot, cc_snapshot=task.cc_snapshot
+            ) as frame_params:
                 scene = draw(float(task.t))
                 layers = normalize_scene(scene)
             result_q.put(
@@ -83,7 +87,7 @@ class MpDraw:
         self._ctx = mp.get_context("spawn")
         self._task_q: mp.Queue[_DrawTask | None] = self._ctx.Queue(maxsize=int(n_worker))
         self._result_q: mp.Queue[DrawResult] = self._ctx.Queue()
-        self._procs: list[mp.Process] = []
+        self._procs: list[mp_process.BaseProcess] = []
 
         self._next_frame_id = 0
         self._latest: DrawResult | None = None
@@ -106,9 +110,16 @@ class MpDraw:
                 "スケッチ側が __main__ ガードを持つか確認してください。"
             ) from exc
 
-    def submit(self, *, t: float, snapshot: dict) -> None:
+    def submit(
+        self, *, t: float, snapshot: dict, cc_snapshot: dict[int, float] | None = None
+    ) -> None:
         self._next_frame_id += 1
-        task = _DrawTask(frame_id=self._next_frame_id, t=float(t), snapshot=snapshot)
+        task = _DrawTask(
+            frame_id=self._next_frame_id,
+            t=float(t),
+            snapshot=snapshot,
+            cc_snapshot=cc_snapshot,
+        )
         try:
             self._task_q.put_nowait(task)
         except queue.Full:

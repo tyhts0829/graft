@@ -4,15 +4,15 @@
 なぜ: 動作確認用の最小エントリポイントとして利用するため。
 """
 
-from grafix import E, G, L, run
+from grafix import E, G, L, cc, run
 
 CANVAS_WIDTH = 300
 CANVAS_HEIGHT = 300
 
 
 def draw(t: float):
-    ply1 = G.polyhedron()
-    eff1 = E(name="polyhedron_effect").displace().mirror3d()
+    ply1 = G.polyhedron(center=(cc[1] * CANVAS_WIDTH, cc[1] * CANVAS_HEIGHT, 0))
+    eff1 = E(name="polyhedron_effect").weave()
 
     ply2 = G.text()
     eff2 = E.affine().fill()

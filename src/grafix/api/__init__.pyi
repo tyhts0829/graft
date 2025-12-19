@@ -150,13 +150,13 @@ class _EffectBuilder(Protocol):
             t_sec: 時間オフセット（位相）
         """
         ...
-    def drop(self, *, interval: int = ..., offset: int = ..., min_length: float = ..., max_length: float = ..., probability: float = ..., by: str = ..., keep_mode: str = ..., seed: int = ...) -> _EffectBuilder:
+    def drop(self, *, interval: int = ..., index_offset: int = ..., min_length: float = ..., max_length: float = ..., probability: float = ..., by: str = ..., keep_mode: str = ..., seed: int = ...) -> _EffectBuilder:
         """
         線や面を条件で間引く。
 
         引数:
             interval: 線インデックスに対する間引きステップ
-            offset: interval 判定の開始オフセット
+            index_offset: interval 判定の開始オフセット
             min_length: この長さ以下の線を対象とする
             max_length: この長さ以上の線を対象とする
             probability: 各線を確率的に対象とする比率
@@ -382,13 +382,13 @@ class _E(Protocol):
             t_sec: 時間オフセット（位相）
         """
         ...
-    def drop(self, *, interval: int = ..., offset: int = ..., min_length: float = ..., max_length: float = ..., probability: float = ..., by: str = ..., keep_mode: str = ..., seed: int = ...) -> _EffectBuilder:
+    def drop(self, *, interval: int = ..., index_offset: int = ..., min_length: float = ..., max_length: float = ..., probability: float = ..., by: str = ..., keep_mode: str = ..., seed: int = ...) -> _EffectBuilder:
         """
         線や面を条件で間引く。
 
         引数:
             interval: 線インデックスに対する間引きステップ
-            offset: interval 判定の開始オフセット
+            index_offset: interval 判定の開始オフセット
             min_length: この長さ以下の線を対象とする
             max_length: この長さ以上の線を対象とする
             probability: 各線を確率的に対象とする比率
@@ -594,6 +594,8 @@ def run(
     canvas_size: tuple[int, int] = ...,
     parameter_gui: bool = ...,
     parameter_persistence: bool = ...,
+    midi_port_name: str | None = ...,
+    midi_mode: str = ...,
     n_worker: int = ...,
 ) -> None:
     """pyglet ウィンドウを生成し `draw(t)` のシーンをリアルタイム描画する。"""

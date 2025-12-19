@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
 from typing import Callable
@@ -30,6 +31,9 @@ from grafix.core.scene import SceneItem
 from grafix.interactive.runtime.perf import PerfCollector
 from grafix.interactive.runtime.mp_draw import MpDraw
 from grafix.core.parameters import current_frame_params, current_param_snapshot
+from grafix.interactive.midi import MidiController
+
+_logger = logging.getLogger(__name__)
 
 
 class DrawWindowSystem:
@@ -42,6 +46,7 @@ class DrawWindowSystem:
         settings: RenderSettings,
         defaults: LayerStyleDefaults,
         store: ParamStore,
+        midi_controller: MidiController | None = None,
         n_worker: int = 0,
     ) -> None:
         """描画用の window/renderer を初期化する。"""
@@ -51,6 +56,7 @@ class DrawWindowSystem:
         self._defaults = defaults
         self._draw = draw
         self._store = store
+        self._midi_controller = midi_controller
 
         ensure_style_entries(
             self._store,
@@ -98,6 +104,12 @@ class DrawWindowSystem:
 
         perf = self._perf
         with perf.frame():
+            midi = self._midi_controller
+            cc_snapshot: dict[int, float] | None = None
+            if midi is not None:
+                midi.poll_pending()
+                cc_snapshot = midi.snapshot()
+
             # 注: 呼び出し側（MultiWindowLoop）が事前に self.window.switch_to() 済みである前提。
             # その前提が崩れると、別 window のコンテキストへ描いてしまう可能性がある。
 
@@ -169,7 +181,7 @@ class DrawWindowSystem:
             #
             # さらに finally で FrameParamsBuffer を ParamStore にマージすることで、
             # 「このフレームで観測されたパラメータ」を次フレーム以降の GUI に出せるようにする。
-            with parameter_context(self._store, cc_snapshot=None):
+            with parameter_context(self._store, cc_snapshot=cc_snapshot):
                 # resolve_layer_style が参照する既定スタイルを、このフレームの style で差し替える。
                 effective_defaults = LayerStyleDefaults(
                     color=global_line_color,
@@ -187,7 +199,11 @@ class DrawWindowSystem:
                     with perf.section("scene"):
                         realized_layers = realize_scene(draw_fn, t, effective_defaults)
                 else:
-                    mp_draw.submit(t=t, snapshot=current_param_snapshot())
+                    mp_draw.submit(
+                        t=t,
+                        snapshot=current_param_snapshot(),
+                        cc_snapshot=cc_snapshot,
+                    )
                     new_result = mp_draw.poll_latest()
                     if new_result is not None:
                         if new_result.error is not None:
@@ -228,6 +244,16 @@ class DrawWindowSystem:
 
     def close(self) -> None:
         """GPU / window 資源を解放する。"""
+
+        midi = self._midi_controller
+        self._midi_controller = None
+        if midi is not None:
+            try:
+                midi.save()
+            except Exception:
+                _logger.exception("Failed to save MIDI CC snapshot: %s", midi.path)
+            finally:
+                midi.close()
 
         if self._mp_draw is not None:
             self._mp_draw.close()
