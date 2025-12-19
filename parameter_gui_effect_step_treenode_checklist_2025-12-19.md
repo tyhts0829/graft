@@ -29,18 +29,10 @@ xf  (chain header)
 
 ## 0) 事前に決める（あなたの確認が必要）
 
-- [ ] step 見出しの表示名
-  - A: `op#N`（例: `scale#1`）← 推奨（同一 chain 内の重複 op を区別できる）；こちらで
-  - B: `op` のみ（例: `scale`）
-- [ ] step 見出しのデフォルト状態
-  - A: `TREE_NODE_DEFAULT_OPEN`（最初は開く）；こちらで
-  - B: デフォルトは閉じる（大量 step のとき見やすい）
-- [ ] step 見出しに件数を出すか
-  - A: 出す（例: `scale#1 (3)`）
-  - B: 出さない（すっきり）；こちらで
-- [ ] chain ヘッダ（既存 `collapsing_header`）は維持するか
-  - A: 維持（chain → step の 2 段階で畳める）；こちらで
-  - B: 廃止（step だけにする）
+- [x] step 見出しの表示名: `op#N`（例: `scale#1`）
+- [x] step 見出しのデフォルト状態: `TREE_NODE_DEFAULT_OPEN`（最初は開く）
+- [x] step 見出しに件数を出すか: 出さない
+- [x] chain ヘッダ（既存 `collapsing_header`）は維持する
 
 ## 実装 TODO（チェックリスト）
 
@@ -48,47 +40,47 @@ xf  (chain header)
 
 狙い: `table.py` に「step 境界判定」を書かない。
 
-- [ ] `GroupBlock`（または新 dataclass）に「step 単位のまとまり」を表現できる構造を導入
+- [x] 新 dataclass に「step 単位のまとまり」を表現できる構造を導入
   - 案: `EffectStepBlock(header_id, header_text, items)`
-- [ ] chain 内の rows から `EffectStepBlock` 列を作る純粋関数を実装
+- [x] chain 内の rows から `EffectStepBlock` 列を作る純粋関数を実装
   - step 判定キー: `(row.op, row.site_id)`
   - step 見出し: 0) の決定に従い `op` or `op#N`
     - `N` は `effect_step_ordinal_by_site[(op, site_id)]` を使用
     - 無い場合フォールバック（例: `op`）
-- [ ] unit test 追加
-  - [ ] `scale().rotate().scale()` で `scale#1` / `rotate#1` / `scale#2` の順に step ブロック化される
-  - [ ] 同一 step 内で複数 arg が連続しても 1 ブロックになる
+- [x] unit test 追加
+  - [x] `scale#1` / `rotate#1` / `scale#2` の順に step ブロック化される
+  - [x] 同一 step 内で複数 arg が連続しても 1 ブロックになる
 
 ### 2) 描画（TreeNodeEx）を導入
 
 狙い: 見出しは table の外に出して全幅で描き、各 step の中だけ table を描く（見た目/実装が安定）。
 
-- [ ] effect_chain ブロックの描画を「step ループ」に変更
-  - [ ] `imgui.tree_node_ex()` を step 見出しとして描画
+- [x] effect_chain ブロックの描画を「step ループ」に変更
+  - [x] `imgui.tree_node_ex()` を step 見出しとして描画
     - 安定 ID: `##{step_header_id}` を付与（site_id/chain_id を使う）
     - flags: `FRAMED` / `SPAN_FULL_WIDTH` / `DEFAULT_OPEN`（0) に従う）
-  - [ ] open のときだけ、その step の items を table で描画
-  - [ ] closed のときは描画しないが、`updated_rows` は入力 rows と 1:1 で揃える（変更なしとして返す）
-- [ ] カラムヘッダ（label/control/min-max/cc）の描画ポリシーを決めて実装
+  - [x] open のときだけ、その step の items を table で描画
+  - [x] closed のときは描画しないが、`updated_rows` は入力 rows と 1:1 で揃える（変更なしとして返す）
+- [x] カラムヘッダ（label/control/min-max/cc）の描画ポリシーを決めて実装
   - 案: 「最初に開いた step の table」で 1 回だけ描く（ノイズ削減）
   - first open が無い場合（全閉）も破綻しない
 
 ### 3) ラベル表示の整理（ノイズ削減）
 
-- [ ] effect 行の label を `arg` のみにする（step 名は見出しへ移動）
+- [x] effect 行の label を `arg` のみにする（step 名は見出しへ移動）
   - 既にそうなっている場合は維持
-- [ ] Primitive/Style の表示は今回変更しない
+- [x] Primitive/Style の表示は今回変更しない
 
 ### 4) テスト更新
 
-- [ ] 既存の grouping/blocking テストを新構造に追従
-- [ ] step ブロック化テストを追加（1) で実施）
+- [x] 既存の grouping/blocking テストを新構造に追従
+- [x] step ブロック化テストを追加（1) で実施）
 
 ### 5) 検証（対象限定で実行）
 
-- [ ] `PYTHONPATH=src pytest -q tests/interactive/parameter_gui`
-- [ ] `mypy src/grafix/interactive/parameter_gui`
-- [ ] `ruff check src/grafix/interactive/parameter_gui tests/interactive/parameter_gui`
+- [x] `PYTHONPATH=src pytest -q tests/interactive/parameter_gui`
+- [x] `mypy src/grafix/interactive/parameter_gui`
+- [ ] `ruff check src/grafix/interactive/parameter_gui tests/interactive/parameter_gui`（環境に ruff が無く未実行）
 
 ## 受け入れ条件（Done の定義）
 
@@ -99,4 +91,4 @@ xf  (chain header)
 
 ## 事前確認したいこと（追加）
 
-- 見出しのデフォルト開閉（0-B）をどちらにするか（使い方の体感が大きく変わる）。
+- ruff が入っている環境で `ruff check` だけ最終確認したい。
