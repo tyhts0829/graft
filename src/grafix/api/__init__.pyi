@@ -300,15 +300,15 @@ class _EffectBuilder(Protocol):
             end_param: 終了位置（0.0–1.0）
         """
         ...
-    def twist(self, *, auto_center: bool = ..., pivot: Vec3 = ..., angle: float = ..., axis: str = ...) -> _EffectBuilder:
+    def twist(self, *, auto_center: bool = ..., pivot: Vec3 = ..., angle: float = ..., axis_dir: Vec3 = ...) -> _EffectBuilder:
         """
         位置に応じて軸回りにねじる（中心付近は 0）。
 
         引数:
             auto_center: True なら平均座標を回転中心に使用
-            pivot: ねじり軸（指定軸に平行な直線）の通過点（`auto_center=False` のとき有効）
+            pivot: ねじり軸（`axis_dir` に平行な直線）の通過点（`auto_center=False` のとき有効）
             angle: 最大ねじれ角 [deg]
-            axis: ねじれ軸（`"x"|"y"|"z"`）
+            axis_dir: ねじり軸方向（ベクトル）
         """
         ...
     def weave(self, *, num_candidate_lines: int = ..., relaxation_iterations: int = ..., step: float = ...) -> _EffectBuilder:
@@ -532,15 +532,15 @@ class _E(Protocol):
             end_param: 終了位置（0.0–1.0）
         """
         ...
-    def twist(self, *, auto_center: bool = ..., pivot: Vec3 = ..., angle: float = ..., axis: str = ...) -> _EffectBuilder:
+    def twist(self, *, auto_center: bool = ..., pivot: Vec3 = ..., angle: float = ..., axis_dir: Vec3 = ...) -> _EffectBuilder:
         """
         位置に応じて軸回りにねじる（中心付近は 0）。
 
         引数:
             auto_center: True なら平均座標を回転中心に使用
-            pivot: ねじり軸（指定軸に平行な直線）の通過点（`auto_center=False` のとき有効）
+            pivot: ねじり軸（`axis_dir` に平行な直線）の通過点（`auto_center=False` のとき有効）
             angle: 最大ねじれ角 [deg]
-            axis: ねじれ軸（`"x"|"y"|"z"`）
+            axis_dir: ねじり軸方向（ベクトル）
         """
         ...
     def weave(self, *, num_candidate_lines: int = ..., relaxation_iterations: int = ..., step: float = ...) -> _EffectBuilder:
