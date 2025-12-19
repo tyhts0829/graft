@@ -6,16 +6,16 @@
 
 ## 0) 事前に決める（あなたの確認が必要）
 
-- [ ] `frequency` の型:
+- [x] `frequency` の型:
   - A: `vec3` 固定（`(fx, fy, fz)`）。等方は `(f, f, f)` で表現（推奨: GUI と整合する）；はい
   - B: `float | vec3` を受けたい（この場合、GUI/ParamStore 側も壊さない手当が必要）
-- [ ] z 方向の扱い（旧挙動の再現方法）:
+- [x] z 方向の扱い（旧挙動の再現方法）:
   - A: 「入力が実質 2D（例: z が全て 0）」なら z は保持し、xy のみ wobble（旧の “2D は z を触らない” 意図を優先）
   - B: 常に xyz を wobble（新コア的に一貫。2D 図形でも z が動き得る）；こちらで
-- [ ] パラメータ名（単位表記）:
+- [x] パラメータ名（単位表記）:
   - A: `amplitude / frequency / phase`（旧名踏襲）；こちらで
   - B: `amplitude_mm / frequency / phase_deg`（単位を明示）
-- [ ] UI レンジ（`ParamMeta.ui_min/ui_max`）:
+- [x] UI レンジ（`ParamMeta.ui_min/ui_max`）:
   - A: 旧 `amplitude<=20, frequency<=0.2, phase<=360` を踏襲;こちらで
   - B: 新プロジェクトの他 effect に合わせて再調整（例: displace の `spatial_freq<=0.1` 等）
 
@@ -36,43 +36,43 @@
 
 ## 3) 実装チェックリスト
 
-- [ ] `src/grafix/core/effects/wobble.py` を追加
+- [x] `src/grafix/core/effects/wobble.py` を追加
 
-  - [ ] モジュール docstring: 「どのような効果か」を簡潔に（`src/grafix/core/effects/AGENTS.md` に従う）
-  - [ ] `wobble_meta` を `ParamMeta` で定義（built-in effect は meta 必須）
-  - [ ] `@effect(meta=wobble_meta)` で `wobble(inputs, *, ...)` を実装
-  - [ ] no-op:
-    - [ ] `inputs` が空 → 空ジオメトリ
-    - [ ] `coords` が空 → `base` を返す
-    - [ ] `amplitude == 0` → `base` を返す
-  - [ ] 数値実装:
-    - [ ] `phase` を deg→rad 変換
-    - [ ] `coords` をコピーして xyz へベクトル化演算で加算（最後は `float32` に戻す）
-    - [ ] z の扱いは 0) の決定に従う
+  - [x] モジュール docstring: 「どのような効果か」を簡潔に（`src/grafix/core/effects/AGENTS.md` に従う）
+  - [x] `wobble_meta` を `ParamMeta` で定義（built-in effect は meta 必須）
+  - [x] `@effect(meta=wobble_meta)` で `wobble(inputs, *, ...)` を実装
+  - [x] no-op:
+    - [x] `inputs` が空 → 空ジオメトリ
+    - [x] `coords` が空 → `base` を返す
+    - [x] `amplitude == 0` → `base` を返す
+  - [x] 数値実装:
+    - [x] `phase` を deg→rad 変換
+    - [x] `coords` をコピーして xyz へベクトル化演算で加算（最後は `float32` に戻す）
+    - [x] z の扱いは 0) の決定に従う
 
-- [ ] `src/grafix/api/effects.py` に登録 import を追加
-  - [ ] `from grafix.core.effects import wobble as _effect_wobble  # noqa: F401`
+- [x] `src/grafix/api/effects.py` に登録 import を追加
+  - [x] `from grafix.core.effects import wobble as _effect_wobble  # noqa: F401`
 
 ## 4) テスト（最小・再現性重視）
 
-- [ ] `tests/core/test_effect_wobble.py` を追加
-  - [ ] 既知入力に対して `np.allclose` で期待値一致（位相・周波数の基本ケース）
-  - [ ] `amplitude=0` が no-op（座標が変わらない）
-  - [ ] `inputs=[]` が空ジオメトリを返す
-  - [ ] z の扱い（0) の決定に合わせた期待値）
+- [x] `tests/core/test_effect_wobble.py` を追加
+  - [x] 既知入力に対して `np.allclose` で期待値一致（位相・周波数の基本ケース）
+  - [x] `amplitude=0` が no-op（座標が変わらない）
+  - [x] `inputs=[]` が空ジオメトリを返す
+  - [x] z の扱い（0) の決定に合わせた期待値）
 
 ## 5) 検証コマンド（局所）
 
-- [ ] `ruff check src/grafix/core/effects/wobble.py tests/core/test_effect_wobble.py`
-- [ ] `mypy src/grafix`（必要なら対象ファイルに限定）
-- [ ] `PYTHONPATH=src pytest -q tests/core/test_effect_wobble.py`
+- [ ] `ruff check src/grafix/core/effects/wobble.py tests/core/test_effect_wobble.py`（環境に ruff が無く未実行）
+- [x] `mypy src/grafix/core/effects/wobble.py`
+- [x] `PYTHONPATH=src pytest -q tests/core/test_effect_wobble.py`
 
 ## 6) 完了条件（Definition of Done）
 
-- [ ] `E.wobble(...)` が利用できる（`src/grafix/api/effects.py` 経由で登録済み）
-- [ ] 旧仕様（0) で決めた範囲）を満たす
-- [ ] 追加テストが通る
-- [ ] ruff/mypy の対象チェックが通る
+- [x] `E.wobble(...)` が利用できる（`src/grafix/api/effects.py` 経由で登録済み）
+- [x] 旧仕様（0) で決めた範囲）を満たす
+- [x] 追加テストが通る
+- [ ] ruff/mypy の対象チェックが通る（mypy OK / ruff 未実行）
 
 ## メモ（追加提案）
 

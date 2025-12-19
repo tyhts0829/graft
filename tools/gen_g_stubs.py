@@ -410,12 +410,16 @@ def generate_stubs_str() -> str:
     primitive_names = sorted(
         name
         for name, _ in primitive_registry.items()
-        if _is_valid_identifier(name) and not name.startswith("_")
+        if _is_valid_identifier(name)
+        and not name.startswith("_")
+        and _resolve_impl_callable("primitive", name) is not None
     )
     effect_names = sorted(
         name
         for name, _ in effect_registry.items()
-        if _is_valid_identifier(name) and not name.startswith("_")
+        if _is_valid_identifier(name)
+        and not name.startswith("_")
+        and _resolve_impl_callable("effect", name) is not None
     )
 
     header = (

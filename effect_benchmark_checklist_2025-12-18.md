@@ -45,8 +45,8 @@ JSON 形式（叩き台）
 HTML レポート（叩き台）
 
 - 先頭: 実行メタ + リンク（results.json）
-- 「総合ランキング」: 各 effect のスコア（例: case 別 mean_ms の幾何平均 or 最大値）で降順
 - 「ケース別ランキング」: case ごとに mean_ms 降順の表
+- 横棒グラフ: case ごとに mean_ms 降順のランキングを表示
 - skipped/error も表に残す（理由を表示）
 
 入力ケース（案）
@@ -67,20 +67,30 @@ effect パラメータの扱い（案）
 
 チェックリスト
 
-- [ ] どの「ケース」を採用するか確定（サイズと個数も）
-- [ ] 「総合スコア」を何にするか確定（幾何平均 / 最大 / ケース別のみ など）
-- [ ] effect の「no-op 回避パラメータ」方針を確定（上書き対象の一覧）
-- [ ] `tools/benchmarks/` を新設し、`effect_benchmark.py` の骨組みを作成
-- [ ] `src/grafix/core/effects/` から effect を列挙・import して `effect_registry` を埋める
-- [ ] 入力ケース生成（再現性のため seed 固定）を実装
-- [ ] ベンチ本体（warmup + repeats、例外/ImportError は status に落とす）を実装
-- [ ] `results.json` を `data/output/benchmarks/<run_id>/` に保存
-- [ ] `report.html` を同ディレクトリに生成（ランキング + ケース別表）
-- [ ] 手元確認: 1 回実行して JSON/HTML が生成され、一覧が読めることを確認
+- [x] どの「ケース」を採用するか確定（サイズと個数も）
+- [x] 「総合スコア」を何にするか確定（結論: 総合ランキング無し）
+- [x] effect の「no-op 回避パラメータ」方針を確定（上書き対象の一覧）
+- [x] `tools/benchmarks/` を新設し、`effect_benchmark.py` の骨組みを作成
+- [x] `src/grafix/core/effects/` から effect を列挙・import して `effect_registry` を埋める
+- [x] 入力ケース生成（再現性のため seed 固定）を実装
+- [x] ベンチ本体（warmup + repeats、例外/ImportError は status に落とす）を実装
+- [x] `results.json` を `data/output/benchmarks/<run_id>/` に保存
+- [x] `report.html` を同ディレクトリに生成（ケース別ランキング + 横棒）
+- [x] 手元確認: 1 回実行して JSON/HTML が生成され、一覧が読めることを確認
 - [ ] （任意）README か `tools/benchmarks/README.md` に使い方を短く追記
 
-事前確認したいこと
+決定事項（ユーザー回答）
 
-- 総合ランキングの「スコア」は何を優先しますか？（例: 幾何平均 / 最大ケース / 特定ケース重視）；総合ランキング要らない。個別に横棒グラフでランキング見れればそれでいい。
-- ケースの規模感はどれくらいが良いですか？（例: “1 回が 10〜100ms くらい” / “できるだけ軽く” など）；重くても正確な方が良い。1sec くらいまでなら許容。
-- shapely 未インストール環境を想定して skipped 設計にして良いですか？（止めたいなら方針変更します）；はい。
+- 総合ランキング: 不要（ケース別に横棒グラフでランキングが見えれば十分）
+- ケースの規模感: 重くても正確さ優先（1 回あたり ~1 秒程度まで許容）
+- shapely 未インストール: skipped で継続して良い
+
+実行例
+
+- `python -m tools.benchmarks.effect_benchmark`
+- `python -m tools.benchmarks.effect_benchmark --cases ring_big --repeats 30 --warmup 3`
+- `python -m tools.benchmarks.effect_benchmark --only offset,partition`（shapely 無しなら skipped）
+
+気づき（後回しでOK）
+
+- `grafix.api` は `grafix.api.primitives` の import で失敗し得るため（`circle.py` 不在）、本ベンチは `grafix.api` を import せず `grafix.core.effects` を直接 import する実装にした。

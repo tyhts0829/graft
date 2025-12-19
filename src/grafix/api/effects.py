@@ -18,13 +18,20 @@ from grafix.core.effects import rotate as _effect_rotate  # noqa: F401
 from grafix.core.effects import fill as _effect_fill  # noqa: F401
 from grafix.core.effects import dash as _effect_dash  # noqa: F401
 from grafix.core.effects import displace as _effect_displace  # noqa: F401
+from grafix.core.effects import wobble as _effect_wobble  # noqa: F401
 from grafix.core.effects import affine as _effect_affine  # noqa: F401
 from grafix.core.effects import subdivide as _effect_subdivide  # noqa: F401
 from grafix.core.effects import partition as _effect_partition  # noqa: F401
 from grafix.core.effects import mirror as _effect_mirror  # noqa: F401
+from grafix.core.effects import mirror3d as _effect_mirror3d  # noqa: F401
 from grafix.core.effects import translate as _effect_translate  # noqa: F401
+from grafix.core.effects import extrude as _effect_extrude  # noqa: F401
 from grafix.core.effects import repeat as _effect_repeat  # noqa: F401
 from grafix.core.effects import offset as _effect_offset  # noqa: F401
+from grafix.core.effects import drop as _effect_drop  # noqa: F401
+from grafix.core.effects import trim as _effect_trim  # noqa: F401
+from grafix.core.effects import twist as _effect_twist  # noqa: F401
+from grafix.core.effects import weave as _effect_weave  # noqa: F401
 from grafix.core.parameters import caller_site_id
 
 

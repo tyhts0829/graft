@@ -10,7 +10,7 @@ import pytest
 from grafix.core.geometry import Geometry
 from grafix.core.primitive_registry import primitive_registry
 from grafix.core.realize import _inflight, _inflight_lock, realize, realize_cache
-from grafix.core.primitives import circle as _circle_module  # noqa: F401
+from grafix.core.primitives import polygon as _polygon_module  # noqa: F401
 
 
 @pytest.fixture(autouse=True)
@@ -29,7 +29,7 @@ def clear_realize_state() -> None:
 
 def test_realize_cache_returns_same_instance_for_same_geometry() -> None:
     """同じ Geometry を 2 回 realize すると実体はキャッシュされる。"""
-    g = Geometry.create("circle", params={"r": 1.0})
+    g = Geometry.create("polygon", params={"n_sides": 6})
 
     r1 = realize(g)
     r2 = realize(g)
@@ -41,8 +41,8 @@ def test_realize_cache_returns_same_instance_for_same_geometry() -> None:
 
 def test_realize_cache_shared_between_geometry_instances() -> None:
     """同一内容の Geometry インスタンス間でキャッシュが共有される。"""
-    g1 = Geometry.create("circle", params={"r": 1.0})
-    g2 = Geometry.create("circle", params={"r": 1.0})
+    g1 = Geometry.create("polygon", params={"n_sides": 6})
+    g2 = Geometry.create("polygon", params={"n_sides": 6})
 
     assert g1.id == g2.id
 
@@ -54,18 +54,18 @@ def test_realize_cache_shared_between_geometry_instances() -> None:
 
 def test_inflight_avoids_duplicate_computation_under_concurrency() -> None:
     """複数スレッドから同時に realize しても計算が 1 回に潰れる。"""
-    # circle primitive をラップして呼び出し回数を数える。
-    original_circle = primitive_registry["circle"]
+    # polygon primitive をラップして呼び出し回数を数える。
+    original_polygon = primitive_registry["polygon"]
     call_count = {"value": 0}
 
     def wrapped(args):
         call_count["value"] += 1
         time.sleep(0.05)
-        return original_circle(args)
+        return original_polygon(args)
 
-    primitive_registry._items["circle"] = wrapped  # type: ignore[attr-defined]
+    primitive_registry._items["polygon"] = wrapped  # type: ignore[attr-defined]
     try:
-        g = Geometry.create("circle", params={"r": 1.0})
+        g = Geometry.create("polygon", params={"n_sides": 6})
         results = []
 
         def worker() -> None:
@@ -82,4 +82,4 @@ def test_inflight_avoids_duplicate_computation_under_concurrency() -> None:
         # 計算自体は 1 回だけ行われていることを期待する。
         assert call_count["value"] == 1
     finally:
-        primitive_registry._items["circle"] = original_circle  # type: ignore[attr-defined]
+        primitive_registry._items["polygon"] = original_polygon  # type: ignore[attr-defined]

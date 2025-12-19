@@ -6,7 +6,7 @@ import pytest
 
 from grafix.core.geometry import Geometry
 from grafix.core.realize import _inflight, _inflight_lock, realize, realize_cache
-from grafix.core.primitives import circle as _circle_module  # noqa: F401
+from grafix.core.primitives import polygon as _polygon_module  # noqa: F401
 from tools.cache_check import (
     FrameRealizeLog,
     RealizeEventType,
@@ -44,7 +44,7 @@ def tracer_installed() -> None:
 
 def test_visualize_cache_records_compute_and_cache_hit(tracer_installed: None) -> None:
     """1 回目 COMPUTE, 2 回目 CACHE_HIT のイベントが記録される。"""
-    g = Geometry.create("circle", params={"r": 1.0})
+    g = Geometry.create("polygon", params={"n_sides": 6})
     log = FrameRealizeLog()
 
     with frame_logging(log):
@@ -72,7 +72,7 @@ def test_visualize_cache_records_compute_and_cache_hit(tracer_installed: None) -
 
 def test_export_multiframe_colors_per_frame(tracer_installed: None) -> None:
     """フレームごとに COMPUTE→CACHE_HIT の色変化が反映される。"""
-    g = Geometry.create("circle", params={"r": 1.0})
+    g = Geometry.create("polygon", params={"n_sides": 6})
 
     logs: list[FrameRealizeLog] = []
 

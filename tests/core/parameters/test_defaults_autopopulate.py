@@ -14,22 +14,22 @@ def _empty_geometry() -> RealizedGeometry:
     return RealizedGeometry(coords=coords, offsets=offsets)
 
 
-def test_circle_defaults_recorded_when_no_kwargs():
+def test_polygon_defaults_recorded_when_no_kwargs():
     store = ParamStore()
 
     with parameter_context(store=store, cc_snapshot=None):
-        G.circle()
+        G.polygon()
 
     snapshot = store.snapshot()
-    circle_args = {key.arg for key in snapshot.keys() if key.op == "circle"}
-    assert circle_args == {"r", "cx", "cy", "segments"}
+    polygon_args = {key.arg for key in snapshot.keys() if key.op == "polygon"}
+    assert polygon_args == {"n_sides", "phase", "center", "scale"}
 
 
 def test_effect_defaults_recorded_when_no_kwargs():
     store = ParamStore()
 
     with parameter_context(store=store, cc_snapshot=None):
-        g = G.circle()
+        g = G.polygon()
         E.scale()(g)
 
     snapshot = store.snapshot()

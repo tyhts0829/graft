@@ -15,16 +15,16 @@ def test_implicit_defaults_start_with_override_on():
     store = ParamStore()
 
     def callsite() -> None:
-        G.circle()
+        G.polygon()
 
     with parameter_context(store=store, cc_snapshot=None):
         callsite()
 
-    assert _override_by_arg(store, op="circle") == {
-        "r": True,
-        "cx": True,
-        "cy": True,
-        "segments": True,
+    assert _override_by_arg(store, op="polygon") == {
+        "n_sides": True,
+        "phase": True,
+        "center": True,
+        "scale": True,
     }
 
 
@@ -32,16 +32,16 @@ def test_explicit_kwargs_start_with_override_off_for_those_args():
     store = ParamStore()
 
     def callsite() -> None:
-        G.circle(cx=1.0)
+        G.polygon(phase=45.0)
 
     with parameter_context(store=store, cc_snapshot=None):
         callsite()
 
-    assert _override_by_arg(store, op="circle") == {
-        "r": True,
-        "cx": False,
-        "cy": True,
-        "segments": True,
+    assert _override_by_arg(store, op="polygon") == {
+        "n_sides": True,
+        "phase": False,
+        "center": True,
+        "scale": True,
     }
 
 
@@ -49,20 +49,22 @@ def test_existing_state_is_not_overwritten_by_policy():
     store = ParamStore()
 
     def callsite() -> None:
-        G.circle()
+        G.polygon()
 
     with parameter_context(store=store, cc_snapshot=None):
         callsite()
 
     snap = store.snapshot()
-    key_r = next(key for key in snap.keys() if key.op == "circle" and key.arg == "r")
-    state_r = store.get_state(key_r)
-    assert state_r is not None
-    state_r.override = False
+    key_n_sides = next(
+        key for key in snap.keys() if key.op == "polygon" and key.arg == "n_sides"
+    )
+    state_n_sides = store.get_state(key_n_sides)
+    assert state_n_sides is not None
+    state_n_sides.override = False
 
     with parameter_context(store=store, cc_snapshot=None):
         callsite()
 
     snap2 = store.snapshot()
-    _meta, state2, _ordinal, _label = snap2[key_r]
+    _meta, state2, _ordinal, _label = snap2[key_n_sides]
     assert state2.override is False

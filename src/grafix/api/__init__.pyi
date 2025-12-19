@@ -165,13 +165,12 @@ class _EffectBuilder(Protocol):
             seed: probability 使用時の乱数シード
         """
         ...
-    def extrude(self, *, direction: Vec3 = ..., distance: float = ..., scale: float = ..., subdivisions: int = ..., center_mode: str = ...) -> _EffectBuilder:
+    def extrude(self, *, delta: Vec3 = ..., scale: float = ..., subdivisions: int = ..., center_mode: str = ...) -> _EffectBuilder:
         """
         指定方向に押し出し、複製線と側面エッジを生成する。
 
         引数:
-            direction: 押し出し方向ベクトル
-            distance: 押し出し距離 [mm]（0–200 にクランプ）
+            delta: 押し出し量（dx, dy, dz）[mm]（長さは 0–200 にクランプ）
             scale: 複製線に適用するスケール係数（0–3 にクランプ）
             subdivisions: 中点挿入の細分回数（0–8 にクランプ）
             center_mode: "auto" のとき複製線の重心中心でスケールし、それ以外は原点中心でスケールする
@@ -396,13 +395,12 @@ class _E(Protocol):
             seed: probability 使用時の乱数シード
         """
         ...
-    def extrude(self, *, direction: Vec3 = ..., distance: float = ..., scale: float = ..., subdivisions: int = ..., center_mode: str = ...) -> _EffectBuilder:
+    def extrude(self, *, delta: Vec3 = ..., scale: float = ..., subdivisions: int = ..., center_mode: str = ...) -> _EffectBuilder:
         """
         指定方向に押し出し、複製線と側面エッジを生成する。
 
         引数:
-            direction: 押し出し方向ベクトル
-            distance: 押し出し距離 [mm]（0–200 にクランプ）
+            delta: 押し出し量（dx, dy, dz）[mm]（長さは 0–200 にクランプ）
             scale: 複製線に適用するスケール係数（0–3 にクランプ）
             subdivisions: 中点挿入の細分回数（0–8 にクランプ）
             center_mode: "auto" のとき複製線の重心中心でスケールし、それ以外は原点中心でスケールする
