@@ -14,7 +14,7 @@ twist_meta = {
     "auto_center": ParamMeta(kind="bool"),
     "pivot": ParamMeta(kind="vec3", ui_min=-500.0, ui_max=500.0),
     "angle": ParamMeta(kind="float", ui_min=0.0, ui_max=360.0),
-    "axis": ParamMeta(kind="choice", choices=("x", "y", "z")),
+    "axis_dir": ParamMeta(kind="vec3", ui_min=-1.0, ui_max=1.0),
 }
 
 
@@ -25,7 +25,7 @@ def twist(
     auto_center: bool = True,
     pivot: tuple[float, float, float] = (0.0, 0.0, 0.0),
     angle: float = 60.0,
-    axis: str = "y",
+    axis_dir: tuple[float, float, float] = (0.0, 1.0, 0.0),
 ) -> RealizedGeometry:
     """位置に応じて軸回りにねじる（中心付近は 0）。
 
@@ -36,11 +36,11 @@ def twist(
     auto_center : bool, default True
         True なら平均座標を回転中心に使用。False なら `pivot` を使用。
     pivot : tuple[float, float, float], default (0.0,0.0,0.0)
-        ねじり軸（指定軸に平行な直線）の通過点（`auto_center=False` のとき有効）。
+        ねじり軸（`axis_dir` に平行な直線）の通過点（`auto_center=False` のとき有効）。
     angle : float, default 60.0
         最大ねじれ角 [deg]。
-    axis : str, default "y"
-        ねじれ軸（`"x"|"y"|"z"`）。
+    axis_dir : tuple[float, float, float], default (0.0, 1.0, 0.0)
+        ねじり軸方向（ベクトル）。長さは正規化される。
 
     Returns
     -------
@@ -60,11 +60,14 @@ def twist(
     if max_rad == 0.0:
         return base
 
-    ax = str(axis).lower()
-    axis_idx_by_name = {"x": 0, "y": 1, "z": 2}
-    axis_idx = axis_idx_by_name.get(ax)
-    if axis_idx is None:
-        raise ValueError(f"axis は 'x'|'y'|'z' を指定する必要がある: {axis!r}")
+    axis_dir64 = np.array(
+        [float(axis_dir[0]), float(axis_dir[1]), float(axis_dir[2])],
+        dtype=np.float64,
+    )
+    axis_norm = float(np.linalg.norm(axis_dir64))
+    if axis_norm <= 1e-9:
+        raise ValueError(f"axis_dir は非ゼロのベクトルである必要がある: {axis_dir!r}")
+    k = axis_dir64 / axis_norm
 
     coords = base.coords
     if auto_center:
@@ -75,36 +78,31 @@ def twist(
             dtype=np.float64,
         )
 
-    lo = float(coords[:, axis_idx].min())
-    hi = float(coords[:, axis_idx].max())
+    coords64 = coords.astype(np.float64, copy=False)
+    s = coords64 @ k
+    lo = float(s.min())
+    hi = float(s.max())
     rng = hi - lo
     if rng <= 1e-9:
         return base
 
     # 各頂点の正規化位置 t = 0..1
-    t = (coords[:, axis_idx].astype(np.float64) - lo) / rng
+    t = (s - lo) / rng
     # -max..+max に分布させる（中心 0）
     twist_rad = (t - 0.5) * 2.0 * max_rad
 
     c = np.cos(twist_rad)
-    s = np.sin(twist_rad)
+    sin_rad = np.sin(twist_rad)
 
-    out = coords.astype(np.float64, copy=True)
-    if ax == "y":
-        x = out[:, 0] - float(center[0])
-        z = out[:, 2] - float(center[2])
-        out[:, 0] = x * c - z * s + float(center[0])
-        out[:, 2] = x * s + z * c + float(center[2])
-    elif ax == "x":
-        y = out[:, 1] - float(center[1])
-        z = out[:, 2] - float(center[2])
-        out[:, 1] = y * c - z * s + float(center[1])
-        out[:, 2] = y * s + z * c + float(center[2])
-    else:  # "z"
-        x = out[:, 0] - float(center[0])
-        y = out[:, 1] - float(center[1])
-        out[:, 0] = x * c - y * s + float(center[0])
-        out[:, 1] = x * s + y * c + float(center[1])
+    v = coords64 - center
+    cross = np.cross(v, k)
+    dot = v @ k
+    v_rot = (
+        v * c[:, None]
+        + cross * sin_rad[:, None]
+        + (dot * (1.0 - c))[:, None] * k[None, :]
+    )
+    out = v_rot + center
 
     return RealizedGeometry(coords=out.astype(np.float32, copy=False), offsets=base.offsets)
 

@@ -36,7 +36,7 @@
   - `twist_rad_i = (t_i - 0.5) * 2 * deg2rad(angle)`
 - 座標回転は任意軸回り回転（Rodrigues）で行う。
   - `v = p - center`
-  - `v_rot = v*cosθ + (k×v)*sinθ + k*(k·v)*(1-cosθ)`
+  - `v_rot = v*cosθ + (v×k)*sinθ + k*(k·v)*(1-cosθ)`（row-vector 規約）
   - `p_rot = center + v_rot`
 
 ### no-op / 例外
@@ -51,36 +51,36 @@
 
 ## 仕様確定（あなたの確認が必要）
 
-- [ ] `axis`（`"x"|"y"|"z"`）を **削除して** `axis_dir` のみにする（破壊的だが最もシンプル）；OK
+- [x] `axis`（`"x"|"y"|"z"`）を **削除して** `axis_dir` のみにする（破壊的だが最もシンプル）；OK
   - 代案: `axis` を残す場合、`axis_dir` と両立の優先順位/モード切替が必要（GUI 表示も複雑化）
-- [ ] `axis_dir` の UI レンジ: `ui_min=-1, ui_max=1`（方向ベクトル用途として妥当）;OK
-- [ ] `axis_dir` の正規化は effect 内で行い、**GeometryId の正規化（=同一直線方向の別スケール統一）はしない**（実装は単純だがキャッシュは分散し得る）；OK
+- [x] `axis_dir` の UI レンジ: `ui_min=-1, ui_max=1`（方向ベクトル用途として妥当）;OK
+- [x] `axis_dir` の正規化は effect 内で行い、**GeometryId の正規化（=同一直線方向の別スケール統一）はしない**（実装は単純だがキャッシュは分散し得る）；OK
 
 ---
 
 ## 作業チェックリスト（実装手順）
 
-- [ ] API/メタ定義
-  - [ ] `twist_meta` に `axis_dir: ParamMeta(kind="vec3", ui_min=-1.0, ui_max=1.0)` を追加
-  - [ ] （上の仕様確定に応じて）`axis` を削除 or 維持（維持ならモード設計も追加）
-  - [ ] `twist()` シグネチャを更新（`axis_dir` を受け取る）
-- [ ] 実装（任意軸回転）
-  - [ ] `k = axis_dir / ||axis_dir||` を作る（||k|| が小さい場合は ValueError）
-  - [ ] `center` を `auto_center/pivot` で決める（既存の rotate/scale と同様）
-  - [ ] `s = coords @ k`（float64）で射影
-  - [ ] `t` と `twist_rad` を計算
-  - [ ] Rodrigues を **ベクトル化**して計算（for ループにしない）
-  - [ ] `RealizedGeometry(coords=float32, offsets=base.offsets)` を返す
-- [ ] テスト更新/追加（`tests/core/effects/test_twist.py`）
-  - [ ] `axis_dir=(0,1,0)` が旧 `axis="y"` 相当の結果になることを固定
-  - [ ] `pivot` が回転中心に効くことを固定
-  - [ ] `auto_center=True` が `pivot=mean(coords)` と一致することを固定
-  - [ ] `axis_dir=(0,0,0)` が例外になることを固定（`realize()` は `RealizeError` にラップされる点も含む）
-  - [ ] `axis_dir` と `-axis_dir` で出力が一致することを固定（方向反転の同値性）
+- [x] API/メタ定義
+  - [x] `twist_meta` に `axis_dir: ParamMeta(kind="vec3", ui_min=-1.0, ui_max=1.0)` を追加
+  - [x] `axis` を削除（`axis_dir` のみに統一）
+  - [x] `twist()` シグネチャを更新（`axis_dir` を受け取る）
+- [x] 実装（任意軸回転）
+  - [x] `k = axis_dir / ||axis_dir||` を作る（||k|| が小さい場合は ValueError）
+  - [x] `center` を `auto_center/pivot` で決める（既存の rotate/scale と同様）
+  - [x] `s = coords @ k`（float64）で射影
+  - [x] `t` と `twist_rad` を計算
+  - [x] Rodrigues を **ベクトル化**して計算（for ループにしない）
+  - [x] `RealizedGeometry(coords=float32, offsets=base.offsets)` を返す
+- [x] テスト更新/追加（`tests/core/effects/test_twist.py`）
+  - [x] `axis_dir=(0,1,0)` が旧 `axis="y"` 相当の結果になることを固定
+  - [x] `pivot` が回転中心に効くことを固定
+  - [x] `auto_center=True` が `pivot=mean(coords)` と一致することを固定
+  - [x] `axis_dir=(0,0,0)` が例外になることを固定（`realize()` は `RealizeError` にラップされる点も含む）
+  - [x] `axis_dir` と `-axis_dir` で出力が一致することを固定（方向反転の同値性）
 - [ ] 検証
-  - [ ] `PYTHONPATH=src pytest -q tests/core/effects/test_twist.py`
-  - [ ] `ruff check src/grafix/core/effects/twist.py tests/core/effects/test_twist.py`
-  - [ ] `mypy src/grafix`
+  - [x] `PYTHONPATH=src pytest -q tests/core/effects/test_twist.py`
+  - [ ] `ruff check src/grafix/core/effects/twist.py tests/core/effects/test_twist.py`（ruff が未導入で未実行）
+  - [ ] `mypy src/grafix`（mypy が未導入で未実行）
 
 ---
 
