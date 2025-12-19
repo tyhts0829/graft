@@ -8,13 +8,15 @@ from pathlib import Path
 from typing import Any
 
 from grafix.core.parameters.store import ParamStore
+from grafix.interactive.midi import MidiController
 
+from .midi_learn import MidiLearnState
 from .pyglet_backend import _create_imgui_pyglet_renderer, _sync_imgui_io_for_window
 from .store_bridge import render_store_parameter_table
 from .table import COLUMN_WEIGHTS_DEFAULT
 
 _DEFAULT_GUI_FONT_PATH = Path("data/input/font/SFNS.ttf")
-_DEFAULT_GUI_FONT_SIZE_PX = 20.0
+_DEFAULT_GUI_FONT_SIZE_PX = 24.0
 
 
 class ParameterGUI:
@@ -28,6 +30,7 @@ class ParameterGUI:
         gui_window: Any,
         *,
         store: ParamStore,
+        midi_controller: MidiController | None = None,
         title: str = "Parameters",
         column_weights: tuple[float, float, float, float] = COLUMN_WEIGHTS_DEFAULT,
     ) -> None:
@@ -46,6 +49,8 @@ class ParameterGUI:
         # GUI の描画対象となるウィンドウと、編集対象の ParamStore を保持する。
         self._window = gui_window
         self._store = store
+        self._midi_controller = midi_controller
+        self._midi_learn_state = MidiLearnState()
         self._title = str(title)
         self._column_weights = column_weights
 
@@ -132,6 +137,12 @@ class ParameterGUI:
         changed = render_store_parameter_table(
             self._store,
             column_weights=self._column_weights,
+            midi_learn_state=self._midi_learn_state,
+            midi_last_cc_change=(
+                None
+                if self._midi_controller is None
+                else self._midi_controller.last_cc_change
+            ),
         )
         imgui.end()
 

@@ -139,7 +139,10 @@ def run(
             ParameterGUIWindowSystem,
         )
 
-        gui = ParameterGUIWindowSystem(store=param_store)
+        gui = ParameterGUIWindowSystem(
+            store=param_store,
+            midi_controller=midi_controller,
+        )
         gui.window.set_location(*PARAMETER_GUI_POS)
         closers.append(gui.close)
         tasks.append(WindowTask(window=gui.window, draw_frame=gui.draw_frame))

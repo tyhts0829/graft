@@ -136,6 +136,8 @@ class MidiController:
         self._logger = logging.getLogger(__name__)
         self._msb_by_cc: dict[int, int] = {}
         self.cc: dict[int, float] = {}
+        self.cc_change_seq = 0
+        self.last_cc_change: tuple[int, int] | None = None
 
         self.inport = (
             inport
@@ -199,7 +201,10 @@ class MidiController:
         """CC メッセージを処理し、CC が更新されたら True を返す。"""
 
         if self.mode == "7bit":
-            self.cc[int(control)] = float(value) / float(self.MAX_7BIT_VAL)
+            cc_number = int(control)
+            self.cc[cc_number] = float(value) / float(self.MAX_7BIT_VAL)
+            self.cc_change_seq += 1
+            self.last_cc_change = (int(self.cc_change_seq), int(cc_number))
             return True
 
         control_i = int(control)
@@ -215,7 +220,10 @@ class MidiController:
             return False
 
         value_14bit = (int(msb) << 7) | value_i
-        self.cc[int(msb_cc)] = float(value_14bit) / float(self.MAX_14BIT_VAL)
+        cc_number = int(msb_cc)
+        self.cc[cc_number] = float(value_14bit) / float(self.MAX_14BIT_VAL)
+        self.cc_change_seq += 1
+        self.last_cc_change = (int(self.cc_change_seq), int(cc_number))
         return True
 
     def close(self) -> None:

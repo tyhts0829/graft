@@ -6,10 +6,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from grafix.core.parameters.key import ParameterKey
 from grafix.core.parameters.view import ParameterRow
 
 from .group_blocks import group_blocks_from_rows
 from .labeling import format_param_row_label
+from .midi_learn import MidiLearnState
 from .rules import ui_rules_for_row
 from .widgets import render_value_widget
 
@@ -94,11 +96,14 @@ def _render_minmax_cell(
 def _render_cc_cell(
     imgui,
     *,
+    row: ParameterRow,
     rules,
     cc_key: int | tuple[int | None, int | None, int | None] | None,
     override: bool,
     cc_key_width: int,
     width_spacer: int,
+    midi_learn_state: MidiLearnState | None,
+    midi_last_cc_change: tuple[int, int] | None,
 ) -> tuple[bool, int | tuple[int | None, int | None, int | None] | None, bool]:
     """cc/override 列を描画し、(changed, cc_key, override) を返す。"""
 
@@ -109,55 +114,164 @@ def _render_cc_cell(
     if rules.cc_key == "none":
         return False, cc_key, override
 
-    if rules.cc_key == "int3":
-        if isinstance(cc_key, tuple):
-            a, b, c = cc_key
-            v0 = -1 if a is None else int(a)
-            v1 = -1 if b is None else int(b)
-            v2 = -1 if c is None else int(c)
+    def _set_scalar(current: object, value: int | None) -> int | None:
+        if value is None:
+            return None
+        return int(value)
+
+    def _set_component(
+        current: object, *, index: int, value: int | None
+    ) -> tuple[int | None, int | None, int | None] | None:
+        if isinstance(current, tuple):
+            a, b, c = current
         else:
-            v0, v1, v2 = -1, -1, -1
+            a, b, c = None, None, None
+        items = [a, b, c]
+        items[int(index)] = None if value is None else int(value)
+        out = (items[0], items[1], items[2])
+        return None if out == (None, None, None) else out
 
-        changed_cc, out = imgui.input_int3("##cc_key", int(v0), int(v1), int(v2))
-        if changed_cc:
-            changed_any = True
-            cc_tuple = (
-                None if out[0] < 0 else int(out[0]),
-                None if out[1] < 0 else int(out[1]),
-                None if out[2] < 0 else int(out[2]),
-            )
-            cc_key = None if cc_tuple == (None, None, None) else cc_tuple
+    def _key_for_row(target_row: ParameterRow) -> ParameterKey:
+        return ParameterKey(
+            op=target_row.op,
+            site_id=target_row.site_id,
+            arg=target_row.arg,
+        )
 
-        if rules.show_override:
-            imgui.same_line(0.0, width_spacer)
-            clicked_override, override = imgui.checkbox("##override", bool(override))
-            if clicked_override:
+    def _is_active(*, key: ParameterKey, component: int | None) -> bool:
+        state = midi_learn_state
+        if state is None:
+            return False
+        return state.active_target == key and state.active_component == component
+
+    def _enter_learn(*, key: ParameterKey, component: int | None) -> None:
+        state = midi_learn_state
+        if state is None:
+            return
+        state.active_target = key
+        state.active_component = component
+        state.last_seen_cc_seq = (
+            0 if midi_last_cc_change is None else int(midi_last_cc_change[0])
+        )
+
+    def _cancel_learn() -> None:
+        state = midi_learn_state
+        if state is None:
+            return
+        state.active_target = None
+        state.active_component = None
+
+    key = _key_for_row(row)
+
+    if rules.cc_key == "int3":
+        button_width = float(cc_key_width * 1.6)
+
+        current_tuple = cc_key if isinstance(cc_key, tuple) else (None, None, None)
+        for i in range(3):
+            component_cc = current_tuple[i]
+            active = _is_active(key=key, component=int(i))
+
+            if (
+                active
+                and midi_learn_state is not None
+                and midi_last_cc_change is not None
+            ):
+                seq, learned_cc = midi_last_cc_change
+                if int(seq) > int(midi_learn_state.last_seen_cc_seq):
+                    cc_key = _set_component(cc_key, index=int(i), value=int(learned_cc))
+                    midi_learn_state.last_seen_cc_seq = int(seq)
+                    _cancel_learn()
+                    changed_any = True
+                    current_tuple = (
+                        cc_key if isinstance(cc_key, tuple) else (None, None, None)
+                    )
+                    component_cc = current_tuple[i]
+                    active = False
+
+            if active:
+                label_text = "..."
+            elif component_cc is None:
+                label_text = ""
+            else:
+                label_text = str(int(component_cc))
+
+            clicked = imgui.button(f"{label_text}##cc_learn_{i}", button_width)
+            if clicked:
+                # 新規操作で learn は 1 件に限定する（別ターゲットがあればキャンセル）。
+                if (
+                    midi_learn_state is not None
+                    and midi_learn_state.active_target is not None
+                    and not active
+                ):
+                    _cancel_learn()
+
+                if active:
+                    _cancel_learn()
+                elif component_cc is not None:
+                    cc_key = _set_component(cc_key, index=int(i), value=None)
+                    changed_any = True
+                else:
+                    _enter_learn(key=key, component=int(i))
+
+            if i < 2:
+                imgui.same_line(0.0, float(width_spacer))
+
+    else:
+        current_cc = cc_key if isinstance(cc_key, int) else None
+        active = _is_active(key=key, component=None)
+
+        if active and midi_learn_state is not None and midi_last_cc_change is not None:
+            seq, learned_cc = midi_last_cc_change
+            if int(seq) > int(midi_learn_state.last_seen_cc_seq):
+                cc_key = _set_scalar(cc_key, int(learned_cc))
+                midi_learn_state.last_seen_cc_seq = int(seq)
+                _cancel_learn()
                 changed_any = True
+                current_cc = cc_key if isinstance(cc_key, int) else None
+                active = False
 
-        return changed_any, cc_key, bool(override)
+        if active:
+            label_text = "Listening..."
+        elif current_cc is None:
+            label_text = ""
+        else:
+            label_text = str(int(current_cc))
 
-    cc_display = -1 if not isinstance(cc_key, int) else int(cc_key)
+        clicked = imgui.button(
+            f"{label_text}##cc_learn", float(cc_key_width * 1.8) * 0.88
+        )
+        if clicked:
+            if (
+                midi_learn_state is not None
+                and midi_learn_state.active_target is not None
+                and not active
+            ):
+                _cancel_learn()
 
-    imgui.push_item_width(cc_key_width * 0.88)
-    changed_cc, cc_display = imgui.input_int("##cc_key", int(cc_display), 0, 0)
-    imgui.pop_item_width()
+            if active:
+                _cancel_learn()
+            elif current_cc is not None:
+                cc_key = None
+                changed_any = True
+            else:
+                _enter_learn(key=key, component=None)
 
     clicked_override = False
     if rules.show_override:
         imgui.same_line(0.0, width_spacer)
         clicked_override, override = imgui.checkbox("##override", bool(override))
-
-    if changed_cc:
-        changed_any = True
-        cc_key = None if cc_display < 0 else int(cc_display)
-    if clicked_override:
-        changed_any = True
+        if clicked_override:
+            changed_any = True
 
     return changed_any, cc_key, bool(override)
 
 
 def render_parameter_row_4cols(
-    row: ParameterRow, *, visible_label: str | None = None
+    row: ParameterRow,
+    *,
+    visible_label: str | None = None,
+    midi_learn_state: MidiLearnState | None = None,
+    midi_last_cc_change: tuple[int, int] | None = None,
 ) -> tuple[bool, ParameterRow]:
     """1 行（1 key）を 4 列テーブルとして描画し、更新後の row を返す。
 
@@ -226,11 +340,14 @@ def render_parameter_row_4cols(
         # --- Column 4: cc override（cc_key/override）---
         changed_cc, cc_key, override = _render_cc_cell(
             imgui,
+            row=row,
             rules=rules,
             cc_key=cc_key,
             override=bool(override),
             cc_key_width=cc_key_width,
             width_spacer=width_spacer,
+            midi_learn_state=midi_learn_state,
+            midi_last_cc_change=midi_last_cc_change,
         )
         if changed_cc:
             changed_any = True
@@ -266,6 +383,8 @@ def render_parameter_table(
     effect_chain_header_by_id: Mapping[str, str] | None = None,
     step_info_by_site: Mapping[tuple[str, str], tuple[str, int]] | None = None,
     effect_step_ordinal_by_site: Mapping[tuple[str, str], int] | None = None,
+    midi_learn_state: MidiLearnState | None = None,
+    midi_last_cc_change: tuple[int, int] | None = None,
 ) -> tuple[bool, list[ParameterRow]]:
     """ParameterRow の列を 4 列テーブルとして描画し、更新後の rows を返す。"""
 
@@ -369,6 +488,8 @@ def render_parameter_table(
                     row_changed, updated = render_parameter_row_4cols(
                         item.row,
                         visible_label=item.visible_label,
+                        midi_learn_state=midi_learn_state,
+                        midi_last_cc_change=midi_last_cc_change,
                     )
                     changed_any = changed_any or row_changed
                     updated_rows.append(updated)

@@ -6,16 +6,23 @@ from __future__ import annotations
 
 from grafix.interactive.parameter_gui import ParameterGUI, create_parameter_gui_window
 from grafix.core.parameters import ParamStore
+from grafix.interactive.midi import MidiController
 
 
 class ParameterGUIWindowSystem:
     """Parameter GUI（別ウィンドウ）のサブシステム。"""
 
-    def __init__(self, *, store: ParamStore) -> None:
+    def __init__(
+        self, *, store: ParamStore, midi_controller: MidiController | None = None
+    ) -> None:
         """GUI 用の window と ParameterGUI を初期化する。"""
 
         self.window = create_parameter_gui_window()
-        self._gui = ParameterGUI(self.window, store=store)
+        self._gui = ParameterGUI(
+            self.window,
+            store=store,
+            midi_controller=midi_controller,
+        )
 
     def draw_frame(self) -> None:
         """1 フレーム分の GUI を描画する（`flip()` は呼ばない）。"""

@@ -20,6 +20,7 @@ from .labeling import (
     effect_chain_header_display_names_from_snapshot,
     effect_step_ordinals_by_site,
 )
+from .midi_learn import MidiLearnState
 from .table import COLUMN_WEIGHTS_DEFAULT, render_parameter_table
 
 
@@ -131,6 +132,8 @@ def render_store_parameter_table(
     store: ParamStore,
     *,
     column_weights: tuple[float, float, float, float] = COLUMN_WEIGHTS_DEFAULT,
+    midi_learn_state: MidiLearnState | None = None,
+    midi_last_cc_change: tuple[int, int] | None = None,
 ) -> bool:
     """ParamStore の snapshot を 4 列テーブルとして描画し、変更を store に反映する。"""
 
@@ -208,6 +211,8 @@ def render_store_parameter_table(
         effect_chain_header_by_id=effect_chain_header_by_id,
         step_info_by_site=step_info_by_site,
         effect_step_ordinal_by_site=effect_step_ordinal_by_site,
+        midi_learn_state=midi_learn_state,
+        midi_last_cc_change=midi_last_cc_change,
     )
 
     # --- 7) 変更があった場合だけ store へ反映 ---
