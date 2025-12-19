@@ -12,7 +12,7 @@ from grafix.core.realized_geometry import RealizedGeometry
 
 drop_meta = {
     "interval": ParamMeta(kind="int", ui_min=0, ui_max=100),
-    "offset": ParamMeta(kind="int", ui_min=0, ui_max=100),
+    "index_offset": ParamMeta(kind="int", ui_min=0, ui_max=100),
     "min_length": ParamMeta(kind="float", ui_min=-1.0, ui_max=200.0),
     "max_length": ParamMeta(kind="float", ui_min=-1.0, ui_max=200.0),
     "probability": ParamMeta(kind="float", ui_min=0.0, ui_max=1.0),
@@ -28,7 +28,9 @@ def _empty_geometry() -> RealizedGeometry:
     return RealizedGeometry(coords=coords, offsets=offsets)
 
 
-def _compute_line_lengths(coords: np.ndarray, offsets: np.ndarray) -> np.ndarray:
+def _compute_polyline_lengths(
+    coords: np.ndarray, offsets: np.ndarray, *, close: bool
+) -> np.ndarray:
     """各ポリラインの長さを返す。"""
     n_lines = max(0, int(offsets.size) - 1)
     lengths = np.zeros((n_lines,), dtype=np.float64)
@@ -41,7 +43,11 @@ def _compute_line_lengths(coords: np.ndarray, offsets: np.ndarray) -> np.ndarray
         v = coords[start:end].astype(np.float64, copy=False)
         diff = v[1:] - v[:-1]
         seg_len = np.sqrt(np.sum(diff * diff, axis=1))
-        lengths[i] = float(seg_len.sum())
+        L = float(seg_len.sum())
+        if close and v.shape[0] >= 3:
+            d = v[0] - v[-1]
+            L += float(np.sqrt(np.dot(d, d)))
+        lengths[i] = L
     return lengths
 
 
@@ -50,7 +56,7 @@ def drop(
     inputs: Sequence[RealizedGeometry],
     *,
     interval: int = 0,
-    offset: int = 0,
+    index_offset: int = 0,
     min_length: float = -1.0,
     max_length: float = -1.0,
     probability: float = 0.0,
@@ -66,7 +72,7 @@ def drop(
         入力実体ジオメトリ列。通常は 1 要素。
     interval : int, default 0
         線インデックスに対する間引きステップ。1 以上で有効、0 で無効。
-    offset : int, default 0
+    index_offset : int, default 0
         interval 判定の開始オフセット。
     min_length : float, default -1.0
         この長さ以下の線を対象とする。0 以上で有効、0 未満で無効。
@@ -75,7 +81,15 @@ def drop(
     probability : float, default 0.0
         各線を確率的に対象とする比率。0.0〜1.0。0.0 は無効。
     by : str, default "line"
-        判定単位。現行実装では "line" と "face" は同じ扱い（線単位）。
+        判定単位。
+
+        "line":
+            ポリラインごとに判定し、`offsets` 単位で drop/keep する。
+            長さは開曲線としての線長（最後→最初は含めない）。
+        "face":
+            頂点数が 3 以上のポリラインを face ring とみなし、face 単位で drop/keep する。
+            長さは閉曲線としての周長（最後→最初を含む）。
+            頂点数が 2 以下のポリラインは常に残す（face 判定の対象外）。
     seed : int, default 0
         probability 使用時の乱数シード。同じ引数なら決定的に同じ線が選ばれる。
     keep_mode : str, default "drop"
@@ -95,60 +109,116 @@ def drop(
     if coords.shape[0] == 0:
         return base
 
+    by_mode = str(by)
+    if by_mode not in {"line", "face"}:
+        return base
+
+    keep = str(keep_mode)
+    if keep not in {"drop", "keep"}:
+        return base
+
     n_lines = int(offsets.size) - 1
     if n_lines <= 0:
         return base
 
     interval_i = int(interval)
     eff_interval = interval_i if interval_i >= 1 else None
-    offset_i = int(offset)
+    index_offset_i = int(index_offset)
+    if eff_interval is not None:
+        index_offset_i = index_offset_i % int(eff_interval)
 
     min_length_f = float(min_length)
     max_length_f = float(max_length)
-    use_min = min_length_f >= 0.0
-    use_max = max_length_f >= 0.0
+    use_min = np.isfinite(min_length_f) and min_length_f >= 0.0
+    use_max = np.isfinite(max_length_f) and max_length_f >= 0.0
 
     eff_prob = float(probability)
-    if eff_prob <= 0.0:
+    if not np.isfinite(eff_prob):
         eff_prob = 0.0
+    elif eff_prob < 0.0:
+        eff_prob = 0.0
+    elif eff_prob > 1.0:
+        eff_prob = 1.0
 
     if eff_interval is None and not use_min and not use_max and eff_prob == 0.0:
         return base
-
-    # face は将来拡張用。現時点では line と同じ扱い。
-    _ = by
-
-    lengths: np.ndarray | None = None
-    if use_min or use_max:
-        lengths = _compute_line_lengths(coords, offsets)
 
     rng = None
     if eff_prob > 0.0:
         rng = np.random.default_rng(int(seed))
 
-    keep_mask = np.zeros((n_lines,), dtype=bool)
-    for i in range(n_lines):
-        cond = False
+    if by_mode == "line":
+        lengths: np.ndarray | None = None
+        if use_min or use_max:
+            lengths = _compute_polyline_lengths(coords, offsets, close=False)
 
-        if eff_interval is not None:
-            cond = cond or (((i - offset_i) % eff_interval) == 0)
+        keep_mask = np.zeros((n_lines,), dtype=bool)
+        for i in range(n_lines):
+            cond = False
 
-        if lengths is not None:
-            L = float(lengths[i])
-            if use_min and L <= min_length_f:
-                cond = True
-            if use_max and L >= max_length_f:
-                cond = True
+            if eff_interval is not None:
+                cond = cond or (((i - index_offset_i) % eff_interval) == 0)
 
-        # 旧仕様に合わせて、乱数は全行で消費する（他条件の有無で結果が変わらないようにする）。
-        if rng is not None:
-            if float(rng.random()) < eff_prob:
-                cond = True
+            if lengths is not None:
+                L = float(lengths[i])
+                if use_min and L <= min_length_f:
+                    cond = True
+                if use_max and L >= max_length_f:
+                    cond = True
 
-        if keep_mode == "drop":
-            keep_mask[i] = not cond
-        else:
-            keep_mask[i] = cond
+            # 旧仕様に合わせて、乱数は全行で消費する（他条件の有無で結果が変わらないようにする）。
+            if rng is not None:
+                if float(rng.random()) < eff_prob:
+                    cond = True
+
+            if keep == "drop":
+                keep_mask[i] = not cond
+            else:
+                keep_mask[i] = cond
+
+    else:
+        face_count = 0
+        for i in range(n_lines):
+            start = int(offsets[i])
+            end = int(offsets[i + 1])
+            if end - start >= 3:
+                face_count += 1
+        if face_count <= 0:
+            return base
+
+        lengths = None
+        if use_min or use_max:
+            lengths = _compute_polyline_lengths(coords, offsets, close=True)
+
+        keep_mask = np.ones((n_lines,), dtype=bool)
+        face_index = 0
+        for i in range(n_lines):
+            start = int(offsets[i])
+            end = int(offsets[i + 1])
+            if end - start < 3:
+                continue
+
+            cond = False
+            if eff_interval is not None:
+                cond = cond or (((face_index - index_offset_i) % eff_interval) == 0)
+
+            if lengths is not None:
+                L = float(lengths[i])
+                if use_min and L <= min_length_f:
+                    cond = True
+                if use_max and L >= max_length_f:
+                    cond = True
+
+            if rng is not None:
+                if float(rng.random()) < eff_prob:
+                    cond = True
+
+            if keep == "drop":
+                keep_mask[i] = not cond
+            else:
+                keep_mask[i] = cond
+
+            face_index += 1
 
     if not np.any(keep_mask):
         return _empty_geometry()
