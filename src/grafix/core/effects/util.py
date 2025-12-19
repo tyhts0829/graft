@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
-from numba import njit
+from numba import njit  # type: ignore[import-untyped]
 
 
 @njit(cache=True)

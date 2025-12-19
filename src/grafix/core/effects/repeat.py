@@ -6,7 +6,7 @@ import math
 from typing import Sequence
 
 import numpy as np
-from numba import njit  # type: ignore[attr-defined]
+from numba import njit  # type: ignore[import-untyped]
 
 from grafix.core.effect_registry import effect
 from grafix.core.realized_geometry import RealizedGeometry

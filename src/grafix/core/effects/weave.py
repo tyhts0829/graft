@@ -11,7 +11,7 @@ import math
 from typing import Sequence
 
 import numpy as np
-from numba import njit, types  # type: ignore[attr-defined]
+from numba import njit, types  # type: ignore[import-untyped]
 from numba.typed import List  # type: ignore[attr-defined]
 
 from grafix.core.effect_registry import effect
@@ -591,4 +591,3 @@ def create_web(
     nodes, edges = create_web_nb(closed_curve, num_candidate_lines, relaxation_iterations, step)
     polylines_numba = merge_edges_into_polylines(nodes, edges)
     return list(polylines_numba)
-
