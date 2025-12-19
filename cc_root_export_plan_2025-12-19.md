@@ -32,50 +32,49 @@
 
 ## 1) 公開 API の追加（root から import 可能にする）
 
-- [ ] `src/grafix/cc.py` を新規作成
-  - [ ] 先頭 3 行ヘッダ（どこで/何を/なぜ）
-  - [ ] （採用）`cc = CcView()` を定義（`cc[0]` が動く / 未設定は 0.0）
+- [x] `src/grafix/cc.py` を新規作成
+  - [x] 先頭 3 行ヘッダ（どこで/何を/なぜ）
+  - [x] （採用）`cc = CcView()` を定義（`cc[0]` が動く / 未設定は 0.0）
     - `CcView.__getitem__` は `current_cc_snapshot()` が `None` の場合も 0.0 を返す
     - `CcView` は読み取り専用（ユーザーが `cc[...] = ...` しない前提を型で担保）
   - [ ] （0) で「実体 B: dict」を選ぶ場合: `cc: dict[int, float] = {}` を定義
   - [ ] （0) で「未設定キーは 0.0」を選ぶ場合: `__getitem__` / `get` の既定値を 0.0 に寄せる
   - [ ] （任意）`def cc_snapshot() -> dict[int, float]` を定義（`dict(...)` のコピーを返す）
-- [ ] `src/grafix/__init__.py` を更新
-  - [ ] `from .cc import cc`（必要なら `cc_snapshot` も）を追加
-  - [ ] `__all__` に `"cc"`（必要なら `"cc_snapshot"`）を追加
+- [x] `src/grafix/__init__.py` を更新
+  - [x] `from .cc import cc`（必要なら `cc_snapshot` も）を追加
+  - [x] `__all__` に `"cc"`（必要なら `"cc_snapshot"`）を追加
 
 ## 2) cc_snapshot を worker へ届ける（mp-draw 対応）
 
 狙い: draw が worker プロセスで動いても、`from grafix import cc` が各フレームの CC 値を参照できるようにする。
 
-- [ ] `src/grafix/interactive/runtime/mp_draw.py` を更新
-  - [ ] `_DrawTask` に `cc_snapshot: dict[int, float] | None` を追加
-  - [ ] worker 側で `parameter_context_from_snapshot(task.snapshot, cc_snapshot=task.cc_snapshot)` を使う
+- [x] `src/grafix/interactive/runtime/mp_draw.py` を更新
+  - [x] `_DrawTask` に `cc_snapshot: dict[int, float] | None` を追加
+  - [x] worker 側で `parameter_context_from_snapshot(task.snapshot, cc_snapshot=task.cc_snapshot)` を使う
     - これで `current_cc_snapshot()` が worker 内でも有効になり、cc ビュー方式が成立する
-- [ ] `src/grafix/interactive/runtime/draw_window_system.py` を更新
-  - [ ] メインプロセスで MIDI をポーリングして `cc_snapshot` を作る（例: `MidiController.snapshot()`）
-  - [ ] `parameter_context(self._store, cc_snapshot=cc_snapshot)` に渡す（非 mp 実行でも cc が使える）；今回やる
-  - [ ] `mp_draw.submit(..., snapshot=current_param_snapshot(), cc_snapshot=cc_snapshot)` で worker に同梱；今回やる
+- [x] `src/grafix/interactive/runtime/draw_window_system.py` を更新
+  - [x] メインプロセスで MIDI をポーリングして `cc_snapshot` を作る（例: `MidiController.snapshot()`）
+  - [x] `parameter_context(self._store, cc_snapshot=cc_snapshot)` に渡す（非 mp 実行でも cc が使える）
+  - [x] `mp_draw.submit(..., snapshot=current_param_snapshot(), cc_snapshot=cc_snapshot)` で worker に同梱
   - [ ] `cc_snapshot` は「未受信 CC を含めない疎な dict」でよい（`cc[1]` の既定 0.0 はビュー側で担保する）
 
 ## 3) MIDI 入力（任意だが現実的には必要）
 
 狙い: `cc` が常に空/0.0 ではなく、実デバイス入力で変化するようにする。
 
-- [ ] MIDI 入力の導線を決める
-  - A: `grafix.api.run(..., midi_port_name=..., midi_mode=...)` のように API 引数で受け取る
+- [x] MIDI 入力の導線を決める
+  - A: `grafix.api.run(..., midi_port_name="auto")` / `grafix.api.run(..., midi_port_name="TX-6 Bluetooth")` を使う（実装済み；これで）
   - B: `config.yaml` / 環境変数で指定する（実行環境依存が増える）
-- [ ] `DrawWindowSystem` が `MidiController` を所有し、毎フレーム `poll_pending()` する
-  - 例: `updated = midi.poll_pending(max_messages=...)`（過負荷時の上限を検討）
-  - `updated` があったフレームだけ `save()` するかどうかも決める
+- [x] `DrawWindowSystem` が `MidiController` を所有し、毎フレーム `poll_pending()` する
+  - 例: `midi.poll_pending()` → `midi.snapshot()` を `cc_snapshot` として使う
+  - `save()` の頻度は必要になったら決める
 
 ## 4) テスト追加（import 経路 + mp 用の成立確認）
 
-- [ ] `tests/api/test_root_cc_export.py`（仮）を追加
-  - [ ] `import grafix` 後に `hasattr(grafix, "cc")` を確認
-  - [ ] `from grafix import cc` で `cc[0]` が評価できること（未設定は 0.0 or KeyError は 0) の決定に従う）
-- [ ] context 連動テスト（推奨）
-  - [ ] `parameter_context_from_snapshot(..., cc_snapshot={0: 0.5})` の内側で `cc[0] == 0.5` になること
+- [x] `tests/api/test_root_cc_export.py` を追加
+  - [x] `from grafix import cc` で `cc[0]` が評価できること（未設定は 0.0）
+- [x] context 連動テスト（推奨）
+  - [x] `parameter_context_from_snapshot(..., cc_snapshot={0: 0.25})` の内側で `cc[0] == 0.25` になること
 - [ ] mp-draw 連動テスト（必要なら）
   - [ ] `_draw_worker_main` 相当を直接呼ばず、`MpDraw` 経由で `cc_snapshot` が worker に届くことを確認する
     - ※ spawn + Queue が絡むので、重ければ integration マーカーに逃がす
@@ -88,8 +87,8 @@
 
 ## 6) 受け入れ条件（Done の定義）
 
-- [ ] `PYTHONPATH=src python -c "from grafix import cc; assert cc[0] == 0.0"` が通る
+- [x] `PYTHONPATH=src python -c "from grafix import cc; assert cc[0] == 0.0"` が通る
 - [ ] mp-draw でも `cc` が参照できる（unit or integration test で確認）
 - [ ] MIDI 入力の更新で `cc` の値が変わる（少なくとも unit test で確認）
-- [ ] `PYTHONPATH=src pytest -q` の関連テストが通る
+- [x] `PYTHONPATH=src pytest -q` の関連テストが通る
 - [ ] `ruff check ...` / `mypy ...` が通る（環境にあれば）
