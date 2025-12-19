@@ -1,0 +1,2 @@
+- python -m tools.gen_g_stubs
+- PYTHONPATH=src pytest -q tests/stubs/test_api_stub_sync.py

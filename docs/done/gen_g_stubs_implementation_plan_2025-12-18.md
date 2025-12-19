@@ -61,28 +61,28 @@
 
 ## 2) `tools/gen_g_stubs.py` 実装方針（案）
 
-- [ ] `tools/gen_g_stubs.py` を新規作成（旧ツールは参照用に残す）
-- [ ] 未インストールでも 1 コマンドで動くように、`repo_root/src` を `sys.path` に追加
-- [ ] `grafix.api.primitives` / `grafix.api.effects` を import して registry を初期化
-- [ ] `grafix.api.layers` を import して `L` の公開シグネチャをスタブへ反映
-- [ ] `grafix.core.primitive_registry.primitive_registry` から primitive 名を列挙
-- [ ] `grafix.core.effect_registry.effect_registry` から effect 名を列挙
-- [ ] `get_meta(name)` のキー順（定義順）を維持して引数順を作る（`dict` は挿入順保持）
-- [ ] `ParamMeta.kind -> 型文字列` を変換してシグネチャを組み立てる
-- [ ] docstring を生成（実装 docstring から抽出 or `ParamMeta` から合成）
-- [ ] 生成文字列 API:
-  - [ ] `generate_stubs_str() -> str`（テスト/差分確認用）
-  - [ ] `main() -> None`（ファイル書き込み）
-- [ ] 出力パス: `src/grafix/api/__init__.pyi`
-- [ ] `grafix.api.__init__.py` の `__all__` と整合する export を `__init__.pyi` に含める（`G/E/L/run/Export/primitive/effect`）
+- [x] `tools/gen_g_stubs.py` を新規作成（旧ツールは参照用に残す）
+- [x] 未インストールでも 1 コマンドで動くように、`repo_root/src` を `sys.path` に追加
+- [x] `grafix.api.primitives` / `grafix.api.effects` を import して registry を初期化
+- [x] `grafix.api.layers` を import して `L` の公開シグネチャをスタブへ反映
+- [x] `grafix.core.primitive_registry.primitive_registry` から primitive 名を列挙
+- [x] `grafix.core.effect_registry.effect_registry` から effect 名を列挙
+- [x] `get_meta(name)` のキー順（定義順）を維持して引数順を作る（`dict` は挿入順保持）
+- [x] `ParamMeta.kind -> 型文字列` を変換してシグネチャを組み立てる
+- [x] docstring を生成（実装 docstring から抽出 or `ParamMeta` から合成）
+- [x] 生成文字列 API:
+  - [x] `generate_stubs_str() -> str`（テスト/差分確認用）
+  - [x] `main() -> None`（ファイル書き込み）
+- [x] 出力パス: `src/grafix/api/__init__.pyi`
+- [x] `grafix.api.__init__.py` の `__all__` と整合する export を `__init__.pyi` に含める（`G/E/L/run/Export/primitive/effect`）
 
 ## 3) テスト（任意だが推奨）
 
 目的: public API が増減した時にスタブの更新漏れを確実に検知する。
 
-- [ ] `tests/stubs/test_api_stub_sync.py` を追加
-  - `tools.gen_g_stubs.generate_stubs_str()` と `src/grafix/api/__init__.pyi` の完全一致を検証
-- [ ] 実行: `PYTHONPATH=src pytest -q tests/stubs/test_api_stub_sync.py`
+- [x] `tests/stubs/test_api_stub_sync.py` を追加
+  - [x] `tools.gen_g_stubs.generate_stubs_str()` と `src/grafix/api/__init__.pyi` の完全一致を検証
+- [x] 実行: `PYTHONPATH=src pytest -q tests/stubs/test_api_stub_sync.py`
 
 ## 4) 運用（最小）
 
