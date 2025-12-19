@@ -3,32 +3,33 @@
 目的: `src/grafix/interactive/midi/midi_controller_old.py` を参考に、`DualKeyDict` 依存を廃して「ただの辞書（built-in `dict`）」で CC 値を扱う `midi_controller` を新規実装する。
 
 注意:
+
 - 互換ラッパー/シムは作らない（旧 API を無理に残さない）。
 - 旧モジュール（`midi_controller_old.py`）は参照用。削除/移動するなら別途確認する（Ask-first）。
 
 ## 0) 事前に決める（あなたの確認が必要）
 
-- [ ] `cc_snapshot` のキー形:
-  - A: `dict[int, float]` のみ（推奨。`ParamState.cc_key: int` と一致）
+- [x] `cc_snapshot` のキー形:
+  - A: `dict[int, float]` のみ（推奨。`ParamState.cc_key: int` と一致）；これで
   - B: `dict[int | str, float]`（数値 CC と論理名を混在。同期が面倒）
   - C: `dict[int, float]` + `name_to_cc: dict[str, int]`（名前参照は補助）
-- [ ] `cc_map`（名前 ↔ CC 番号）の入力形式:
+- [x] `cc_map`（名前 ↔ CC 番号）の入力形式:
   - A: `dict[str, int]`（推奨）
   - B: `dict[int, str]`
-  - C: 使わない（名前機能を持たない）
-- [ ] 永続化（JSON）の粒度:
+  - C: 使わない（名前機能を持たない）；これで
+- [x] 永続化（JSON）の粒度:
   - A: `port_name` 単位（例: `data/output/midi_cc/<port>.json`）
-  - B: `port_name` + `profile_name`（= スクリプト名相当）単位（旧仕様寄せ）
-- [ ] 既定の保存先ディレクトリ:
-  - A: `<repo>/data/output/midi_cc`（推奨。既存の `data/output` と整合）
+  - B: `port_name` + `profile_name`（= スクリプト名相当）単位（旧仕様寄せ）；こちらで
+- [x] 既定の保存先ディレクトリ:
+  - A: `<repo>/data/output/midi_cc`（推奨。既存の `data/output` と整合）；これで
   - B: `<repo>/data/cc`（旧仕様寄せ）
   - C: 常に呼び出し側が `save_dir` を渡す（デフォルト無し）
-- [ ] Intech Grid 向けノブ同期（旧 `sync_grid_knob_values`）の扱い:
-  - A: 削除（推奨。デバイス依存の副作用を無くす）
+- [x] Intech Grid 向けノブ同期（旧 `sync_grid_knob_values`）の扱い:
+  - A: 削除（推奨。デバイス依存の副作用を無くす）；これで
   - B: `sync_*()` として明示呼び出しのみ残す
   - C: `auto_sync=True` のときだけ `__init__` で実行（既定 False）
-- [ ] モジュールの形:
-  - A: `MidiController` クラス（入力ポートを持つ）
+- [x] モジュールの形:
+  - A: `MidiController` クラス（入力ポートを持つ）；こちらで
   - B: 純粋関数 + `dict` 状態（テスト容易だが呼び出し側が状態を持つ）
 
 ## 1) 設計（DualKeyDict なしの最小構成に落とす）
@@ -78,4 +79,3 @@
 - [ ] `ruff check src/grafix/interactive/midi`
 - [ ] `mypy src/grafix`（必要なら対象限定でも可）
 - [ ] 旧ファイルの扱いを決める（残す/移動/削除。削除/移動は Ask-first）
-

@@ -12,7 +12,7 @@ CANVAS_HEIGHT = 300
 
 def draw(t: float):
     ply1 = G.polyhedron()
-    eff1 = E(name="polyhedron_effect").rotate().subdivide().wobble()
+    eff1 = E(name="polyhedron_effect").rotate().subdivide().weave()
 
     ply2 = G.text()
     eff2 = E.affine().fill()

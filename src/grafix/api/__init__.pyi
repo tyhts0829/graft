@@ -300,11 +300,13 @@ class _EffectBuilder(Protocol):
             end_param: 終了位置（0.0–1.0）
         """
         ...
-    def twist(self, *, angle: float = ..., axis: str = ...) -> _EffectBuilder:
+    def twist(self, *, auto_center: bool = ..., pivot: Vec3 = ..., angle: float = ..., axis: str = ...) -> _EffectBuilder:
         """
         位置に応じて軸回りにねじる（中心付近は 0）。
 
         引数:
+            auto_center: True なら平均座標を回転中心に使用
+            pivot: ねじり軸（指定軸に平行な直線）の通過点（`auto_center=False` のとき有効）
             angle: 最大ねじれ角 [deg]
             axis: ねじれ軸（`"x"|"y"|"z"`）
         """
@@ -319,12 +321,12 @@ class _EffectBuilder(Protocol):
             step: 1 ステップの移動係数（0.0–0.5 にクランプ）
         """
         ...
-    def wobble(self, *, amplitude: float = ..., frequency: Vec3 = ..., phase: float = ...) -> _EffectBuilder:
+    def wobble(self, *, amplitude: Vec3 = ..., frequency: Vec3 = ..., phase: float = ...) -> _EffectBuilder:
         """
         各頂点へサイン波由来の変位を加える。
 
         引数:
-            amplitude: 変位量 [mm] 相当
+            amplitude: 変位量 [mm] 相当（各軸別）
             frequency: 空間周波数（各軸別）
             phase: 位相 [deg]
         """
@@ -530,11 +532,13 @@ class _E(Protocol):
             end_param: 終了位置（0.0–1.0）
         """
         ...
-    def twist(self, *, angle: float = ..., axis: str = ...) -> _EffectBuilder:
+    def twist(self, *, auto_center: bool = ..., pivot: Vec3 = ..., angle: float = ..., axis: str = ...) -> _EffectBuilder:
         """
         位置に応じて軸回りにねじる（中心付近は 0）。
 
         引数:
+            auto_center: True なら平均座標を回転中心に使用
+            pivot: ねじり軸（指定軸に平行な直線）の通過点（`auto_center=False` のとき有効）
             angle: 最大ねじれ角 [deg]
             axis: ねじれ軸（`"x"|"y"|"z"`）
         """
@@ -549,12 +553,12 @@ class _E(Protocol):
             step: 1 ステップの移動係数（0.0–0.5 にクランプ）
         """
         ...
-    def wobble(self, *, amplitude: float = ..., frequency: Vec3 = ..., phase: float = ...) -> _EffectBuilder:
+    def wobble(self, *, amplitude: Vec3 = ..., frequency: Vec3 = ..., phase: float = ...) -> _EffectBuilder:
         """
         各頂点へサイン波由来の変位を加える。
 
         引数:
-            amplitude: 変位量 [mm] 相当
+            amplitude: 変位量 [mm] 相当（各軸別）
             frequency: 空間周波数（各軸別）
             phase: 位相 [deg]
         """

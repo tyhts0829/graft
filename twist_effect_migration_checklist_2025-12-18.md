@@ -12,6 +12,7 @@
 - `realize()` によりねじり適用済み `RealizedGeometry` が得られる（offsets は保持）。
 - Parameter GUI 用に `ParamMeta` が定義され、デフォルト値も観測される。
 - 最小限のユニットテストで旧仕様が固定される。
+- ねじり軸の回転中心を `auto_center/pivot` で指定できる。
 
 ## 旧仕様（`src/grafix/core/effects/from_previous_project/twist.py` から読み取れること）
 
@@ -38,6 +39,8 @@
 - [x] `angle` は旧仕様同様「degree 入力」とし、値域クランプはしない（`ParamMeta.ui_min/ui_max` は UI 範囲のみ）。；はい
 - [x] `rng <= 1e-9` のとき no-op（旧実装の閾値踏襲）。；はい
 - [x] 軸方向の min/max は「全頂点の一括 min/max」（ポリラインごとのリセットはしない）。；はい
+- [x] `auto_center/pivot` を追加し、他 effect と同様に `auto_center=True` をデフォルトとする。
+- [x] `auto_center=True` は頂点平均を回転中心に使用し、`auto_center=False` は `pivot` を使用する。
 
 ## 作業チェックリスト
 
@@ -47,8 +50,8 @@
 - [x] 実装（新スタイルへ移植）
   - [x] `src/grafix/core/effects/twist.py` を新規作成
     - [x] 冒頭 docstring は「効果の説明」のみにする（effects 配下の規約）
-    - [x] `twist_meta = { "angle": ParamMeta(kind="float", ui_min=0.0, ui_max=360.0), "axis": ParamMeta(kind="choice", choices=("x","y","z")) }`
-    - [x] `@effect(meta=twist_meta)` で `def twist(inputs, *, angle=60.0, axis="y") -> RealizedGeometry` を実装
+    - [x] `twist_meta` を定義（`auto_center/pivot/angle/axis`）
+    - [x] `@effect(meta=twist_meta)` で `def twist(inputs, *, auto_center=True, pivot=(0,0,0), angle=60.0, axis="y") -> RealizedGeometry` を実装
   - [x] no-op:
     - [x] `not inputs` は空ジオメトリを返す（他 effect と同様）
     - [x] `base.coords.shape[0] == 0` は no-op（`base` を返す）
@@ -57,6 +60,7 @@
   - [x] ねじり:
     - [x] 軸インデックス選択（x=0,y=1,z=2）
     - [x] `t=(coord-lo)/rng` → `twist_rad=(t-0.5)*2*max_rad`
+    - [x] 回転中心の決定（`auto_center` または `pivot`）
     - [x] 各軸ごとの回転（np.cos/np.sin をベクトルで計算、float64 計算 →float32 出力）
     - [x] offsets は `base.offsets` をそのまま保持
     - [x] `axis` 不正値は `ValueError` を raise（仕様確定に従う）
@@ -71,6 +75,8 @@
     - [x] 空ジオメトリが no-op を固定
     - [x] offsets が保持されることを固定
     - [x] `axis` 不正値が例外になることを固定（`realize()` は `RealizeError` にラップされる）
+    - [x] `pivot` が回転中心に反映されることを固定
+    - [x] `auto_center=True` が `pivot=mean(coords)` と一致することを固定
 - [ ] 検証
   - [x] `PYTHONPATH=src pytest -q tests/core/effects/test_twist.py`
   - [ ] `ruff check src/grafix/core/effects/twist.py tests/core/effects/test_twist.py`（ruff が未導入で未実行）

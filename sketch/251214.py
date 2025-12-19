@@ -4,10 +4,6 @@
 なぜ: 動作確認用の最小エントリポイントとして利用するため。
 """
 
-import sys
-
-sys.path.append("src")
-
 from grafix.api import E, G, L, run
 
 CANVAS_WIDTH = 300
