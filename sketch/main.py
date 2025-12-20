@@ -11,8 +11,8 @@ CANVAS_HEIGHT = 300
 
 
 def draw(t: float):
-    ply1 = G.polyhedron()
-    eff1 = E(name="pl2").offset().affine().trim()
+    ply1 = G.text(font="Cappadocia.otf", text="o")
+    eff1 = E(name="pl2").affine().partition().fill()
     return eff1(ply1)
 
 
