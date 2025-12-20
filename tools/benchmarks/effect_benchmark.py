@@ -1,6 +1,6 @@
 """
 どこで: `tools/benchmarks/effect_benchmark.py`。
-何を: `grafix.core.effects` の effect をケース別にベンチし、JSON/HTML レポートを出力する。
+何を: `grafix.core.effects` の effect をケース別にベンチし、JSON を出力する。
 なぜ: どの effect がどんな入力で遅いかを一覧・比較し、最適化の当たりを付けるため。
 """
 
@@ -37,7 +37,6 @@ _bootstrap_import_paths()
 from grafix.core.effect_registry import effect_registry  # noqa: E402
 from grafix.core.realized_geometry import RealizedGeometry  # noqa: E402
 from tools.benchmarks.cases import BenchmarkCase, build_default_cases, describe_geometry  # noqa: E402
-from tools.benchmarks.report import render_report_html  # noqa: E402
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,9 +52,10 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
 
     out_root = Path(args.out).expanduser().resolve()
-    run_id = args.run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_dir = out_root / run_id
-    out_dir.mkdir(parents=True, exist_ok=True)
+    run_id = _normalize_run_id(str(args.run_id))
+    runs_dir = out_root / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    json_path = runs_dir / f"{run_id}.json"
 
     cases = build_default_cases(seed=int(args.seed))
     if args.cases:
@@ -100,8 +100,8 @@ def main(argv: list[str] | None = None) -> int:
         "repeats": int(args.repeats),
         "warmup": int(args.warmup),
         "seed": int(args.seed),
-        "out_dir": str(out_dir),
-        "json_filename": "results.json",
+        "out_dir": str(out_root),
+        "json_filename": json_path.name,
     }
     if import_errors:
         meta["import_errors"] = dict(import_errors)
@@ -152,14 +152,9 @@ def main(argv: list[str] | None = None) -> int:
 
         results["effects"].append(eff_entry)
 
-    json_path = out_dir / "results.json"
     json_path.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    html_path = out_dir / "report.html"
-    html_path.write_text(render_report_html(results), encoding="utf-8")
-
     print(f"[grafix-bench] wrote: {json_path}")  # noqa: T201
-    print(f"[grafix-bench] wrote: {html_path}")  # noqa: T201
     return 0
 
 
@@ -168,9 +163,9 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument(
         "--out",
         default="data/output/benchmarks",
-        help="出力ルート（run_id 配下に results.json / report.html を作る）",
+        help="出力ルート（<out>/runs/<run_id>.json を作る）",
     )
-    p.add_argument("--run-id", default="", help="出力ディレクトリ名（省略時は日時）")
+    p.add_argument("--run-id", default="", help="出力ファイル名（%Y%m%d_%H%M%S。省略時は現在時刻）")
     p.add_argument("--repeats", type=int, default=10, help="本計測の反復回数")
     p.add_argument("--warmup", type=int, default=2, help="ウォームアップ回数（JIT 除外用）")
     p.add_argument("--seed", type=int, default=0, help="ケース生成用 seed")
@@ -183,6 +178,16 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="計測中の GC を無効化する（ノイズ低減。メモリ増に注意）",
     )
     return p.parse_args(argv)
+
+
+def _normalize_run_id(value: str) -> str:
+    if not value:
+        value = datetime.now().strftime("%Y%m%d_%H%M%S")
+    try:
+        datetime.strptime(value, "%Y%m%d_%H%M%S")
+    except ValueError:
+        raise SystemExit(f"--run-id must be %Y%m%d_%H%M%S: {value}")
+    return value
 
 
 def _import_builtin_effects() -> dict[str, str]:
