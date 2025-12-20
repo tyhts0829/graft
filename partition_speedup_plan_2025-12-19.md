@@ -17,7 +17,7 @@
 ## ベースライン計測（先にやる）
 
 - [ ] `partition` 単体のベンチを取得する（HTML/JSON を保存）
-  - `PYTHONPATH=src python -m tools.benchmarks.effect_benchmark --only partition --cases ring_big,rings_2,polyline_long --repeats 10 --warmup 2 --disable-gc`
+  - `PYTHONPATH=src python -m tools.benchmarks.effect_benchmark --only partition --cases ring_big,rings_2 --repeats 10 --warmup 2 --disable-gc`
 - [ ] 最遅ケースを特定し、主因が「平面変換」か「Shapely（XOR / covers / intersection）」かを切り分ける（`cProfile` で OK）
   - `PYTHONPATH=src python -m cProfile -o /tmp/partition.prof -m tools.benchmarks.effect_benchmark --only partition --cases ring_big --repeats 3 --warmup 1 --disable-gc`
 - [ ] 目標値を決める（例: 最遅ケースで 1.5x 〜 2x）
@@ -34,13 +34,17 @@
 - [ ] `_project_to_2d()` を「`(points - origin)` を作らない」式へ変更する
   - 例: `x = points @ u - origin·u`, `y = points @ v - origin·v`
   - ねらい: `(N,3)` 一時配列を消してメモリ帯域を節約
-- [ ] サイト生成の `covers` 判定を `shapely.prepared.prep(region)` で高速化する（繰り返し判定用）
+- [ ] サイト生成を Shapely 2.x の vectorized predicate（例: `contains_xy`/`covers_xy` 系）で一括判定する
+  - 方針: 乱数で候補点をまとめて生成 → ベクタ化 predicate で内点だけ抽出 → 足りるまでバッチ反復
+  - ねらい: `Point` 生成 + Python ループ + `region.covers(...)` の固定費を削減
+- [ ] `prepared geometry`（`shapely.prepared.prep(region)`）も試し、上記より速い方を採用する
 - [ ] ループのソート key を軽くする（外周は常に閉じている前提で `loop[:-1].mean(...)` に固定、`allclose` をやめる）
 
 ### P1（Shapely 呼び出し回数/重さを下げる）
 
-- [ ] サイト生成を「バッチ化」する（乱数をまとめて生成→内点だけ採用）
-  - ねらい: Python ループ回数と `Point` 生成回数を減らす
+- [ ] （`rings_2` 最適化）2 リングで「一方が他方を包含」する場合は `Polygon(outer, holes=[inner])` で領域を構築する
+  - ねらい: `symmetric_difference`（overlay）を回避して領域構築を軽くする（外周+穴の典型ケース）
+  - フォールバック: 交差/包含でない場合は現状どおり XOR
 - [ ] 偶奇領域構築を「XOR 逐次」から軽い形へ寄せる（入力が素直な場合のみ）
   - 方針: リングが非交差・包含関係（外周+穴+島）だけで表現できる場合は、包含ツリーを作って `Polygon(shell, holes)` の集合へ変換し、`unary_union` で確定
   - フォールバック: 判定が怪しい/交差がある場合は現状どおり `symmetric_difference`
@@ -50,8 +54,6 @@
 
 ### P2（効果は大きい可能性があるが、仕様/依存に触れる）
 
-- [ ] Shapely の最低バージョンを 2.x に上げ、vectorized contains/covers でサイト生成を実装する
-  - ねらい: `covers` 判定を配列で一気に処理して Python ループを大幅に削減
 - [ ] rejection sampling をやめ、領域の三角化ベースでサイトを生成する（薄い領域でも安定）
   - ねらい: 失敗試行（trials）による遅さを根本解消
   - 代償: 実装増（ただし Shapely の `triangulate` 等が使えるなら比較的単純）
@@ -63,7 +65,7 @@
 - [ ] テスト
   - `PYTHONPATH=src pytest -q tests/core/effects/test_partition.py`
 - [ ] ベンチ（ベースラインと同条件で再計測し、`mean_ms` を比較）
-  - `PYTHONPATH=src python -m tools.benchmarks.effect_benchmark --only partition --cases ring_big,rings_2,polyline_long --repeats 10 --warmup 2 --disable-gc`
+  - `PYTHONPATH=src python -m tools.benchmarks.effect_benchmark --only partition --cases ring_big,rings_2 --repeats 10 --warmup 2 --disable-gc`
 
 ## Done の定義（受け入れ条件）
 
@@ -73,6 +75,8 @@
 
 ## 事前確認したいこと（あなたに質問）
 
-- [ ] 最優先はどのケースか（`ring_big` / `rings_2` / `polyline_long` / 実データ）
+- [x] 最優先ケース
+  - `ring_big`（正多角形リング）: `verts=5001 lines=1 closed_lines=1`
+  - `rings_2`（外周+穴）: `verts=3202 lines=2 closed_lines=2`
 - [ ] 「出力形状が少し変わっても良い」高速化（simplify / 生成サイトの分布変更）まで踏み込むか
-- [ ] Shapely の最低対応バージョンを 2.x に上げて良いか（vectorized で一気に速くできる可能性）
+- [x] Shapely はすでに 2.x 系（vectorized predicate を前提にして良い）
