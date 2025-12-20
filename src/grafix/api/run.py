@@ -40,6 +40,7 @@ def run(
     midi_port_name: str | None = "auto",
     midi_mode: str = "7bit",
     n_worker: int = 4,
+    fps: float = 60.0,
 ) -> None:
     """pyglet ウィンドウを生成し `draw(t)` のシーンをリアルタイム描画する。
 
@@ -72,6 +73,8 @@ def run(
     n_worker : int
         `draw(t)` を multiprocessing で実行するワーカープロセス数。
         `<=1` の場合は無効。`>=2` の場合は spawn + Queue（pickle）で非同期化する。
+    fps : float
+        目標フレームレート。`<=0` の場合はフレーム末尾で sleep せず、可能な限り速く回す。
 
     Returns
     -------
@@ -157,7 +160,7 @@ def run(
     # --- ループの実行 ---
     # ここで複数ウィンドウを 1 つの手動ループで回す。
     # 目的: `flip()` を 1 箇所へ集約し、画面更新の競合（点滅）を避ける。
-    loop = MultiWindowLoop(tasks, fps=60.0)
+    loop = MultiWindowLoop(tasks, fps=fps)
     try:
         loop.run()
     finally:

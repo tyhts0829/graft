@@ -29,7 +29,7 @@ class MultiWindowLoop:
     `draw_frame()` は各ウィンドウの back buffer へ描画するだけにし、`flip()` はこのループが行う。
     """
 
-    def __init__(self, tasks: list[WindowTask], *, fps: float = 60.0) -> None:
+    def __init__(self, tasks: list[WindowTask], *, fps: float) -> None:
         """ループを初期化する。
 
         Parameters
@@ -37,7 +37,8 @@ class MultiWindowLoop:
         tasks : list[WindowTask]
             1 フレームごとに描画したいウィンドウと描画処理。
         fps : float
-            目標フレームレート。ループ末尾で `sleep(1/fps)` する。
+            目標フレームレート。`<=0` の場合はスロットリングしない。
+            `>0` の場合、ループ末尾で sleep して目標に近づける。
         """
 
         self._tasks = list(tasks)

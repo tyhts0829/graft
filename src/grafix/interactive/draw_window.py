@@ -1,5 +1,5 @@
 # どこで: `src/grafix/interactive/draw_window.py`。
-# 何を: ライブ描画用の pyglet ウィンドウ生成とタイマー管理を行う。
+# 何を: ライブ描画用の pyglet ウィンドウ生成を行う。
 # なぜ: interactive 依存をこの層に閉じ込め、core/export をヘッドレスに保つため。
 
 from __future__ import annotations
@@ -24,13 +24,3 @@ def create_draw_window(settings: RenderSettings) -> Window:
         config=config,
     )
     return window
-
-
-def schedule_tick(tick_fn, *, fps: float = 60.0) -> None:
-    """一定周期で tick_fn を呼ぶタイマーを登録する。"""
-    pyglet.clock.schedule_interval(tick_fn, 1.0 / fps)
-
-
-def unschedule_tick(tick_fn) -> None:
-    """tick_fn のタイマー登録を解除する。"""
-    pyglet.clock.unschedule(tick_fn)

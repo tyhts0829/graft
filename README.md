@@ -17,7 +17,7 @@ def draw(t: float):
 
 
 if __name__ == "__main__":
-    run(draw, canvas_size=(800, 800), render_scale=2.0, parameter_gui=True)
+    run(draw, fps=60.0, canvas_size=(800, 800), render_scale=2.0, parameter_gui=True)
 ```
 
 ## Development

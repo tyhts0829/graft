@@ -23,6 +23,7 @@
 ## Files / Entry points（触る場所）
 
 - `src/grafix/api/run.py`（`run(..., fps=...)` を追加し `MultiWindowLoop(..., fps=fps)` に配線）
+- `src/grafix/api/__init__.pyi`（公開 API の型スタブ。`run()` シグネチャ追従が必要）
 - `src/grafix/interactive/runtime/window_loop.py`（必要なら docstring を「公開 API と同じ意味」に揃える）
 - `src/grafix/interactive/draw_window.py`（未使用の `schedule_tick`/`unschedule_tick` を削除）
 - （影響確認）`README.md` / `docs/` 内の `run()` 呼び出し例
@@ -35,18 +36,20 @@
 
 ## Action items（チェックリスト）
 
-- [ ] `src/grafix/api/run.py` に `fps: float = 60.0` を追加
-  - [ ] docstring に `fps` の意味（`<=0` で sleep しない）を明記
-  - [ ] `loop = MultiWindowLoop(tasks, fps=fps)` に変更
-- [ ] `run()` の呼び出し箇所を検索し、必要なら追従修正
-  - [ ] `rg -n "grafix\\.api\\.run\\(|\\brun\\("` で確認（同名関数が多いので絞る）
-- [ ] `src/grafix/interactive/draw_window.py` の未使用関数を削除
-  - [ ] `schedule_tick` / `unschedule_tick` の削除（`create_draw_window` は維持）
-- [ ] ドキュメント更新（存在する場合のみ、最小）
-  - [ ] README / docs の `run()` 使用例に `fps` を追記（任意）
+- [x] `src/grafix/api/run.py` に `fps: float = 60.0` を追加
+  - [x] docstring に `fps` の意味（`<=0` で sleep しない）を明記
+  - [x] `loop = MultiWindowLoop(tasks, fps=fps)` に変更
+- [x] `src/grafix/api/__init__.pyi` の `run()` シグネチャを追従（公開 API の型スタブ）
+- [x] `src/grafix/interactive/runtime/window_loop.py` の `fps` 説明を `<=0` まで明記
+- [x] `run()` の呼び出し箇所を検索し、追従修正が不要なことを確認
+- [x] `src/grafix/interactive/draw_window.py` の未使用関数を削除
+  - [x] `schedule_tick` / `unschedule_tick` の削除（`create_draw_window` は維持）
+- [x] ドキュメント更新（最小）
+  - [x] `README.md` の `run()` 使用例に `fps` を追記
 - [ ] 静的チェック
-  - [ ] `ruff check .`
-  - [ ] `mypy src/grafix`
+  - [ ] `ruff check ...`（この環境では `ruff` コマンドが見つからず未実行）
+  - [ ] `mypy ...`（この環境では既存エラーが多数あり、差分由来の判定が難しい）
+  - [x] `python -m compileall ...`（構文チェック）
 
 ## Risks / Edge cases（注意点）
 
