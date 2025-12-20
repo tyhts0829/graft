@@ -84,7 +84,8 @@ def run(
 
     # pyglet の Window 作成前にオプションを設定する。
     # （vsync はウィンドウ作成時に参照される想定のため、ここで固定しておく）
-    pyglet.options["vsync"] = True
+    # TrueにするとParameter GUIのクリックやドラッグが抜ける事がある。
+    pyglet.options["vsync"] = False
 
     # 描画の見た目/サイズに関わる設定値をまとめる。
     settings = RenderSettings(
