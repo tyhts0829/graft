@@ -9,7 +9,10 @@
 
 - 対象パラメータ: `op="text"` / `arg="font"`（`src/grafix/core/primitives/text.py`）
 - 対象 UI: Parameter GUI の value widget（`src/grafix/interactive/parameter_gui/widgets.py`）
-- 影響を最小化するため、`font` の型（ParamMeta.kind）は当面 `str` のまま扱う（UI 側で特殊表示）。
+- `font` の型は `ParamMeta(kind="font")` を新設して扱う（UI は kind 駆動で描画）。
+  - `src/grafix/core/primitives/text.py` の `text_meta["font"]` を `kind="font"` へ変更する。
+  - `src/grafix/core/parameters/view.py` の `normalize_input()` に `kind="font"` を追加し、値は `str` として正規化する。
+  - Parameter GUI は `row.kind == "font"` を専用 widget に割り当てる（`op/arg` ハードコードを避ける）。
 
 ## 仕様（UI/UX）
 
@@ -32,7 +35,7 @@
   - `row` の安定キー（例: `(row.op, row.site_id, row.arg)`）で `filter_text` を保持する `dict` を `widgets.py`（または専用小モジュール）に持つ。
   - GUI を閉じたら状態が消える程度の寿命でよい（永続化はしない）。
 - ウィジェットの差し替え:
-  - `render_value_widget()` に「`row.kind == "str"` かつ `row.op=="text"` かつ `row.arg=="font"` の場合だけ」専用 widget を割り当てる。
+  - `render_value_widget()` に `row.kind == "font"` の専用 widget を追加する。
   - それ以外の `str` は現状の `input_text` のまま。
 
 ## 実装チェックリスト
@@ -45,26 +48,32 @@
 
 ### P1: 実装（Parameter GUI）
 
+- [ ] `kind="font"` を導入する（コア）
+  - [ ] `src/grafix/core/primitives/text.py` の `text_meta["font"]` を `ParamMeta(kind="font")` にする
+  - [ ] `src/grafix/core/parameters/view.py` の `normalize_input()` に `kind=="font"` を追加（`str` と同じ正規化）
 - [ ] フォント列挙ユーティリティを用意する（`data/input/font` 配下の `*.ttf/*.otf/*.ttc`）
   - [ ] 表示用ラベル（相対パス）と値（`font` に入れる文字列）を決める
 - [ ] フィルター処理（純粋関数）を作る
   - [ ] `query -> filtered_items`（case-insensitive、空は全件）
-- [ ] `text.font` 専用 widget を追加する
+- [ ] `kind=font` 専用 widget を追加する
   - [ ] フィルター入力（`imgui.input_text`）
   - [ ] フィルター結果のプルダウン（`imgui.begin_combo` か `imgui.combo`）
   - [ ] 選択時に `font` 値のみ更新（フィルター変更は更新扱いにしない）
   - [ ] 0件のときの表示（例: `"No match"`）を入れる
-- [ ] `render_value_widget()` の振り分けを追加する（`text.font` → 専用 widget）
+- [ ] `render_value_widget()` の振り分けを追加する（`row.kind=="font"` → 専用 widget）
 
 ### P2: テスト（最低限・壊れにくい所だけ）
 
 - [ ] フィルター関数の単体テストを追加する（UI 依存なし）
   - 例: `tests/interactive/parameter_gui/test_parameter_gui_font_filter.py`
   - ケース: 空クエリ、大小文字、部分一致、スペース除去の有無（採用した仕様次第）
+- [ ] `kind="font"` の正規化テストを追加する
+  - 例: `tests/core/parameters/test_parameter_normalize.py` に `ParamMeta(kind="font")` のケースを追加
 
 ### P3: 検証（変更後に回す）
 
 - [ ] `PYTHONPATH=src pytest -q tests/interactive/parameter_gui`
+- [ ] `PYTHONPATH=src pytest -q tests/core/parameters/test_parameter_normalize.py`
 - [ ] `ruff check src/grafix/interactive/parameter_gui/widgets.py`
 
 ## Done の定義（受け入れ条件）
@@ -78,4 +87,4 @@
 - [ ] フィルターは「スペース区切りを AND 扱い」にしたい？（例: `noto sans` → `noto` と `sans` を両方含む）
 - [ ] ドロップダウンの表示は相対パスでOK？（例: `NotoSansJP-Regular.otf` / `jp/NotoSansJP-Regular.otf`）
 - [ ] `.ttc` を選んだとき、`font_index` も同時に 0 へ戻す挙動にしたい？（別途 UI 追加は今回はしない想定）
-
+- [ ] `kind="font"` は `bool` のように「常に GUI 値を採用」にしたい？（= override は不要、という扱い）
