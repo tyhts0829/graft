@@ -9,3 +9,4 @@ stub 生成
 displace amp と freq は傾きを成分指定
 gui にエフェクトごとの横線
 weave 回すと seed 変わる。
+pyclipper 導入

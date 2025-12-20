@@ -11,13 +11,9 @@ CANVAS_HEIGHT = 300
 
 
 def draw(t: float):
-    ply1 = G.polyhedron(center=(cc[1] * CANVAS_WIDTH, cc[1] * CANVAS_HEIGHT, 0))
-    eff1 = E(name="pl").weave()
-
-    ply2 = G.text()
-    eff2 = E.affine().fill()
-
-    return L(eff1(ply1)), L(eff2(ply2))
+    ply1 = G.polyhedron()
+    eff1 = E(name="pl2").offset().affine().trim()
+    return eff1(ply1)
 
 
 if __name__ == "__main__":
