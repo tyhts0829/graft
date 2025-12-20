@@ -8,7 +8,7 @@ import inspect
 from collections.abc import ItemsView
 from typing import Any, Callable, Sequence
 
-from grafix.core.realized_geometry import RealizedGeometry
+from grafix.core.realized_geometry import RealizedGeometry, concat_realized_geometries
 from grafix.core.parameters.meta import ParamMeta
 
 EffectFunc = Callable[
@@ -126,6 +126,9 @@ def effect(
         ...
     """
 
+    if meta is not None and "bypass" in meta:
+        raise ValueError("effect の予約引数 'bypass' は meta に含められない")
+
     def _defaults_from_signature(
         f: Callable[..., RealizedGeometry],
         param_meta: dict[str, ParamMeta],
@@ -158,19 +161,33 @@ def effect(
         ):
             raise ValueError(f"組み込み effect は meta 必須: {f.__module__}.{f.__name__}")
 
+        meta_with_bypass = (
+            {"bypass": ParamMeta(kind="bool"), **meta} if meta is not None else None
+        )
+
         def wrapper(
             inputs: Sequence[RealizedGeometry],
             args: tuple[tuple[str, Any], ...],
         ) -> RealizedGeometry:
             params: dict[str, Any] = dict(args)
+            bypass = bool(params.pop("bypass", False))
+            if bypass:
+                if not inputs:
+                    return concat_realized_geometries()
+                if len(inputs) == 1:
+                    return inputs[0]
+                return concat_realized_geometries(*inputs)
             return f(inputs, **params)
 
-        defaults = None if meta is None else _defaults_from_signature(f, meta)
+        defaults = None
+        if meta is not None:
+            defaults = _defaults_from_signature(f, meta)
+            defaults = {"bypass": False, **defaults}
         effect_registry._register(
             f.__name__,
             wrapper,
             overwrite=overwrite,
-            meta=meta,
+            meta=meta_with_bypass,
             defaults=defaults,
         )
         return f

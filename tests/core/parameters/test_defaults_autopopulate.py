@@ -34,7 +34,7 @@ def test_effect_defaults_recorded_when_no_kwargs():
 
     snapshot = store.snapshot()
     scale_args = {key.arg for key in snapshot.keys() if key.op == "scale"}
-    assert scale_args == {"auto_center", "pivot", "scale"}
+    assert scale_args == {"bypass", "auto_center", "pivot", "scale"}
 
 
 def test_meta_default_none_is_rejected():
