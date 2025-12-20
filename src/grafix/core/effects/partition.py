@@ -53,12 +53,54 @@ def _fit_plane_basis(
         )
         return False, basis
 
-    p = points.astype(np.float64, copy=False)
-    origin = p.mean(axis=0)
-    centered = p - origin
+    origin = points.mean(axis=0, dtype=np.float64)
+    mins = np.min(points, axis=0)
+    maxs = np.max(points, axis=0)
+    diag = float(np.linalg.norm(maxs.astype(np.float64) - mins.astype(np.float64)))
+    threshold = max(float(eps_abs), float(eps_rel) * diag)
 
-    _u, _s, vh = np.linalg.svd(centered, full_matrices=False)
-    normal = vh[-1]
+    # Fast-path: 入力が XY 平面上（z 残差のみで共平面判定できる）なら、重い推定をスキップする。
+    z = points[:, 2].astype(np.float64, copy=False)
+    z_residual = float(np.max(np.abs(z - float(origin[2]))))
+    if z_residual <= threshold:
+        basis = _PlaneBasis(
+            origin=np.asarray(origin, dtype=np.float64),
+            u=np.array([1.0, 0.0, 0.0], dtype=np.float64),
+            v=np.array([0.0, 1.0, 0.0], dtype=np.float64),
+        )
+        return True, basis
+
+    # SVD（(N,3)）は重いので、3x3 共分散行列の固有分解で法線を推定する。
+    x = points[:, 0]
+    y = points[:, 1]
+    zz = points[:, 2]
+    sxx = float(np.sum(x * x, dtype=np.float64))
+    sxy = float(np.sum(x * y, dtype=np.float64))
+    sxz = float(np.sum(x * zz, dtype=np.float64))
+    syy = float(np.sum(y * y, dtype=np.float64))
+    syz = float(np.sum(y * zz, dtype=np.float64))
+    szz = float(np.sum(zz * zz, dtype=np.float64))
+
+    S = np.array(
+        [
+            [sxx, sxy, sxz],
+            [sxy, syy, syz],
+            [sxz, syz, szz],
+        ],
+        dtype=np.float64,
+    )
+    C = S - float(points.shape[0]) * np.outer(origin, origin)
+    try:
+        _w, v = np.linalg.eigh(C)
+    except Exception:
+        basis = _PlaneBasis(
+            origin=np.asarray(origin, dtype=np.float64),
+            u=np.array([1.0, 0.0, 0.0], dtype=np.float64),
+            v=np.array([0.0, 1.0, 0.0], dtype=np.float64),
+        )
+        return False, basis
+
+    normal = v[:, 0]
     n_norm = float(np.linalg.norm(normal))
     if not np.isfinite(n_norm) or n_norm <= 0.0:
         basis = _PlaneBasis(
@@ -69,11 +111,8 @@ def _fit_plane_basis(
         return False, basis
     normal = normal / n_norm
 
-    residual = np.max(np.abs(centered @ normal))
-    mins = np.min(p, axis=0)
-    maxs = np.max(p, axis=0)
-    diag = float(np.linalg.norm(maxs - mins))
-    threshold = max(float(eps_abs), float(eps_rel) * diag)
+    d = points @ normal - float(np.dot(origin, normal))
+    residual = float(np.max(np.abs(d)))
     planar = bool(residual <= threshold)
 
     # 基底の向きを安定させるため、world x 軸の平面内射影を u として採用する。
@@ -96,20 +135,23 @@ def _fit_plane_basis(
 
 def _project_to_2d(points: np.ndarray, basis: _PlaneBasis) -> np.ndarray:
     """3D 点群を平面 2D 座標へ射影する。"""
-    p = points.astype(np.float64, copy=False) - basis.origin
-    x = p @ basis.u
-    y = p @ basis.v
+    # dtype 混在での暗黙キャスト（(N,3) の一時コピー）を避けるため、基底だけ float32 へ落とす。
+    u = basis.u.astype(np.float32, copy=False)
+    v = basis.v.astype(np.float32, copy=False)
+    o = basis.origin.astype(np.float32, copy=False)
+
+    x = points @ u - float(o @ u)
+    y = points @ v - float(o @ v)
     return np.stack([x, y], axis=1).astype(np.float32, copy=False)
 
 
 def _lift_to_3d(coords_2d: np.ndarray, basis: _PlaneBasis) -> np.ndarray:
     """2D 点群を 3D 空間へ戻す。"""
-    xy = coords_2d.astype(np.float64, copy=False)
-    return (
-        basis.origin[None, :]
-        + xy[:, 0:1] * basis.u[None, :]
-        + xy[:, 1:2] * basis.v[None, :]
-    ).astype(np.float32, copy=False)
+    xy = coords_2d.astype(np.float32, copy=False)
+    u = basis.u.astype(np.float32, copy=False)
+    v = basis.v.astype(np.float32, copy=False)
+    o = basis.origin.astype(np.float32, copy=False)
+    return o[None, :] + xy[:, 0:1] * u[None, :] + xy[:, 1:2] * v[None, :]
 
 
 def _ensure_closed_2d(loop: np.ndarray) -> np.ndarray:
@@ -199,7 +241,8 @@ def partition(
         return base
 
     try:
-        from shapely.geometry import MultiPoint, Point, Polygon  # type: ignore
+        import shapely  # type: ignore
+        from shapely.geometry import MultiPoint, Polygon  # type: ignore
         from shapely.ops import voronoi_diagram  # type: ignore
     except Exception as exc:  # pragma: no cover
         raise RuntimeError("partition effect は shapely が必要です") from exc
@@ -219,7 +262,7 @@ def partition(
     if not rings_2d:
         return base
 
-    region = None
+    polys = []
     for ring in rings_2d:
         try:
             poly = Polygon(ring)
@@ -229,7 +272,30 @@ def partition(
             continue
         if poly.is_empty:
             continue
-        region = poly if region is None else region.symmetric_difference(poly)
+        polys.append(poly)
+
+    region = None
+    if len(polys) == 1:
+        region = polys[0]
+    elif len(polys) == 2:
+        a, b = polys
+        if a.geom_type == "Polygon" and b.geom_type == "Polygon" and a.contains(b):
+            try:
+                region = Polygon(a.exterior.coords, holes=[b.exterior.coords])
+            except Exception:
+                region = a.symmetric_difference(b)
+        elif a.geom_type == "Polygon" and b.geom_type == "Polygon" and b.contains(a):
+            try:
+                region = Polygon(b.exterior.coords, holes=[a.exterior.coords])
+            except Exception:
+                region = a.symmetric_difference(b)
+        elif a.disjoint(b):
+            region = a.union(b)
+        else:
+            region = a.symmetric_difference(b)
+    else:
+        for poly in polys:
+            region = poly if region is None else region.symmetric_difference(poly)
 
     if region is None or region.is_empty:
         return base
@@ -243,13 +309,21 @@ def partition(
 
     pts: list[tuple[float, float]] = []
     if width > 0.0 and height > 0.0:
-        trials = max(1000, site_count * 50)
-        while len(pts) < site_count and trials > 0:
-            rx = float(minx) + float(rng.random()) * width
-            ry = float(miny) + float(rng.random()) * height
-            if region.covers(Point(rx, ry)):
-                pts.append((rx, ry))
-            trials -= 1
+        trials_left = max(1000, site_count * 50)
+        batch = max(256, site_count * 20)
+        while len(pts) < site_count and trials_left > 0:
+            n = min(int(batch), int(trials_left))
+            xs = float(minx) + rng.random(n) * width
+            ys = float(miny) + rng.random(n) * height
+            mask = shapely.contains_xy(region, xs, ys)
+
+            if np.any(mask):
+                accepted = np.stack([xs[mask], ys[mask]], axis=1)
+                need = int(site_count) - len(pts)
+                for x, y in accepted[:need]:
+                    pts.append((float(x), float(y)))
+
+            trials_left -= n
 
     if not pts:
         try:
@@ -282,8 +356,7 @@ def partition(
         return base
 
     def _sort_key(loop: np.ndarray) -> tuple[float, float]:
-        pts = loop[:-1] if loop.shape[0] >= 2 and np.allclose(loop[0], loop[-1]) else loop
-        c = pts.astype(np.float64, copy=False).mean(axis=0)
+        c = loop[:-1].astype(np.float64, copy=False).mean(axis=0)
         return (float(c[0]), float(c[1]))
 
     loops_2d.sort(key=_sort_key)
