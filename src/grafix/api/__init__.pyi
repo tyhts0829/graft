@@ -176,16 +176,16 @@ class _EffectBuilder(Protocol):
             center_mode: "auto" のとき複製線の重心中心でスケールし、それ以外は原点中心でスケールする
         """
         ...
-    def fill(self, *, angle_sets: int = ..., angle: float = ..., density: float = ..., spacing_gradient: float = ..., remove_boundary: bool = ...) -> _EffectBuilder:
+    def fill(self, *, angle_sets: int | Sequence[int] = ..., angle: float | Sequence[float] = ..., density: float | Sequence[float] = ..., spacing_gradient: float | Sequence[float] = ..., remove_boundary: bool | Sequence[bool] = ...) -> _EffectBuilder:
         """
         閉領域をハッチングで塗りつぶす。
 
         引数:
-            angle_sets: 方向本数
-            angle: 基準角 [deg]
-            density: 旧仕様の密度スケール
-            spacing_gradient: スキャン方向に沿った線間隔勾配
-            remove_boundary: True なら入力境界（入力ポリライン）を出力から除去する
+            angle_sets: 方向本数（シーケンス指定時はグループごとにサイクル適用）
+            angle: 基準角 [deg]（シーケンス指定時はグループごとにサイクル適用）
+            density: 旧仕様の密度スケール（シーケンス指定時はグループごとにサイクル適用）
+            spacing_gradient: スキャン方向に沿った線間隔勾配（シーケンス指定時はグループごとにサイクル適用）
+            remove_boundary: True なら入力境界（入力ポリライン）を出力から除去する（シーケンス指定時はグループごとにサイクル適用）
         """
         ...
     def mirror(self, *, n_mirror: int = ..., cx: float = ..., cy: float = ..., source_positive_x: bool = ..., source_positive_y: bool = ..., show_planes: bool = ...) -> _EffectBuilder:
@@ -408,16 +408,16 @@ class _E(Protocol):
             center_mode: "auto" のとき複製線の重心中心でスケールし、それ以外は原点中心でスケールする
         """
         ...
-    def fill(self, *, angle_sets: int = ..., angle: float = ..., density: float = ..., spacing_gradient: float = ..., remove_boundary: bool = ...) -> _EffectBuilder:
+    def fill(self, *, angle_sets: int | Sequence[int] = ..., angle: float | Sequence[float] = ..., density: float | Sequence[float] = ..., spacing_gradient: float | Sequence[float] = ..., remove_boundary: bool | Sequence[bool] = ...) -> _EffectBuilder:
         """
         閉領域をハッチングで塗りつぶす。
 
         引数:
-            angle_sets: 方向本数
-            angle: 基準角 [deg]
-            density: 旧仕様の密度スケール
-            spacing_gradient: スキャン方向に沿った線間隔勾配
-            remove_boundary: True なら入力境界（入力ポリライン）を出力から除去する
+            angle_sets: 方向本数（シーケンス指定時はグループごとにサイクル適用）
+            angle: 基準角 [deg]（シーケンス指定時はグループごとにサイクル適用）
+            density: 旧仕様の密度スケール（シーケンス指定時はグループごとにサイクル適用）
+            spacing_gradient: スキャン方向に沿った線間隔勾配（シーケンス指定時はグループごとにサイクル適用）
+            remove_boundary: True なら入力境界（入力ポリライン）を出力から除去する（シーケンス指定時はグループごとにサイクル適用）
         """
         ...
     def mirror(self, *, n_mirror: int = ..., cx: float = ..., cy: float = ..., source_positive_x: bool = ..., source_positive_y: bool = ..., show_planes: bool = ...) -> _EffectBuilder:

@@ -1,7 +1,7 @@
 ---
 title: fill の引数を sequence 対応（グループ単位サイクル）
 date: 2025-12-20
-status: draft
+status: done
 ---
 
 # 背景
@@ -88,12 +88,12 @@ status: draft
 
 # 作業チェックリスト
 
-- [ ] `fill()` 引数の sequence 対応方針を確定（In/Out の最終確認、remove_boundary 含む）
-- [ ] `fill.py` に “cycle 正規化” ヘルパーを追加
-- [ ] planar 経路を groupwise cycle に置換（`gi`/`k_i`/`angle_i`/`density_i`/`grad_i`）
-- [ ] non-planar 経路を polywise cycle に置換（`poly_i` を `gi` とする）
-- [ ] `remove_boundary` を groupwise/polywise cycle に対応させる（境界追加の位置を調整）
-- [ ] docstring を更新
-- [ ] テスト追加（上のテスト案）
-- [ ] `pytest` で確認
-- [ ] （必要なら）`src/grafix/api/__init__.pyi` を更新
+- [x] `fill()` 引数の sequence 対応方針を確定（In/Out の最終確認、remove_boundary 含む）
+- [x] `fill.py` に “cycle 正規化” ヘルパーを追加
+- [x] planar 経路を groupwise cycle に置換（`gi`/`k_i`/`angle_i`/`density_i`/`grad_i`）
+- [x] non-planar 経路を polywise cycle に置換（`poly_i` を `gi` とする）
+- [x] `remove_boundary` を groupwise/polywise cycle に対応させる（境界追加の位置を調整）
+- [x] docstring を更新
+- [x] テスト追加（上のテスト案）
+- [x] `pytest` で確認
+- [x] （必要なら）`src/grafix/api/__init__.pyi` を更新（スタブ生成側も更新）

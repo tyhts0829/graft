@@ -141,11 +141,27 @@ def _type_for_kind(kind: str) -> str:
         return "bool"
     if kind == "str":
         return "str"
+    if kind == "font":
+        return "str"
     if kind == "choice":
         return "str"
     if kind == "vec3":
         return "Vec3"
     return "Any"
+
+
+def _override_type_for_effect_param(effect_name: str, param_name: str) -> str | None:
+    if effect_name != "fill":
+        return None
+
+    # `fill` は「グループごとにサイクルさせる」用途のため、シーケンス指定も許可する。
+    if param_name == "angle_sets":
+        return "int | Sequence[int]"
+    if param_name in {"angle", "density", "spacing_gradient"}:
+        return "float | Sequence[float]"
+    if param_name == "remove_boundary":
+        return "bool | Sequence[bool]"
+    return None
 
 
 def _resolve_impl_callable(kind: str, name: str) -> Any | None:
@@ -246,8 +262,8 @@ def _render_g_protocol(primitive_names: list[str]) -> str:
         if meta_by_name:
             for p in param_order:
                 pm = meta_by_name[p]
-                kind = getattr(pm, "kind", "")
-                params.append(f"{p}: {_type_for_kind(str(kind))} = ...")
+                kind = str(getattr(pm, "kind", ""))
+                params.append(f"{p}: {_type_for_kind(kind)} = ...")
         else:
             params = ["**params: Any"]
 
@@ -295,8 +311,9 @@ def _render_effect_builder_protocol(effect_names: list[str]) -> str:
         if meta_by_name:
             for p in param_order:
                 pm = meta_by_name[p]
-                kind = getattr(pm, "kind", "")
-                params.append(f"{p}: {_type_for_kind(str(kind))} = ...")
+                kind = str(getattr(pm, "kind", ""))
+                override = _override_type_for_effect_param(eff, p)
+                params.append(f"{p}: {override or _type_for_kind(kind)} = ...")
         else:
             params = ["**params: Any"]
 
@@ -345,8 +362,9 @@ def _render_e_protocol(effect_names: list[str]) -> str:
         if meta_by_name:
             for p in param_order:
                 pm = meta_by_name[p]
-                kind = getattr(pm, "kind", "")
-                params.append(f"{p}: {_type_for_kind(str(kind))} = ...")
+                kind = str(getattr(pm, "kind", ""))
+                override = _override_type_for_effect_param(eff, p)
+                params.append(f"{p}: {override or _type_for_kind(kind)} = ...")
         else:
             params = ["**params: Any"]
 
