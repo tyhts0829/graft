@@ -248,7 +248,14 @@ def _render_scripts(*, payload_json: str) -> str:
     if (!canvas) return;
 
     const labels = REPORT.runs.map(r => r.run_id);
-    const datasets = spec.datasets || [];
+    const datasets = (spec.datasets || []).map(ds => {
+      const data = (ds.data || []).map(v => {
+        if (v === null || v === undefined) return null;
+        const n = Number(v);
+        return Number.isFinite(n) && n > 0 ? n : null;
+      });
+      return { ...ds, data };
+    });
 
     const chart = new Chart(canvas, {
       type: 'line',
@@ -274,8 +281,19 @@ def _render_scripts(*, payload_json: str) -> str:
             grid: { color: 'rgba(255,255,255,0.06)' },
           },
           y: {
-            title: { display: true, text: 'mean_ms' },
+            type: 'logarithmic',
+            title: { display: true, text: 'mean_ms (log10)' },
             grid: { color: 'rgba(255,255,255,0.06)' },
+            ticks: {
+              callback: (value) => {
+                const v = Number(value);
+                if (!Number.isFinite(v)) return '';
+                if (v >= 10) return `${v.toFixed(0)} ms`;
+                if (v >= 1) return `${v.toFixed(1)} ms`;
+                if (v >= 0.1) return `${v.toFixed(2)} ms`;
+                return `${v.toFixed(3)} ms`;
+              },
+            },
           },
         },
         plugins: {
