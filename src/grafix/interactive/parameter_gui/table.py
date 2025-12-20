@@ -17,6 +17,79 @@ from .widgets import render_value_widget
 
 COLUMN_WEIGHTS_DEFAULT = (0.20, 0.60, 0.15, 0.20)
 
+GROUP_HEADER_BASE_COLORS_RGBA: dict[str, tuple[int, int, int, int]] = {
+    "style": (51, 102, 217, 140),
+    "primitive": (152, 74, 74, 140),
+    "effect": (53, 117, 76, 140),
+}
+
+
+def _clamp01(x: float) -> float:
+    """0..1 に clamp した値を返す。"""
+
+    if x <= 0.0:
+        return 0.0
+    if x >= 1.0:
+        return 1.0
+    return float(x)
+
+
+def _rgba01_from_rgba255(
+    rgba: tuple[int, int, int, int],
+) -> tuple[float, float, float, float]:
+    """0..255 の RGBA を 0..1 の RGBA に変換して返す。"""
+
+    r, g, b, a = rgba
+    return (
+        _clamp01(float(r) / 255.0),
+        _clamp01(float(g) / 255.0),
+        _clamp01(float(b) / 255.0),
+        _clamp01(float(a) / 255.0),
+    )
+
+
+def _derive_header_colors(
+    base: tuple[float, float, float, float],
+) -> tuple[
+    tuple[float, float, float, float],
+    tuple[float, float, float, float],
+    tuple[float, float, float, float],
+]:
+    """(normal, hovered, active) のヘッダ色を base から作る。"""
+
+    normal = base
+
+    def _tint_towards_white(
+        rgba: tuple[float, float, float, float],
+        *,
+        t: float,
+        alpha_add: float,
+    ) -> tuple[float, float, float, float]:
+        t = _clamp01(float(t))
+        r, g, b, a = rgba
+        return (
+            _clamp01(r * (1.0 - t) + 1.0 * t),
+            _clamp01(g * (1.0 - t) + 1.0 * t),
+            _clamp01(b * (1.0 - t) + 1.0 * t),
+            _clamp01(a + float(alpha_add)),
+        )
+
+    # hover/active の色は base から自動導出する（白方向へ補間 + alpha を少し増やす）。
+    hovered = _tint_towards_white(base, t=0.12, alpha_add=0.08)
+    active = _tint_towards_white(base, t=0.22, alpha_add=0.14)
+    return normal, hovered, active
+
+
+def _header_kind_for_group_id(group_id: tuple[str, object]) -> str | None:
+    """GroupBlock.group_id からヘッダ種別（style/primitive/effect）を返す。"""
+
+    group_type = str(group_id[0])
+    if group_type == "effect_chain":
+        return "effect"
+    if group_type in {"style", "primitive"}:
+        return group_type
+    return None
+
 
 def _row_visible_label(row: ParameterRow) -> str:
     """行の表示ラベル（`op#ordinal arg`）を返す。"""
@@ -433,11 +506,26 @@ def render_parameter_table(
             # visible=None なので close ボタン無しで常に表示する。
             group_open = True
             if block.header:
-                group_open, _visible = imgui.collapsing_header(
-                    f"{block.header}##group_header",
-                    None,
-                    flags=imgui.TREE_NODE_DEFAULT_OPEN,
-                )
+                color_count = 0
+                header_kind = _header_kind_for_group_id(block.group_id)
+                if header_kind is not None:
+                    base_rgba255 = GROUP_HEADER_BASE_COLORS_RGBA.get(header_kind)
+                    if base_rgba255 is not None:
+                        base = _rgba01_from_rgba255(base_rgba255)
+                        normal, hovered, active = _derive_header_colors(base)
+                        imgui.push_style_color(imgui.COLOR_HEADER, *normal)
+                        imgui.push_style_color(imgui.COLOR_HEADER_HOVERED, *hovered)
+                        imgui.push_style_color(imgui.COLOR_HEADER_ACTIVE, *active)
+                        color_count = 3
+                try:
+                    group_open, _visible = imgui.collapsing_header(
+                        f"{block.header}##group_header",
+                        None,
+                        flags=imgui.TREE_NODE_DEFAULT_OPEN,
+                    )
+                finally:
+                    if color_count:
+                        imgui.pop_style_color(color_count)
 
             if not group_open:
                 # 折りたたみ中は描画しないが、rows_after の長さを揃えるため “変更なし” として返す。

@@ -130,7 +130,9 @@ class ParameterGUI:
         imgui.set_next_window_size(self._window.width, self._window.height)
         imgui.begin(
             self._title,
-            flags=imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_COLLAPSE,
+            flags=imgui.WINDOW_NO_RESIZE
+            | imgui.WINDOW_NO_COLLAPSE
+            | imgui.WINDOW_NO_TITLE_BAR,
         )
 
         # ParamStore をテーブルとして描画し、編集結果を store に反映する。

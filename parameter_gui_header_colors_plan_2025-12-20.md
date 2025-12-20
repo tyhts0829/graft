@@ -27,6 +27,7 @@
   - `imgui.COLOR_HEADER`, `imgui.COLOR_HEADER_HOVERED`, `imgui.COLOR_HEADER_ACTIVE` を種類ごとの RGBA へ差し替える。
 - 色定義は「後から調整しやすい」形で 1 箇所にまとめる。
   - 例: `GROUP_HEADER_COLORS: dict[str, tuple[rgba, rgba, rgba]]` のような定数 or 小さな純粋関数。
+- hover / active はベース色から自動導出する（例: 白方向へ補間 + alpha を少し増やす）。
 - 例外や早期 continue でも `pop_style_color` が漏れないように、ヘッダ描画部分だけ小さく `try/finally` で囲う。
   - ただし、過剰な抽象化（コンテキストマネージャ化等）はしない。
 
@@ -34,15 +35,16 @@
 
 ### P0: 仕様決め（先に合意する）
 
-- [ ] 3 色（Style / Primitive / Effect）のベース色を決める（RGBA の具体値）
-- [ ] テキスト色も変えるか決める（基本は背景だけ、必要なら `imgui.COLOR_TEXT` をヘッダ描画の間だけ変更）
-- [ ] `effect_chain` を “Effect” と見なす扱いで OK か確認する
+- [x] 3 色（Style / Primitive / Effect）のベース色を決める（RGBA の具体値）
+  - 実装: `src/grafix/interactive/parameter_gui/table.py` の `GROUP_HEADER_BASE_COLORS_RGBA`
+- [x] テキスト色も変えるか決める（基本は背景だけ、必要なら `imgui.COLOR_TEXT` をヘッダ描画の間だけ変更）
+- [x] `effect_chain` を “Effect” と見なす扱いで OK か確認する
 
 ### P1: 実装（Parameter GUI）
 
-- [ ] `table.py` に「種類 → ヘッダ色」マッピング（定数 or 純粋関数）を追加する
-- [ ] `imgui.collapsing_header` の前後に `push_style_color` / `pop_style_color` を追加する
-- [ ] Style / Primitive / Effect それぞれで色が切り替わることを確認する
+- [x] `table.py` に「種類 → ヘッダ色」マッピング（定数 or 純粋関数）を追加する
+- [x] `imgui.collapsing_header` の前後に `push_style_color` / `pop_style_color` を追加する
+- [ ] Style / Primitive / Effect それぞれで色が切り替わることを確認する（目視）
 
 ### P2: テスト（壊れにくい所だけ）
 
@@ -51,17 +53,17 @@
 
 ### P3: 検証（変更後に回す）
 
-- [ ] `PYTHONPATH=src pytest -q tests/interactive/parameter_gui`
-- [ ] `ruff check src/grafix/interactive/parameter_gui/table.py`
+- [x] `PYTHONPATH=src pytest -q tests/interactive/parameter_gui`
+- [ ] `ruff check src/grafix/interactive/parameter_gui/table.py`（この環境では `ruff` コマンドが無い）
 - [ ] 目視確認: `python sketch/main.py`（`parameter_gui=True`）で Style / Primitive / Effect のヘッダ色が分かれている
 
 ## Done の定義（受け入れ条件）
 
 - [ ] Style / Primitive / Effect のヘッダ背景色が明確に異なる
 - [ ] hover / active の見た目が破綻しない（押下時に読める）
-- [ ] 既存の Parameter GUI テストが通る（少なくとも `tests/interactive/parameter_gui`）
+- [x] 既存の Parameter GUI テストが通る（少なくとも `tests/interactive/parameter_gui`）
 
 ## 事前確認したいこと（あなたに質問）
 
-- [ ] それぞれの色味の希望（例: Style=青系 / Primitive=緑系 / Effect=紫 or オレンジ系 など）はある？；ない。でも、種類と色の定数辞書みたいなのをモジュール先頭の見やすいところに定義しておいてほしい。あとから調整するから。hover, active とかの反応色は、それらから自動で定まるようにしておいて。
-- [ ] 「Style（global + layer_style）」は同じ色でまとめて OK？；はい
+- [x] それぞれの色味の希望（例: Style=青系 / Primitive=緑系 / Effect=紫 or オレンジ系 など）はある？；ない。でも、種類と色の定数辞書みたいなのをモジュール先頭の見やすいところに定義しておいてほしい。あとから調整するから。hover, active とかの反応色は、それらから自動で定まるようにしておいて。
+- [x] 「Style（global + layer_style）」は同じ色でまとめて OK？；はい
