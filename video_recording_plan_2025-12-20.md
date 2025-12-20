@@ -5,6 +5,7 @@
 ## Requirements（要件）
 
 - 描画中に `V` キーで録画開始、もう一度 `V` キーで録画終了
+- ショートカット（`S`: SVG 保存 / `V`: 録画トグル）は「描画ウィンドウにフォーカスがあるときのみ」有効（Parameter GUI では無効）
 - 出力フォルダ: `data/output/video`
 - ファイル名: SVG と同じく `{script_stem}.{拡張子}`
   - `script_stem` は `default_param_store_path(draw).stem` と同一の算出規則
@@ -22,7 +23,7 @@
 
 - `src/grafix/interactive/runtime/draw_window_system.py`（キー入力 + フレームキャプチャの呼び出し）
 - `src/grafix/interactive/runtime/window_loop.py`（基本は触らない想定。必要なら「flip 前キャプチャ」の調整）
-- `src/grafix/api/run.py`（必要なら GUI ウィンドウ側にも V トグル配線）
+- `src/grafix/api/run.py`（Parameter GUI 側の `S` ショートカット配線を撤去し、誤爆を防ぐ）
 - 追加: `src/grafix/interactive/runtime/video_recorder.py`（録画器: ffmpeg 起動/フレーム投入/終了処理）
 
 ## Design（方針）
@@ -34,6 +35,9 @@
 
 ## Action items（チェックリスト）
 
+- [ ] ショートカット方針を反映（保存/録画は描画ウィンドウのみで発火）
+  - [ ] Parameter GUI 側の `S`（SVG 保存）配線を削除し、描画ウィンドウ `S` のみに統一
+  - [ ] `V`（録画トグル）は描画ウィンドウ側のみで実装（GUI には配線しない）
 - [ ] 出力仕様の確定（拡張子/コーデック/固定 FPS の値）
   - 既定案: `{script_stem}.mp4` / 60fps / H.264（`libx264`）
 - [ ] `VideoRecorder`（新規）を実装
@@ -45,7 +49,6 @@
   - [ ] `on_key_press` で `key.V` を検知し、未録画 →start / 録画中 →stop
   - [ ] `draw_frame()` の末尾で「録画中なら framebuffer を read して 1 フレーム書く」
   - [ ] `close()` で録画中なら必ず stop（例外でもプロセスが残らないように）
-- [ ] （任意）Parameter GUI 側でも V を有効化するか判断し、必要なら `run.py` へ配線追加
 - [ ] 最小テスト追加（ユニット中心）
   - [ ] 出力パス生成（`script_stem` / `data/output/video` / 拡張子）のテスト
   - [ ] ffmpeg コマンド組み立てのテスト（起動自体は integration 扱いでも良い）
@@ -64,9 +67,10 @@
 - `ffmpeg` が未インストールの場合の挙動（起動失敗をどう扱うか）
 - 録画中の負荷（フレーム read が重いと FPS が落ちる可能性）
 - Retina 等での解像度/上下反転（`get_framebuffer_size` と `vflip` の整合）
+- Parameter GUI にフォーカスがある間はショートカットが効かない（誤爆防止の仕様）
 
 ## Open questions（要確認）
 
 - 出力拡張子は `.mp4` で固定で良い？（`.webm` 等が良いなら変更）；.mp4 で OK
-- 録画 FPS は 60 固定で良い？（`MultiWindowLoop(fps=60.0)` に追従）
-- `V` トグルは「描画ウィンドウのみ」か「GUI ウィンドウからも」必要？；両方から効くようにしたいけど、実装が複雑になる？
+- 録画 FPS は 60 固定で良い？（`MultiWindowLoop(fps=60.0)` に追従）；run 関数の引数で指定した値で制御されてほしい。
+- `V` トグルは「描画ウィンドウのみ」か「GUI ウィンドウからも」必要？；GUI のテキスト入力誤爆を避けるため、描画ウィンドウのみで固定する。
