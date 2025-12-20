@@ -6,11 +6,25 @@
 - 対象は `src/grafix/core/effects/mirror.py`（必要なら同ファイル内のヘルパ整理まで）。
 - 指標はベンチ（`tools/benchmarks/effect_benchmark.py`）とテスト（`tests/core/effects/test_mirror.py`）の維持。
 
+## 実データ傾向（遅い入力）
+
+- 大きめの閉曲線（正多角形リング）
+  - `verts=5001 lines=1 closed_lines=1`（`tools/benchmarks/cases.py` の `ring_big` と同等）
+- 1 本の長い折れ線（頂点数が多い）
+  - `verts=50000 lines=1 closed_lines=0`（`tools/benchmarks/cases.py` の `polyline_long` と同等）
+
+方針:
+
+- 上記 2 ケース（「1 本が長い」「閉曲線 1 本」）を主指標として最適化する。
+- `many_lines`（線分が多い）専用の最適化は後回しにする（必要になったら P1/P2 に追加）。
+
 ## ベースライン計測（先にやる）
 
 - [ ] `mirror` 単体のベンチを取得する（HTML/JSON を保存）
-  - `PYTHONPATH=src python -m tools.benchmarks.effect_benchmark --only mirror --cases polyline_long,many_lines,ring_big --repeats 10 --warmup 2 --disable-gc`
+  - `PYTHONPATH=src python -m tools.benchmarks.effect_benchmark --only mirror --cases polyline_long,ring_big --repeats 10 --warmup 2 --disable-gc`
   - 注: 現状のベンチは `mirror` の `n_mirror=3` 固定（`tools/benchmarks/effect_benchmark.py` の overrides）
+- [ ] （任意）`many_lines` も確認する（「線が多い」で遅い問題が残っていないか）
+  - `PYTHONPATH=src python -m tools.benchmarks.effect_benchmark --only mirror --cases many_lines --repeats 10 --warmup 2 --disable-gc`
 - [ ] 追加で `n_mirror=1/2` の支配ケースも見たい場合、手段を決める（どれか）
   - A: ベンチツールに「effect パラメータ上書き」オプションを足す（最小: `--param mirror.n_mirror=1`）
   - B: `tools/benchmarks` に `mirror` 専用の小ベンチスクリプトを追加する
@@ -18,8 +32,8 @@
 ## 現状メモ（ボトルネック候補）
 
 - `_clip_polyline_halfspace()` / `_clip_polyline_halfplane()` が「頂点ごとの Python ループ」＋「点ごとの `copy()`」になっている。
-  - `polyline_long`（50k 頂点）で支配的になりやすい。
-  - `many_lines`（5k 本）では「ループ固定費＋小配列大量生成」が支配的になりやすい。
+  - `polyline_long`（50k 頂点）で支配的になりやすい（この 1 本のループを速くするのが効く）。
+  - `ring_big`（5k 頂点・閉曲線）でも、楔/半空間で分割が起きると同様に効く。
 - `_clip_polyline_halfplane()` が毎回 `normal` の正規化（`np.linalg.norm`）と `cxy` の生成をしている（ループ内で繰り返し）。
 - `n_mirror>=3` は 1 本のソースから `2*n` 回の回転生成が走る（`_rotate_xy()` の呼び出し回数が増える）。
   - 各回で `sin/cos` を計算し、`out[:,0/1]` のコピーも作っている。
@@ -49,9 +63,9 @@
     - 反射で「完全に同一になり得る」ケースだけ生成時にスキップする（例: `x==cx` の線は `_reflect_x` を追加しない）
     - `n>=3` でも「境界線上（楔の 2 辺）に乗っている」場合だけ dedup を掛ける
   - ねらい: 重複が無い通常ケースで `O(total_vertices)` 量子化コストを消す
-- [ ] `many_lines` 向けに「小配列の大量生成」を減らす（2 パス: count → 一括確保 → fill）
-  - ねらい: `np.vstack`/`list[np.ndarray]` の断片化と GC を減らす
-  - 注意: クリップで分割が起きるため、まずは P0 の効果を見てから判断する
+- [ ] （低優先）出力構築を「一括確保 + fill」に寄せる（list/小配列の断片化を減らす）
+  - ねらい: `ring_big` で分割が多いケースや、将来 `many_lines` が遅い場合にも効く
+  - 注意: まずは P0/P1（dedup 条件付き化）の効果を見てから判断する
 - [ ] `show_planes=True` の bbox 計算を「`uniq` の vstack を作らずに集計」へ変更する（min/max を走査で取る）
   - ねらい: 可視化時の巨大な一時配列を避ける
 
@@ -78,11 +92,11 @@
   - `ruff check src/grafix/core/effects/mirror.py tests/core/effects/test_mirror.py`
   - `mypy src/grafix`
 - [ ] ベンチ（ベースラインと同条件で再計測して `mean_ms` 比較）
-  - `PYTHONPATH=src python -m tools.benchmarks.effect_benchmark --only mirror --cases polyline_long,many_lines,ring_big --repeats 10 --warmup 2 --disable-gc`
+  - `PYTHONPATH=src python -m tools.benchmarks.effect_benchmark --only mirror --cases polyline_long,ring_big --repeats 10 --warmup 2 --disable-gc`
 
 ## Done の定義（受け入れ条件）
 
-- [ ] 代表ケース（`polyline_long` / `many_lines`）で実測の改善が出ている（目標はあなたと決める）
+- [ ] 代表ケース（`polyline_long` / `ring_big`）で実測の改善が出ている（目標はあなたと決める）
 - [ ] `tests/core/effects/test_mirror.py` が通る
 - [ ] 仕様（クリップ方針、境界の扱い、z 不変）が維持される（変更するならこの md に明記して合意する）
 
@@ -90,4 +104,4 @@
 
 - [ ] 最優先で速くしたい分岐はどれか（`n_mirror=1` / `2` / `>=3`）
 - [ ] `dedup` を「条件付き」に変えるのは許容か（=通常ケースでは重複除去を省略する）
-- [ ] Numba での高速化（初回 JIT コストあり）まで踏み込んで良いか；はい
+- [ ] Numba での高速化（初回 JIT コストあり）まで踏み込んで良いか

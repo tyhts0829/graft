@@ -31,6 +31,8 @@ fill_meta = {
 
 
 def _empty_geometry() -> RealizedGeometry:
+    # RealizedGeometry の「空」表現。
+    # offsets は常に先頭 0 を 1 つ持つ（ポリライン 0 本の意味）。
     coords = np.zeros((0, 3), dtype=np.float32)
     offsets = np.zeros((1,), dtype=np.int32)
     return RealizedGeometry(coords=coords, offsets=offsets)
@@ -38,6 +40,9 @@ def _empty_geometry() -> RealizedGeometry:
 
 def _planarity_threshold(points: np.ndarray) -> float:
     """点群スケールに基づく平面性判定の閾値を返す。"""
+    # スケール依存の許容誤差:
+    # - 小さな形状では絶対誤差（eps_abs）が支配
+    # - 大きな形状では相対誤差（eps_rel * 対角長）が支配
     if points.size == 0:
         return float(NONPLANAR_EPS_ABS)
     p = points.astype(np.float64, copy=False)
@@ -49,6 +54,8 @@ def _planarity_threshold(points: np.ndarray) -> float:
 
 def _polygon_area_abs(vertices: np.ndarray) -> float:
     """2D ポリゴンの面積絶対値を返す（閉じは仮定しない）。"""
+    # Shoelace formula（頂点列が「閉じている/いない」どちらでも動く）。
+    # fill の用途では、向き（符号）ではなく面積スケール比較に使うため絶対値。
     if vertices.shape[0] < 3:
         return 0.0
     x = vertices[:, 0].astype(np.float64, copy=False)
@@ -58,6 +65,10 @@ def _polygon_area_abs(vertices: np.ndarray) -> float:
 
 def _point_in_polygon(point: np.ndarray, polygon: np.ndarray) -> bool:
     """点が多角形内部にあるかを返す（境界上は False 扱い）。"""
+    # 目的:
+    # - even-odd のグルーピング（外環/穴の判定）に使う。
+    # - partition 後のセルは隣接し、代表点が「他セルの境界上」に乗りやすい。
+    #   このとき境界上を inside 扱いすると hole 誤判定が起きるため、境界は必ず False にする。
     x = float(point[0])
     y = float(point[1])
     n = int(polygon.shape[0])
@@ -65,6 +76,8 @@ def _point_in_polygon(point: np.ndarray, polygon: np.ndarray) -> bool:
         return False
 
     # レイキャストの不安定さ（辺/頂点上での揺れ）を避けるため、まず境界上を明示的に除外する。
+    # - 頂点一致: そのまま False
+    # - 辺上: 外積（cross）と内積（dot）で「線分上」を判定して False
     eps = 1e-6
     x1 = float(polygon[-1, 0])
     y1 = float(polygon[-1, 1])
@@ -84,6 +97,7 @@ def _point_in_polygon(point: np.ndarray, polygon: np.ndarray) -> bool:
             and y <= max(y1, y2) + eps
         ):
             cross = dx * (y - y1) - dy * (x - x1)
+            # 辺長が長いほど丸め誤差が増えるため、許容誤差は |dx|+|dy| でスケールさせる。
             if abs(cross) <= eps * max(1.0, abs(dx) + abs(dy)):
                 dot = (x - x1) * (x - x2) + (y - y1) * (y - y2)
                 if dot <= eps * eps:
@@ -92,6 +106,8 @@ def _point_in_polygon(point: np.ndarray, polygon: np.ndarray) -> bool:
         x1, y1 = x2, y2
 
     # 境界上は除外済みのため、標準的な偶奇レイキャストで内部判定する。
+    # 注意:
+    # - 辺上は先で排除しているため、ここは「交点数が奇数なら inside」の素直な実装に寄せる。
     inside = False
     x1 = float(polygon[-1, 0])
     y1 = float(polygon[-1, 1])
@@ -118,9 +134,15 @@ def _estimate_global_xy_transform_pca(
     - 面内回転は「代表リングの最長辺」を +X に合わせて固定する。
     - 返す座標は z=0 に寄せる（代表リング先頭点の z を 0 に合わせる）。
     """
+    # ここで返す aligned_all は「全点を同一平面へ倒した座標」。
+    # fill の本体では、この 2D 座標で:
+    # - 外環＋穴の even-odd グルーピング
+    # - ハッチ線分生成（水平スキャンライン）
+    # を行い、最後に transform_back で元の 3D 姿勢へ戻す。
     if coords.shape[0] < 3 or offsets.size <= 1:
         return None
 
+    # 1) PCA で平面法線を推定（最小分散軸）。
     coords64 = coords.astype(np.float64, copy=False)
     centroid = np.mean(coords64, axis=0)
     centered = coords64 - centroid
@@ -136,9 +158,11 @@ def _estimate_global_xy_transform_pca(
         return None
     normal = normal / n_norm
 
+    # 法線の符号は不定なので、Z が正になるように揃える（姿勢の一意化）。
     if float(normal[2]) < 0.0:
         normal = -normal
 
+    # 2) 推定法線を +Z に合わせる回転を作る。
     z_axis = np.array([0.0, 0.0, 1.0], dtype=np.float64)
     rotation_axis = np.cross(normal, z_axis)
     axis_norm = float(np.linalg.norm(rotation_axis))
@@ -168,6 +192,9 @@ def _estimate_global_xy_transform_pca(
     if not ring_indices:
         return None
 
+    # 3) 面内回転の自由度を潰す（ハッチ方向の安定化）。
+    # 面を Z に倒しただけだと、XY 平面内で任意回転できてしまい、描画がフレームごとに揺れる。
+    # 代表リング（面積最大）の「最初に見つかった非ゼロ辺」を +X に合わせる。
     ref_ring_i = ring_indices[0]
     ref_area = -1.0
     for ring_i in ring_indices:
@@ -208,6 +235,7 @@ def _estimate_global_xy_transform_pca(
     rz[1, 0] = -sin_phi
     rz[1, 1] = cos_phi
 
+    # 4) 最終回転を適用し、z=0 近傍へ寄せる（残差チェックを簡単にする）。
     rot = rz @ r0
     aligned_all = coords64 @ rot.T
     z_offset = float(aligned_all[s_ref, 2])
@@ -220,6 +248,15 @@ def _estimate_global_xy_transform_pca(
 
 def _build_evenodd_groups(coords_2d_all: np.ndarray, offsets: np.ndarray) -> list[list[int]]:
     """外周＋穴を even-odd でグルーピングし、[outer, hole...] のリストを返す。"""
+    # 目的:
+    # - 入力が「外周 + 穴 + 穴の穴 + ...」の入れ子になっていても、
+    #   偶奇規則（even-odd）で「外環ごとに穴をぶら下げた集合」を作る。
+    #
+    # 実装方針（旧実装に寄せたもの）:
+    # 1) 各リングの代表点（第1頂点）を取り、他リングへの内包関係を判定する。
+    # 2) 「内包している外側リングの個数」の偶奇で outer/hole を決める。
+    # 3) hole は、それを含む outer のうち「面積が最小のもの」にぶら下げる。
+    # 4) outer が見つからない hole は単独グループに落とし、リングが脱落しないようにする。
     ring_indices = [
         i
         for i in range(int(offsets.size) - 1)
@@ -236,9 +273,11 @@ def _build_evenodd_groups(coords_2d_all: np.ndarray, offsets: np.ndarray) -> lis
         e = int(offsets[i + 1])
         poly = coords_2d_all[s:e]
         rings[i] = poly
+        # 代表点は「重心」ではなく第1頂点を使う（非凸/ドーナツで重心が穴側へ落ちる破綻を避ける）。
         rep[i] = poly[0]
         area[i] = _polygon_area_abs(poly)
 
+    # containers[i] = 「リング i を含む（と判定された）リング」のリスト。
     containers: dict[int, list[int]] = {i: [] for i in ring_indices}
     for i in ring_indices:
         rp = rep[i]
@@ -248,6 +287,7 @@ def _build_evenodd_groups(coords_2d_all: np.ndarray, offsets: np.ndarray) -> lis
             if _point_in_polygon(rp, rings[j]):
                 containers[i].append(j)
 
+    # even-odd: 内包数が偶数なら outer、奇数なら hole。
     is_outer: dict[int, bool] = {i: (len(containers[i]) % 2) == 0 for i in ring_indices}
     outer_indices = [i for i in ring_indices if is_outer[i]]
     groups: dict[int, list[int]] = {oi: [oi] for oi in outer_indices}
@@ -255,13 +295,16 @@ def _build_evenodd_groups(coords_2d_all: np.ndarray, offsets: np.ndarray) -> lis
     for i in ring_indices:
         if is_outer[i]:
             continue
+        # hole を含む outer が複数ある場合は、最も近い親（面積最小）にぶら下げる。
         cands = [j for j in outer_indices if j in containers[i]]
         if cands:
             j_best = min(cands, key=lambda j: area.get(j, 0.0))
             groups.setdefault(j_best, []).append(i)
         else:
+            # 数値誤差や入力の歪みで outer が見つからない場合でも、ここで脱落させない。
             groups.setdefault(i, []).append(i)
 
+    # 出力順は安定化する: outer は入力順、各グループ内の ring index も昇順。
     ordered: list[list[int]] = []
     for oi in outer_indices:
         ordered.append(sorted(groups.get(oi, [oi])))
@@ -273,6 +316,8 @@ def _build_evenodd_groups(coords_2d_all: np.ndarray, offsets: np.ndarray) -> lis
 
 def _spacing_from_height(height: float, density: float) -> float:
     """高さと密度から線間隔を算出する（旧仕様: round(density) 本相当）。"""
+    # density は「本数そのもの」ではなく「本数スケール」。
+    # 高さから spacing を決めることで、図形サイズや angle の回転に対して見かけ密度を安定化する。
     num_lines = int(round(float(density)))
     if num_lines < 2:
         num_lines = 2
@@ -287,6 +332,8 @@ def _generate_y_values(
     min_y: float, max_y: float, base_spacing: float, spacing_gradient: float
 ) -> np.ndarray:
     """旧仕様のスキャンライン Y 値列を生成する（max_y は含めない）。"""
+    # 入力は「回転後の作業座標」での min/max。
+    # 返す y は「交点計算を行う水平スキャンライン」の列。
     if not np.isfinite(base_spacing) or base_spacing <= 0.0:
         return np.empty(0, dtype=np.float32)
     if not np.isfinite(spacing_gradient):
@@ -302,6 +349,7 @@ def _generate_y_values(
         return np.asarray([mid], dtype=np.float32)
 
     if abs(spacing_gradient) < 1e-6:
+        # 等間隔（旧仕様）
         return np.arange(start, max_y, base_spacing, dtype=np.float32)
 
     height = max_y - min_y
@@ -314,6 +362,7 @@ def _generate_y_values(
     if abs(k) < 1e-3:
         c = 1.0
     else:
+        # exp 勾配の平均間隔が base_spacing 付近に収まるよう正規化係数を入れる。
         c = k / (2.0 * float(np.sinh(k / 2.0)))
 
     y_values: list[float] = []
@@ -343,6 +392,14 @@ def _generate_line_fill_evenodd_multi(
     spacing_gradient: float,
 ) -> list[np.ndarray]:
     """複数輪郭を偶奇規則でまとめてハッチングする（2D 平面前提）。"""
+    # 目的:
+    # - 複数輪郭（外周＋穴）をまとめて扱い、even-odd で内側区間だけを線分化する。
+    #
+    # 手順:
+    # 1) 角度を打ち消す方向に回転し、ハッチが水平になる作業座標を作る。
+    # 2) y=const のスキャンライン列を生成する。
+    # 3) 各スキャンラインとポリゴン辺の交点 x を集め、ソートして [x0,x1],[x2,x3]... を線分にする。
+    # 4) 回転した場合は線分を元角度に戻す。
     if density <= 0.0 or offsets.size <= 1 or coords_2d.size == 0:
         return []
 
@@ -352,10 +409,12 @@ def _generate_line_fill_evenodd_multi(
     rot_fwd: np.ndarray | None = None
 
     if angle_rad != 0.0:
+        # ポリゴンを -angle 回転 → 作業座標ではハッチが水平（y 方向スキャン）になる。
         cos_inv = float(np.cos(-angle_rad))
         sin_inv = float(np.sin(-angle_rad))
         rot_inv = np.array([[cos_inv, -sin_inv], [sin_inv, cos_inv]], dtype=np.float32)
         work = (c2 - center) @ rot_inv.T + center
+        # 線分を元角度へ戻す回転は、先に作っておく（スキャン毎に再計算しない）。
         cos_fwd = float(np.cos(angle_rad))
         sin_fwd = float(np.sin(angle_rad))
         rot_fwd = np.array([[cos_fwd, -sin_fwd], [sin_fwd, cos_fwd]], dtype=np.float32)
@@ -374,6 +433,7 @@ def _generate_line_fill_evenodd_multi(
     y_values = _generate_y_values(min_y, max_y, spacing, float(spacing_gradient))
     out_lines: list[np.ndarray] = []
 
+    # 全輪郭の辺を 1 つの配列へ集約する（交点計算のベクトル化）。
     edges_list: list[np.ndarray] = []
     for i in range(int(offsets.size) - 1):
         s = int(offsets[i])
@@ -384,6 +444,7 @@ def _generate_line_fill_evenodd_multi(
         if poly.shape[0] < 2:
             continue
         nxt = np.roll(poly, -1, axis=0)
+        # [x1,y1,x2,y2] の形にしておくと、交点 x を一括計算しやすい。
         edges_list.append(np.concatenate([poly, nxt], axis=1))
 
     if not edges_list:
@@ -398,15 +459,18 @@ def _generate_line_fill_evenodd_multi(
 
     for y in y_values:
         yy = float(y)
+        # 半開区間で交差判定し、頂点での二重カウントを抑える。
         mask = ((ey1 <= yy) & (yy < ey2)) | ((ey2 <= yy) & (yy < ey1))
         mask &= edy != 0.0
         if not np.any(mask):
             continue
 
+        # 交点の x 座標（線形補間）。水平辺は除外済み。
         xs = ex1[mask] + (yy - ey1[mask]) * edx[mask] / edy[mask]
         if xs.size < 2:
             continue
 
+        # even-odd: ソートした交点を 2 個ずつペアにして内側区間を得る。
         xs_sorted = np.sort(xs.astype(np.float32, copy=False))
         for j in range(0, int(xs_sorted.size) - 1, 2):
             x_a = float(xs_sorted[j])
@@ -415,6 +479,7 @@ def _generate_line_fill_evenodd_multi(
                 continue
             seg2d = np.array([[x_a, float(y)], [x_b, float(y)]], dtype=np.float32)
             if rot_fwd is not None:
+                # 作業座標 → 元角度へ戻す。
                 seg2d = (seg2d - center) @ rot_fwd.T + center
             out_lines.append(seg2d)
     return out_lines
@@ -425,6 +490,8 @@ def _lines_to_realized(lines: Sequence[np.ndarray]) -> RealizedGeometry:
     if not lines:
         return _empty_geometry()
 
+    # RealizedGeometry は「coords 1 本 + offsets」で複数ポリラインを表現する。
+    # ここでは lines を連結し、各線の終端 index を offsets に積む。
     coords_list: list[np.ndarray] = []
     offsets = np.zeros((len(lines) + 1,), dtype=np.int32)
     acc = 0
@@ -472,6 +539,9 @@ def fill(
     RealizedGeometry
         境界線（必要なら）と塗り線を含む実体ジオメトリ。
     """
+    # 返すジオメトリの構造:
+    # - remove_boundary=False: 入力境界ポリライン（そのまま）+ 生成したハッチ線分
+    # - remove_boundary=True : ハッチ線分のみ
     if not inputs:
         return _empty_geometry()
 
@@ -495,6 +565,8 @@ def fill(
     if k < 1:
         k = 1
 
+    # ハッチ角は 180° を k 分割（π/k）する。
+    # （0° と 180° は同方向扱いなので 2π ではなく π）
     # 1) 全体がほぼ平面なら、外周＋穴をグルーピングして even-odd 塗りを行う。
     # 3D -> XY 平面への整列で 2D 化し、生成した線分を元姿勢へ戻す。
     global_threshold = _planarity_threshold(base.coords)
@@ -516,6 +588,7 @@ def fill(
 
         base_angle_rad = float(np.deg2rad(float(angle)))
         for ring_indices in groups:
+            # global では「全体の参照高さ」から spacing を決め、グループ間で見かけ密度が揃うようにする。
             base_spacing = _spacing_from_height(ref_height_global, density)
             if base_spacing <= 0.0:
                 continue
@@ -535,6 +608,7 @@ def fill(
             if not parts or g_offsets[-1] <= 0:
                 continue
 
+            # group の輪郭を 1 本の coords + offsets へ畳んで、交点計算を一括化する。
             g_coords2d = np.concatenate(parts, axis=0)
             for i in range(k):
                 ang_i = base_angle_rad + (np.pi / k) * i
@@ -554,6 +628,7 @@ def fill(
         return _lines_to_realized(out_lines)
 
     # 2) 全体が非平面なら、各ポリラインごとに「平面なら塗り、非平面なら境界のみ」とする。
+    # この経路では外環＋穴の統合は行わない（グローバルな平面が取れないため）。
     base_angle_rad = float(np.deg2rad(float(angle)))
     for poly_i in range(int(base.offsets.size) - 1):
         s = int(base.offsets[poly_i])
