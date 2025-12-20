@@ -64,15 +64,41 @@ def _point_in_polygon(point: np.ndarray, polygon: np.ndarray) -> bool:
     if n < 3:
         return False
 
+    # レイキャストの不安定さ（辺/頂点上での揺れ）を避けるため、まず境界上を明示的に除外する。
+    eps = 1e-6
+    x1 = float(polygon[-1, 0])
+    y1 = float(polygon[-1, 1])
+    for i in range(n):
+        x2 = float(polygon[i, 0])
+        y2 = float(polygon[i, 1])
+
+        if abs(x - x2) <= eps and abs(y - y2) <= eps:
+            return False
+
+        dx = x2 - x1
+        dy = y2 - y1
+        if (
+            x >= min(x1, x2) - eps
+            and x <= max(x1, x2) + eps
+            and y >= min(y1, y2) - eps
+            and y <= max(y1, y2) + eps
+        ):
+            cross = dx * (y - y1) - dy * (x - x1)
+            if abs(cross) <= eps * max(1.0, abs(dx) + abs(dy)):
+                dot = (x - x1) * (x - x2) + (y - y1) * (y - y2)
+                if dot <= eps * eps:
+                    return False
+
+        x1, y1 = x2, y2
+
+    # 境界上は除外済みのため、標準的な偶奇レイキャストで内部判定する。
     inside = False
     x1 = float(polygon[-1, 0])
     y1 = float(polygon[-1, 1])
     for i in range(n):
         x2 = float(polygon[i, 0])
         y2 = float(polygon[i, 1])
-        # y を跨ぐ辺だけを見る（水平辺は除外）。
         if (y1 > y) != (y2 > y):
-            # 交点の x 座標
             x_int = (x2 - x1) * (y - y1) / (y2 - y1) + x1
             if x < x_int:
                 inside = not inside
@@ -202,9 +228,9 @@ def _build_evenodd_groups(coords_2d_all: np.ndarray, offsets: np.ndarray) -> lis
     if not ring_indices:
         return []
 
-    rings = {}
-    rep = {}
-    area = {}
+    rings: dict[int, np.ndarray] = {}
+    rep: dict[int, np.ndarray] = {}
+    area: dict[int, float] = {}
     for i in ring_indices:
         s = int(offsets[i])
         e = int(offsets[i + 1])
@@ -213,44 +239,36 @@ def _build_evenodd_groups(coords_2d_all: np.ndarray, offsets: np.ndarray) -> lis
         rep[i] = poly[0]
         area[i] = _polygon_area_abs(poly)
 
-    contains: dict[int, set[int]] = {j: set() for j in ring_indices}
-    depth: dict[int, int] = {i: 0 for i in ring_indices}
-
+    containers: dict[int, list[int]] = {i: [] for i in ring_indices}
     for i in ring_indices:
+        rp = rep[i]
         for j in ring_indices:
             if i == j:
                 continue
-            if _point_in_polygon(rep[i], rings[j]):
-                contains[j].add(i)
-                depth[i] += 1
+            if _point_in_polygon(rp, rings[j]):
+                containers[i].append(j)
 
-    parent: dict[int, int | None] = {i: None for i in ring_indices}
+    is_outer: dict[int, bool] = {i: (len(containers[i]) % 2) == 0 for i in ring_indices}
+    outer_indices = [i for i in ring_indices if is_outer[i]]
+    groups: dict[int, list[int]] = {oi: [oi] for oi in outer_indices}
+
     for i in ring_indices:
-        if depth[i] <= 0:
+        if is_outer[i]:
             continue
-        candidates = [
-            j
-            for j in ring_indices
-            if j != i and depth.get(j, 0) == depth[i] - 1 and i in contains[j]
-        ]
-        if not candidates:
-            continue
-        parent[i] = min(candidates, key=lambda j: area.get(j, 0.0))
+        cands = [j for j in outer_indices if j in containers[i]]
+        if cands:
+            j_best = min(cands, key=lambda j: area.get(j, 0.0))
+            groups.setdefault(j_best, []).append(i)
+        else:
+            groups.setdefault(i, []).append(i)
 
-    children: dict[int, list[int]] = {i: [] for i in ring_indices}
-    for i in ring_indices:
-        p = parent[i]
-        if p is None:
-            continue
-        children[p].append(i)
-
-    groups: list[list[int]] = []
-    for i in sorted(ring_indices):
-        if depth[i] % 2 != 0:
-            continue
-        holes = sorted(children.get(i, []))
-        groups.append([i, *holes])
-    return groups
+    ordered: list[list[int]] = []
+    for oi in outer_indices:
+        ordered.append(sorted(groups.get(oi, [oi])))
+    for k, v in groups.items():
+        if k not in set(outer_indices):
+            ordered.append(sorted(v))
+    return ordered
 
 
 def _spacing_from_height(height: float, density: float) -> float:
@@ -276,8 +294,15 @@ def _generate_y_values(
     if max_y <= min_y:
         return np.empty(0, dtype=np.float32)
 
+    # スキャンラインが頂点/辺上に一致すると交点が退化しやすい。
+    # half-step でオフセットして内部をサンプリングし、小さなポリゴンでも 1 本は出るようにする。
+    start = float(min_y) + 0.5 * float(base_spacing)
+    if start >= max_y:
+        mid = 0.5 * (float(min_y) + float(max_y))
+        return np.asarray([mid], dtype=np.float32)
+
     if abs(spacing_gradient) < 1e-6:
-        return np.arange(min_y, max_y, base_spacing, dtype=np.float32)
+        return np.arange(start, max_y, base_spacing, dtype=np.float32)
 
     height = max_y - min_y
     k = float(spacing_gradient)
@@ -292,7 +317,7 @@ def _generate_y_values(
         c = k / (2.0 * float(np.sinh(k / 2.0)))
 
     y_values: list[float] = []
-    y = float(min_y)
+    y = float(start)
     min_step = base_spacing * 1e-3
     while y < max_y:
         t = (y - min_y) / height
@@ -302,6 +327,9 @@ def _generate_y_values(
             step = min_step
         y_values.append(y)
         y += step
+    if not y_values:
+        mid = 0.5 * (float(min_y) + float(max_y))
+        return np.asarray([mid], dtype=np.float32)
     return np.asarray(y_values, dtype=np.float32)
 
 

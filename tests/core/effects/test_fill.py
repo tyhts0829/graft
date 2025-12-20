@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from grafix.api import E, G
+from grafix.core.effects.fill import _build_evenodd_groups
 from grafix.core.primitive_registry import primitive
 from grafix.core.realize import realize
 from grafix.core.realized_geometry import RealizedGeometry
@@ -104,6 +105,35 @@ def test_fill_outer_with_hole_avoids_hole_region() -> None:
     for seg in _iter_polylines(realized):
         mid = seg.mean(axis=0)
         assert not (3.0 < float(mid[0]) < 7.0 and 3.0 < float(mid[1]) < 7.0)
+
+
+def test_fill_evenodd_grouping_does_not_treat_touching_polygons_as_hole() -> None:
+    # 隣接セル（共有辺/頂点）の代表点が「境界上」に載るケースを想定し、
+    # グルーピングが誤って hole 扱いしないことを担保する。
+    outer = np.array(
+        [
+            [0.0, 0.0],
+            [2.0, 0.0],
+            [2.0, 2.0],
+            [0.0, 2.0],
+            [0.0, 0.0],
+        ],
+        dtype=np.float32,
+    )
+    touching = np.array(
+        [
+            [0.0, 0.5],
+            [-1.0, 0.5],
+            [-1.0, 1.5],
+            [0.0, 1.5],
+            [0.0, 0.5],
+        ],
+        dtype=np.float32,
+    )
+    coords2d = np.concatenate([outer, touching], axis=0)
+    offsets = np.array([0, outer.shape[0], outer.shape[0] + touching.shape[0]], dtype=np.int32)
+
+    assert _build_evenodd_groups(coords2d, offsets) == [[0], [1]]
 
 
 def test_fill_empty_geometry_is_noop() -> None:
