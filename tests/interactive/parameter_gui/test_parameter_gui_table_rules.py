@@ -26,6 +26,7 @@ def test_ui_rules_for_row_defaults_by_kind():
     assert ui_rules_for_row(_row(op="circle", arg="n", kind="int")).minmax == "int_range"
     assert ui_rules_for_row(_row(op="circle", arg="p", kind="vec3")).minmax == "float_range"
     assert ui_rules_for_row(_row(op="circle", arg="c", kind="rgb")).minmax == "none"
+    assert ui_rules_for_row(_row(op="circle", arg="f", kind="font")).minmax == "none"
 
     assert ui_rules_for_row(_row(op="circle", arg="r", kind="float")).cc_key == "int"
     assert ui_rules_for_row(_row(op="circle", arg="n", kind="int")).cc_key == "int"
@@ -36,6 +37,8 @@ def test_ui_rules_for_row_defaults_by_kind():
     assert ui_rules_for_row(_row(op="circle", arg="b", kind="bool")).show_override is False
     assert ui_rules_for_row(_row(op="circle", arg="s", kind="str")).cc_key == "none"
     assert ui_rules_for_row(_row(op="circle", arg="s", kind="str")).show_override is False
+    assert ui_rules_for_row(_row(op="circle", arg="f", kind="font")).cc_key == "none"
+    assert ui_rules_for_row(_row(op="circle", arg="f", kind="font")).show_override is False
     assert ui_rules_for_row(_row(op="circle", arg="c", kind="choice")).cc_key == "none"
     assert ui_rules_for_row(_row(op="circle", arg="c", kind="choice")).show_override is False
 

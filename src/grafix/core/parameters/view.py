@@ -100,6 +100,14 @@ def normalize_input(value: Any, meta: ParamMeta) -> tuple[Any | None, str | None
         except Exception:
             return None, "invalid_string"
 
+    if kind == "font":
+        if value is None:
+            return "", None
+        try:
+            return str(value), None
+        except Exception:
+            return None, "invalid_string"
+
     if kind == "choice":
         # choice は str として扱い、choices 外の場合は先頭に丸める
         try:

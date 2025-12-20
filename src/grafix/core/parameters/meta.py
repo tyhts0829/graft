@@ -15,7 +15,7 @@ class ParamMeta:
     ui_min/ui_max はスライダー初期レンジを示すだけで、実値をクランプしない。
     """
 
-    kind: str  # "float" | "int" | "bool" | "str" | "choice" | "vec3"
+    kind: str  # "float" | "int" | "bool" | "str" | "font" | "choice" | "vec3" | "rgb"
     ui_min: Any | None = None
     ui_max: Any | None = None
     choices: Sequence[str] | None = None

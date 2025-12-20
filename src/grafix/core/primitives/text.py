@@ -406,7 +406,7 @@ def _polylines_to_realized(
 
 text_meta = {
     "text": ParamMeta(kind="str"),
-    "font": ParamMeta(kind="str"),
+    "font": ParamMeta(kind="font"),
     "font_index": ParamMeta(kind="int", ui_min=0, ui_max=32),
     "text_align": ParamMeta(kind="choice", choices=("left", "center", "right")),
     "letter_spacing_em": ParamMeta(kind="float", ui_min=0.0, ui_max=0.5),

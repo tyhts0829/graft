@@ -5,11 +5,84 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from grafix.core.parameters.view import ParameterRow
 
 WidgetFn = Callable[[ParameterRow], tuple[bool, Any]]
+
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+_FONT_DIR = _REPO_ROOT / "data" / "input" / "font"
+_FONT_EXTENSIONS = (".ttf", ".otf", ".ttc")
+
+_FONT_CHOICES_CACHE: tuple[tuple[str, str, bool, str], ...] | None = None
+_FONT_FILTER_BY_KEY: dict[tuple[str, str, str], str] = {}
+
+
+def _list_font_choices() -> tuple[tuple[str, str, bool, str], ...]:
+    """フォント候補の列を返す（キャッシュ）。
+
+    Notes
+    -----
+    各要素は `(display_stem, value_rel_path, is_ttc, search_key)` を表す。
+    - display_stem: 表示名（拡張子なし）
+    - value_rel_path: `data/input/font` からの相対パス（拡張子あり）
+    - is_ttc: `.ttc` かどうか
+    - search_key: フィルター用の検索キー（小文字）
+    """
+    global _FONT_CHOICES_CACHE
+    if _FONT_CHOICES_CACHE is not None:
+        return _FONT_CHOICES_CACHE
+
+    if not _FONT_DIR.exists():
+        _FONT_CHOICES_CACHE = tuple()
+        return _FONT_CHOICES_CACHE
+
+    seen: set[Path] = set()
+    for ext in _FONT_EXTENSIONS:
+        for fp in _FONT_DIR.glob(f"**/*{ext}"):
+            try:
+                resolved = fp.resolve()
+            except Exception:
+                continue
+            if resolved.is_file():
+                seen.add(resolved)
+
+    choices: list[tuple[str, str, bool, str]] = []
+    for fp in sorted(seen):
+        try:
+            rel = fp.relative_to(_FONT_DIR).as_posix()
+        except Exception:
+            rel = fp.name
+        stem = fp.stem
+        is_ttc = fp.suffix.lower() == ".ttc"
+        search_key = f"{rel} {stem}".lower()
+        choices.append((stem, rel, is_ttc, search_key))
+
+    _FONT_CHOICES_CACHE = tuple(choices)
+    return _FONT_CHOICES_CACHE
+
+
+def _query_tokens_and(query: str) -> tuple[str, ...]:
+    """フィルタークエリを AND 用トークン列へ正規化して返す。"""
+    tokens = [t for t in str(query).lower().split() if t]
+    return tuple(tokens)
+
+
+def _filter_choices_by_query_and(
+    choices: tuple[tuple[str, str, bool, str], ...], *, query: str
+) -> list[tuple[str, str, bool, str]]:
+    """AND クエリで choices を絞り込んで返す（純粋関数）。"""
+    tokens = _query_tokens_and(query)
+    if not tokens:
+        return list(choices)
+    out: list[tuple[str, str, bool, str]] = []
+    for item in choices:
+        _stem, _rel, _is_ttc, search_key = item
+        if all(t in search_key for t in tokens):
+            out.append(item)
+    return out
 
 
 def _float_slider_range(row: ParameterRow) -> tuple[float, float]:
@@ -172,6 +245,62 @@ def widget_string_input(row: ParameterRow) -> tuple[bool, str]:
     return imgui.input_text("##value", value)
 
 
+def widget_font_picker(row: ParameterRow) -> tuple[bool, str]:
+    """kind=font のフォント選択を描画し、(changed, value) を返す。
+
+    Notes
+    -----
+    control 列に以下を縦に描画する。
+    - フィルター入力（AND: スペース区切り）
+    - フィルター結果のプルダウン（表示は stem のみ）
+    """
+
+    import imgui  # type: ignore[import-untyped]
+
+    key = (str(row.op), str(row.site_id), str(row.arg))
+    filter_text = _FONT_FILTER_BY_KEY.get(key, "")
+
+    # --- filter input ---
+    imgui.set_next_item_width(-1)
+    changed_filter, new_filter = imgui.input_text("##font_filter", str(filter_text))
+    if changed_filter:
+        _FONT_FILTER_BY_KEY[key] = str(new_filter)
+        filter_text = str(new_filter)
+
+    # --- dropdown ---
+    choices = _list_font_choices()
+    filtered = _filter_choices_by_query_and(choices, query=str(filter_text))
+
+    current_value = "" if row.ui_value is None else str(row.ui_value)
+    preview = Path(current_value).stem if current_value else ""
+    if not preview:
+        preview = "(default)"
+
+    imgui.set_next_item_width(-1)
+
+    changed_value = False
+    value_out = current_value
+
+    if imgui.begin_combo("##font_combo", str(preview)):
+        try:
+            if not filtered:
+                imgui.text("No match")
+            else:
+                for stem, rel, _is_ttc, _search_key in filtered:
+                    selected = str(rel) == str(current_value)
+                    label = f"{stem}##{rel}"
+                    clicked, _selected_now = imgui.selectable(label, selected)
+                    if clicked:
+                        value_out = str(rel)
+                        changed_value = True
+                    if selected:
+                        imgui.set_item_default_focus()
+        finally:
+            imgui.end_combo()
+
+    return changed_value, str(value_out)
+
+
 def widget_choice_radio(row: ParameterRow) -> tuple[bool, str]:
     """kind=choice のラジオボタン群を描画し、(changed, value) を返す。"""
 
@@ -208,6 +337,7 @@ _KIND_TO_WIDGET: dict[str, WidgetFn] = {
     "rgb": widget_rgb_color_edit3,
     "bool": widget_bool_checkbox,
     "str": widget_string_input,
+    "font": widget_font_picker,
     "choice": widget_choice_radio,
 }
 

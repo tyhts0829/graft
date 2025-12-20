@@ -38,6 +38,12 @@ def test_normalize_str():
     assert err is None
 
 
+def test_normalize_font():
+    out, err = normalize_input("SFNS.ttf", ParamMeta(kind="font"))
+    assert out == "SFNS.ttf"
+    assert err is None
+
+
 def test_normalize_choice_coerces_to_first():
     meta = ParamMeta(kind="choice", choices=["red", "green"])
     out, err = normalize_input("blue", meta)

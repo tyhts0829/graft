@@ -100,6 +100,8 @@ def _apply_updated_rows_to_store(
     for key, (meta, _state, ordinal, _label) in snapshot.items():
         entry_by_identity[(key.op, int(ordinal), key.arg)] = (key, meta)
 
+    reset_font_index_for: set[tuple[str, int]] = set()
+
     for before, after in zip(rows_before, rows_after, strict=True):
         key, meta = entry_by_identity[_row_identity(before)]
         effective_meta = meta
@@ -126,6 +128,27 @@ def _apply_updated_rows_to_store(
                 override=after.override,
                 cc_key=after.cc_key,
             )
+
+        if (
+            key.op == "text"
+            and key.arg == "font"
+            and after.ui_value != before.ui_value
+            and str(after.ui_value).strip().lower().endswith(".ttc")
+        ):
+            reset_font_index_for.add((str(key.op), int(after.ordinal)))
+
+    for op, ordinal in sorted(reset_font_index_for):
+        entry = entry_by_identity.get((str(op), int(ordinal), "font_index"))
+        if entry is None:
+            continue
+        font_index_key, font_index_meta = entry
+        update_state_from_ui(
+            store,
+            font_index_key,
+            0,
+            meta=font_index_meta,
+            override=True,
+        )
 
 
 def render_store_parameter_table(
