@@ -161,7 +161,10 @@ def widget_float_slider(row: ParameterRow) -> tuple[bool, float]:
 
     import imgui  # type: ignore[import-untyped]
 
-    value = float(row.ui_value)
+    raw_value = row.ui_value
+    if isinstance(raw_value, (list, tuple)) and raw_value:
+        raw_value = raw_value[0]
+    value = float(raw_value)
     min_value, max_value = _float_slider_range(row)
     if str(row.arg).endswith("thickness"):
         return imgui.slider_float(
@@ -180,7 +183,10 @@ def widget_int_slider(row: ParameterRow) -> tuple[bool, int]:
 
     import imgui  # type: ignore[import-untyped]
 
-    value = int(row.ui_value)
+    raw_value = row.ui_value
+    if isinstance(raw_value, (list, tuple)) and raw_value:
+        raw_value = raw_value[0]
+    value = int(raw_value)
     min_value, max_value = _int_slider_range(row)
     return imgui.slider_int("##value", int(value), int(min_value), int(max_value))
 

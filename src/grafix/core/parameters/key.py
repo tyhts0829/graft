@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import inspect
 from dataclasses import dataclass
+from pathlib import Path
 from types import FrameType
 
 
@@ -31,7 +32,13 @@ def make_site_id(frame: FrameType | None = None) -> str:
     if frame is None:
         return "<unknown>:0:0"
     code = frame.f_code
-    return f"{code.co_filename}:{code.co_firstlineno}:{frame.f_lasti}"
+    filename = str(code.co_filename)
+    if filename and not filename.startswith("<"):
+        try:
+            filename = str(Path(filename).resolve())
+        except Exception:
+            pass
+    return f"{filename}:{code.co_firstlineno}:{frame.f_lasti}"
 
 
 def caller_site_id(skip: int = 1) -> str:

@@ -75,6 +75,7 @@ def run(
         `<=1` の場合は無効。`>=2` の場合は spawn + Queue（pickle）で非同期化する。
     fps : float
         目標フレームレート。`<=0` の場合はフレーム末尾で sleep せず、可能な限り速く回す。
+        録画機能（V キー）は fps > 0 が必要。
 
     Returns
     -------
@@ -125,6 +126,7 @@ def run(
         defaults=defaults,
         store=param_store,
         midi_controller=midi_controller,
+        fps=float(fps),
         n_worker=int(n_worker),
     )
     draw_window.window.set_location(*DRAW_WINDOW_POS)
@@ -137,8 +139,6 @@ def run(
 
     if parameter_gui:
         # Parameter GUI は依存が重い（pyimgui）ので、使うときだけ遅延 import する。
-        from pyglet.window import key
-
         from grafix.interactive.runtime.parameter_gui_system import (
             ParameterGUIWindowSystem,
         )
@@ -150,13 +150,6 @@ def run(
         gui.window.set_location(*PARAMETER_GUI_POS)
         closers.append(gui.close)
         tasks.append(WindowTask(window=gui.window, draw_frame=gui.draw_frame))
-
-        def _export_svg_on_s(symbol: int, _modifiers: int) -> None:
-            if symbol == key.S:
-                path = draw_window.save_svg()
-                print(f"Saved SVG: {path}")
-
-        gui.window.push_handlers(on_key_press=_export_svg_on_s)
 
     # --- ループの実行 ---
     # ここで複数ウィンドウを 1 つの手動ループで回す。

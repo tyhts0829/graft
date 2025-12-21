@@ -32,6 +32,7 @@ from grafix.interactive.runtime.perf import PerfCollector
 from grafix.interactive.runtime.mp_draw import MpDraw
 from grafix.core.parameters import current_frame_params, current_param_snapshot
 from grafix.interactive.midi import MidiController
+from grafix.interactive.runtime.video_recorder import VideoRecorder, default_video_output_path
 
 _logger = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ class DrawWindowSystem:
         defaults: LayerStyleDefaults,
         store: ParamStore,
         midi_controller: MidiController | None = None,
+        fps: float = 60.0,
         n_worker: int = 0,
     ) -> None:
         """描画用の window/renderer を初期化する。"""
@@ -78,6 +80,12 @@ class DrawWindowSystem:
 
         script_stem = default_param_store_path(self._draw).stem
         self._svg_output_path = Path("data") / "output" / "svg" / f"{script_stem}.svg"
+        self._video_output_path = default_video_output_path(self._draw, ext="mp4")
+        self._video_fps = float(fps)
+        self._video: VideoRecorder | None = None
+        self._video_frame_index = 0
+        self._video_t0 = 0.0
+        self._video_size = (0, 0)
         self._last_realized_layers: list[RealizedLayer] = []
         self.window.push_handlers(on_key_press=self._on_key_press)
 
@@ -90,6 +98,12 @@ class DrawWindowSystem:
         if symbol == key.S:
             path = self.save_svg()
             print(f"Saved SVG: {path}")
+            return
+        if symbol == key.V:
+            if self._video is None:
+                self.start_video_recording()
+            else:
+                self.stop_video_recording()
 
     def save_svg(self) -> Path:
         """最後に描画したフレームを SVG として保存し、保存先パスを返す。"""
@@ -98,6 +112,48 @@ class DrawWindowSystem:
             self._svg_output_path,
             canvas_size=self._settings.canvas_size,
         )
+
+    def start_video_recording(self) -> None:
+        """動画録画を開始する。"""
+
+        if self._video is not None:
+            return
+        if self._video_fps <= 0:
+            raise ValueError("録画には fps > 0 が必要です")
+
+        fb_w, fb_h = self._framebuffer_size()
+        self._video_size = (int(fb_w), int(fb_h))
+        self._video = VideoRecorder(
+            output_path=self._video_output_path,
+            size=self._video_size,
+            fps=self._video_fps,
+        )
+        self._video_frame_index = 0
+        self._video_t0 = time.perf_counter() - self._start_time
+        print(f"Started video recording: {self._video_output_path} (fps={self._video_fps:g})")
+
+    def stop_video_recording(self) -> None:
+        """動画録画を終了する。"""
+
+        video = self._video
+        if video is None:
+            return
+        self._video = None
+        frames = int(self._video_frame_index)
+        seconds = frames / float(self._video_fps) if self._video_fps > 0 else 0.0
+        try:
+            video.close()
+        finally:
+            self._video_frame_index = 0
+            self._video_t0 = 0.0
+        print(f"Saved video: {video.path} (frames={frames}, seconds={seconds:.3f})")
+
+    def _framebuffer_size(self) -> tuple[int, int]:
+        getter = getattr(self.window, "get_framebuffer_size", None)
+        if callable(getter):
+            w, h = getter()
+            return int(w), int(h)
+        return int(self.window.width), int(self.window.height)
 
     def draw_frame(self) -> None:
         """1 フレーム分の描画を行う（`flip()` は呼ばない）。"""
@@ -112,13 +168,18 @@ class DrawWindowSystem:
 
             # 注: 呼び出し側（MultiWindowLoop）が事前に self.window.switch_to() 済みである前提。
             # その前提が崩れると、別 window のコンテキストへ描いてしまう可能性がある。
+            #
+            # さらに、録画の read などで framebuffer binding が揺れるケースに備え、
+            # 毎フレーム「screen」を明示的に bind してから描画を始める。
+            self._renderer.ctx.screen.use()
 
             # --- 1) ビューポート更新 ---
             #
             # ウィンドウの論理解像度（width/height）はフレームごとに参照し、
             # 現在のサイズに合わせて OpenGL の viewport を更新する。
             # （resizable=False でも、内部事情や将来の変更に備えて毎フレーム更新している）
-            self._renderer.viewport(self.window.width, self.window.height)
+            fb_w, fb_h = self._framebuffer_size()
+            self._renderer.viewport(fb_w, fb_h)
 
             # --- 2) Style（背景色 / グローバル線幅 / グローバル線色）の確定 ---
             #
@@ -172,7 +233,11 @@ class DrawWindowSystem:
             #
             # draw(t) は “開始時刻からの経過秒” を受け取る。
             # これを使ってユーザー側でアニメーション等を表現できる。
-            t = time.perf_counter() - self._start_time
+            video = self._video
+            if video is None:
+                t = time.perf_counter() - self._start_time
+            else:
+                t = self._video_t0 + float(self._video_frame_index) / float(self._video_fps)
 
             # --- 5) Geometry の param 解決 + 描画 ---
             #
@@ -187,7 +252,7 @@ class DrawWindowSystem:
                     color=global_line_color,
                     thickness=global_thickness,
                 )
-                mp_draw = self._mp_draw
+                mp_draw = self._mp_draw if video is None else None
                 if mp_draw is None:
                     draw_fn = self._draw
                     if perf.enabled:
@@ -238,12 +303,29 @@ class DrawWindowSystem:
                             thickness=item.thickness,
                         )
 
+            if video is not None:
+                with perf.section("video"):
+                    w, h = self._video_size
+                    frame = self._renderer.ctx.screen.read(
+                        viewport=(0, 0, int(w), int(h)),
+                        components=3,
+                        alignment=1,
+                    )
+                    video.write_frame_rgb24(frame)
+                    self._video_frame_index += 1
+
             if perf.enabled and perf.gpu_finish:
                 with perf.section("gpu_finish"):
                     self._renderer.finish()
 
     def close(self) -> None:
         """GPU / window 資源を解放する。"""
+
+        if self._video is not None:
+            try:
+                self.stop_video_recording()
+            except Exception:
+                _logger.exception("Failed to stop video recording")
 
         midi = self._midi_controller
         self._midi_controller = None

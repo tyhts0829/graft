@@ -11,8 +11,15 @@ CANVAS_HEIGHT = 300
 
 
 def draw(t: float):
-    ply1 = G.text(font="Cappadocia.otf", text="o")
-    eff1 = E(name="pl2").affine().partition().drop().fill(angle=[0, 30, 60])
+    ply1 = G.text(font="Cappadocia.otf", text="of")
+    eff1 = (
+        E(name="pl2")
+        .affine()
+        .mirror()
+        .fill(density=1000)
+        # .subdivide(subdivisions=5)
+        # .displace(t_sec=t * 0.1, amplitude_mm=(5, 5, 5))
+    )
     return eff1(ply1)
 
 
