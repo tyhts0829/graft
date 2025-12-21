@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 
 import numpy as np
+from numba import njit  # type: ignore[import-untyped]
 
 from grafix.core.effect_registry import effect
 from grafix.core.realized_geometry import RealizedGeometry
@@ -128,27 +129,98 @@ def mirror(
         step = float(2.0 * np.pi / n)
 
         # 楔 [0, delta) をソース領域とする（中心 (cx,cy) を原点として角度で定義）。
-        n0 = np.array([0.0, 1.0], dtype=np.float32)  # y>=0
-        n1 = np.array([-np.sin(delta), np.cos(delta)], dtype=np.float32)  # θ=delta の法線
+        # 法線は単位長（sin^2+cos^2=1）。クリップは include-boundary。
+        n0x, n0y = 0.0, 1.0  # y>=cy
+        n1x = float(-np.sin(delta))
+        n1y = float(np.cos(delta))
+
+        wedge_pieces: list[np.ndarray] = []
+        need_dedup = False
 
         for li in range(int(offsets.size) - 1):
             v = coords[int(offsets[li]) : int(offsets[li + 1])]
             if v.shape[0] == 0:
                 continue
-            pieces = _clip_polyline_halfplane(v, cx=cx_f, cy=cy_f, normal=n0)
-            tmp: list[np.ndarray] = []
-            for p in pieces:
-                tmp.extend(_clip_polyline_halfplane(p, cx=cx_f, cy=cy_f, normal=-n1))
-            for p in tmp:
-                if p.shape[0] >= 1:
-                    src_lines.append(p.astype(np.float32, copy=False))
 
-        for p in src_lines:
-            for m in range(n):
-                out_lines.append(_rotate_xy(p, m * step, cx_f, cy_f))
-            pref = _reflect_y(p, cy_f)
-            for m in range(n):
-                out_lines.append(_rotate_xy(pref, m * step, cx_f, cy_f))
+            c0_coords, c0_offsets = _clip_polyline_halfplane_nb(v, cx_f, cy_f, n0x, n0y)
+            for i0 in range(int(c0_offsets.size) - 1):
+                s0 = int(c0_offsets[i0])
+                e0 = int(c0_offsets[i0 + 1])
+                p0 = c0_coords[s0:e0]
+                if p0.shape[0] == 0:
+                    continue
+
+                c1_coords, c1_offsets = _clip_polyline_halfplane_nb(p0, cx_f, cy_f, -n1x, -n1y)
+                for i1 in range(int(c1_offsets.size) - 1):
+                    s1 = int(c1_offsets[i1])
+                    e1 = int(c1_offsets[i1 + 1])
+                    p1 = c1_coords[s1:e1]
+                    if p1.shape[0] == 0:
+                        continue
+                    wedge_pieces.append(p1)
+                    if (not need_dedup) and _has_wedge_boundary_segment(p1, cx=cx_f, cy=cy_f, n1x=n1x, n1y=n1y):
+                        need_dedup = True
+
+        if not wedge_pieces:
+            return _empty_geometry()
+
+        angles = (np.arange(n, dtype=np.float32) * np.float32(step)).astype(np.float32, copy=False)
+        cos = np.cos(angles).astype(np.float32, copy=False)
+        sin = np.sin(angles).astype(np.float32, copy=False)
+
+        n_lines = len(wedge_pieces) * 2 * n
+        total_vertices = sum(int(p.shape[0]) for p in wedge_pieces) * 2 * n
+        out_coords_arr = np.empty((total_vertices, 3), dtype=np.float32)
+        out_offsets_arr = np.empty((n_lines + 1,), dtype=np.int32)
+        out_offsets_arr[0] = 0
+
+        v_cursor = 0
+        o_cursor = 0
+        for p in wedge_pieces:
+            ln = int(p.shape[0])
+            block = 2 * n * ln
+            _fill_wedge_mirror_copies_nb(
+                p.astype(np.float32, copy=False),
+                np.float32(cx_f),
+                np.float32(cy_f),
+                cos,
+                sin,
+                out_coords_arr[v_cursor : v_cursor + block],
+            )
+            # 各コピーは同じ頂点数なので offsets は等差で埋める。
+            base = int(out_offsets_arr[o_cursor])
+            out_offsets_arr[o_cursor + 1 : o_cursor + 2 * n + 1] = base + ln * np.arange(
+                1, 2 * n + 1, dtype=np.int32
+            )
+            o_cursor += 2 * n
+            v_cursor += block
+
+        # 通常ケースは重複が出にくいので、dedup は必要時のみ。
+        if need_dedup:
+            lines = [
+                out_coords_arr[int(out_offsets_arr[i]) : int(out_offsets_arr[i + 1])]
+                for i in range(int(out_offsets_arr.size) - 1)
+            ]
+            uniq = _dedup_lines(lines)
+            if not uniq:
+                return _empty_geometry()
+            out_coords_arr = np.vstack(uniq).astype(np.float32, copy=False)
+            out_offsets_arr = np.zeros((len(uniq) + 1,), dtype=np.int32)
+            acc = 0
+            for i, ln0 in enumerate(uniq, start=1):
+                acc += int(ln0.shape[0])
+                out_offsets_arr[i] = acc
+
+        if show_planes:
+            out_coords_arr, out_offsets_arr = _append_wedge_planes(
+                out_coords_arr,
+                out_offsets_arr,
+                n=n,
+                cx=cx_f,
+                cy=cy_f,
+            )
+
+        return RealizedGeometry(coords=out_coords_arr, offsets=out_offsets_arr)
 
     uniq = _dedup_lines(out_lines)
 
@@ -367,6 +439,231 @@ def _clip_polyline_halfplane(
     if cur:
         out_segs.append(np.vstack(cur).astype(np.float32, copy=False))
     return out_segs
+
+
+def _has_wedge_boundary_segment(vertices: np.ndarray, *, cx: float, cy: float, n1x: float, n1y: float) -> bool:
+    npts = int(vertices.shape[0])
+    if npts <= 0:
+        return False
+
+    if npts == 1:
+        x0 = float(vertices[0, 0])
+        y0 = float(vertices[0, 1])
+        if abs(y0 - float(cy)) <= EPS:
+            return True
+        d0 = (x0 - float(cx)) * float(n1x) + (y0 - float(cy)) * float(n1y)
+        return abs(d0) <= EPS
+
+    y = vertices[:, 1].astype(np.float32, copy=False)
+    on_y = np.abs(y - np.float32(cy)) <= np.float32(EPS)
+    if bool(np.any(on_y[:-1] & on_y[1:])):
+        return True
+
+    x = vertices[:, 0].astype(np.float32, copy=False)
+    d = (x - np.float32(cx)) * np.float32(n1x) + (y - np.float32(cy)) * np.float32(n1y)
+    on_theta = np.abs(d) <= np.float32(EPS)
+    return bool(np.any(on_theta[:-1] & on_theta[1:]))
+
+
+@njit(cache=True, fastmath=True)  # type: ignore[misc]
+def _clip_polyline_halfplane_nb(
+    vertices: np.ndarray,
+    cx: float,
+    cy: float,
+    nx: float,
+    ny: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    npts = int(vertices.shape[0])
+    if npts == 0:
+        return np.zeros((0, 3), dtype=np.float32), np.zeros((1,), dtype=np.int32)
+
+    eps = float(EPS)
+    thr = -eps if INCLUDE_BOUNDARY else eps
+
+    if npts == 1:
+        s0 = (float(vertices[0, 0]) - float(cx)) * float(nx) + (float(vertices[0, 1]) - float(cy)) * float(ny)
+        if s0 >= thr:
+            out1 = np.empty((1, 3), dtype=np.float32)
+            out1[0, 0] = float(vertices[0, 0])
+            out1[0, 1] = float(vertices[0, 1])
+            out1[0, 2] = float(vertices[0, 2])
+            offs1 = np.empty((2,), dtype=np.int32)
+            offs1[0] = 0
+            offs1[1] = 1
+            return out1, offs1
+        return np.zeros((0, 3), dtype=np.float32), np.zeros((1,), dtype=np.int32)
+
+    # 半平面クリップで点数は高々 2*n 程度になる（交点の挿入分）。
+    out_coords = np.empty((2 * npts + 2, 3), dtype=np.float32)
+    out_offsets = np.empty((npts + 1,), dtype=np.int32)
+    out_offsets[0] = 0
+
+    out_n = 0
+    out_lines = 0
+
+    ax = float(vertices[0, 0])
+    ay = float(vertices[0, 1])
+    az = float(vertices[0, 2])
+    s_a = (ax - float(cx)) * float(nx) + (ay - float(cy)) * float(ny)
+    in_a = s_a >= thr
+    cur_open = in_a
+    if in_a:
+        out_coords[out_n, 0] = ax
+        out_coords[out_n, 1] = ay
+        out_coords[out_n, 2] = az
+        out_n += 1
+
+    for i in range(1, npts):
+        bx = float(vertices[i, 0])
+        by = float(vertices[i, 1])
+        bz = float(vertices[i, 2])
+        s_b = (bx - float(cx)) * float(nx) + (by - float(cy)) * float(ny)
+        in_b = s_b >= thr
+
+        if in_a and in_b:
+            out_coords[out_n, 0] = bx
+            out_coords[out_n, 1] = by
+            out_coords[out_n, 2] = bz
+            out_n += 1
+            cur_open = True
+        elif in_a and (not in_b):
+            denom = s_a - s_b
+            t = 0.0 if abs(denom) < 1e-20 else s_a / denom
+            if t < 0.0:
+                t = 0.0
+            elif t > 1.0:
+                t = 1.0
+            px = ax + (bx - ax) * t
+            py = ay + (by - ay) * t
+            pz = az + (bz - az) * t
+            if out_n == 0 or (
+                abs(float(out_coords[out_n - 1, 0]) - px) > eps
+                or abs(float(out_coords[out_n - 1, 1]) - py) > eps
+                or abs(float(out_coords[out_n - 1, 2]) - pz) > eps
+            ):
+                out_coords[out_n, 0] = px
+                out_coords[out_n, 1] = py
+                out_coords[out_n, 2] = pz
+                out_n += 1
+            if cur_open:
+                out_lines += 1
+                out_offsets[out_lines] = out_n
+            cur_open = False
+        elif (not in_a) and in_b:
+            denom = s_a - s_b
+            t = 0.0 if abs(denom) < 1e-20 else s_a / denom
+            if t < 0.0:
+                t = 0.0
+            elif t > 1.0:
+                t = 1.0
+            px = ax + (bx - ax) * t
+            py = ay + (by - ay) * t
+            pz = az + (bz - az) * t
+            out_coords[out_n, 0] = px
+            out_coords[out_n, 1] = py
+            out_coords[out_n, 2] = pz
+            out_n += 1
+            out_coords[out_n, 0] = bx
+            out_coords[out_n, 1] = by
+            out_coords[out_n, 2] = bz
+            out_n += 1
+            cur_open = True
+        else:
+            # 外→外
+            pass
+
+        ax, ay, az = bx, by, bz
+        s_a, in_a = s_b, in_b
+
+    if cur_open:
+        out_lines += 1
+        out_offsets[out_lines] = out_n
+
+    if out_lines <= 0 or out_n <= 0:
+        return np.zeros((0, 3), dtype=np.float32), np.zeros((1,), dtype=np.int32)
+
+    return out_coords[:out_n], out_offsets[: out_lines + 1]
+
+
+@njit(cache=True, fastmath=True)  # type: ignore[misc]
+def _fill_wedge_mirror_copies_nb(
+    piece: np.ndarray,
+    cx: np.float32,
+    cy: np.float32,
+    cos: np.ndarray,
+    sin: np.ndarray,
+    out: np.ndarray,
+) -> None:
+    n = int(cos.shape[0])
+    ln = int(piece.shape[0])
+
+    for m in range(n):
+        c = float(cos[m])
+        s = float(sin[m])
+        base = m * ln
+        for i in range(ln):
+            x0 = float(piece[i, 0]) - float(cx)
+            y0 = float(piece[i, 1]) - float(cy)
+            out[base + i, 0] = x0 * c - y0 * s + float(cx)
+            out[base + i, 1] = x0 * s + y0 * c + float(cy)
+            out[base + i, 2] = float(piece[i, 2])
+
+    for m in range(n):
+        c = float(cos[m])
+        s = float(sin[m])
+        base = (n + m) * ln
+        for i in range(ln):
+            x0 = float(piece[i, 0]) - float(cx)
+            y0 = float(cy) - float(piece[i, 1])
+            out[base + i, 0] = x0 * c - y0 * s + float(cx)
+            out[base + i, 1] = x0 * s + y0 * c + float(cy)
+            out[base + i, 2] = float(piece[i, 2])
+
+
+def _append_wedge_planes(
+    coords: np.ndarray,
+    offsets: np.ndarray,
+    *,
+    n: int,
+    cx: float,
+    cy: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    if coords.size == 0:
+        r = 1.0
+    else:
+        dx = coords[:, 0].astype(np.float32, copy=False) - np.float32(cx)
+        dy = coords[:, 1].astype(np.float32, copy=False) - np.float32(cy)
+        r = float(np.sqrt(np.max(dx * dx + dy * dy)))
+        if not np.isfinite(r) or r <= 0.0:
+            r = 1.0
+    r *= 1.05
+
+    delta = float(np.pi / int(n))
+    step = float(2.0 * np.pi / int(n))
+
+    n_plane_lines = 2 * int(n)
+    plane_coords = np.empty((n_plane_lines * 2, 3), dtype=np.float32)
+    plane_offsets = np.empty((n_plane_lines + 1,), dtype=np.int32)
+    plane_offsets[0] = 0
+
+    idx = 0
+    for k in range(int(n)):
+        for ang in (k * step, k * step + delta):
+            cth = float(np.cos(ang))
+            sth = float(np.sin(ang))
+            plane_coords[idx, 0] = np.float32(cx - r * cth)
+            plane_coords[idx, 1] = np.float32(cy - r * sth)
+            plane_coords[idx, 2] = np.float32(0.0)
+            plane_coords[idx + 1, 0] = np.float32(cx + r * cth)
+            plane_coords[idx + 1, 1] = np.float32(cy + r * sth)
+            plane_coords[idx + 1, 2] = np.float32(0.0)
+            idx += 2
+            plane_offsets[idx // 2] = idx
+
+    base = int(offsets[-1]) if offsets.size > 0 else 0
+    new_coords = np.concatenate([coords, plane_coords], axis=0).astype(np.float32, copy=False)
+    new_offsets = np.concatenate([offsets, base + plane_offsets[1:]], axis=0).astype(np.int32, copy=False)
+    return new_coords, new_offsets
 
 
 def _reflect_x(vertices: np.ndarray, cx: float) -> np.ndarray:

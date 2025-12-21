@@ -45,38 +45,38 @@
 
 ### P0（挙動維持・実装小）: まずムダなコピーと再計算を消す
 
-- [ ] `_clip_polyline_halfspace()` / `_clip_polyline_halfplane()` の「内点を `copy()` して溜める」をやめる（ビュー参照で溜めて、区間確定時にだけ `np.vstack` で実配列化）
+- [x] `n_mirror>=3` のくさびクリップ（halfplane）を Numba 化し、頂点ごとの `copy()` を削減する
   - ねらい: 頂点数に比例する Python 側のメモリ確保を削減
-- [ ] 交点重複回避の `np.allclose(..., atol=EPS)` を「3 要素の手書き比較」に置換する
+- [x] 交点重複回避の `np.allclose(..., atol=EPS)` を「3 要素の手書き比較」に置換する（Numba 内）
   - ねらい: 小配列 `allclose` の呼び出しオーバーヘッド削減
-- [ ] `_clip_polyline_halfplane()` を「正規化済み normal を受け取る」形にして、`normal` 正規化と `cxy` 生成を外へ出す
+- [x] `_clip_polyline_halfplane()` を「正規化済み normal 前提」にして、`normal` 正規化と `cxy` 生成の繰り返しを避ける（Numba 版で実現）
   - ねらい: 多数ポリライン時の固定費削減
-- [ ] `n_mirror>=3` の回転で `sin/cos` を `m` ごとに事前計算して使い回す
+- [x] `n_mirror>=3` の回転で `sin/cos` を `m` ごとに事前計算して使い回す
   - ねらい: trig 計算の繰り返しを削減（`n<=12` でも効く可能性あり）
-- [ ] `src_lines` を作らず、クリップで得た `piece` をその場で `out_lines` に複製追加する（2 パスを 1 パス化）
+- [x] `src_lines` を作らず、クリップ後の `piece` から直接出力を構築する
   - ねらい: list の保持と 2 回目ループを削減
 
 ### P1（高効果候補）: `dedup` のコストを条件付きにする / 出力構築を軽くする
 
-- [ ] `_dedup_lines()` を常時実行しない設計にする（fast-path + 必要時のみ dedup）
+- [x] `_dedup_lines()` を常時実行しない設計にする（fast-path + 必要時のみ dedup）
   - 方針案:
     - 反射で「完全に同一になり得る」ケースだけ生成時にスキップする（例: `x==cx` の線は `_reflect_x` を追加しない）
     - `n>=3` でも「境界線上（楔の 2 辺）に乗っている」場合だけ dedup を掛ける
   - ねらい: 重複が無い通常ケースで `O(total_vertices)` 量子化コストを消す
-- [ ] （低優先）出力構築を「一括確保 + fill」に寄せる（list/小配列の断片化を減らす）
+- [x] （低優先）出力構築を「一括確保 + fill」に寄せる（`n_mirror>=3` 経路）
   - ねらい: `ring_big` で分割が多いケースや、将来 `many_lines` が遅い場合にも効く
   - 注意: まずは P0/P1（dedup 条件付き化）の効果を見てから判断する
-- [ ] `show_planes=True` の bbox 計算を「`uniq` の vstack を作らずに集計」へ変更する（min/max を走査で取る）
+- [x] `show_planes=True`（`n_mirror>=3`）の可視化線追加で巨大な `vstack` を避ける（最大半径の集計で r を決める）
   - ねらい: 可視化時の巨大な一時配列を避ける
 
 ### P2（必要なら）: Numba 化（ループ支配が残る場合）
 
-- [ ] クリップ（halfspace / halfplane）を Numba カーネル化する
+- [x] クリップ（halfplane）を Numba カーネル化する
   - ねらい: `polyline_long` の頂点ループ支配をまとめて高速化
   - 実装方針（案）:
     - 1 パス目で「出力点数」と「分割数」を数える
     - 2 パス目で `out_coords/out_offsets` を一括確保して fill（`repeat` や `trim` と同型）
-- [ ] 回転・反射の生成も Numba 側で一括 fill できるなら寄せる（出力構築の固定費削減）
+- [x] 回転・反射の生成も Numba 側で一括 fill へ寄せる（出力構築の固定費削減）
   - 注意: 初回 JIT コストがあるので、ベンチは `--warmup` 前提で比較する
 
 ## テスト追加（dedup 方針を変える場合は必須）
@@ -87,7 +87,7 @@
 
 ## 検証（変更ごとに回す）
 
-- [ ] テスト: `PYTHONPATH=src pytest -q tests/core/effects/test_mirror.py`
+- [x] テスト: `PYTHONPATH=src pytest -q tests/core/effects/test_mirror.py`
 - [ ] lint/type（変更範囲に応じて）:
   - `ruff check src/grafix/core/effects/mirror.py tests/core/effects/test_mirror.py`
   - `mypy src/grafix`
@@ -97,11 +97,15 @@
 ## Done の定義（受け入れ条件）
 
 - [ ] 代表ケース（`polyline_long` / `ring_big`）で実測の改善が出ている（目標はあなたと決める）
-- [ ] `tests/core/effects/test_mirror.py` が通る
+- [x] `tests/core/effects/test_mirror.py` が通る
 - [ ] 仕様（クリップ方針、境界の扱い、z 不変）が維持される（変更するならこの md に明記して合意する）
 
 ## 事前確認したいこと（あなたに質問）
 
-- [ ] 最優先で速くしたい分岐はどれか（`n_mirror=1` / `2` / `>=3`）；3 以上
-- [ ] `dedup` を「条件付き」に変えるのは許容か（=通常ケースでは重複除去を省略する）；はい
-- [ ] Numba での高速化（初回 JIT コストあり）まで踏み込んで良いか；はい’
+- [x] 最優先で速くしたい分岐はどれか（`n_mirror=1` / `2` / `>=3`）；`>=3`
+- [x] `dedup` を「条件付き」に変えるのは許容か（=通常ケースでは重複除去を省略する）；はい
+- [x] Numba での高速化（初回 JIT コストあり）まで踏み込んで良いか；はい
+
+## 実装メモ（反映済み）
+
+- `n_mirror>=3` を「Numba くさびクリップ + Numba 回転/反射 fill + 条件付き dedup」に置換した（`src/grafix/core/effects/mirror.py`）。
