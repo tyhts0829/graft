@@ -637,7 +637,6 @@ def run(
     midi_port_name: str | None = ...,
     midi_mode: str = ...,
     n_worker: int = ...,
-    fps: float = ...,
 ) -> None:
     """pyglet ウィンドウを生成し `draw(t)` のシーンをリアルタイム描画する。"""
     ...
