@@ -77,7 +77,7 @@ class LayerHelper:
 
         store = current_param_store()
         if store is not None and name is not None:
-            store.set_label(LAYER_STYLE_OP, site_id, name)
+            store.labels.set(LAYER_STYLE_OP, site_id, name)
 
         # 複数 Geometry は concat で 1 Layer にまとめる。
         if len(geometries) == 1:

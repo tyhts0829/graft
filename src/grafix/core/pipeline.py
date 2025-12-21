@@ -71,7 +71,7 @@ def realize_scene(
         # Layer style を観測し、override=True の場合だけ GUI 値で上書きして描画する。
         if store is not None:
             if layer.name is not None:
-                store.set_label(LAYER_STYLE_OP, layer.site_id, layer.name)
+                store.labels.set(LAYER_STYLE_OP, layer.site_id, layer.name)
 
             frame_params = current_frame_params()
             if frame_params is not None:

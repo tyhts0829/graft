@@ -6,6 +6,7 @@ from grafix.core.parameters.persistence import (
     load_param_store,
     save_param_store,
 )
+from grafix.core.parameters.store_ops import store_snapshot
 
 
 def test_default_param_store_path_uses_data_dir_and_script_stem():
@@ -30,7 +31,7 @@ def test_param_store_file_roundtrip(tmp_path: Path):
     save_param_store(store, path)
     loaded = load_param_store(path)
 
-    snap = loaded.snapshot()
+    snap = store_snapshot(loaded)
     meta, state, ordinal, _label = snap[key]
     assert meta.kind == "float"
     assert meta.ui_min == 0.0
@@ -45,4 +46,4 @@ def test_load_param_store_ignores_broken_json(tmp_path: Path):
     path.write_text("{broken-json", encoding="utf-8")
 
     loaded = load_param_store(path)
-    assert loaded.snapshot() == {}
+    assert store_snapshot(loaded) == {}

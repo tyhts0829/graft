@@ -10,9 +10,9 @@ def test_merge_creates_state_and_ordinal():
         resolve_params(op="circle", params=params, meta=meta, site_id="site-a")
 
     # after context exit, frame_params merged
-    keys = list(store._states.keys())  # type: ignore[attr-defined]
+    keys = list(store.states.keys())
     assert len(keys) == 1
-    state = store._states[keys[0]]  # type: ignore[attr-defined]
+    state = store.states[keys[0]]
     assert state.ui_value == 0.5
     # ordinal should be assigned
-    assert store.get_ordinal("circle", "site-a") == 1
+    assert store.ordinals.get("circle", "site-a") == 1

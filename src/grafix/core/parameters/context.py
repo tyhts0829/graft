@@ -10,6 +10,7 @@ from typing import Iterator
 
 from .frame_params import FrameParamsBuffer
 from .store import ParamStore
+from .store_ops import merge_frame_params, store_snapshot
 
 _param_snapshot_var: contextvars.ContextVar[dict] = contextvars.ContextVar(
     "param_snapshot", default={}
@@ -48,7 +49,7 @@ def parameter_context(
 ) -> Iterator[None]:
     """フレーム境界で param_snapshot / frame_params を固定するコンテキストマネージャ。"""
 
-    snapshot = store.snapshot()
+    snapshot = store_snapshot(store)
     frame_params = FrameParamsBuffer()
 
     t1 = _param_snapshot_var.set(snapshot)
@@ -59,9 +60,9 @@ def parameter_context(
         yield
     finally:
         for rec in frame_params.labels:
-            store.set_label(rec.op, rec.site_id, rec.label)
+            store.labels.set(rec.op, rec.site_id, rec.label)
         # フレーム終了時に frame_params を ParamStore へ保存
-        store.store_frame_params(frame_params.records)
+        merge_frame_params(store, frame_params.records)
         _param_snapshot_var.reset(t1)
         _frame_params_var.reset(t2)
         _cc_snapshot_var.reset(t3)

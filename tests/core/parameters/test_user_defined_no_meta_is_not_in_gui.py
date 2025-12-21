@@ -9,6 +9,7 @@ from grafix.core.effect_registry import effect
 from grafix.core.primitive_registry import primitive
 from grafix.core.realized_geometry import RealizedGeometry
 from grafix.core.parameters import ParamStore, parameter_context
+from grafix.core.parameters.store_ops import store_snapshot
 
 
 def _empty_geometry() -> RealizedGeometry:
@@ -38,4 +39,4 @@ def test_user_defined_ops_without_meta_do_not_appear_in_snapshot() -> None:
         g = G.user_defined_no_meta_primitive(x=2.0)
         E.user_defined_no_meta_effect(y=3.0)(g)
 
-    assert store.snapshot() == {}
+    assert store_snapshot(store) == {}

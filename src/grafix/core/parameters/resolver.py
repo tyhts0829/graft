@@ -160,7 +160,7 @@ def resolve_params(
         # ParameterKey は GUI 行を一意に識別するキー（op + 呼び出し箇所 + 引数名）。
         key = ParameterKey(op=op, site_id=site_id, arg=arg)
 
-        # param_snapshot は parameter_context 開始時点の store.snapshot() で固定されている。
+        # param_snapshot は parameter_context 開始時点の store_snapshot(store) で固定されている。
         # そのため 1 draw 呼び出しの途中で GUI が動いても、このフレームの解決は決定的になる。
         snapshot_entry = param_snapshot.get(key)  # type: ignore[arg-type]
         if snapshot_entry is not None:

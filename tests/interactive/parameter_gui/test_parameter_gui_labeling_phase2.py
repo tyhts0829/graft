@@ -6,6 +6,7 @@ from grafix.interactive.parameter_gui.labeling import (
 )
 from grafix.core.effect_registry import effect_registry
 from grafix.core.parameters import ParamStore, ParameterKey, parameter_context
+from grafix.core.parameters.store_ops import store_snapshot
 
 
 def test_effect_chain_header_and_step_ordinals():
@@ -16,7 +17,7 @@ def test_effect_chain_header_and_step_ordinals():
         eff = E(name="xf").scale().rotate().scale()
         _out = eff(g)
 
-    step_info_by_site = store.effect_steps()
+    step_info_by_site = store.effects.step_info_by_site()
     assert len(step_info_by_site) == 3
 
     chain_ids = {chain_id for chain_id, _step_index in step_info_by_site.values()}
@@ -38,11 +39,11 @@ def test_effect_chain_header_and_step_ordinals():
     assert step_ordinals[("rotate", rotate_site)] == 1
     assert step_ordinals[("scale", scale1_site)] == 2
 
-    snap = store.snapshot()
+    snap = store_snapshot(store)
     chain_header_by_id = effect_chain_header_display_names_from_snapshot(
         snap,
         step_info_by_site=step_info_by_site,
-        chain_ordinal_by_id=store.chain_ordinals(),
+        chain_ordinal_by_id=store.effects.chain_ordinals(),
         is_effect_op=lambda op: op in effect_registry,
     )
     assert chain_header_by_id == {chain_id: "xf"}
@@ -72,13 +73,13 @@ def test_effect_chain_header_normalizes_unnamed_chains_independent_of_chain_ordi
         _out1 = named(g)
         _out2 = unnamed(g)
 
-    snap = store.snapshot()
-    step_info_by_site = store.effect_steps()
+    snap = store_snapshot(store)
+    step_info_by_site = store.effects.step_info_by_site()
 
     chain_header_by_id = effect_chain_header_display_names_from_snapshot(
         snap,
         step_info_by_site=step_info_by_site,
-        chain_ordinal_by_id=store.chain_ordinals(),
+        chain_ordinal_by_id=store.effects.chain_ordinals(),
         is_effect_op=lambda op: op in effect_registry,
     )
     assert set(chain_header_by_id.values()) == {"xf", "effect#1"}

@@ -13,9 +13,9 @@ from grafix.core.parameters import (
 def test_override_priority_and_quantize():
     store = ParamStore()
     key = ParameterKey(op="circle", site_id="s1", arg="r")
-    store._states[key] = ParamState(override=True, ui_value=0.2604, cc_key=None)  # type: ignore[attr-defined]
-    store._meta[key] = ParamMeta(kind="float", ui_min=0.0, ui_max=1.0)  # type: ignore[attr-defined]
-    store.get_ordinal("circle", "s1")
+    store.states[key] = ParamState(override=True, ui_value=0.2604, cc_key=None)
+    store.meta[key] = ParamMeta(kind="float", ui_min=0.0, ui_max=1.0)
+    store.ordinals.get_or_assign("circle", "s1")
 
     meta = {"r": ParamMeta(kind="float", ui_min=0.0, ui_max=1.0)}
     params = {"r": 0.05}
@@ -62,13 +62,13 @@ def test_vec_quantized_per_component():
 def test_vec3_cc_applies_per_component():
     store = ParamStore()
     key = ParameterKey(op="scale", site_id="sv2", arg="p")
-    store._states[key] = ParamState(  # type: ignore[attr-defined]
+    store.states[key] = ParamState(
         override=False,
         ui_value=(0.0, 0.0, 0.0),
         cc_key=(10, 11, 12),
     )
-    store._meta[key] = ParamMeta(kind="vec3", ui_min=-1.0, ui_max=1.0)  # type: ignore[attr-defined]
-    store.get_ordinal("scale", "sv2")
+    store.meta[key] = ParamMeta(kind="vec3", ui_min=-1.0, ui_max=1.0)
+    store.ordinals.get_or_assign("scale", "sv2")
 
     meta = {"p": ParamMeta(kind="vec3", ui_min=-1.0, ui_max=1.0)}
     params = {"p": (0.0, 0.0, 0.0)}

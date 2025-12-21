@@ -1,4 +1,6 @@
 from grafix.core.parameters import FrameParamRecord, ParamMeta, ParamState, ParamStore, ParameterKey
+from grafix.core.parameters.codec import dumps_param_store, loads_param_store
+from grafix.core.parameters.store_ops import merge_frame_params, store_snapshot
 
 
 def test_snapshot_includes_meta_state_and_ordinal():
@@ -12,9 +14,9 @@ def test_snapshot_includes_meta_state_and_ordinal():
         source="base",
     )
 
-    store.store_frame_params([record])
+    merge_frame_params(store, [record])
 
-    snap = store.snapshot()
+    snap = store_snapshot(store)
     assert key in snap
     meta, state, ordinal, label = snap[key]
     assert meta.kind == "float"
@@ -28,9 +30,9 @@ def test_snapshot_omits_state_without_meta():
     store = ParamStore()
     key = ParameterKey(op="circle", site_id="site-2", arg="r")
     # meta 未設定のまま state だけ作る
-    store._states[key] = ParamState(ui_value=1.0)  # type: ignore[attr-defined]
+    store.states[key] = ParamState(ui_value=1.0)
 
-    snap = store.snapshot()
+    snap = store_snapshot(store)
     assert key not in snap
 
 
@@ -43,13 +45,13 @@ def test_json_roundtrip_preserves_meta_and_state():
         meta=ParamMeta(kind="float", ui_min=-1.0, ui_max=1.0, choices=None),
         explicit=False,
     )
-    store.store_frame_params([record])
-    store._states[key].override = True  # type: ignore[attr-defined]
+    merge_frame_params(store, [record])
+    store.states[key].override = True
 
-    payload = store.to_json()
-    loaded = ParamStore.from_json(payload)
+    payload = dumps_param_store(store)
+    loaded = loads_param_store(payload)
 
-    snap = loaded.snapshot()
+    snap = store_snapshot(loaded)
     meta, state, ordinal, label = snap[key]
     assert meta.kind == "float"
     assert meta.ui_min == -1.0
@@ -67,12 +69,12 @@ def test_json_roundtrip_preserves_vec3_cc_key_tuple():
         base=(0.0, 0.0, 0.0),
         meta=ParamMeta(kind="vec3", ui_min=-1.0, ui_max=1.0),
     )
-    store.store_frame_params([record])
-    store._states[key].cc_key = (1, None, 3)  # type: ignore[attr-defined]
+    merge_frame_params(store, [record])
+    store.states[key].cc_key = (1, None, 3)
 
-    payload = store.to_json()
-    loaded = ParamStore.from_json(payload)
+    payload = dumps_param_store(store)
+    loaded = loads_param_store(payload)
 
-    snap = loaded.snapshot()
+    snap = store_snapshot(loaded)
     _meta, state, _ordinal, _label = snap[key]
     assert state.cc_key == (1, None, 3)

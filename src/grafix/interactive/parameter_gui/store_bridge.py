@@ -13,6 +13,7 @@ from grafix.core.parameters.layer_style import LAYER_STYLE_OP
 from grafix.core.parameters.meta import ParamMeta
 from grafix.core.parameters.store import ParamStore
 from grafix.core.parameters.style import STYLE_OP
+from grafix.core.parameters.store_ops import store_snapshot_for_gui
 from grafix.core.parameters.view import ParameterRow, rows_from_snapshot, update_state_from_ui
 
 from .labeling import primitive_header_display_names_from_snapshot
@@ -166,7 +167,7 @@ def render_store_parameter_table(
     # - key: (op, site_id, arg)
     # - ordinal: GUI 用の連番（primitive/effect どちらも op ごとの連番）
     # - label: G(name=...) / E(name=...) / L(name=...) が付与した表示名（op, site_id 単位）
-    snapshot = store.snapshot_for_gui()
+    snapshot = store_snapshot_for_gui(store)
 
     # --- 2) Primitive のヘッダ表示名（G(name=...)）を解決 ---
     # snapshot の label を “Primitive グループ” (op, ordinal) へ対応付ける。
@@ -182,9 +183,9 @@ def render_store_parameter_table(
     # ParamStore が保持する (op, site_id) -> (chain_id, step_index) を参照する。
     # - chain_id: チェーン識別子（EffectBuilder 生成時の site_id）
     # - step_index: チェーン内のステップ順序（E.scale().rotate()... の順番）
-    step_info_by_site = store.effect_steps()
+    step_info_by_site = store.effects.step_info_by_site()
     # chain_id ごとの ordinal は GUI の “effect#N” デフォルト名に使う。
-    chain_ordinal_by_id = store.chain_ordinals()
+    chain_ordinal_by_id = store.effects.chain_ordinals()
     # チェーンヘッダの表示名:
     # - E(name=...) があればそれ
     # - 無ければ effect#N（N は chain_ordinal）

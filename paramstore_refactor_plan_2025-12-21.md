@@ -83,16 +83,18 @@
 
 ## 実装チェックリスト（作業手順）
 
-- [ ] 影響範囲を洗い出す（`ParamStore` 利用箇所と依存メソッドの一覧化）
-- [ ] ふるまい固定用のテストを追加（主に ordinal/reconcile/prune/codec）
-- [ ] `ParamStoreCodec` を追加し、`to_json/from_json` を撤去して呼び出し側を更新
-- [ ] `GroupOrdinals` を追加し、採番/圧縮ロジックを `ParamStore` から移動（呼び出し側も更新）
-- [ ] `ParamStoreRuntime` を追加し、loaded/observed/reconcile_applied を `ParamStore` から分離
-- [ ] `merge_frame_params`（旧 `store_frame_params`）を外出しし、`parameter_context` から呼ぶ形に変更
-- [ ] `reconcile_groups` / `migrate_group` を `ParamStore` から外へ移動（必要な最小 API だけ `ParamStore` に残す）
-- [ ] `prune_stale_loaded_groups` / `prune_groups` を外へ移動し、`save_param_store` から呼ぶ
-- [ ] `ParamStore` の公開 API を “最小の永続辞書” へ整理（不要メソッド削除・責務の明文化）
-- [ ] `ruff check .` / `mypy src/grafix` / `PYTHONPATH=src pytest -q`（対象限定で）
+- [x] 影響範囲を洗い出す（`ParamStore` 利用箇所と依存メソッドの一覧化）
+- [x] ふるまい固定用のテストを更新（主に ordinal/reconcile/prune/codec）
+- [x] `codec` を追加し、`to_json/from_json` を撤去して呼び出し側を更新
+- [x] `ordinals` を追加し、採番/圧縮ロジックを `ParamStore` から移動（呼び出し側も更新）
+- [x] `runtime` を追加し、loaded/observed/reconcile_applied を `ParamStore` から分離
+- [x] `merge_frame_params`（旧 `store_frame_params`）を外出しし、`parameter_context` から呼ぶ形に変更
+- [x] `reconcile` / `migrate_group` を `ParamStore` から外へ移動
+- [x] `prune_stale_loaded_groups` / `prune_groups` を外へ移動し、`save_param_store` から呼ぶ
+- [x] `ParamStore` の公開 API を “最小の永続辞書” へ整理（不要メソッド削除・責務の明文化）
+- [x] `PYTHONPATH=src pytest -q tests/core/parameters tests/interactive/parameter_gui`
+- [ ] `ruff check .`（この環境では `ruff` コマンド未導入）
+- [ ] `mypy src/grafix`（既存エラーがあるため現状はグリーン化していない）
 
 ## 影響が出る見込みのあるファイル（初期見立て）
 
@@ -114,3 +116,13 @@
 - `ParamStore` が「永続データの核」として読める（責務が 1 つに見える）
 - ordinal/reconcile/codec/prune のコードがそれぞれ単独で読める（別モジュール/別オブジェクト）
 - 主要仕様（ordinal 圧縮、explicit/override、reconcile/prune）がテストで固定される
+
+## 実装メモ（実際の分割）
+
+- 永続データの核: `src/grafix/core/parameters/store.py`
+- label: `src/grafix/core/parameters/labels.py`
+- ordinal: `src/grafix/core/parameters/ordinals.py`
+- effect chain: `src/grafix/core/parameters/effects.py`
+- runtime: `src/grafix/core/parameters/runtime.py`
+- JSON codec: `src/grafix/core/parameters/codec.py`
+- 手続き（snapshot/merge/reconcile/prune）: `src/grafix/core/parameters/store_ops.py`

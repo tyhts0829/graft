@@ -1,9 +1,10 @@
 from grafix.api import G
 from grafix.core.parameters import ParamStore, parameter_context
+from grafix.core.parameters.store_ops import store_snapshot
 
 
 def _override_by_arg(store: ParamStore, *, op: str) -> dict[str, bool]:
-    snap = store.snapshot()
+    snap = store_snapshot(store)
     return {
         key.arg: bool(state.override)
         for key, (_meta, state, _ordinal, _label) in snap.items()
@@ -54,7 +55,7 @@ def test_existing_state_is_not_overwritten_by_policy():
     with parameter_context(store=store, cc_snapshot=None):
         callsite()
 
-    snap = store.snapshot()
+    snap = store_snapshot(store)
     key_n_sides = next(
         key for key in snap.keys() if key.op == "polygon" and key.arg == "n_sides"
     )
@@ -65,6 +66,6 @@ def test_existing_state_is_not_overwritten_by_policy():
     with parameter_context(store=store, cc_snapshot=None):
         callsite()
 
-    snap2 = store.snapshot()
+    snap2 = store_snapshot(store)
     _meta, state2, _ordinal, _label = snap2[key_n_sides]
     assert state2.override is False

@@ -6,6 +6,7 @@ from grafix.core.effect_registry import effect
 from grafix.core.primitive_registry import primitive
 from grafix.core.realized_geometry import RealizedGeometry
 from grafix.core.parameters import ParamMeta, ParamStore, parameter_context
+from grafix.core.parameters.store_ops import store_snapshot
 
 
 def _empty_geometry() -> RealizedGeometry:
@@ -20,7 +21,7 @@ def test_polygon_defaults_recorded_when_no_kwargs():
     with parameter_context(store=store, cc_snapshot=None):
         G.polygon()
 
-    snapshot = store.snapshot()
+    snapshot = store_snapshot(store)
     polygon_args = {key.arg for key in snapshot.keys() if key.op == "polygon"}
     assert polygon_args == {"n_sides", "phase", "center", "scale"}
 
@@ -32,7 +33,7 @@ def test_effect_defaults_recorded_when_no_kwargs():
         g = G.polygon()
         E.scale()(g)
 
-    snapshot = store.snapshot()
+    snapshot = store_snapshot(store)
     scale_args = {key.arg for key in snapshot.keys() if key.op == "scale"}
     assert scale_args == {"bypass", "auto_center", "pivot", "scale"}
 

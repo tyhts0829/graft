@@ -29,7 +29,7 @@ def set_api_label(*, op: str, site_id: str, label: str | None) -> None:
         return
     store = current_param_store()
     if store is not None:
-        store.set_label(op, site_id, label)
+        store.labels.set(op, site_id, label)
         return
     frame_params = current_frame_params()
     if frame_params is not None:
