@@ -4,21 +4,26 @@
 
 from __future__ import annotations
 
+from typing import TypeAlias
+
 from .key import ParameterKey
 from .meta import ParamMeta
 from .state import ParamState
 from .store import ParamStore
 
+ParamSnapshotEntry: TypeAlias = tuple[ParamMeta, ParamState, int, str | None]
+ParamSnapshot: TypeAlias = dict[ParameterKey, ParamSnapshotEntry]
+
 
 def store_snapshot(
     store: ParamStore,
-) -> dict[ParameterKey, tuple[ParamMeta, ParamState, int, str | None]]:
+) -> ParamSnapshot:
     """(key -> (meta, state, ordinal, label)) のスナップショットを返す（副作用なし）。"""
 
     labels = store._labels_ref()
     ordinals = store._ordinals_ref()
 
-    result: dict[ParameterKey, tuple[ParamMeta, ParamState, int, str | None]] = {}
+    result: ParamSnapshot = {}
     for key, state in store._states.items():
         meta = store._meta.get(key)
         if meta is None:
@@ -40,7 +45,7 @@ def store_snapshot(
 
 def store_snapshot_for_gui(
     store: ParamStore,
-) -> dict[ParameterKey, tuple[ParamMeta, ParamState, int, str | None]]:
+) -> ParamSnapshot:
     """Parameter GUI 表示用のスナップショットを返す（副作用なし）。"""
 
     snapshot = store_snapshot(store)
@@ -71,4 +76,3 @@ def store_snapshot_for_gui(
 
 
 __all__ = ["store_snapshot", "store_snapshot_for_gui"]
-

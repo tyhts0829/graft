@@ -21,7 +21,8 @@ class EffectChainIndex:
         step_index = int(step_index)
 
         if chain_id not in self._chain_ordinals:
-            self._chain_ordinals[chain_id] = len(self._chain_ordinals) + 1
+            # 既存 chain ordinal が穴あきでも「重複しない」ことを優先する。
+            self._chain_ordinals[chain_id] = max(self._chain_ordinals.values(), default=0) + 1
         self._step_by_site[(op, site_id)] = (chain_id, step_index)
 
     def get_step(self, op: str, site_id: str) -> tuple[str, int] | None:
@@ -86,6 +87,17 @@ class EffectChainIndex:
                     chain_ordinal_by_id[str(chain_id)] = int(ordinal)  # type: ignore[arg-type]
                 except Exception:
                     continue
+
+        # 既存 JSON の不整合（重複/0/負値など）がある場合は、ロード時に修復して汚染を止める。
+        values = list(chain_ordinal_by_id.values())
+        needs_repair = any(int(v) <= 0 for v in values) or (len(set(values)) != len(values))
+        if needs_repair:
+            ordered = sorted(
+                chain_ordinal_by_id.items(), key=lambda it: (int(it[1]), str(it[0]))
+            )
+            chain_ordinal_by_id = {
+                str(chain_id): int(i) for i, (chain_id, _old) in enumerate(ordered, start=1)
+            }
 
         # chain_ordinals が欠けている/不完全な場合でも、step 情報から補完する。
         # 目的: GUI の “effect#N” とチェーン並びを安定させる。

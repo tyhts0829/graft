@@ -10,6 +10,7 @@ from .frame_params import FrameParamRecord
 from .key import ParameterKey
 from .reconcile_ops import reconcile_loaded_groups_for_runtime
 from .store import ParamStore
+from .view import canonicalize_ui_value
 
 
 def merge_frame_params(store: ParamStore, records: list[FrameParamRecord]) -> None:
@@ -28,7 +29,7 @@ def merge_frame_params(store: ParamStore, records: list[FrameParamRecord]) -> No
         ordinals.get_or_assign(rec.key.op, rec.key.site_id)
         store._ensure_state(
             rec.key,
-            base_value=rec.base,
+            base_value=canonicalize_ui_value(rec.base, rec.meta),
             initial_override=(not bool(rec.explicit)),
         )
 
@@ -83,4 +84,3 @@ def _apply_explicit_override_follow_policy(
 
 
 __all__ = ["merge_frame_params"]
-

@@ -1,3 +1,5 @@
+import json
+
 from grafix.core.parameters import FrameParamRecord, ParamMeta, ParamStore, ParameterKey
 from grafix.core.parameters.codec import dumps_param_store, loads_param_store
 from grafix.core.parameters.merge_ops import merge_frame_params
@@ -91,5 +93,55 @@ def test_json_roundtrip_preserves_vec3_cc_key_tuple():
 
     snap = store_snapshot(loaded)
     _meta, state, _ordinal, _label = snap[key]
+    assert state.ui_value == (0.0, 0.0, 0.0)
     assert state.cc_key == (1, None, 3)
     assert_invariants(loaded)
+
+
+def test_json_roundtrip_canonicalizes_rgb_ui_value_to_tuple():
+    store = ParamStore()
+    key = ParameterKey(op="style", site_id="site-rgb", arg="color")
+    meta = ParamMeta(kind="rgb", ui_min=0, ui_max=255)
+    merge_frame_params(
+        store,
+        [FrameParamRecord(key=key, base=(0, 0, 0), meta=meta)],
+    )
+    update_state_from_ui(store, key, (1, 2, 3), meta=meta, override=True)
+
+    loaded = loads_param_store(dumps_param_store(store))
+    snap = store_snapshot(loaded)
+    _meta, state, _ordinal, _label = snap[key]
+    assert state.ui_value == (1, 2, 3)
+    assert isinstance(state.ui_value, tuple)
+    assert_invariants(loaded)
+
+
+def test_encode_drops_state_without_meta():
+    store = ParamStore()
+    key = ParameterKey(op="circle", site_id="site-no-meta", arg="r")
+    update_state_from_ui(
+        store,
+        key,
+        1.0,
+        meta=ParamMeta(kind="float", ui_min=0.0, ui_max=1.0),
+        override=True,
+    )
+
+    payload_obj = json.loads(dumps_param_store(store))
+    assert payload_obj.get("states", []) == []
+
+
+def test_unknown_kind_ui_value_is_stringified_to_avoid_reference_leak():
+    store = ParamStore()
+    key = ParameterKey(op="unknown", site_id="site-unk", arg="x")
+    meta = ParamMeta(kind="__unknown__", ui_min=None, ui_max=None)
+    merge_frame_params(store, [FrameParamRecord(key=key, base={"init": []}, meta=meta)])
+
+    ok, err = update_state_from_ui(store, key, {"k": [1, 2, 3]}, meta=meta, override=True)
+    assert ok is True
+    assert err is None
+
+    state = store.get_state(key)
+    assert state is not None
+    assert isinstance(state.ui_value, str)
+    assert_invariants(store)

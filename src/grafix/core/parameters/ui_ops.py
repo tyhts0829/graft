@@ -9,9 +9,14 @@ from typing import Any
 from .key import ParameterKey
 from .meta import ParamMeta
 from .store import ParamStore
-from .view import normalize_input
+from .view import canonicalize_ui_value, normalize_input
 
-_KEEP = object()
+
+class _KeepCcKey:
+    pass
+
+
+_KEEP = _KeepCcKey()
 
 
 def update_state_from_ui(
@@ -21,7 +26,7 @@ def update_state_from_ui(
     *,
     meta: ParamMeta,
     override: bool | None = None,
-    cc_key: int | tuple[int | None, int | None, int | None] | None | object = _KEEP,
+    cc_key: int | tuple[int | None, int | None, int | None] | None | _KeepCcKey = _KEEP,
 ) -> tuple[bool, str | None]:
     """UI から渡された入力を正規化し、対応する ParamState に反映する。"""
 
@@ -29,23 +34,23 @@ def update_state_from_ui(
     if err and normalized is None:
         return False, err
 
-    state = store._ensure_state(
-        key, base_value=ui_input_value if normalized is None else normalized
+    canonical = canonicalize_ui_value(
+        ui_input_value if normalized is None else normalized,
+        meta,
     )
-    if normalized is not None:
-        state.ui_value = normalized
+
+    state = store._ensure_state(key, base_value=canonical)
+    state.ui_value = canonical
     if override is not None:
         state.override = bool(override)
 
-    if cc_key is not _KEEP:
+    if not isinstance(cc_key, _KeepCcKey):
         if cc_key is None:
             state.cc_key = None
         elif isinstance(cc_key, int):
             state.cc_key = int(cc_key)
         else:
-            if len(cc_key) != 3:  # type: ignore[arg-type]
-                raise ValueError(f"vec3 cc_key must be length-3: {cc_key!r}")
-            a, b, c = cc_key  # type: ignore[misc]
+            a, b, c = cc_key
             cc_tuple = (
                 None if a is None else int(a),
                 None if b is None else int(b),
@@ -57,4 +62,3 @@ def update_state_from_ui(
 
 
 __all__ = ["update_state_from_ui"]
-

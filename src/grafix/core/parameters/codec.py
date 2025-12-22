@@ -11,6 +11,7 @@ from .key import ParameterKey
 from .meta import ParamMeta
 from .state import ParamState
 from .store import ParamStore
+from .view import canonicalize_ui_value
 
 
 def encode_param_store(store: ParamStore) -> dict[str, Any]:
@@ -37,7 +38,9 @@ def encode_param_store(store: ParamStore) -> dict[str, Any]:
                 "ui_value": v.ui_value,
                 "cc_key": v.cc_key,
             }
+            # meta が無い state は GUI 対象外なので永続化しない（ゴミ state の残留防止）。
             for k, v in store._states.items()
+            if k in store._meta
         ],
         "meta": [
             {
@@ -134,6 +137,14 @@ def decode_param_store(obj: object) -> ParamStore:
         except Exception:
             continue
         store._meta[key] = meta
+
+    # meta が無い state は GUI 対象外なので drop する（永続化/復元の双方で汚染を止める）。
+    for key, state in list(store._states.items()):
+        stored_meta = store._meta.get(key)
+        if stored_meta is None:
+            del store._states[key]
+            continue
+        state.ui_value = canonicalize_ui_value(state.ui_value, stored_meta)
 
     labels_items: list[tuple[tuple[str, str], str]] = []
     for item in obj.get("labels", []):

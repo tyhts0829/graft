@@ -67,6 +67,8 @@ def assert_invariants(store: ParamStore) -> None:
         assert isinstance(chain_id, str)
         assert isinstance(ordinal, int)
         assert int(ordinal) >= 1
+    ordinals = [int(v) for v in chain_ordinal_by_id.values()]
+    assert len(set(ordinals)) == len(ordinals)
 
     runtime = store._runtime_ref()
     for op, site_id in runtime.loaded_groups:
@@ -77,8 +79,9 @@ def assert_invariants(store: ParamStore) -> None:
         assert isinstance(site_id, str)
 
     # snapshot は pure 前提（= 不足補完をしない）なので、ここで例外が出るのは不変条件違反。
-    store_snapshot(store)
+    snapshot = store_snapshot(store)
+    for _key, (_meta, state, _ordinal, _label) in snapshot.items():
+        assert not isinstance(state.ui_value, (list, dict))
 
 
 __all__ = ["assert_invariants"]
-

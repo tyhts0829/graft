@@ -162,7 +162,7 @@ def resolve_params(
 
         # param_snapshot は parameter_context 開始時点の store_snapshot(store) で固定されている。
         # そのため 1 draw 呼び出しの途中で GUI が動いても、このフレームの解決は決定的になる。
-        snapshot_entry = param_snapshot.get(key)  # type: ignore[arg-type]
+        snapshot_entry = param_snapshot.get(key)
         if snapshot_entry is not None:
             # 既に GUI 側で状態が存在する場合は、それを正として meta/state を採用する。
             snapshot_meta, state, _ordinal, _label = snapshot_entry
@@ -170,10 +170,11 @@ def resolve_params(
         else:
             # 初出のキーは「登録側 meta がある場合のみ」GUI 対象として扱う。
             # meta が無い引数は GUI/CC の対象外とし、このフレームでも観測しない。
-            arg_meta = meta.get(arg)
-            if arg_meta is None:
+            arg_meta_opt = meta.get(arg)
+            if arg_meta_opt is None:
                 resolved[arg] = base_value
                 continue
+            arg_meta = arg_meta_opt
             # この場では仮の state（ui_value=base）を作るだけ。
             # override の初期値は store 側（フレーム境界のマージ）で explicit/implicit を見て決める。
             state = ParamState(ui_value=base_value)

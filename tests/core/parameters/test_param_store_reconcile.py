@@ -8,7 +8,7 @@ from grafix.core.parameters.context import parameter_context
 from grafix.core.parameters.frame_params import FrameParamRecord
 from grafix.core.parameters.layer_style import LAYER_STYLE_OP, layer_style_records
 from grafix.core.parameters.merge_ops import merge_frame_params
-from grafix.core.parameters.prune_ops import prune_stale_loaded_groups
+from grafix.core.parameters.prune_ops import prune_groups, prune_stale_loaded_groups
 from grafix.core.parameters.snapshot_ops import store_snapshot, store_snapshot_for_gui
 from grafix.core.parameters.ui_ops import update_state_from_ui
 from grafix.core.parameters.invariants import assert_invariants
@@ -265,6 +265,86 @@ def test_prune_removes_stale_effect_steps_and_unused_chain_ordinals():
     assert store.get_effect_step("rotate", old_step_site_id) is None
     assert old_chain_id not in store.chain_ordinals()
     assert new_chain_id in store.chain_ordinals()
+    assert_invariants(store)
+
+
+def test_effect_chain_ordinals_do_not_duplicate_after_removing_first_chain():
+    store = ParamStore()
+    meta = ParamMeta(kind="float", ui_min=0.0, ui_max=1.0)
+
+    merge_frame_params(
+        store,
+        [
+            FrameParamRecord(
+                key=ParameterKey(op="scale", site_id="s0", arg="x"),
+                base=0.0,
+                meta=meta,
+                explicit=True,
+                chain_id="c1",
+                step_index=0,
+            ),
+            FrameParamRecord(
+                key=ParameterKey(op="rotate", site_id="s1", arg="x"),
+                base=0.0,
+                meta=meta,
+                explicit=True,
+                chain_id="c2",
+                step_index=0,
+            ),
+        ],
+    )
+
+    # 最初のチェーン（ordinal=1）を消しても、残ったチェーンの ordinal は維持され得る。
+    # その後の新規採番で重複しないことが重要。
+    prune_groups(store, [("scale", "s0")])
+    assert store.chain_ordinals() == {"c2": 2}
+
+    merge_frame_params(
+        store,
+        [
+            FrameParamRecord(
+                key=ParameterKey(op="translate", site_id="s2", arg="x"),
+                base=0.0,
+                meta=meta,
+                explicit=True,
+                chain_id="c3",
+                step_index=0,
+            )
+        ],
+    )
+    chain_ordinals = store.chain_ordinals()
+    assert chain_ordinals["c2"] == 2
+    assert chain_ordinals["c3"] == 3
+    assert len(set(chain_ordinals.values())) == len(chain_ordinals)
+    assert_invariants(store)
+
+
+def test_load_repairs_duplicate_chain_ordinals():
+    payload = json.dumps(
+        {
+            "ordinals": {"scale": {"s0": 1}, "rotate": {"s1": 1}},
+            "effect_steps": [
+                {
+                    "op": "scale",
+                    "site_id": "s0",
+                    "chain_id": "a",
+                    "step_index": 0,
+                },
+                {
+                    "op": "rotate",
+                    "site_id": "s1",
+                    "chain_id": "b",
+                    "step_index": 0,
+                },
+            ],
+            "chain_ordinals": {"a": 1, "b": 1},  # 重複（壊れた過去データを模擬）
+        }
+    )
+    store = loads_param_store(payload)
+    chain_ordinals = store.chain_ordinals()
+    assert chain_ordinals["a"] == 1
+    assert chain_ordinals["b"] == 2
+    assert len(set(chain_ordinals.values())) == len(chain_ordinals)
     assert_invariants(store)
 
 

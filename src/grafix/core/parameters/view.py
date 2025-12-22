@@ -147,3 +147,37 @@ def normalize_input(value: Any, meta: ParamMeta) -> tuple[Any | None, str | None
     # 未知 kind はそのまま返す
     return value, None
 
+
+def canonicalize_ui_value(value: Any, meta: ParamMeta) -> Any:
+    """meta.kind に従って ui_value を不変（immutable）へ正規化して返す。"""
+
+    kind = str(meta.kind)
+    if kind not in {"bool", "int", "float", "str", "font", "choice", "vec3", "rgb"}:
+        try:
+            return str(value)
+        except Exception:
+            return ""
+
+    normalized, err = normalize_input(value, meta)
+    if normalized is not None:
+        return normalized
+
+    # 正規化できない場合は kind に応じた安全な既定値へ寄せる。
+    if kind == "bool":
+        return False
+    if kind == "int":
+        return 0
+    if kind == "float":
+        return 0.0
+    if kind in {"str", "font"}:
+        return ""
+    if kind == "choice":
+        choices = list(meta.choices) if meta.choices is not None else []
+        return str(choices[0]) if choices else ""
+    if kind == "vec3":
+        return (0.0, 0.0, 0.0)
+    if kind == "rgb":
+        return (0, 0, 0)
+
+    # unreachable
+    return "" if err else value

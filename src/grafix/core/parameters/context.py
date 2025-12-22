@@ -12,10 +12,11 @@ from .frame_params import FrameParamsBuffer
 from .store import ParamStore
 from .labels_ops import merge_frame_labels
 from .merge_ops import merge_frame_params
-from .snapshot_ops import store_snapshot
+from .snapshot_ops import ParamSnapshot, store_snapshot
 
-_param_snapshot_var: contextvars.ContextVar[dict] = contextvars.ContextVar(
-    "param_snapshot", default={}
+_EMPTY_SNAPSHOT: ParamSnapshot = {}
+_param_snapshot_var: contextvars.ContextVar[ParamSnapshot] = contextvars.ContextVar(
+    "param_snapshot", default=_EMPTY_SNAPSHOT
 )
 _frame_params_var: contextvars.ContextVar[FrameParamsBuffer | None] = (
     contextvars.ContextVar("frame_params", default=None)
@@ -28,8 +29,9 @@ _store_var: contextvars.ContextVar[ParamStore | None] = contextvars.ContextVar(
 )
 
 
-def current_param_snapshot() -> dict:
-    return _param_snapshot_var.get({})
+def current_param_snapshot() -> ParamSnapshot:
+    snapshot = _param_snapshot_var.get(_EMPTY_SNAPSHOT)
+    return snapshot if snapshot else {}
 
 
 def current_frame_params() -> FrameParamsBuffer | None:
@@ -72,7 +74,7 @@ def parameter_context(
 
 @contextlib.contextmanager
 def parameter_context_from_snapshot(
-    snapshot: dict, cc_snapshot: dict | None = None
+    snapshot: ParamSnapshot, cc_snapshot: dict | None = None
 ) -> Iterator[FrameParamsBuffer]:
     """ParamStore を持たずに snapshot/frame_params を固定する（worker 用）。"""
 

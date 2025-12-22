@@ -42,11 +42,11 @@
    - [ ] `types.py` を新設してまとめる
    - 推奨: `snapshot_ops.py`
 5. **既存 JSON に chain ordinal の重複があった場合の修復方針（ロード時）**；推奨通り
-   - [ ] A) 重複/不正値があるときだけ、chain_id を安定順（`(old_ordinal, chain_id)`）で並べて **1..N へ再採番**
+   - [x] A) 重複/不正値があるときだけ、chain_id を安定順（`(old_ordinal, chain_id)`）で並べて **1..N へ再採番**
    - [ ] B) 常に 1..N へ再採番（常時正規化。順序は安定だが、意図せず変わる可能性）
    - 推奨: A
 6. **unknown kind の扱い（immutable 保証の抜け穴対策）**；推奨通り
-   - [ ] A) unknown kind の `ui_value` は `str(value)` に正規化する（常に immutable。情報は落ち得る）
+   - [x] A) unknown kind の `ui_value` は `str(value)` に正規化する（常に immutable。情報は落ち得る）
    - [ ] B) unknown kind のキーは snapshot 対象外にする（GUI から消えるが、安全）
    - 推奨: A
 
@@ -54,41 +54,41 @@
 
 ### Step 1: Effect chain ordinal の重複防止
 
-- [ ] `EffectChainIndex.record_step()` の新規採番を（上の方針に沿って）変更
-- [ ] decode 時に chain_ordinals の重複/不正値を検出し、合意した方針で修復する（過去データの汚染源を止める）
-- [ ] `assert_invariants()` に **chain ordinal 値の一意性**チェックを追加
-- [ ] 「prune → 新 chain 追加」で重複しないことのテストを追加
-- [ ] 「重複した chain_ordinals を含む JSON を load → 修復される」テストを追加
+- [x] `EffectChainIndex.record_step()` の新規採番を（上の方針に沿って）変更
+- [x] decode 時に chain_ordinals の重複/不正値を検出し、合意した方針で修復する（過去データの汚染源を止める）
+- [x] `assert_invariants()` に **chain ordinal 値の一意性**チェックを追加
+- [x] 「prune → 新 chain 追加」で重複しないことのテストを追加
+- [x] 「重複した chain_ordinals を含む JSON を load → 修復される」テストを追加
 
 ### Step 2: `ui_value` の canonicalize（immutable 化）
 
-- [ ] **canonicalize を 1 箇所に閉じる**:
-  - [ ] `canonicalize_ui_value(value, meta)` を新設（唯一の正規化ロジック）
-  - [ ] decode/merge/ui_update は「同じ canonicalize」を呼ぶだけにする（ロジック重複を作らない）
-- [ ] JSON decode 後に meta.kind を見て `ui_value` を canonicalize（vec/rgb は list -> tuple を必ず行う）
-- [ ] merge/update の経路でも「store に入る `ui_value` は canonicalize 済み」を保証（= snapshot 時に困らない）
-- [ ] unknown kind の扱いを合意し、canonicalize と invariants に反映する
-- [ ] `assert_invariants()` に「snapshot 内の `ui_value` が list/dict ではない」チェックを追加
+- [x] **canonicalize を 1 箇所に閉じる**:
+  - [x] `canonicalize_ui_value(value, meta)` を新設（唯一の正規化ロジック）
+  - [x] decode/merge/ui_update は「同じ canonicalize」を呼ぶだけにする（ロジック重複を作らない）
+- [x] JSON decode 後に meta.kind を見て `ui_value` を canonicalize（vec/rgb は list -> tuple を必ず行う）
+- [x] merge/update の経路でも「store に入る `ui_value` は canonicalize 済み」を保証（= snapshot 時に困らない）
+- [x] unknown kind の扱いを合意し、canonicalize と invariants に反映する
+- [x] `assert_invariants()` に「snapshot 内の `ui_value` が list/dict ではない」チェックを追加
 
 ### Step 3: snapshot/contextvars の型付け
 
-- [ ] `ParamSnapshotEntry`, `ParamSnapshot` を定義
-- [ ] `context.py` の `ContextVar` と getter の戻り型を `ParamSnapshot` にする
-- [ ] `resolver.py` の `# type: ignore` を削除できる状態にする
+- [x] `ParamSnapshotEntry`, `ParamSnapshot` を定義
+- [x] `context.py` の `ContextVar` と getter の戻り型を `ParamSnapshot` にする
+- [x] `resolver.py` の `# type: ignore` を削除できる状態にする
 - [ ] （任意）labeling 等の引数型を `ParamSnapshot` に寄せる
 
 ### Step 4: 永続化仕様（meta-less state）
 
-- [ ] encode 時に meta 無し state を drop（合意済み）
-- [ ] decode 時にも「meta が無い state」を残す/捨てる方針を短く明記（推奨: 捨てる）
-- [ ] `codec.py` に「残す/捨てる」仕様を短く明記
-- [ ] テストを追加/更新（meta-less が保存されない、など）
+- [x] encode 時に meta 無し state を drop（合意済み）
+- [x] decode 時にも「meta が無い state」を残す/捨てる方針を短く明記（推奨: 捨てる）
+- [x] `codec.py` に「残す/捨てる」仕様を短く明記
+- [x] テストを追加/更新（meta-less が保存されない、など）
 
 ### Step 5: 検証
 
-- [ ] `PYTHONPATH=src pytest -q tests/core/parameters tests/interactive/parameter_gui`
-- [ ] `ruff check .`
-- [ ] `mypy src/grafix`
+- [x] `PYTHONPATH=src pytest -q tests/core/parameters tests/interactive/parameter_gui tests/interactive/runtime`
+- [ ] `ruff check .`（環境に ruff が入っていないため未実施）
+- [ ] `mypy src/grafix`（本件以外の既存エラーが多数あるため未クリーン）
 
 ## 追加提案（実装中に必要なら追記）
 
