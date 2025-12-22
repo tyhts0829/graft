@@ -1,11 +1,18 @@
 # どこで: `parameter_gui_text_override_plan_2025-12-22.md`
+
 #
+
 # 何を: Parameter GUI で text primitive の `text`（必要なら `font` / `text_align` も）を、
-#       コード側で明示指定していても描画中に GUI から上書きできるようにする実装改善計画。
+
+# コード側で明示指定していても描画中に GUI から上書きできるようにする実装改善計画。
+
 #
+
 # なぜ: `sketch/main.py` のように `G.text(text=..., font=...)` を明示すると、
-#       現状は初期 `override=False` になり、かつ GUI に override トグルが出ないため
-#       `text` を GUI から変更しても描画へ反映できないため。
+
+# 現状は初期 `override=False` になり、かつ GUI に override トグルが出ないため
+
+# `text` を GUI から変更しても描画へ反映できないため。
 
 ## ゴール
 
@@ -16,7 +23,7 @@
 ## 非ゴール（今回やらない）
 
 - GUI レイアウトの大幅変更（列構成の変更、別ウィンドウ追加など）。
-- 文字列/choice の CC 駆動（CC→文字列/選択肢）や MIDI 学習 UI の拡張。
+- 文字列/choice の CC 駆動（CC→ 文字列/選択肢）や MIDI 学習 UI の拡張。
 - フォント検索 UI の全面刷新（現状のフィルター + コンボを維持）。
 
 ## 現状整理（原因）
@@ -76,15 +83,16 @@
 
 ## 事前確認したいこと（Yes/No で OK）
 
-1) `choice`（例: `text_align` や effect の mode 等）にも override トグルを出して良い？  
-   - Yes: kind=choice を全体で対応（一貫性重視）
+1. `choice`（例: `text_align` や effect の mode 等）にも override トグルを出して良い？
+
+   - Yes: kind=choice を全体で対応（一貫性重視）；こちらで
    - No: 今回は `text` primitive の `text`（必要なら `font`）だけに限定
 
-2) `font` の解決を “他と同じ” に変えて良い？（`override=False` なら base 値を使う）  
-   - Yes: toggle が意味を持つよう resolver を変更
+2. `font` の解決を “他と同じ” に変えて良い？（`override=False` なら base 値を使う）
+
+   - Yes: toggle が意味を持つよう resolver を変更；こちらで
    - No: UI だけ揃える（ただし toggle が実質無意味になる）
 
-3) `text` 入力は単行 `input_text` のままで良い？（改行は `\\n` を打つ運用）  
+3. `text` 入力は単行 `input_text` のままで良い？（改行は `\\n` を打つ運用）
    - Yes: 最小実装で進める
-   - No: multiline editor（行高の扱い）も今回入れる
-
+   - No: multiline editor（行高の扱い）も今回入れる；こちらで。text 入力は imgui.input_text_multiline を使うように統一して。
