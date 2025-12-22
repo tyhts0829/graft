@@ -11,7 +11,7 @@ CANVAS_HEIGHT = 300
 
 
 def draw(t: float):
-    ply1 = G.text(font="Cappadocia.otf")
+    ply1 = G.text(font="Cappadocia.otf", text="GRAFIX")
     eff1 = (
         E(name="pl2")
         .affine()
