@@ -10,7 +10,9 @@ from typing import Iterator
 
 from .frame_params import FrameParamsBuffer
 from .store import ParamStore
-from .store_ops import merge_frame_params, store_snapshot
+from .labels_ops import merge_frame_labels
+from .merge_ops import merge_frame_params
+from .snapshot_ops import store_snapshot
 
 _param_snapshot_var: contextvars.ContextVar[dict] = contextvars.ContextVar(
     "param_snapshot", default={}
@@ -59,9 +61,8 @@ def parameter_context(
     try:
         yield
     finally:
-        for rec in frame_params.labels:
-            store.labels.set(rec.op, rec.site_id, rec.label)
-        # フレーム終了時に frame_params を ParamStore へ保存
+        # フレーム終了時に観測結果を ParamStore へ保存
+        merge_frame_labels(store, frame_params.labels)
         merge_frame_params(store, frame_params.records)
         _param_snapshot_var.reset(t1)
         _frame_params_var.reset(t2)

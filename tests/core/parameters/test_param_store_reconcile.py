@@ -7,12 +7,11 @@ from grafix.core.parameters.codec import dumps_param_store, loads_param_store
 from grafix.core.parameters.context import parameter_context
 from grafix.core.parameters.frame_params import FrameParamRecord
 from grafix.core.parameters.layer_style import LAYER_STYLE_OP, layer_style_records
-from grafix.core.parameters.store_ops import (
-    merge_frame_params,
-    prune_stale_loaded_groups,
-    store_snapshot,
-    store_snapshot_for_gui,
-)
+from grafix.core.parameters.merge_ops import merge_frame_params
+from grafix.core.parameters.prune_ops import prune_stale_loaded_groups
+from grafix.core.parameters.snapshot_ops import store_snapshot, store_snapshot_for_gui
+from grafix.core.parameters.ui_ops import update_state_from_ui
+from grafix.core.parameters.invariants import assert_invariants
 
 
 def _roundtrip_store(store: ParamStore) -> ParamStore:
@@ -28,19 +27,19 @@ def _polyhedron_records(site_id: str) -> list[FrameParamRecord]:
             key=ParameterKey(op="polyhedron", site_id=site_id, arg="type_index"),
             base=0,
             meta=ParamMeta(kind="int", ui_min=0, ui_max=4),
-            explicit=True,
+            explicit=False,
         ),
         FrameParamRecord(
             key=ParameterKey(op="polyhedron", site_id=site_id, arg="center"),
             base=(0.0, 0.0, 0.0),
             meta=ParamMeta(kind="vec3", ui_min=-500.0, ui_max=500.0),
-            explicit=True,
+            explicit=False,
         ),
         FrameParamRecord(
             key=ParameterKey(op="polyhedron", site_id=site_id, arg="scale"),
             base=(1.0, 1.0, 1.0),
             meta=ParamMeta(kind="vec3", ui_min=0.0, ui_max=200.0),
-            explicit=True,
+            explicit=False,
         ),
     ]
 
@@ -51,13 +50,13 @@ def _sphere_records(site_id: str) -> list[FrameParamRecord]:
             key=ParameterKey(op="sphere", site_id=site_id, arg="type_index"),
             base=0,
             meta=ParamMeta(kind="int", ui_min=0, ui_max=3),
-            explicit=True,
+            explicit=False,
         ),
         FrameParamRecord(
             key=ParameterKey(op="sphere", site_id=site_id, arg="subdivisions"),
             base=0,
             meta=ParamMeta(kind="int", ui_min=0, ui_max=8),
-            explicit=True,
+            explicit=False,
         ),
     ]
 
@@ -67,19 +66,23 @@ def test_reconcile_migrates_state_and_hides_stale_group_in_gui_snapshot():
     new_site_id = "new-site"
 
     original = ParamStore()
-    for rec in _polyhedron_records(old_site_id):
-        state = original.ensure_state(rec.key, base_value=rec.base)
-        state.override = True
-        if rec.key.arg == "center":
-            state.ui_value = (12.0, 34.0, 56.0)
-        original.set_meta(rec.key, rec.meta)
+    merge_frame_params(original, _polyhedron_records(old_site_id))
+    old_center_key = ParameterKey(op="polyhedron", site_id=old_site_id, arg="center")
+    old_center_meta = original.get_meta(old_center_key)
+    assert old_center_meta is not None
+    update_state_from_ui(
+        original,
+        old_center_key,
+        (12.0, 34.0, 56.0),
+        meta=old_center_meta,
+        override=True,
+    )
 
     store = _roundtrip_store(original)
 
     # 新 site_id のグループを観測（=site_id がズレた状態を再現）
     merge_frame_params(store, _polyhedron_records(new_site_id))
 
-    old_center_key = ParameterKey(op="polyhedron", site_id=old_site_id, arg="center")
     new_center_key = ParameterKey(op="polyhedron", site_id=new_site_id, arg="center")
 
     # ステートが新グループへ移っている（誤マッチ防止のため kind 一致が前提）。
@@ -92,6 +95,7 @@ def test_reconcile_migrates_state_and_hides_stale_group_in_gui_snapshot():
     gui_snapshot = store_snapshot_for_gui(store)
     assert old_center_key not in gui_snapshot
     assert new_center_key in gui_snapshot
+    assert_invariants(store)
 
 
 def test_prune_stale_loaded_groups_removes_old_entries_on_save_path():
@@ -99,10 +103,7 @@ def test_prune_stale_loaded_groups_removes_old_entries_on_save_path():
     new_site_id = "new-site"
 
     original = ParamStore()
-    for rec in _polyhedron_records(old_site_id):
-        state = original.ensure_state(rec.key, base_value=rec.base)
-        state.override = True
-        original.set_meta(rec.key, rec.meta)
+    merge_frame_params(original, _polyhedron_records(old_site_id))
     store = _roundtrip_store(original)
 
     merge_frame_params(store, _polyhedron_records(new_site_id))
@@ -111,6 +112,7 @@ def test_prune_stale_loaded_groups_removes_old_entries_on_save_path():
     full_snapshot = store_snapshot(store)
     assert ParameterKey(op="polyhedron", site_id=old_site_id, arg="center") not in full_snapshot
     assert ParameterKey(op="polyhedron", site_id=new_site_id, arg="center") in full_snapshot
+    assert_invariants(store)
 
 
 def test_op_change_hides_loaded_group_in_gui_snapshot_and_prunes_on_save_path():
@@ -119,9 +121,7 @@ def test_op_change_hides_loaded_group_in_gui_snapshot_and_prunes_on_save_path():
     sphere_site_id = "sphere-site"
 
     original = ParamStore()
-    for rec in _polyhedron_records(poly_site_id):
-        original.ensure_state(rec.key, base_value=rec.base)
-        original.set_meta(rec.key, rec.meta)
+    merge_frame_params(original, _polyhedron_records(poly_site_id))
     store = _roundtrip_store(original)
 
     merge_frame_params(store, _sphere_records(sphere_site_id))
@@ -133,6 +133,7 @@ def test_op_change_hides_loaded_group_in_gui_snapshot_and_prunes_on_save_path():
     prune_stale_loaded_groups(store)
     full_snapshot = store_snapshot(store)
     assert all(k.op != "polyhedron" for k in full_snapshot.keys())
+    assert_invariants(store)
 
 
 def test_layer_style_site_id_change_hides_loaded_group_and_prunes_on_save_path():
@@ -171,6 +172,7 @@ def test_layer_style_site_id_change_hides_loaded_group_and_prunes_on_save_path()
     full_snapshot = store_snapshot(store)
     layer_sites_full = {k.site_id for k in full_snapshot.keys() if k.op == LAYER_STYLE_OP}
     assert old_site_id not in layer_sites_full
+    assert_invariants(store)
 
 
 def test_from_json_compacts_ordinals_across_all_ops():
@@ -183,26 +185,27 @@ def test_from_json_compacts_ordinals_across_all_ops():
         }
     )
     store = loads_param_store(payload)
-    assert store.ordinals.get(LAYER_STYLE_OP, "layer-site") == 1
-    assert store.ordinals.get("polyhedron", "a") == 1
-    assert store.ordinals.get("polyhedron", "b") == 2
+    assert store.get_ordinal(LAYER_STYLE_OP, "layer-site") == 1
+    assert store.get_ordinal("polyhedron", "a") == 1
+    assert store.get_ordinal("polyhedron", "b") == 2
+    assert_invariants(store)
 
 
 def test_reconcile_does_not_migrate_when_ambiguous():
     # 同じ op/args を持つ stale が複数あるときは誤マッチを避けて移行しない。
     original = ParamStore()
-    for rec in _polyhedron_records("old-a"):
-        state = original.ensure_state(rec.key, base_value=rec.base)
-        state.override = True
-        if rec.key.arg == "type_index":
-            state.ui_value = 1
-        original.set_meta(rec.key, rec.meta)
-    for rec in _polyhedron_records("old-b"):
-        state = original.ensure_state(rec.key, base_value=rec.base)
-        state.override = True
-        if rec.key.arg == "type_index":
-            state.ui_value = 4
-        original.set_meta(rec.key, rec.meta)
+    old_a_records = _polyhedron_records("old-a")
+    old_b_records = _polyhedron_records("old-b")
+    merge_frame_params(original, old_a_records)
+    merge_frame_params(original, old_b_records)
+
+    key_old_a = ParameterKey(op="polyhedron", site_id="old-a", arg="type_index")
+    meta_old_a = next(rec.meta for rec in old_a_records if rec.key == key_old_a)
+    update_state_from_ui(original, key_old_a, 1, meta=meta_old_a, override=True)
+
+    key_old_b = ParameterKey(op="polyhedron", site_id="old-b", arg="type_index")
+    meta_old_b = next(rec.meta for rec in old_b_records if rec.key == key_old_b)
+    update_state_from_ui(original, key_old_b, 4, meta=meta_old_b, override=True)
 
     store = _roundtrip_store(original)
 
@@ -214,6 +217,7 @@ def test_reconcile_does_not_migrate_when_ambiguous():
     assert state is not None
     # base=0 のまま（どちらの stale にも寄せない）
     assert state.ui_value == 0
+    assert_invariants(store)
 
 
 def test_prune_removes_stale_effect_steps_and_unused_chain_ordinals():
@@ -224,23 +228,21 @@ def test_prune_removes_stale_effect_steps_and_unused_chain_ordinals():
 
     original = ParamStore()
     old_key = ParameterKey(op="rotate", site_id=old_step_site_id, arg="angle")
+    meta = ParamMeta(kind="float", ui_min=0.0, ui_max=360.0)
     merge_frame_params(
         original,
         [
             FrameParamRecord(
                 key=old_key,
                 base=0.0,
-                meta=ParamMeta(kind="float", ui_min=0.0, ui_max=360.0),
+                meta=meta,
                 explicit=True,
                 chain_id=old_chain_id,
                 step_index=0,
             )
         ],
     )
-    old_state = original.get_state(old_key)
-    assert old_state is not None
-    old_state.override = True
-    old_state.ui_value = 90.0
+    update_state_from_ui(original, old_key, 90.0, meta=meta, override=True)
 
     store = _roundtrip_store(original)
 
@@ -250,7 +252,7 @@ def test_prune_removes_stale_effect_steps_and_unused_chain_ordinals():
             FrameParamRecord(
                 key=ParameterKey(op="rotate", site_id=new_step_site_id, arg="angle"),
                 base=0.0,
-                meta=ParamMeta(kind="float", ui_min=0.0, ui_max=360.0),
+                meta=meta,
                 explicit=True,
                 chain_id=new_chain_id,
                 step_index=0,
@@ -260,9 +262,10 @@ def test_prune_removes_stale_effect_steps_and_unused_chain_ordinals():
 
     prune_stale_loaded_groups(store)
 
-    assert store.effects.get_step("rotate", old_step_site_id) is None
-    assert old_chain_id not in store.effects.chain_ordinals()
-    assert new_chain_id in store.effects.chain_ordinals()
+    assert store.get_effect_step("rotate", old_step_site_id) is None
+    assert old_chain_id not in store.chain_ordinals()
+    assert new_chain_id in store.chain_ordinals()
+    assert_invariants(store)
 
 
 def _compile_draw(source: str):
@@ -287,15 +290,14 @@ def draw():
         draw_v1()
 
     # 何か 1 つ値を変えたことにする（=GUI 調整）。
+    snap_v1 = store_snapshot(store_v1)
     key_v1 = next(
         k
-        for k in store_snapshot(store_v1).keys()
+        for k in snap_v1.keys()
         if k.op == "polyhedron" and k.arg == "type_index"
     )
-    state_v1 = store_v1.get_state(key_v1)
-    assert state_v1 is not None
-    state_v1.override = True
-    state_v1.ui_value = 3
+    meta_v1, _state_v1, _ordinal_v1, _label_v1 = snap_v1[key_v1]
+    update_state_from_ui(store_v1, key_v1, 3, meta=meta_v1, override=True)
 
     store = _roundtrip_store(store_v1)
 
@@ -322,3 +324,4 @@ def draw():
     st = store.get_state(type_key)
     assert st is not None
     assert st.ui_value == 3
+    assert_invariants(store)

@@ -1,4 +1,6 @@
 from grafix.core.parameters import ParamMeta, ParamStore, parameter_context, resolve_params
+from grafix.core.parameters.invariants import assert_invariants
+from grafix.core.parameters.snapshot_ops import store_snapshot
 
 
 def test_merge_creates_state_and_ordinal():
@@ -10,9 +12,9 @@ def test_merge_creates_state_and_ordinal():
         resolve_params(op="circle", params=params, meta=meta, site_id="site-a")
 
     # after context exit, frame_params merged
-    keys = list(store.states.keys())
-    assert len(keys) == 1
-    state = store.states[keys[0]]
+    snap = store_snapshot(store)
+    assert len(snap) == 1
+    (_key, (_meta, state, ordinal, _label)) = next(iter(snap.items()))
     assert state.ui_value == 0.5
-    # ordinal should be assigned
-    assert store.ordinals.get("circle", "site-a") == 1
+    assert ordinal == 1
+    assert_invariants(store)

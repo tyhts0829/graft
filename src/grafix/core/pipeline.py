@@ -14,6 +14,7 @@ from grafix.core.realized_geometry import RealizedGeometry
 from grafix.core.layer import Layer, LayerStyleDefaults, resolve_layer_style
 from grafix.core.scene import SceneItem, normalize_scene
 from grafix.core.parameters import current_frame_params, current_param_store
+from grafix.core.parameters.labels_ops import set_label
 from grafix.core.parameters.layer_style import (
     LAYER_STYLE_OP,
     LAYER_STYLE_LINE_COLOR,
@@ -71,7 +72,7 @@ def realize_scene(
         # Layer style を観測し、override=True の場合だけ GUI 値で上書きして描画する。
         if store is not None:
             if layer.name is not None:
-                store.labels.set(LAYER_STYLE_OP, layer.site_id, layer.name)
+                set_label(store, op=LAYER_STYLE_OP, site_id=layer.site_id, label=layer.name)
 
             frame_params = current_frame_params()
             if frame_params is not None:

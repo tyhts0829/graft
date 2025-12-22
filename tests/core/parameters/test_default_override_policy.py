@@ -1,6 +1,8 @@
 from grafix.api import G
 from grafix.core.parameters import ParamStore, parameter_context
-from grafix.core.parameters.store_ops import store_snapshot
+from grafix.core.parameters.invariants import assert_invariants
+from grafix.core.parameters.snapshot_ops import store_snapshot
+from grafix.core.parameters.ui_ops import update_state_from_ui
 
 
 def _override_by_arg(store: ParamStore, *, op: str) -> dict[str, bool]:
@@ -27,6 +29,7 @@ def test_implicit_defaults_start_with_override_on():
         "center": True,
         "scale": True,
     }
+    assert_invariants(store)
 
 
 def test_explicit_kwargs_start_with_override_off_for_those_args():
@@ -44,6 +47,7 @@ def test_explicit_kwargs_start_with_override_off_for_those_args():
         "center": True,
         "scale": True,
     }
+    assert_invariants(store)
 
 
 def test_existing_state_is_not_overwritten_by_policy():
@@ -59,9 +63,8 @@ def test_existing_state_is_not_overwritten_by_policy():
     key_n_sides = next(
         key for key in snap.keys() if key.op == "polygon" and key.arg == "n_sides"
     )
-    state_n_sides = store.get_state(key_n_sides)
-    assert state_n_sides is not None
-    state_n_sides.override = False
+    meta, state, _ordinal, _label = snap[key_n_sides]
+    update_state_from_ui(store, key_n_sides, state.ui_value, meta=meta, override=False)
 
     with parameter_context(store=store, cc_snapshot=None):
         callsite()
@@ -69,3 +72,4 @@ def test_existing_state_is_not_overwritten_by_policy():
     snap2 = store_snapshot(store)
     _meta, state2, _ordinal, _label = snap2[key_n_sides]
     assert state2.override is False
+    assert_invariants(store)

@@ -32,7 +32,7 @@ class GroupOrdinals:
         return int(ordinal)
 
     def migrate(self, op: str, old_site_id: str, new_site_id: str) -> None:
-        """op 内で old_site_id の ordinal を new_site_id へ付け替える。"""
+        """op 内で old_site_id の ordinal を new_site_id へ移す（old も ordinal を保つ）。"""
 
         op = str(op)
         old_site_id = str(old_site_id)
@@ -41,10 +41,19 @@ class GroupOrdinals:
         mapping = self._by_op.get(op)
         if mapping is None:
             return
-        if old_site_id not in mapping:
+        old_ordinal = mapping.get(old_site_id)
+        if old_ordinal is None:
             return
-        ordinal = int(mapping.pop(old_site_id))
-        mapping[new_site_id] = ordinal
+
+        new_ordinal = mapping.get(new_site_id)
+        mapping[new_site_id] = int(old_ordinal)
+
+        # migrate は「新グループへ旧 ordinal を引き継ぐ」目的だが、
+        # stale グループは prune まで残るため、snapshot 不変条件として old も ordinal を持ち続ける。
+        if new_ordinal is not None:
+            mapping[old_site_id] = int(new_ordinal)
+        else:
+            mapping[old_site_id] = int(max(mapping.values(), default=0) + 1)
 
     def delete(self, op: str, site_id: str) -> None:
         """指定グループの ordinal を削除する。"""
@@ -121,4 +130,3 @@ class GroupOrdinals:
 
 
 __all__ = ["GroupOrdinals"]
-

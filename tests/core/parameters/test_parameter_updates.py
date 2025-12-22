@@ -1,10 +1,5 @@
-from grafix.core.parameters import (
-    ParamMeta,
-    ParamState,
-    ParamStore,
-    ParameterKey,
-    update_state_from_ui,
-)
+from grafix.core.parameters import ParamMeta, ParamStore, ParameterKey
+from grafix.core.parameters.ui_ops import update_state_from_ui
 
 
 def test_update_state_from_ui_sets_value_and_override():

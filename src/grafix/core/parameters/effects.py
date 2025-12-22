@@ -61,6 +61,8 @@ class EffectChainIndex:
         """JSON 由来の値で内部状態を置き換える。"""
 
         step_by_site: dict[tuple[str, str], tuple[str, int]] = {}
+        chain_ids_in_order: list[str] = []
+        seen_chain_ids: set[str] = set()
         if isinstance(effect_steps, list):
             for item in effect_steps:
                 if not isinstance(item, dict):
@@ -73,6 +75,9 @@ class EffectChainIndex:
                 except Exception:
                     continue
                 step_by_site[(op, site_id)] = (chain_id, step_index)
+                if chain_id not in seen_chain_ids:
+                    seen_chain_ids.add(chain_id)
+                    chain_ids_in_order.append(chain_id)
 
         chain_ordinal_by_id: dict[str, int] = {}
         if isinstance(chain_ordinals, dict):
@@ -82,9 +87,17 @@ class EffectChainIndex:
                 except Exception:
                     continue
 
+        # chain_ordinals が欠けている/不完全な場合でも、step 情報から補完する。
+        # 目的: GUI の “effect#N” とチェーン並びを安定させる。
+        next_ordinal = max(chain_ordinal_by_id.values(), default=0) + 1
+        for chain_id in chain_ids_in_order:
+            if chain_id in chain_ordinal_by_id:
+                continue
+            chain_ordinal_by_id[chain_id] = int(next_ordinal)
+            next_ordinal += 1
+
         self._step_by_site = step_by_site
         self._chain_ordinals = chain_ordinal_by_id
 
 
 __all__ = ["EffectChainIndex"]
-

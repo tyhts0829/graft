@@ -1,6 +1,9 @@
-from grafix.core.parameters import FrameParamRecord, ParamMeta, ParamState, ParamStore, ParameterKey
+from grafix.core.parameters import FrameParamRecord, ParamMeta, ParamStore, ParameterKey
 from grafix.core.parameters.codec import dumps_param_store, loads_param_store
-from grafix.core.parameters.store_ops import merge_frame_params, store_snapshot
+from grafix.core.parameters.merge_ops import merge_frame_params
+from grafix.core.parameters.invariants import assert_invariants
+from grafix.core.parameters.snapshot_ops import store_snapshot
+from grafix.core.parameters.ui_ops import update_state_from_ui
 
 
 def test_snapshot_includes_meta_state_and_ordinal():
@@ -24,16 +27,24 @@ def test_snapshot_includes_meta_state_and_ordinal():
     assert state.ui_value == 0.5
     assert state.override is False
     assert ordinal == 1
+    assert_invariants(store)
 
 
 def test_snapshot_omits_state_without_meta():
     store = ParamStore()
     key = ParameterKey(op="circle", site_id="site-2", arg="r")
-    # meta 未設定のまま state だけ作る
-    store.states[key] = ParamState(ui_value=1.0)
+    # meta を登録せず state だけ作る（UI 先行で値が入るケースを模擬）。
+    update_state_from_ui(
+        store,
+        key,
+        1.0,
+        meta=ParamMeta(kind="float", ui_min=0.0, ui_max=1.0),
+        override=True,
+    )
 
     snap = store_snapshot(store)
     assert key not in snap
+    assert_invariants(store)
 
 
 def test_json_roundtrip_preserves_meta_and_state():
@@ -46,7 +57,7 @@ def test_json_roundtrip_preserves_meta_and_state():
         explicit=False,
     )
     merge_frame_params(store, [record])
-    store.states[key].override = True
+    update_state_from_ui(store, key, 0.1, meta=record.meta, override=True)
 
     payload = dumps_param_store(store)
     loaded = loads_param_store(payload)
@@ -59,6 +70,7 @@ def test_json_roundtrip_preserves_meta_and_state():
     assert state.override is True
     assert state.ui_value == 0.1
     assert ordinal == 1
+    assert_invariants(loaded)
 
 
 def test_json_roundtrip_preserves_vec3_cc_key_tuple():
@@ -70,7 +82,9 @@ def test_json_roundtrip_preserves_vec3_cc_key_tuple():
         meta=ParamMeta(kind="vec3", ui_min=-1.0, ui_max=1.0),
     )
     merge_frame_params(store, [record])
-    store.states[key].cc_key = (1, None, 3)
+    stored_meta = store.get_meta(key)
+    assert stored_meta is not None
+    update_state_from_ui(store, key, (0.0, 0.0, 0.0), meta=stored_meta, cc_key=(1, None, 3))
 
     payload = dumps_param_store(store)
     loaded = loads_param_store(payload)
@@ -78,3 +92,4 @@ def test_json_roundtrip_preserves_vec3_cc_key_tuple():
     snap = store_snapshot(loaded)
     _meta, state, _ordinal, _label = snap[key]
     assert state.cc_key == (1, None, 3)
+    assert_invariants(loaded)

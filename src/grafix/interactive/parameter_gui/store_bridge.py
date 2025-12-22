@@ -11,10 +11,12 @@ from grafix.core.primitive_registry import primitive_registry
 from grafix.core.parameters.key import ParameterKey
 from grafix.core.parameters.layer_style import LAYER_STYLE_OP
 from grafix.core.parameters.meta import ParamMeta
+from grafix.core.parameters.meta_ops import set_meta
 from grafix.core.parameters.store import ParamStore
 from grafix.core.parameters.style import STYLE_OP
-from grafix.core.parameters.store_ops import store_snapshot_for_gui
-from grafix.core.parameters.view import ParameterRow, rows_from_snapshot, update_state_from_ui
+from grafix.core.parameters.snapshot_ops import store_snapshot_for_gui
+from grafix.core.parameters.ui_ops import update_state_from_ui
+from grafix.core.parameters.view import ParameterRow, rows_from_snapshot
 
 from .labeling import primitive_header_display_names_from_snapshot
 from .labeling import (
@@ -114,7 +116,7 @@ def _apply_updated_rows_to_store(
                 ui_max=after.ui_max,
                 choices=meta.choices,
             )
-            store.set_meta(key, effective_meta)
+            set_meta(store, key, effective_meta)
 
         if (
             after.ui_value != before.ui_value
@@ -183,9 +185,9 @@ def render_store_parameter_table(
     # ParamStore が保持する (op, site_id) -> (chain_id, step_index) を参照する。
     # - chain_id: チェーン識別子（EffectBuilder 生成時の site_id）
     # - step_index: チェーン内のステップ順序（E.scale().rotate()... の順番）
-    step_info_by_site = store.effects.step_info_by_site()
+    step_info_by_site = store.effect_steps()
     # chain_id ごとの ordinal は GUI の “effect#N” デフォルト名に使う。
-    chain_ordinal_by_id = store.effects.chain_ordinals()
+    chain_ordinal_by_id = store.chain_ordinals()
     # チェーンヘッダの表示名:
     # - E(name=...) があればそれ
     # - 無ければ effect#N（N は chain_ordinal）

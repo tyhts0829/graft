@@ -3,19 +3,33 @@ import pytest
 from grafix.core.parameters import (
     ParameterKey,
     ParamMeta,
-    ParamState,
     ParamStore,
     parameter_context,
     resolve_params,
 )
+from grafix.core.parameters.frame_params import FrameParamRecord
+from grafix.core.parameters.merge_ops import merge_frame_params
+from grafix.core.parameters.ui_ops import update_state_from_ui
 
 
 def test_override_priority_and_quantize():
     store = ParamStore()
     key = ParameterKey(op="circle", site_id="s1", arg="r")
-    store.states[key] = ParamState(override=True, ui_value=0.2604, cc_key=None)
-    store.meta[key] = ParamMeta(kind="float", ui_min=0.0, ui_max=1.0)
-    store.ordinals.get_or_assign("circle", "s1")
+    meta_r = ParamMeta(kind="float", ui_min=0.0, ui_max=1.0)
+    merge_frame_params(
+        store,
+        [
+            FrameParamRecord(
+                key=key,
+                base=0.05,
+                meta=meta_r,
+                explicit=True,
+            )
+        ],
+    )
+    stored_meta = store.get_meta(key)
+    assert stored_meta is not None
+    update_state_from_ui(store, key, 0.2604, meta=stored_meta, override=True)
 
     meta = {"r": ParamMeta(kind="float", ui_min=0.0, ui_max=1.0)}
     params = {"r": 0.05}
@@ -62,13 +76,28 @@ def test_vec_quantized_per_component():
 def test_vec3_cc_applies_per_component():
     store = ParamStore()
     key = ParameterKey(op="scale", site_id="sv2", arg="p")
-    store.states[key] = ParamState(
+    meta_p = ParamMeta(kind="vec3", ui_min=-1.0, ui_max=1.0)
+    merge_frame_params(
+        store,
+        [
+            FrameParamRecord(
+                key=key,
+                base=(0.0, 0.0, 0.0),
+                meta=meta_p,
+                explicit=True,
+            )
+        ],
+    )
+    stored_meta = store.get_meta(key)
+    assert stored_meta is not None
+    update_state_from_ui(
+        store,
+        key,
+        (0.0, 0.0, 0.0),
+        meta=stored_meta,
         override=False,
-        ui_value=(0.0, 0.0, 0.0),
         cc_key=(10, 11, 12),
     )
-    store.meta[key] = ParamMeta(kind="vec3", ui_min=-1.0, ui_max=1.0)
-    store.ordinals.get_or_assign("scale", "sv2")
 
     meta = {"p": ParamMeta(kind="vec3", ui_min=-1.0, ui_max=1.0)}
     params = {"p": (0.0, 0.0, 0.0)}

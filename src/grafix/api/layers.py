@@ -8,6 +8,7 @@ from typing import Sequence
 
 from grafix.core.geometry import Geometry
 from grafix.core.parameters import caller_site_id, current_param_store
+from grafix.core.parameters.labels_ops import set_label
 from grafix.core.parameters.layer_style import LAYER_STYLE_OP
 from grafix.core.layer import Layer
 
@@ -77,7 +78,7 @@ class LayerHelper:
 
         store = current_param_store()
         if store is not None and name is not None:
-            store.labels.set(LAYER_STYLE_OP, site_id, name)
+            set_label(store, op=LAYER_STYLE_OP, site_id=site_id, label=name)
 
         # 複数 Geometry は concat で 1 Layer にまとめる。
         if len(geometries) == 1:

@@ -6,7 +6,8 @@ from grafix.interactive.parameter_gui.labeling import (
 )
 from grafix.core.effect_registry import effect_registry
 from grafix.core.parameters import ParamStore, ParameterKey, parameter_context
-from grafix.core.parameters.store_ops import store_snapshot
+from grafix.core.parameters.invariants import assert_invariants
+from grafix.core.parameters.snapshot_ops import store_snapshot
 
 
 def test_effect_chain_header_and_step_ordinals():
@@ -17,7 +18,7 @@ def test_effect_chain_header_and_step_ordinals():
         eff = E(name="xf").scale().rotate().scale()
         _out = eff(g)
 
-    step_info_by_site = store.effects.step_info_by_site()
+    step_info_by_site = store.effect_steps()
     assert len(step_info_by_site) == 3
 
     chain_ids = {chain_id for chain_id, _step_index in step_info_by_site.values()}
@@ -43,7 +44,7 @@ def test_effect_chain_header_and_step_ordinals():
     chain_header_by_id = effect_chain_header_display_names_from_snapshot(
         snap,
         step_info_by_site=step_info_by_site,
-        chain_ordinal_by_id=store.effects.chain_ordinals(),
+        chain_ordinal_by_id=store.chain_ordinals(),
         is_effect_op=lambda op: op in effect_registry,
     )
     assert chain_header_by_id == {chain_id: "xf"}
@@ -61,6 +62,7 @@ def test_effect_chain_header_and_step_ordinals():
         format_param_row_label("scale", step_ordinals[("scale", scale1_site)], "auto_center")
         == "scale#2 auto_center"
     )
+    assert_invariants(store)
 
 
 def test_effect_chain_header_normalizes_unnamed_chains_independent_of_chain_ordinal():
@@ -74,12 +76,12 @@ def test_effect_chain_header_normalizes_unnamed_chains_independent_of_chain_ordi
         _out2 = unnamed(g)
 
     snap = store_snapshot(store)
-    step_info_by_site = store.effects.step_info_by_site()
+    step_info_by_site = store.effect_steps()
 
     chain_header_by_id = effect_chain_header_display_names_from_snapshot(
         snap,
         step_info_by_site=step_info_by_site,
-        chain_ordinal_by_id=store.effects.chain_ordinals(),
+        chain_ordinal_by_id=store.chain_ordinals(),
         is_effect_op=lambda op: op in effect_registry,
     )
     assert set(chain_header_by_id.values()) == {"xf", "effect#1"}
@@ -96,3 +98,4 @@ def test_effect_chain_header_normalizes_unnamed_chains_independent_of_chain_ordi
         is_effect_op=lambda op: op in effect_registry,
     )
     assert chain_header_by_id2[unnamed_chain_id] == "effect#1"
+    assert_invariants(store)

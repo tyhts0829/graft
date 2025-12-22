@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .codec import dumps_param_store, loads_param_store
-from .store_ops import prune_stale_loaded_groups
+from .prune_ops import prune_stale_loaded_groups
 from .store import ParamStore
 
 _PERSIST_DIR = Path("data") / "output" / "param_store"

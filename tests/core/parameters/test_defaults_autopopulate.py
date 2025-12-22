@@ -6,7 +6,7 @@ from grafix.core.effect_registry import effect
 from grafix.core.primitive_registry import primitive
 from grafix.core.realized_geometry import RealizedGeometry
 from grafix.core.parameters import ParamMeta, ParamStore, parameter_context
-from grafix.core.parameters.store_ops import store_snapshot
+from grafix.core.parameters.snapshot_ops import store_snapshot
 
 
 def _empty_geometry() -> RealizedGeometry:

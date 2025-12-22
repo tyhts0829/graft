@@ -3,12 +3,13 @@ from __future__ import annotations
 import pytest
 
 from grafix.core.parameters import ParamStore
+from grafix.core.parameters.invariants import assert_invariants
+from grafix.core.parameters.style_ops import ensure_style_entries
 from grafix.core.parameters.style import (
     STYLE_BACKGROUND_COLOR,
     STYLE_GLOBAL_LINE_COLOR,
     STYLE_GLOBAL_THICKNESS,
     coerce_rgb255,
-    ensure_style_entries,
     rgb01_to_rgb255,
     rgb255_to_rgb01,
     style_key,
@@ -65,3 +66,4 @@ def test_ensure_style_entries_creates_state_and_meta():
     bg_state = store.get_state(style_key(STYLE_BACKGROUND_COLOR))
     assert bg_state is not None
     assert bg_state.ui_value == (255, 0, 0)
+    assert_invariants(store)

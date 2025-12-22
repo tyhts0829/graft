@@ -1,5 +1,6 @@
 from grafix.core.parameters import ParamStore
-from grafix.core.parameters.store_ops import merge_frame_params
+from grafix.core.parameters.labels_ops import set_label
+from grafix.core.parameters.merge_ops import merge_frame_params
 from grafix.core.parameters.layer_style import (
     LAYER_STYLE_LINE_COLOR,
     LAYER_STYLE_LINE_THICKNESS,
@@ -21,7 +22,7 @@ def test_layer_style_records_can_be_merged_by_param_store():
             explicit_line_color=True,
         )
     )
-    store.labels.set(LAYER_STYLE_OP, "layer:1", "bg")
+    set_label(store, op=LAYER_STYLE_OP, site_id="layer:1", label="bg")
 
     key_th = layer_style_key("layer:1", LAYER_STYLE_LINE_THICKNESS)
     key_color = layer_style_key("layer:1", LAYER_STYLE_LINE_COLOR)
@@ -46,4 +47,4 @@ def test_layer_style_records_can_be_merged_by_param_store():
     assert state_color.ui_value == (255, 0, 0)
     assert state_color.override is False
 
-    assert store.labels.get(LAYER_STYLE_OP, "layer:1") == "bg"
+    assert store.get_label(LAYER_STYLE_OP, "layer:1") == "bg"

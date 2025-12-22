@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Any
 
 from grafix.core.parameters import current_frame_params, current_param_store, resolve_params
+from grafix.core.parameters.labels_ops import set_label
 from grafix.core.parameters.meta import ParamMeta
 
 _NO_STORE_FOR_LABEL_ERROR = "ParamStore が利用できないコンテキストで name 指定は使えません"
@@ -29,7 +30,7 @@ def set_api_label(*, op: str, site_id: str, label: str | None) -> None:
         return
     store = current_param_store()
     if store is not None:
-        store.labels.set(op, site_id, label)
+        set_label(store, op=op, site_id=site_id, label=label)
         return
     frame_params = current_frame_params()
     if frame_params is not None:

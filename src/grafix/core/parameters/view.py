@@ -1,5 +1,5 @@
 # どこで: `src/grafix/core/parameters/view.py`。
-# 何を: ParamStore スナップショットから UI 行モデルを生成し、UI 入力を正規化して状態へ適用する純粋関数群を提供する。
+# 何を: ParamStore スナップショットから UI 行モデルを生成し、UI 入力を正規化する純粋関数群を提供する。
 # なぜ: DPG 依存部と切り離し、型変換・検証を単体テスト可能に保つため。
 
 from __future__ import annotations
@@ -10,7 +10,6 @@ from typing import Any, Iterable, Sequence
 from .key import ParameterKey
 from .meta import ParamMeta
 from .state import ParamState
-from .store import ParamStore
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,70 +147,3 @@ def normalize_input(value: Any, meta: ParamMeta) -> tuple[Any | None, str | None
     # 未知 kind はそのまま返す
     return value, None
 
-
-_KEEP = object()
-
-
-def update_state_from_ui(
-    store: ParamStore,
-    key: ParameterKey,
-    ui_input_value: Any,
-    *,
-    meta: ParamMeta,
-    override: bool | None = None,
-    cc_key: int | tuple[int | None, int | None, int | None] | None | object = _KEEP,
-) -> tuple[bool, str | None]:
-    """UI から渡された入力を正規化し、対応する ParamState に反映する。
-
-    Parameters
-    ----------
-    store : ParamStore
-        対象ストア。
-    key : ParameterKey
-        更新対象キー。
-    ui_input_value : Any
-        UI からの入力値。
-    meta : ParamMeta
-        kind/choices などの正規化に使うメタ情報。
-    override : bool | None
-        指定時は state.override を更新する。None の場合は変更しない。
-    cc_key : int | None | object
-        指定時は state.cc_key を更新する。
-        - int: その CC 番号へ設定
-        - None: クリア
-        - 省略: 変更しない
-
-    Returns
-    -------
-    (success, error)
-        success: 正常に反映した場合 True
-        error: 失敗時のエラー種別文字列
-    """
-
-    normalized, err = normalize_input(ui_input_value, meta)
-    if err and normalized is None:
-        return False, err
-
-    state = store.ensure_state(
-        key, base_value=ui_input_value if normalized is None else normalized
-    )
-    if normalized is not None:
-        state.ui_value = normalized
-    if override is not None:
-        state.override = bool(override)
-    if cc_key is not _KEEP:
-        if cc_key is None:
-            state.cc_key = None
-        elif isinstance(cc_key, int):
-            state.cc_key = int(cc_key)
-        else:
-            if len(cc_key) != 3:  # type: ignore[arg-type]
-                raise ValueError(f"vec3 cc_key must be length-3: {cc_key!r}")
-            a, b, c = cc_key  # type: ignore[misc]
-            cc_tuple = (
-                None if a is None else int(a),
-                None if b is None else int(b),
-                None if c is None else int(c),
-            )
-            state.cc_key = None if cc_tuple == (None, None, None) else cc_tuple
-    return True, err

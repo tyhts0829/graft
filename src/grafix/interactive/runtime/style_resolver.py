@@ -7,9 +7,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from grafix.core.parameters import ParamStore
+from grafix.core.parameters.style_ops import ensure_style_entries
 from grafix.core.parameters.style import (
     coerce_rgb255,
-    ensure_style_entries,
     rgb01_to_rgb255,
     rgb255_to_rgb01,
     style_key,
@@ -81,4 +81,3 @@ class StyleResolver:
             global_line_color_rgb01=rgb255_to_rgb01(line255),
             global_thickness=float(thickness),
         )
-

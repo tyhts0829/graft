@@ -92,7 +92,7 @@ dict を隠しても `get_state()` がミュータブル参照を返す限り、
   - op ごとに 1..N の連番
   - **states/meta/effects に存在する全グループは ordinal を必ず持つ**（snapshot は採番しない前提）
   - prune 後に compact（相対順維持）
-  - migrate は可能なら ordinal を付け替え
+  - migrate は可能なら ordinal を引き継ぐ（old は prune まで ordinal を保持する）
 - reconcile:
   - loaded/observed 差分の再リンク（削除は prune のみ）
   - Style（global）は scope 外
@@ -111,16 +111,16 @@ dict を隠しても `get_state()` がミュータブル参照を返す限り、
 
 ## 実装チェックリスト
 
-- [ ] “write” の定義と、唯一の書き込みルート（ops）の合意を短く明文化（ADR 相当）
-- [ ] ops の責務境界（merge/reconcile/prune/snapshot が何を保証するか）を箇条書きで固定
-- [ ] `ParamStore` を “直書きしづらい” 形に変更（private 化 + read-only accessor）
-  - [ ] private 化対象に `labels/ordinals/effects/runtime` も含める
-  - [ ] `ParamState` の参照リークを潰す方針を決めて反映（view/copy or 規約）
-- [ ] snapshot 系を pure にする（ordinal 採番を merge/load 側へ移す、必要なら別名を用意）
-- [ ] `store_ops.py` を責務境界に沿って分割（snapshot/merge/reconcile/prune）
-- [ ] `assert_invariants(store)` を追加し、主要テストの末尾で呼ぶ（漏れ検知）
-- [ ] 呼び出し側（context/persistence/gui/tests）を “ops だけ書く” 前提へ追従
-- [ ] `PYTHONPATH=src pytest -q tests/core/parameters tests/interactive/parameter_gui`
+- [x] “write” の定義と、唯一の書き込みルート（ops）の合意を短く明文化（ADR 相当）
+- [x] ops の責務境界（merge/reconcile/prune/snapshot が何を保証するか）を箇条書きで固定
+- [x] `ParamStore` を “直書きしづらい” 形に変更（private 化 + read-only accessor）
+  - [x] private 化対象に `labels/ordinals/effects/runtime` も含める
+  - [x] `ParamState` の参照リークを潰す方針を決めて反映（view/copy or 規約）
+- [x] snapshot 系を pure にする（ordinal 採番を merge/load 側へ移す、必要なら別名を用意）
+- [x] `store_ops.py` を責務境界に沿って分割（snapshot/merge/reconcile/prune）
+- [x] `assert_invariants(store)` を追加し、主要テストの末尾で呼ぶ（漏れ検知）
+- [x] 呼び出し側（context/persistence/gui/tests）を “ops だけ書く” 前提へ追従
+- [x] `PYTHONPATH=src pytest -q tests/core/parameters tests/interactive/parameter_gui`
 
 ## 事前確認（あなたの判断が必要）
 

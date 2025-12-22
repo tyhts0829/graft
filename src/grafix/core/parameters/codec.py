@@ -16,6 +16,11 @@ from .store import ParamStore
 def encode_param_store(store: ParamStore) -> dict[str, Any]:
     """ParamStore を JSON 化可能な dict に変換して返す。"""
 
+    # codec は ParamStore の内部表現へアクセスする（永続化仕様を 1 箇所へ閉じるため）。
+    labels = store._labels_ref().as_dict()
+    ordinals = store._ordinals_ref().as_dict()
+    effects = store._effects_ref()
+
     return {
         "states": [
             {
@@ -25,12 +30,14 @@ def encode_param_store(store: ParamStore) -> dict[str, Any]:
                 # 明示 kwargs は「起動時はコードが勝つ」が期待値なので、
                 # override=True を永続化しない（次回起動で override=False から開始する）。
                 "override": (
-                    False if store.explicit_by_key.get(k) is True else bool(v.override)
+                    False
+                    if store._explicit_by_key.get(k) is True
+                    else bool(v.override)
                 ),
                 "ui_value": v.ui_value,
                 "cc_key": v.cc_key,
             }
-            for k, v in store.states.items()
+            for k, v in store._states.items()
         ],
         "meta": [
             {
@@ -42,13 +49,13 @@ def encode_param_store(store: ParamStore) -> dict[str, Any]:
                 "ui_max": m.ui_max,
                 "choices": list(m.choices) if m.choices is not None else None,
             }
-            for k, m in store.meta.items()
+            for k, m in store._meta.items()
         ],
         "labels": [
             {"op": op, "site_id": site_id, "label": label}
-            for (op, site_id), label in store.labels.as_dict().items()
+            for (op, site_id), label in labels.items()
         ],
-        "ordinals": store.ordinals.as_dict(),
+        "ordinals": ordinals,
         "effect_steps": [
             {
                 "op": op,
@@ -56,9 +63,9 @@ def encode_param_store(store: ParamStore) -> dict[str, Any]:
                 "chain_id": chain_id,
                 "step_index": step_index,
             }
-            for (op, site_id), (chain_id, step_index) in store.effects.step_info_by_site().items()
+            for (op, site_id), (chain_id, step_index) in effects.step_info_by_site().items()
         ],
-        "chain_ordinals": store.effects.chain_ordinals(),
+        "chain_ordinals": effects.chain_ordinals(),
         "explicit": [
             {
                 "op": k.op,
@@ -66,7 +73,7 @@ def encode_param_store(store: ParamStore) -> dict[str, Any]:
                 "arg": k.arg,
                 "explicit": bool(v),
             }
-            for k, v in store.explicit_by_key.items()
+            for k, v in store._explicit_by_key.items()
         ],
     }
 
@@ -111,7 +118,7 @@ def decode_param_store(obj: object) -> ParamStore:
         state = ParamState(ui_value=item.get("ui_value"), cc_key=cc_key)
         if "override" in item:
             state.override = bool(item["override"])
-        store.states[key] = state
+        store._states[key] = state
 
     for item in obj.get("meta", []):
         if not isinstance(item, dict):
@@ -126,7 +133,7 @@ def decode_param_store(obj: object) -> ParamStore:
             )
         except Exception:
             continue
-        store.meta[key] = meta
+        store._meta[key] = meta
 
     labels_items: list[tuple[tuple[str, str], str]] = []
     for item in obj.get("labels", []):
@@ -138,12 +145,12 @@ def decode_param_store(obj: object) -> ParamStore:
         except Exception:
             continue
         labels_items.append((group, label))
-    store.labels.replace_from_items(labels_items)
+    store._labels_ref().replace_from_items(labels_items)
 
-    store.ordinals.replace_from_dict(obj.get("ordinals", {}))
-    store.ordinals.compact_all()
+    store._ordinals_ref().replace_from_dict(obj.get("ordinals", {}))
+    store._ordinals_ref().compact_all()
 
-    store.effects.replace_from_json(
+    store._effects_ref().replace_from_json(
         effect_steps=obj.get("effect_steps", []),
         chain_ordinals=obj.get("chain_ordinals", {}),
     )
@@ -155,16 +162,23 @@ def decode_param_store(obj: object) -> ParamStore:
             key = ParameterKey(op=str(item["op"]), site_id=str(item["site_id"]), arg=str(item["arg"]))
         except Exception:
             continue
-        store.explicit_by_key[key] = bool(item.get("explicit", False))
+        store._explicit_by_key[key] = bool(item.get("explicit", False))
 
     # explicit=True のキーは再起動時に override=False から開始する。
-    for key, is_explicit in store.explicit_by_key.items():
-        if is_explicit is True and key in store.states:
-            store.states[key].override = False
+    for key, is_explicit in store._explicit_by_key.items():
+        if is_explicit is True and key in store._states:
+            store._states[key].override = False
 
-    store.runtime.loaded_groups = {
-        (str(k.op), str(k.site_id)) for k in set(store.states) | set(store.meta)
+    store._runtime_ref().loaded_groups = {
+        (str(k.op), str(k.site_id)) for k in set(store._states) | set(store._meta)
     }
+
+    # store_snapshot が “pure” 前提なので、ロード直後に ordinal の不足を補完する。
+    ordinals = store._ordinals_ref()
+    for key in store._states.keys():
+        ordinals.get_or_assign(key.op, key.site_id)
+    for key in store._meta.keys():
+        ordinals.get_or_assign(key.op, key.site_id)
     return store
 
 

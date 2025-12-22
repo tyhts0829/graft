@@ -5,7 +5,9 @@ import json
 from grafix.core.parameters import ParamMeta, ParamStore, ParameterKey
 from grafix.core.parameters.codec import dumps_param_store, loads_param_store
 from grafix.core.parameters.frame_params import FrameParamRecord
-from grafix.core.parameters.store_ops import merge_frame_params
+from grafix.core.parameters.merge_ops import merge_frame_params
+from grafix.core.parameters.ui_ops import update_state_from_ui
+from grafix.core.parameters.invariants import assert_invariants
 
 
 def test_override_follows_implicit_to_explicit_change_when_still_default():
@@ -22,6 +24,7 @@ def test_override_follows_implicit_to_explicit_change_when_still_default():
     st1 = store.get_state(key)
     assert st1 is not None
     assert st1.override is False  # explicit の既定へ追従
+    assert_invariants(store)
 
 
 def test_override_does_not_change_when_prev_explicit_is_unknown_old_json():
@@ -29,8 +32,7 @@ def test_override_does_not_change_when_prev_explicit_is_unknown_old_json():
     meta = ParamMeta(kind="int", ui_min=0, ui_max=4)
 
     store = ParamStore()
-    store.ensure_state(key, base_value=0).override = True
-    store.set_meta(key, meta)
+    merge_frame_params(store, [FrameParamRecord(key=key, base=0, meta=meta, explicit=False)])
 
     payload_obj = json.loads(dumps_param_store(store))
     payload_obj.pop("explicit", None)  # 旧 JSON を模擬（explicit 情報なし）
@@ -40,6 +42,7 @@ def test_override_does_not_change_when_prev_explicit_is_unknown_old_json():
     st = loaded.get_state(key)
     assert st is not None
     assert st.override is True  # unknown の場合は勝手に切り替えない
+    assert_invariants(loaded)
 
 
 def test_override_follows_across_site_id_migration_with_reconcile():
@@ -67,6 +70,7 @@ def test_override_follows_across_site_id_migration_with_reconcile():
     st = store.get_state(new_key)
     assert st is not None
     assert st.override is False
+    assert_invariants(store)
 
 
 def test_explicit_override_is_reset_to_false_on_json_roundtrip():
@@ -75,16 +79,14 @@ def test_explicit_override_is_reset_to_false_on_json_roundtrip():
     meta = ParamMeta(kind="int", ui_min=0, ui_max=4)
 
     merge_frame_params(store, [FrameParamRecord(key=key, base=0, meta=meta, explicit=True)])
-    state = store.get_state(key)
-    assert state is not None
-    state.override = True
-    state.ui_value = 3
+    update_state_from_ui(store, key, 3, meta=meta, override=True)
 
     loaded = loads_param_store(dumps_param_store(store))
     loaded_state = loaded.get_state(key)
     assert loaded_state is not None
     assert loaded_state.override is False
     assert loaded_state.ui_value == 3
+    assert_invariants(loaded)
 
 
 def test_implicit_override_is_preserved_on_json_roundtrip():
@@ -93,16 +95,14 @@ def test_implicit_override_is_preserved_on_json_roundtrip():
     meta = ParamMeta(kind="int", ui_min=0, ui_max=4)
 
     merge_frame_params(store, [FrameParamRecord(key=key, base=0, meta=meta, explicit=False)])
-    state = store.get_state(key)
-    assert state is not None
-    state.override = False
-    state.ui_value = 2
+    update_state_from_ui(store, key, 2, meta=meta, override=False)
 
     loaded = loads_param_store(dumps_param_store(store))
     loaded_state = loaded.get_state(key)
     assert loaded_state is not None
     assert loaded_state.override is False
     assert loaded_state.ui_value == 2
+    assert_invariants(loaded)
 
 
 def test_removing_explicit_allows_override_true_again_after_one_frame_merge():
@@ -111,9 +111,7 @@ def test_removing_explicit_allows_override_true_again_after_one_frame_merge():
     meta = ParamMeta(kind="int", ui_min=0, ui_max=4)
 
     merge_frame_params(store, [FrameParamRecord(key=key, base=0, meta=meta, explicit=True)])
-    state = store.get_state(key)
-    assert state is not None
-    state.override = True
+    update_state_from_ui(store, key, 0, meta=meta, override=True)
 
     loaded = loads_param_store(dumps_param_store(store))
     loaded_state = loaded.get_state(key)
@@ -123,3 +121,4 @@ def test_removing_explicit_allows_override_true_again_after_one_frame_merge():
     merge_frame_params(loaded, [FrameParamRecord(key=key, base=0, meta=meta, explicit=False)])
     assert loaded.get_state(key) is not None
     assert loaded.get_state(key).override is True
+    assert_invariants(loaded)
