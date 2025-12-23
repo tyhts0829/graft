@@ -185,7 +185,12 @@ def _render_cc_cell(
     changed_any = False
 
     if rules.cc_key == "none":
-        return False, cc_key, override
+        clicked_override = False
+        if rules.show_override:
+            clicked_override, override = imgui.checkbox("##override", bool(override))
+            if clicked_override:
+                changed_any = True
+        return changed_any, cc_key, bool(override)
 
     def _set_scalar(current: object, value: int | None) -> int | None:
         if value is None:

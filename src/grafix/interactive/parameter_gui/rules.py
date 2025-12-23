@@ -48,9 +48,12 @@ def ui_rules_for_row(row: ParameterRow) -> RowUiRules:
     else:
         minmax = "none"
 
-    if row.kind in {"bool", "str", "font", "choice"}:
+    if row.kind == "bool":
         cc_key: CcKeyMode = "none"
         show_override = False
+    elif row.kind in {"str", "font", "choice"}:
+        cc_key = "none"
+        show_override = True
     elif row.kind in {"vec3", "rgb"}:
         cc_key = "int3"
         show_override = True

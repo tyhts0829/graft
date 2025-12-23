@@ -59,18 +59,20 @@
 
 ## 実装チェックリスト（コード変更は次ターンから）
 
-- [ ] 仕様確定（下の「事前確認」へ回答をもらう）
-- [ ] `src/grafix/interactive/parameter_gui/rules.py` を更新
-  - [ ] `kind=="str"` を `show_override=True`（`cc_key="none"` のまま）
-  - [ ] （任意）`kind=="font"` / `kind=="choice"` も `show_override=True`
-- [ ] `src/grafix/interactive/parameter_gui/table.py` を更新
-  - [ ] `_render_cc_cell()` の `cc_key=="none"` 早期 return を整理し、`show_override` が真なら checkbox を描く
+- [x] 仕様確定（下の「事前確認」へ回答をもらう）
+- [x] `src/grafix/interactive/parameter_gui/rules.py` を更新
+  - [x] `kind=="str"` を `show_override=True`（`cc_key="none"` のまま）
+  - [x] `kind=="font"` / `kind=="choice"` も `show_override=True`
+- [x] `src/grafix/interactive/parameter_gui/table.py` を更新
+  - [x] `_render_cc_cell()` の `cc_key=="none"` 早期 return を整理し、`show_override` が真なら checkbox を描く
   - [ ] 既存の CC 学習 UI（int/int3）とレイアウト崩れが無いことを確認
-- [ ] `src/grafix/core/parameters/resolver.py` を更新（`font` のみ）
-  - [ ] `kind=="font"` の特別扱いをやめ、他と同様に `override` で base/GUI を切り替える
-- [ ] テスト更新
-  - [ ] `tests/interactive/parameter_gui/test_parameter_gui_table_rules.py` の期待値を更新（str/font/choice の show_override）
-  - [ ] （必要なら）`resolver._choose_value()` 相当の挙動を unit test で追加（font の base/GUI 切替）
+- [x] `src/grafix/interactive/parameter_gui/widgets.py` を更新
+  - [x] kind=str を `imgui.input_text_multiline` に統一
+- [x] `src/grafix/core/parameters/resolver.py` を更新（`font` のみ）
+  - [x] `kind=="font"` を他と同様に `override` で base/GUI を切り替える
+- [x] テスト更新
+  - [x] `tests/interactive/parameter_gui/test_parameter_gui_table_rules.py` の期待値を更新（str/font/choice の show_override）
+  - [x] `tests/core/parameters/test_resolver.py` に font の base/GUI 切替テストを追加
 - [ ] 手動スモーク（任意だが推奨）
   - [ ] `sketch/main.py` を実行し、`text` 行の override を ON にして文字列変更が反映されることを確認
   - [ ] `font` の override ON/OFF で base/GUI が切り替わることを確認
@@ -96,3 +98,8 @@
 3. `text` 入力は単行 `input_text` のままで良い？（改行は `\\n` を打つ運用）
    - Yes: 最小実装で進める
    - No: multiline editor（行高の扱い）も今回入れる；こちらで。text 入力は imgui.input_text_multiline を使うように統一して。
+
+回答（2025-12-22）
+- 1) Yes（choice 全体で override 対応）
+- 2) Yes（font も override で base/GUI 切替）
+- 3) No（kind=str を `imgui.input_text_multiline` に統一）

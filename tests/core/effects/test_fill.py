@@ -245,6 +245,18 @@ def test_fill_empty_geometry_is_noop() -> None:
     assert realized.offsets.tolist() == [0]
 
 
+def test_fill_degenerate_input_is_noop() -> None:
+    g = G.polygon(scale=(50.0, 0.0, 1.0))
+    base = realize(g)
+
+    # 退化入力（面積ほぼ 0）は fill を適用してもそのまま返す（remove_boundary も無視する）。
+    filled = E.fill(angle_sets=1, angle=45.0, density=10.0, remove_boundary=True)(g)
+    realized = realize(filled)
+
+    np.testing.assert_allclose(realized.coords, base.coords, rtol=0.0, atol=1e-6)
+    assert realized.offsets.tolist() == base.offsets.tolist()
+
+
 def _hatch_direction(realized: RealizedGeometry) -> np.ndarray:
     dirs: list[np.ndarray] = []
     for seg in _iter_polylines(realized):

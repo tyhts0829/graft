@@ -118,10 +118,6 @@ def _choose_value(
         # bool は override トグルを持たない。ui_value を常に採用する。
         # ui_value は初期状態では base_value と一致するため、実質的に base を踏襲する。
         return bool(state.ui_value), "gui"
-    if meta.kind == "font":
-        # font は bool と同様に「常に GUI 値」を採用する。
-        # ui_value は初期状態では base_value と一致するため、実質的に base を踏襲する。
-        return state.ui_value, "gui"
     if state.override:
         # override=True のときだけ GUI 値を採用する（bool 以外）。
         return state.ui_value, "gui"

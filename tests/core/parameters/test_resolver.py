@@ -106,3 +106,37 @@ def test_vec3_cc_applies_per_component():
         resolved = resolve_params(op="scale", params=params, meta=meta, site_id="sv2")
 
     assert resolved["p"] == pytest.approx((-1.0, 0.0, 1.0))
+
+
+def test_font_uses_base_when_override_false():
+    store = ParamStore()
+    key = ParameterKey(op="text", site_id="sfont", arg="font")
+    meta_font = ParamMeta(kind="font")
+    merge_frame_params(
+        store,
+        [
+            FrameParamRecord(
+                key=key,
+                base="A.ttf",
+                meta=meta_font,
+                explicit=True,
+            )
+        ],
+    )
+    stored_meta = store.get_meta(key)
+    assert stored_meta is not None
+
+    # GUI は値を編集できるが、override=False なら base を採用する。
+    update_state_from_ui(store, key, "B.ttf", meta=stored_meta, override=False)
+
+    meta = {"font": ParamMeta(kind="font")}
+    params = {"font": "A.ttf"}
+    with parameter_context(store=store, cc_snapshot=None):
+        resolved = resolve_params(op="text", params=params, meta=meta, site_id="sfont")
+    assert resolved["font"] == "A.ttf"
+
+    # override=True に切り替えると GUI 値を採用する。
+    update_state_from_ui(store, key, "B.ttf", meta=stored_meta, override=True)
+    with parameter_context(store=store, cc_snapshot=None):
+        resolved2 = resolve_params(op="text", params=params, meta=meta, site_id="sfont")
+    assert resolved2["font"] == "B.ttf"

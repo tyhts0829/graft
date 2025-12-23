@@ -248,7 +248,10 @@ def widget_string_input(row: ParameterRow) -> tuple[bool, str]:
     import imgui  # type: ignore[import-untyped]
 
     value = "" if row.ui_value is None else str(row.ui_value)
-    return imgui.input_text("##value", value)
+    line_count = int(value.count("\n")) + 1
+    visible_lines = max(3, min(8, line_count))
+    height = float(imgui.get_text_line_height()) * float(visible_lines) + 8.0
+    return imgui.input_text_multiline("##value", value, -1, 0.0, float(height))
 
 
 def widget_font_picker(row: ParameterRow) -> tuple[bool, str]:
