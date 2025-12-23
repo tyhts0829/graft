@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Sequence
 
 import numpy as np
+from numba import njit  # type: ignore[attr-defined]
 
 from grafix.core.effect_registry import effect
 from grafix.core.realized_geometry import RealizedGeometry
@@ -154,16 +155,21 @@ def _point_in_polygon(point: np.ndarray, polygon: np.ndarray) -> bool:
     #   このとき境界上を inside 扱いすると hole 誤判定が起きるため、境界は必ず False にする。
     x = float(point[0])
     y = float(point[1])
+    return bool(_point_in_polygon_njit(polygon, x, y))
+
+
+@njit(cache=True)  # type: ignore[misc]
+def _point_in_polygon_njit(polygon: np.ndarray, x: float, y: float) -> bool:
+    """点が多角形内部にあるかを返す（境界上は False 扱い、Numba 版）。"""
     n = int(polygon.shape[0])
     if n < 3:
         return False
 
-    # レイキャストの不安定さ（辺/頂点上での揺れ）を避けるため、まず境界上を明示的に除外する。
-    # - 頂点一致: そのまま False
-    # - 辺上: 外積（cross）と内積（dot）で「線分上」を判定して False
+    # 境界上を明示的に除外してから、偶奇レイキャストで内部判定する。
     eps = 1e-6
-    x1 = float(polygon[-1, 0])
-    y1 = float(polygon[-1, 1])
+
+    x1 = float(polygon[n - 1, 0])
+    y1 = float(polygon[n - 1, 1])
     for i in range(n):
         x2 = float(polygon[i, 0])
         y2 = float(polygon[i, 1])
@@ -173,27 +179,31 @@ def _point_in_polygon(point: np.ndarray, polygon: np.ndarray) -> bool:
 
         dx = x2 - x1
         dy = y2 - y1
+
+        min_x = x1 if x1 < x2 else x2
+        max_x = x2 if x1 < x2 else x1
+        min_y = y1 if y1 < y2 else y2
+        max_y = y2 if y1 < y2 else y1
         if (
-            x >= min(x1, x2) - eps
-            and x <= max(x1, x2) + eps
-            and y >= min(y1, y2) - eps
-            and y <= max(y1, y2) + eps
+            x >= min_x - eps
+            and x <= max_x + eps
+            and y >= min_y - eps
+            and y <= max_y + eps
         ):
             cross = dx * (y - y1) - dy * (x - x1)
-            # 辺長が長いほど丸め誤差が増えるため、許容誤差は |dx|+|dy| でスケールさせる。
-            if abs(cross) <= eps * max(1.0, abs(dx) + abs(dy)):
+            tol = eps * (abs(dx) + abs(dy))
+            if tol < eps:
+                tol = eps
+            if abs(cross) <= tol:
                 dot = (x - x1) * (x - x2) + (y - y1) * (y - y2)
                 if dot <= eps * eps:
                     return False
 
         x1, y1 = x2, y2
 
-    # 境界上は除外済みのため、標準的な偶奇レイキャストで内部判定する。
-    # 注意:
-    # - 辺上は先で排除しているため、ここは「交点数が奇数なら inside」の素直な実装に寄せる。
     inside = False
-    x1 = float(polygon[-1, 0])
-    y1 = float(polygon[-1, 1])
+    x1 = float(polygon[n - 1, 0])
+    y1 = float(polygon[n - 1, 1])
     for i in range(n):
         x2 = float(polygon[i, 0])
         y2 = float(polygon[i, 1])
