@@ -10,9 +10,9 @@ from pathlib import Path
 
 import numpy as np
 
+from grafix.core.parameters.meta import ParamMeta
 from grafix.core.primitive_registry import primitive
 from grafix.core.realized_geometry import RealizedGeometry
-from grafix.core.parameters.meta import ParamMeta
 
 # `type_index`（0..N-1）で参照する型順序を固定する。
 _TYPE_ORDER = ["tetrahedron", "hexahedron", "octahedron", "dodecahedron", "icosahedron"]
@@ -22,7 +22,7 @@ _POLYHEDRON_CACHE: dict[str, tuple[np.ndarray, ...]] = {}
 
 polyhedron_meta = {
     "type_index": ParamMeta(kind="int", ui_min=0, ui_max=len(_TYPE_ORDER) - 1),
-    "center": ParamMeta(kind="vec3", ui_min=-500.0, ui_max=500.0),
+    "center": ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0),
     "scale": ParamMeta(kind="vec3", ui_min=0.0, ui_max=200.0),
 }
 

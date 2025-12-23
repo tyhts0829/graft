@@ -16,7 +16,7 @@ INCLUDE_BOUNDARY = True
 mirror3d_meta = {
     "mode": ParamMeta(kind="choice", choices=("azimuth", "polyhedral")),
     "n_azimuth": ParamMeta(kind="int", ui_min=1, ui_max=64),
-    "center": ParamMeta(kind="vec3", ui_min=-500.0, ui_max=500.0),
+    "center": ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0),
     "axis": ParamMeta(kind="vec3", ui_min=-1.0, ui_max=1.0),
     "phi0": ParamMeta(kind="float", ui_min=-180.0, ui_max=180.0),
     "mirror_equator": ParamMeta(kind="bool"),
@@ -85,11 +85,15 @@ def mirror3d(
     if coords.shape[0] == 0:
         return base
 
-    c = np.array([float(center[0]), float(center[1]), float(center[2])], dtype=np.float32)
+    c = np.array(
+        [float(center[0]), float(center[1]), float(center[2])], dtype=np.float32
+    )
     if not np.all(np.isfinite(c)):
         return base
 
-    ax_raw = np.array([float(axis[0]), float(axis[1]), float(axis[2])], dtype=np.float32)
+    ax_raw = np.array(
+        [float(axis[0]), float(axis[1]), float(axis[2])], dtype=np.float32
+    )
     ax = _unit(ax_raw)
     if float(np.linalg.norm(ax)) <= 0.0:
         return base
@@ -127,7 +131,9 @@ def mirror3d(
             use_reflection=bool(use_reflection),
         )
         if show_planes:
-            out_lines.extend(_show_planes_polyhedral(out_lines=out_lines, coords=coords, center=c))
+            out_lines.extend(
+                _show_planes_polyhedral(out_lines=out_lines, coords=coords, center=c)
+            )
     else:
         return base
 
@@ -159,7 +165,9 @@ def _mirror3d_azimuth(
         return []
 
     phi0_rad = float(np.deg2rad(float(phi0_deg)))
-    n0, n1 = _compute_azimuth_plane_normals(n_azimuth=n_azimuth, axis=axis, phi0=phi0_rad)
+    n0, n1 = _compute_azimuth_plane_normals(
+        n_azimuth=n_azimuth, axis=axis, phi0=phi0_rad
+    )
 
     src_lines: list[np.ndarray] = []
     for li in range(int(offsets.size) - 1):
@@ -331,9 +339,15 @@ def _polyhedral_rotation_mats(group: str) -> list[np.ndarray]:
         invphi = float(1.0 / phi)
         for s1 in (-1.0, 1.0):
             for s2 in (-1.0, 1.0):
-                axes3.append(_unit(np.array([0.0, s1 * invphi, s2 * phi], dtype=np.float32)))
-                axes3.append(_unit(np.array([s1 * invphi, s2 * phi, 0.0], dtype=np.float32)))
-                axes3.append(_unit(np.array([s2 * phi, 0.0, s1 * invphi], dtype=np.float32)))
+                axes3.append(
+                    _unit(np.array([0.0, s1 * invphi, s2 * phi], dtype=np.float32))
+                )
+                axes3.append(
+                    _unit(np.array([s1 * invphi, s2 * phi, 0.0], dtype=np.float32))
+                )
+                axes3.append(
+                    _unit(np.array([s2 * phi, 0.0, s1 * invphi], dtype=np.float32))
+                )
 
         V = np.stack(verts, axis=0)
         dists = np.linalg.norm(V[None, :, :] - V[:, None, :], axis=2)
@@ -428,7 +442,9 @@ def _fit_radius(*, all_pts: np.ndarray, center: np.ndarray) -> float:
     return r
 
 
-def _plane_cross_segments(*, center: np.ndarray, normal: np.ndarray, r: float) -> list[np.ndarray]:
+def _plane_cross_segments(
+    *, center: np.ndarray, normal: np.ndarray, r: float
+) -> list[np.ndarray]:
     n = _unit(normal)
     ref = np.array([1.0, 0.0, 0.0], dtype=np.float32)
     if abs(float(np.dot(n, ref))) > 0.95:
@@ -452,7 +468,9 @@ def _unit(v: np.ndarray) -> np.ndarray:
     return (v / n).astype(np.float32, copy=False)
 
 
-def _rotate_around_axis(points: np.ndarray, axis: np.ndarray, angle: float, center: np.ndarray) -> np.ndarray:
+def _rotate_around_axis(
+    points: np.ndarray, axis: np.ndarray, angle: float, center: np.ndarray
+) -> np.ndarray:
     if points.shape[0] == 0:
         return points
     k = _unit(axis)
@@ -472,7 +490,9 @@ def _rotate_around_axis(points: np.ndarray, axis: np.ndarray, angle: float, cent
     return v_rot.astype(np.float32, copy=False)
 
 
-def _reflect_across_plane(points: np.ndarray, normal: np.ndarray, center: np.ndarray) -> np.ndarray:
+def _reflect_across_plane(
+    points: np.ndarray, normal: np.ndarray, center: np.ndarray
+) -> np.ndarray:
     n = _unit(normal)
     p = points.astype(np.float32, copy=True)
     p[:, 0] -= center[0]
@@ -567,7 +587,10 @@ def _clip_polyline_halfspace_3d(
 
 
 def _clip_polyhedron_octant(
-    vertices: np.ndarray, *, normals: tuple[np.ndarray, np.ndarray, np.ndarray], center: np.ndarray
+    vertices: np.ndarray,
+    *,
+    normals: tuple[np.ndarray, np.ndarray, np.ndarray],
+    center: np.ndarray,
 ) -> list[np.ndarray]:
     n1, n2, n3 = normals
     pieces = _clip_polyline_halfspace_3d(vertices, normal=n1, center=center)

@@ -10,14 +10,14 @@ import math
 
 import numpy as np
 
+from grafix.core.parameters.meta import ParamMeta
 from grafix.core.primitive_registry import primitive
 from grafix.core.realized_geometry import RealizedGeometry
-from grafix.core.parameters.meta import ParamMeta
 
 polygon_meta = {
     "n_sides": ParamMeta(kind="int", ui_min=3, ui_max=128),
     "phase": ParamMeta(kind="float", ui_min=0.0, ui_max=360.0),
-    "center": ParamMeta(kind="vec3", ui_min=-500.0, ui_max=500.0),
+    "center": ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0),
     "scale": ParamMeta(kind="vec3", ui_min=0, ui_max=200.0),
 }
 

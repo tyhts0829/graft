@@ -12,7 +12,7 @@ from grafix.core.realized_geometry import RealizedGeometry
 
 twist_meta = {
     "auto_center": ParamMeta(kind="bool"),
-    "pivot": ParamMeta(kind="vec3", ui_min=-500.0, ui_max=500.0),
+    "pivot": ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0),
     "angle": ParamMeta(kind="float", ui_min=0.0, ui_max=360.0),
     "axis_dir": ParamMeta(kind="vec3", ui_min=-1.0, ui_max=1.0),
 }
@@ -104,7 +104,9 @@ def twist(
     )
     out = v_rot + center
 
-    return RealizedGeometry(coords=out.astype(np.float32, copy=False), offsets=base.offsets)
+    return RealizedGeometry(
+        coords=out.astype(np.float32, copy=False), offsets=base.offsets
+    )
 
 
 __all__ = ["twist"]

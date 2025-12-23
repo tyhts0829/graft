@@ -8,16 +8,16 @@ import numpy as np
 from numba import njit  # type: ignore[import-untyped]
 
 from grafix.core.effect_registry import effect
-from grafix.core.realized_geometry import RealizedGeometry
 from grafix.core.parameters.meta import ParamMeta
+from grafix.core.realized_geometry import RealizedGeometry
 
 EPS = 1e-6
 INCLUDE_BOUNDARY = True
 
 mirror_meta = {
     "n_mirror": ParamMeta(kind="int", ui_min=1, ui_max=12),
-    "cx": ParamMeta(kind="float", ui_min=-500.0, ui_max=500.0),
-    "cy": ParamMeta(kind="float", ui_min=-500.0, ui_max=500.0),
+    "cx": ParamMeta(kind="float", ui_min=-100.0, ui_max=100.0),
+    "cy": ParamMeta(kind="float", ui_min=-100.0, ui_max=100.0),
     "source_positive_x": ParamMeta(kind="bool"),
     "source_positive_y": ParamMeta(kind="bool"),
     "show_planes": ParamMeta(kind="bool"),
@@ -150,7 +150,9 @@ def mirror(
                 if p0.shape[0] == 0:
                     continue
 
-                c1_coords, c1_offsets = _clip_polyline_halfplane_nb(p0, cx_f, cy_f, -n1x, -n1y)
+                c1_coords, c1_offsets = _clip_polyline_halfplane_nb(
+                    p0, cx_f, cy_f, -n1x, -n1y
+                )
                 for i1 in range(int(c1_offsets.size) - 1):
                     s1 = int(c1_offsets[i1])
                     e1 = int(c1_offsets[i1 + 1])
@@ -158,13 +160,17 @@ def mirror(
                     if p1.shape[0] == 0:
                         continue
                     wedge_pieces.append(p1)
-                    if (not need_dedup) and _has_wedge_boundary_segment(p1, cx=cx_f, cy=cy_f, n1x=n1x, n1y=n1y):
+                    if (not need_dedup) and _has_wedge_boundary_segment(
+                        p1, cx=cx_f, cy=cy_f, n1x=n1x, n1y=n1y
+                    ):
                         need_dedup = True
 
         if not wedge_pieces:
             return _empty_geometry()
 
-        angles = (np.arange(n, dtype=np.float32) * np.float32(step)).astype(np.float32, copy=False)
+        angles = (np.arange(n, dtype=np.float32) * np.float32(step)).astype(
+            np.float32, copy=False
+        )
         cos = np.cos(angles).astype(np.float32, copy=False)
         sin = np.sin(angles).astype(np.float32, copy=False)
 
@@ -189,8 +195,8 @@ def mirror(
             )
             # 各コピーは同じ頂点数なので offsets は等差で埋める。
             base = int(out_offsets_arr[o_cursor])
-            out_offsets_arr[o_cursor + 1 : o_cursor + 2 * n + 1] = base + ln * np.arange(
-                1, 2 * n + 1, dtype=np.int32
+            out_offsets_arr[o_cursor + 1 : o_cursor + 2 * n + 1] = (
+                base + ln * np.arange(1, 2 * n + 1, dtype=np.int32)
             )
             o_cursor += 2 * n
             v_cursor += block
@@ -257,8 +263,12 @@ def mirror(
         elif n == 2:
             plane_lines.extend(
                 [
-                    np.array([[cx_f, y_min, 0.0], [cx_f, y_max, 0.0]], dtype=np.float32),
-                    np.array([[x_min, cy_f, 0.0], [x_max, cy_f, 0.0]], dtype=np.float32),
+                    np.array(
+                        [[cx_f, y_min, 0.0], [cx_f, y_max, 0.0]], dtype=np.float32
+                    ),
+                    np.array(
+                        [[x_min, cy_f, 0.0], [x_max, cy_f, 0.0]], dtype=np.float32
+                    ),
                 ]
             )
         else:
@@ -277,9 +287,15 @@ def mirror(
                 for ang in (k * step, k * step + delta):
                     cth = float(np.cos(ang))
                     sth = float(np.sin(ang))
-                    p0 = np.array([cx_f - r * cth, cy_f - r * sth, 0.0], dtype=np.float32)
-                    p1 = np.array([cx_f + r * cth, cy_f + r * sth, 0.0], dtype=np.float32)
-                    plane_lines.append(np.vstack([p0, p1]).astype(np.float32, copy=False))
+                    p0 = np.array(
+                        [cx_f - r * cth, cy_f - r * sth, 0.0], dtype=np.float32
+                    )
+                    p1 = np.array(
+                        [cx_f + r * cth, cy_f + r * sth, 0.0], dtype=np.float32
+                    )
+                    plane_lines.append(
+                        np.vstack([p0, p1]).astype(np.float32, copy=False)
+                    )
 
         if plane_lines:
             uniq.extend(plane_lines)
@@ -301,7 +317,9 @@ def _is_inside(val: float, thresh: float, side: int) -> bool:
     return d >= (-EPS if INCLUDE_BOUNDARY else EPS)
 
 
-def _intersect_axis(a: np.ndarray, b: np.ndarray, axis: int, thresh: float) -> np.ndarray:
+def _intersect_axis(
+    a: np.ndarray, b: np.ndarray, axis: int, thresh: float
+) -> np.ndarray:
     da = float(a[axis])
     db = float(b[axis])
     denom = db - da
@@ -312,7 +330,9 @@ def _intersect_axis(a: np.ndarray, b: np.ndarray, axis: int, thresh: float) -> n
         t = 0.0
     elif t > 1.0:
         t = 1.0
-    p = a.astype(np.float32) + (b.astype(np.float32) - a.astype(np.float32)) * np.float32(t)
+    p = a.astype(np.float32) + (
+        b.astype(np.float32) - a.astype(np.float32)
+    ) * np.float32(t)
     p[axis] = np.float32(thresh)
     return p.astype(np.float32, copy=False)
 
@@ -329,7 +349,11 @@ def _clip_polyline_halfspace(
         return []
     if n == 1:
         v0 = vertices[0]
-        return [vertices.astype(np.float32, copy=True)] if _is_inside(float(v0[axis]), thresh, side) else []
+        return (
+            [vertices.astype(np.float32, copy=True)]
+            if _is_inside(float(v0[axis]), thresh, side)
+            else []
+        )
 
     out: list[np.ndarray] = []
     cur: list[np.ndarray] = []
@@ -441,7 +465,9 @@ def _clip_polyline_halfplane(
     return out_segs
 
 
-def _has_wedge_boundary_segment(vertices: np.ndarray, *, cx: float, cy: float, n1x: float, n1y: float) -> bool:
+def _has_wedge_boundary_segment(
+    vertices: np.ndarray, *, cx: float, cy: float, n1x: float, n1y: float
+) -> bool:
     npts = int(vertices.shape[0])
     if npts <= 0:
         return False
@@ -481,7 +507,9 @@ def _clip_polyline_halfplane_nb(
     thr = -eps if INCLUDE_BOUNDARY else eps
 
     if npts == 1:
-        s0 = (float(vertices[0, 0]) - float(cx)) * float(nx) + (float(vertices[0, 1]) - float(cy)) * float(ny)
+        s0 = (float(vertices[0, 0]) - float(cx)) * float(nx) + (
+            float(vertices[0, 1]) - float(cy)
+        ) * float(ny)
         if s0 >= thr:
             out1 = np.empty((1, 3), dtype=np.float32)
             out1[0, 0] = float(vertices[0, 0])
@@ -661,8 +689,12 @@ def _append_wedge_planes(
             plane_offsets[idx // 2] = idx
 
     base = int(offsets[-1]) if offsets.size > 0 else 0
-    new_coords = np.concatenate([coords, plane_coords], axis=0).astype(np.float32, copy=False)
-    new_offsets = np.concatenate([offsets, base + plane_offsets[1:]], axis=0).astype(np.int32, copy=False)
+    new_coords = np.concatenate([coords, plane_coords], axis=0).astype(
+        np.float32, copy=False
+    )
+    new_offsets = np.concatenate([offsets, base + plane_offsets[1:]], axis=0).astype(
+        np.int32, copy=False
+    )
     return new_coords, new_offsets
 
 
@@ -702,7 +734,9 @@ def _dedup_lines(lines: Iterable[np.ndarray]) -> list[np.ndarray]:
     for ln in lines:
         if ln.shape[0] == 0:
             continue
-        q = np.rint(ln.astype(np.float64, copy=False) * inv).astype(np.int64, copy=False)
+        q = np.rint(ln.astype(np.float64, copy=False) * inv).astype(
+            np.int64, copy=False
+        )
         key = (int(q.shape[0]), q.tobytes())
         if key in seen:
             continue

@@ -8,15 +8,14 @@ from __future__ import annotations
 
 import numpy as np
 
+from grafix.core.parameters.meta import ParamMeta
 from grafix.core.primitive_registry import primitive
 from grafix.core.realized_geometry import RealizedGeometry
-from grafix.core.parameters.meta import ParamMeta
-
 
 grid_meta = {
     "nx": ParamMeta(kind="int", ui_min=1, ui_max=500),
     "ny": ParamMeta(kind="int", ui_min=1, ui_max=500),
-    "center": ParamMeta(kind="vec3", ui_min=-500.0, ui_max=500.0),
+    "center": ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0),
     "scale": ParamMeta(kind="vec3", ui_min=0.0, ui_max=200.0),
 }
 
@@ -101,9 +100,7 @@ def grid(
     try:
         sx, sy, sz = scale
     except Exception as exc:
-        raise ValueError(
-            "grid の scale は長さ 3 のシーケンスである必要がある"
-        ) from exc
+        raise ValueError("grid の scale は長さ 3 のシーケンスである必要がある") from exc
 
     cx_f, cy_f, cz_f = float(cx), float(cy), float(cz)
     sx_f, sy_f, sz_f = float(sx), float(sy), float(sz)

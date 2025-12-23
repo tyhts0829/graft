@@ -9,20 +9,20 @@ import numpy as np
 from numba import njit  # type: ignore[import-untyped]
 
 from grafix.core.effect_registry import effect
-from grafix.core.realized_geometry import RealizedGeometry
 from grafix.core.parameters.meta import ParamMeta
+from grafix.core.realized_geometry import RealizedGeometry
 
 repeat_meta = {
     "count": ParamMeta(kind="int", ui_min=0, ui_max=100),
     "cumulative_scale": ParamMeta(kind="bool"),
     "cumulative_offset": ParamMeta(kind="bool"),
     "cumulative_rotate": ParamMeta(kind="bool"),
-    "offset": ParamMeta(kind="vec3", ui_min=-500.0, ui_max=500.0),
+    "offset": ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0),
     "rotation_step": ParamMeta(kind="vec3", ui_min=-180.0, ui_max=180.0),
     "scale": ParamMeta(kind="vec3", ui_min=0.25, ui_max=4.0),
     "curve": ParamMeta(kind="float", ui_min=0.1, ui_max=5.0),
     "auto_center": ParamMeta(kind="bool"),
-    "pivot": ParamMeta(kind="vec3", ui_min=-500.0, ui_max=500.0),
+    "pivot": ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0),
 }
 
 
@@ -220,8 +220,12 @@ def repeat(
         )
 
     center32 = np.asarray(center, dtype=np.float32)
-    offset_end = np.array([float(offset[0]), float(offset[1]), float(offset[2])], dtype=np.float32)
-    scale_end = np.array([float(scale[0]), float(scale[1]), float(scale[2])], dtype=np.float32)
+    offset_end = np.array(
+        [float(offset[0]), float(offset[1]), float(offset[2])], dtype=np.float32
+    )
+    scale_end = np.array(
+        [float(scale[0]), float(scale[1]), float(scale[2])], dtype=np.float32
+    )
     rotate_end_deg = np.array(
         [float(rotation_step[0]), float(rotation_step[1]), float(rotation_step[2])],
         dtype=np.float32,

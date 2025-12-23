@@ -10,12 +10,12 @@ import math
 
 import numpy as np
 
+from grafix.core.parameters.meta import ParamMeta
 from grafix.core.primitive_registry import primitive
 from grafix.core.realized_geometry import RealizedGeometry
-from grafix.core.parameters.meta import ParamMeta
 
 line_meta = {
-    "center": ParamMeta(kind="vec3", ui_min=-500.0, ui_max=500.0),
+    "center": ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0),
     "length": ParamMeta(kind="float", ui_min=0.0, ui_max=200.0),
     "angle": ParamMeta(kind="float", ui_min=0.0, ui_max=360.0),
 }
@@ -47,7 +47,9 @@ def line(
     try:
         cx, cy, cz = center
     except Exception as exc:
-        raise ValueError("line の center は長さ 3 のシーケンスである必要がある") from exc
+        raise ValueError(
+            "line の center は長さ 3 のシーケンスである必要がある"
+        ) from exc
 
     length_f = float(length)
     angle_deg = float(angle)

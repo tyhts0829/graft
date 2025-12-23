@@ -153,12 +153,12 @@ def _resolve_font_path(font: str) -> Path:
         return _default_font_path()
 
     # 1) `data/input/font/<raw>` を優先（ファイル名/相対パス想定）
-    direct = (_FONT_DIR / raw)
+    direct = _FONT_DIR / raw
     if direct.is_file():
         return direct.resolve()
 
     # 2) repo root からの相対パスを許容（例: "data/input/font/SFNS.ttf"）
-    repo_rel = (_REPO_ROOT / raw)
+    repo_rel = _REPO_ROOT / raw
     if repo_rel.is_file():
         try:
             resolved = repo_rel.resolve()
@@ -230,10 +230,14 @@ class TextRenderer:
     ) -> tuple:
         """平坦化済みのグリフコマンド（`RecordingPen.value` 互換タプル）を返す。"""
         from fontPens.flattenPen import FlattenPen  # type: ignore[import-untyped]
-        from fontTools.pens.recordingPen import RecordingPen  # type: ignore[import-untyped]
+        from fontTools.pens.recordingPen import (
+            RecordingPen,  # type: ignore[import-untyped]
+        )
 
         resolved = font_path.resolve()
-        key = f"{resolved}|{int(font_index)}|{char}|{round(float(flat_seg_len_units), 6)}"
+        key = (
+            f"{resolved}|{int(font_index)}|{char}|{round(float(flat_seg_len_units), 6)}"
+        )
         cached = cls._glyph_cache.get(key)
         if cached is not None:
             return cached
@@ -261,7 +265,9 @@ class TextRenderer:
         glyph_set = tt_font.getGlyphSet()
         glyph = glyph_set.get(glyph_name)
         if glyph is None:
-            logger.warning("Glyph '%s' not found in font '%s'", glyph_name, str(resolved))
+            logger.warning(
+                "Glyph '%s' not found in font '%s'", glyph_name, str(resolved)
+            )
             cls._glyph_cache.set(key, tuple())
             return tuple()
 
@@ -369,7 +375,9 @@ def _polylines_to_realized(
     scale: tuple[float, float, float],
 ) -> RealizedGeometry:
     """ポリライン列を RealizedGeometry へ変換して返す。"""
-    filtered = [p.astype(np.float32, copy=False) for p in polylines if int(p.shape[0]) >= 2]
+    filtered = [
+        p.astype(np.float32, copy=False) for p in polylines if int(p.shape[0]) >= 2
+    ]
     if not filtered:
         return _empty_geometry()
 
@@ -384,7 +392,9 @@ def _polylines_to_realized(
     try:
         cx, cy, cz = center
     except Exception as exc:
-        raise ValueError("text の center は長さ 3 のシーケンスである必要がある") from exc
+        raise ValueError(
+            "text の center は長さ 3 のシーケンスである必要がある"
+        ) from exc
     try:
         sx, sy, sz = scale
     except Exception as exc:
@@ -412,7 +422,7 @@ text_meta = {
     "letter_spacing_em": ParamMeta(kind="float", ui_min=0.0, ui_max=0.5),
     "line_height": ParamMeta(kind="float", ui_min=0.8, ui_max=3.0),
     "tolerance": ParamMeta(kind="float", ui_min=0.001, ui_max=0.1),
-    "center": ParamMeta(kind="vec3", ui_min=-500.0, ui_max=500.0),
+    "center": ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0),
     "scale": ParamMeta(kind="vec3", ui_min=0.0, ui_max=200.0),
 }
 
@@ -426,7 +436,7 @@ def text(
     text_align: str = "left",
     letter_spacing_em: float = 0.0,
     line_height: float = 1.2,
-    tolerance: float = 0.01,
+    tolerance: float = 0.1,
     center: tuple[float, float, float] = (0.0, 0.0, 0.0),
     scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
 ) -> RealizedGeometry:

@@ -10,15 +10,15 @@ from typing import Sequence
 import numpy as np
 
 from grafix.core.effect_registry import effect
-from grafix.core.realized_geometry import RealizedGeometry
 from grafix.core.parameters.meta import ParamMeta
+from grafix.core.realized_geometry import RealizedGeometry
 
 affine_meta = {
     "auto_center": ParamMeta(kind="bool"),
-    "pivot": ParamMeta(kind="vec3", ui_min=-500.0, ui_max=500.0),
+    "pivot": ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0),
     "rotation": ParamMeta(kind="vec3", ui_min=-180.0, ui_max=180.0),
     "scale": ParamMeta(kind="vec3", ui_min=0.25, ui_max=4.0),
-    "delta": ParamMeta(kind="vec3", ui_min=-500.0, ui_max=500.0),
+    "delta": ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0),
 }
 
 

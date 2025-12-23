@@ -202,8 +202,8 @@ class _EffectBuilder(Protocol):
         引数:
             bypass: bool
             n_mirror: 1: x=cx による半空間ミラー
-            cx: float, range [-500.0, 500.0]
-            cy: float, range [-500.0, 500.0]
+            cx: float, range [-100.0, 100.0]
+            cy: float, range [-100.0, 100.0]
             source_positive_x: n_mirror=1/2 のときの x 側ソース選択
             source_positive_y: n_mirror=2 のときの y 側ソース選択
             show_planes: 対称面（または放射状境界）を可視化用ラインとして出力へ追加する
@@ -454,8 +454,8 @@ class _E(Protocol):
         引数:
             bypass: bool
             n_mirror: 1: x=cx による半空間ミラー
-            cx: float, range [-500.0, 500.0]
-            cy: float, range [-500.0, 500.0]
+            cx: float, range [-100.0, 100.0]
+            cy: float, range [-100.0, 100.0]
             source_positive_x: n_mirror=1/2 のときの x 側ソース選択
             source_positive_y: n_mirror=2 のときの y 側ソース選択
             show_planes: 対称面（または放射状境界）を可視化用ラインとして出力へ追加する

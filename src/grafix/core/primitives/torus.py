@@ -10,17 +10,16 @@ import math
 
 import numpy as np
 
+from grafix.core.parameters.meta import ParamMeta
 from grafix.core.primitive_registry import primitive
 from grafix.core.realized_geometry import RealizedGeometry
-from grafix.core.parameters.meta import ParamMeta
-
 
 torus_meta = {
     "major_radius": ParamMeta(kind="float", ui_min=-100.0, ui_max=100.0),
     "minor_radius": ParamMeta(kind="float", ui_min=-100.0, ui_max=100.0),
     "major_segments": ParamMeta(kind="int", ui_min=3, ui_max=256),
     "minor_segments": ParamMeta(kind="int", ui_min=3, ui_max=256),
-    "center": ParamMeta(kind="vec3", ui_min=-500.0, ui_max=500.0),
+    "center": ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0),
     "scale": ParamMeta(kind="vec3", ui_min=0.0, ui_max=200.0),
 }
 
@@ -70,11 +69,15 @@ def torus(
     try:
         cx, cy, cz = center
     except Exception as exc:
-        raise ValueError("torus の center は長さ 3 のシーケンスである必要がある") from exc
+        raise ValueError(
+            "torus の center は長さ 3 のシーケンスである必要がある"
+        ) from exc
     try:
         sx, sy, sz = scale
     except Exception as exc:
-        raise ValueError("torus の scale は長さ 3 のシーケンスである必要がある") from exc
+        raise ValueError(
+            "torus の scale は長さ 3 のシーケンスである必要がある"
+        ) from exc
 
     theta = np.linspace(
         0.0,
@@ -130,9 +133,9 @@ def torus(
         meridian_len
     )
     base = np.int32(major_n * meridian_len)
-    offsets[major_n + 1 :] = base + np.arange(1, minor_n + 1, dtype=np.int32) * np.int32(
-        parallel_len
-    )
+    offsets[major_n + 1 :] = base + np.arange(
+        1, minor_n + 1, dtype=np.int32
+    ) * np.int32(parallel_len)
 
     cx_f, cy_f, cz_f = float(cx), float(cy), float(cz)
     sx_f, sy_f, sz_f = float(sx), float(sy), float(sz)

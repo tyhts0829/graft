@@ -10,9 +10,9 @@ import math
 
 import numpy as np
 
+from grafix.core.parameters.meta import ParamMeta
 from grafix.core.primitive_registry import primitive
 from grafix.core.realized_geometry import RealizedGeometry
-from grafix.core.parameters.meta import ParamMeta
 
 _RADIUS = 0.5
 _MIN_SUBDIVISIONS = 0
@@ -21,11 +21,13 @@ _MAX_SUBDIVISIONS = 5
 _STYLE_ORDER = ["latlon", "zigzag", "icosphere", "rings"]
 
 sphere_meta = {
-    "subdivisions": ParamMeta(kind="int", ui_min=_MIN_SUBDIVISIONS, ui_max=_MAX_SUBDIVISIONS),
+    "subdivisions": ParamMeta(
+        kind="int", ui_min=_MIN_SUBDIVISIONS, ui_max=_MAX_SUBDIVISIONS
+    ),
     "type_index": ParamMeta(kind="int", ui_min=0, ui_max=len(_STYLE_ORDER) - 1),
     # mode は latlon / rings スタイル専用（0: 横/緯度のみ, 1: 縦/経度のみ, 2: 両方）
     "mode": ParamMeta(kind="int", ui_min=0, ui_max=2),
-    "center": ParamMeta(kind="vec3", ui_min=-500.0, ui_max=500.0),
+    "center": ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0),
     "scale": ParamMeta(kind="vec3", ui_min=0.0, ui_max=200.0),
 }
 
@@ -130,7 +132,9 @@ def _sphere_latlon(subdivisions: int, mode: int) -> list[np.ndarray]:
             r = abs(math.sin(lat)) * _RADIUS
             if r <= 1e-9:
                 continue
-            segments_at_lat = int(np.ceil((two_pi * r) / max(1e-9, target_step_equator)))
+            segments_at_lat = int(
+                np.ceil((two_pi * r) / max(1e-9, target_step_equator))
+            )
             segments_at_lat = max(min_segments_lat, segments_at_lat)
 
             angles = np.linspace(0.0, two_pi, segments_at_lat + 1, dtype=np.float32)
@@ -295,7 +299,9 @@ def _sphere_rings(subdivisions: int, mode: int) -> list[np.ndarray]:
             radius = float(math.sqrt(max(0.0, _RADIUS * _RADIUS - y * y)))
             if radius <= 1e-9:
                 continue
-            segments = int(np.ceil((2.0 * math.pi * radius) / max(1e-9, target_step_equator)))
+            segments = int(
+                np.ceil((2.0 * math.pi * radius) / max(1e-9, target_step_equator))
+            )
             segments = max(min_segments, segments)
             angles = np.linspace(0.0, 2.0 * math.pi, segments + 1, dtype=np.float32)
             x = (radius * np.cos(angles)).astype(np.float32)
@@ -310,7 +316,9 @@ def _sphere_rings(subdivisions: int, mode: int) -> list[np.ndarray]:
             radius = float(math.sqrt(max(0.0, _RADIUS * _RADIUS - x * x)))
             if radius <= 1e-9:
                 continue
-            segments = int(np.ceil((2.0 * math.pi * radius) / max(1e-9, target_step_equator)))
+            segments = int(
+                np.ceil((2.0 * math.pi * radius) / max(1e-9, target_step_equator))
+            )
             segments = max(min_segments, segments)
             angles = np.linspace(0.0, 2.0 * math.pi, segments + 1, dtype=np.float32)
             y = (radius * np.cos(angles)).astype(np.float32)
@@ -323,7 +331,9 @@ def _sphere_rings(subdivisions: int, mode: int) -> list[np.ndarray]:
             radius = float(math.sqrt(max(0.0, _RADIUS * _RADIUS - z * z)))
             if radius <= 1e-9:
                 continue
-            segments = int(np.ceil((2.0 * math.pi * radius) / max(1e-9, target_step_equator)))
+            segments = int(
+                np.ceil((2.0 * math.pi * radius) / max(1e-9, target_step_equator))
+            )
             segments = max(min_segments, segments)
             angles = np.linspace(0.0, 2.0 * math.pi, segments + 1, dtype=np.float32)
             x = (radius * np.cos(angles)).astype(np.float32)
@@ -371,11 +381,15 @@ def sphere(
     try:
         cx, cy, cz = center
     except Exception as exc:
-        raise ValueError("sphere の center は長さ 3 のシーケンスである必要がある") from exc
+        raise ValueError(
+            "sphere の center は長さ 3 のシーケンスである必要がある"
+        ) from exc
     try:
         sx, sy, sz = scale
     except Exception as exc:
-        raise ValueError("sphere の scale は長さ 3 のシーケンスである必要がある") from exc
+        raise ValueError(
+            "sphere の scale は長さ 3 のシーケンスである必要がある"
+        ) from exc
 
     if idx == 0:
         polylines = _sphere_latlon(s, m)

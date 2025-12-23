@@ -7,11 +7,11 @@ from typing import Sequence
 import numpy as np
 
 from grafix.core.effect_registry import effect
-from grafix.core.realized_geometry import RealizedGeometry
 from grafix.core.parameters.meta import ParamMeta
+from grafix.core.realized_geometry import RealizedGeometry
 
 translate_meta = {
-    "delta": ParamMeta(kind="vec3", ui_min=-500.0, ui_max=500.0),
+    "delta": ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0),
 }
 
 

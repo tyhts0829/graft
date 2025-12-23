@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import json
 
-from grafix.core.parameters import ParamMeta, ParamStore, ParameterKey
+from grafix.core.parameters import ParameterKey, ParamMeta, ParamStore
 from grafix.core.parameters.codec import dumps_param_store, loads_param_store
 from grafix.core.parameters.context import parameter_context
 from grafix.core.parameters.frame_params import FrameParamRecord
+from grafix.core.parameters.invariants import assert_invariants
 from grafix.core.parameters.layer_style import LAYER_STYLE_OP, layer_style_records
 from grafix.core.parameters.merge_ops import merge_frame_params
 from grafix.core.parameters.prune_ops import prune_groups, prune_stale_loaded_groups
 from grafix.core.parameters.snapshot_ops import store_snapshot, store_snapshot_for_gui
 from grafix.core.parameters.ui_ops import update_state_from_ui
-from grafix.core.parameters.invariants import assert_invariants
 
 
 def _roundtrip_store(store: ParamStore) -> ParamStore:
@@ -32,7 +32,7 @@ def _polyhedron_records(site_id: str) -> list[FrameParamRecord]:
         FrameParamRecord(
             key=ParameterKey(op="polyhedron", site_id=site_id, arg="center"),
             base=(0.0, 0.0, 0.0),
-            meta=ParamMeta(kind="vec3", ui_min=-500.0, ui_max=500.0),
+            meta=ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0),
             explicit=False,
         ),
         FrameParamRecord(
@@ -110,8 +110,14 @@ def test_prune_stale_loaded_groups_removes_old_entries_on_save_path():
     prune_stale_loaded_groups(store)
 
     full_snapshot = store_snapshot(store)
-    assert ParameterKey(op="polyhedron", site_id=old_site_id, arg="center") not in full_snapshot
-    assert ParameterKey(op="polyhedron", site_id=new_site_id, arg="center") in full_snapshot
+    assert (
+        ParameterKey(op="polyhedron", site_id=old_site_id, arg="center")
+        not in full_snapshot
+    )
+    assert (
+        ParameterKey(op="polyhedron", site_id=new_site_id, arg="center")
+        in full_snapshot
+    )
     assert_invariants(store)
 
 
@@ -170,7 +176,9 @@ def test_layer_style_site_id_change_hides_loaded_group_and_prunes_on_save_path()
 
     prune_stale_loaded_groups(store)
     full_snapshot = store_snapshot(store)
-    layer_sites_full = {k.site_id for k in full_snapshot.keys() if k.op == LAYER_STYLE_OP}
+    layer_sites_full = {
+        k.site_id for k in full_snapshot.keys() if k.op == LAYER_STYLE_OP
+    }
     assert old_site_id not in layer_sites_full
     assert_invariants(store)
 
@@ -372,9 +380,7 @@ def draw():
     # 何か 1 つ値を変えたことにする（=GUI 調整）。
     snap_v1 = store_snapshot(store_v1)
     key_v1 = next(
-        k
-        for k in snap_v1.keys()
-        if k.op == "polyhedron" and k.arg == "type_index"
+        k for k in snap_v1.keys() if k.op == "polyhedron" and k.arg == "type_index"
     )
     meta_v1, _state_v1, _ordinal_v1, _label_v1 = snap_v1[key_v1]
     update_state_from_ui(store_v1, key_v1, 3, meta=meta_v1, override=True)
@@ -400,7 +406,9 @@ def draw():
     assert len(poly_sites) == 1
 
     # 値が引き継がれている（曖昧ではないので migrate される）。
-    type_key = next(k for k in gui_snapshot.keys() if k.op == "polyhedron" and k.arg == "type_index")
+    type_key = next(
+        k for k in gui_snapshot.keys() if k.op == "polyhedron" and k.arg == "type_index"
+    )
     st = store.get_state(type_key)
     assert st is not None
     assert st.ui_value == 3
