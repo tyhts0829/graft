@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from enum import Enum
 from hashlib import blake2b
 from math import isfinite
+from types import NotImplementedType
 from typing import Any, Mapping, Sequence
 
 GeometryId = str
@@ -237,3 +238,31 @@ class Geometry:
             inputs=inputs_tuple,
             args=normalized_args,
         )
+
+    @staticmethod
+    def _concat(*geometries: "Geometry") -> "Geometry":
+        """Geometry を `concat` としてまとめる。"""
+        inputs: list[Geometry] = []
+        for g in geometries:
+            if g.op == "concat" and not g.args:
+                inputs.extend(g.inputs)
+            else:
+                inputs.append(g)
+
+        if len(inputs) == 1:
+            return inputs[0]
+        return Geometry.create(op="concat", inputs=tuple(inputs), params={})
+
+    def __add__(self, other: object) -> "Geometry | NotImplementedType":
+        """`g1 + g2` を `concat` として表現する。"""
+        if not isinstance(other, Geometry):
+            return NotImplemented
+        return Geometry._concat(self, other)
+
+    def __radd__(self, other: object) -> "Geometry | NotImplementedType":
+        """`sum([...])` のために `0 + Geometry` を許可する。"""
+        if other == 0:
+            return self
+        if not isinstance(other, Geometry):
+            return NotImplemented
+        return Geometry._concat(other, self)
