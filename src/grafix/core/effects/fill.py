@@ -109,6 +109,43 @@ def _polygon_area_abs(vertices: np.ndarray) -> float:
     return float(0.5 * abs(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1))))
 
 
+def _is_degenerate_fill_input(coords_2d_all: np.ndarray, offsets: np.ndarray) -> bool:
+    """fill の入力が「面」を持たない退化形状かを判定する。"""
+    # fill は閉領域の内部をスキャンして線分化するため、面積がほぼ 0 の入力では意味がない。
+    # そのまま処理すると spacing が極小になり、巨大なスキャンライン配列を確保して落ちることがある。
+    ring_indices = [
+        i
+        for i in range(int(offsets.size) - 1)
+        if int(offsets[i + 1]) - int(offsets[i]) >= 3
+    ]
+    if not ring_indices:
+        return True
+
+    # 面積スケールは bbox 対角長^2 に比例するので、相対閾値で「ほぼ 0」を判定する。
+    rel = 1e-12
+    for i in ring_indices:
+        s = int(offsets[i])
+        e = int(offsets[i + 1])
+        poly = coords_2d_all[s:e]
+        if poly.shape[0] < 3:
+            continue
+
+        p64 = poly.astype(np.float64, copy=False)
+        mins = np.min(p64, axis=0)
+        maxs = np.max(p64, axis=0)
+        dx = float(maxs[0] - mins[0])
+        dy = float(maxs[1] - mins[1])
+        diag_sq = dx * dx + dy * dy
+        if not np.isfinite(diag_sq) or diag_sq <= 0.0:
+            continue
+
+        area = _polygon_area_abs(poly)
+        if area > diag_sq * rel:
+            return False
+
+    return True
+
+
 def _point_in_polygon(point: np.ndarray, polygon: np.ndarray) -> bool:
     """点が多角形内部にあるかを返す（境界上は False 扱い）。"""
     # 目的:
@@ -619,6 +656,8 @@ def fill(
     if global_est is not None:
         coords_xy_all, rot_global, z_global = global_est
         coords2d_all = coords_xy_all[:, :2].astype(np.float32, copy=False)
+        if _is_degenerate_fill_input(coords2d_all, base.offsets):
+            return base
         groups = _build_evenodd_groups(coords2d_all, base.offsets)
         if not groups:
             # ループが無い（またはリング条件を満たさない）場合は境界の有無だけを反映して返す。
@@ -713,23 +752,33 @@ def fill(
         e = int(base.offsets[poly_i + 1])
         vertices = base.coords[s:e]
 
-        # non-planar では「各ポリライン」をグループとみなし、poly_i でサイクルする。
-        if not bool(remove_boundary_seq[poly_i % len(remove_boundary_seq)]):
-            out_lines.append(vertices)
-
         density_i = float(density_seq[poly_i % len(density_seq)])
-        if not np.isfinite(density_i) or density_i <= 0.0:
-            continue
-
         if vertices.shape[0] < 3:
+            # 退化入力はそのまま返す（remove_boundary の有無に関わらず no-op）。
+            out_lines.append(vertices)
             continue
 
         vxy, rot, z_off = transform_to_xy_plane(vertices)
         residual = float(np.max(np.abs(vxy[:, 2].astype(np.float64, copy=False))))
         if residual > _planarity_threshold(vertices):
+            # non-planar では「各ポリライン」をグループとみなし、poly_i でサイクルする。
+            if not bool(remove_boundary_seq[poly_i % len(remove_boundary_seq)]):
+                out_lines.append(vertices)
             continue
 
         coords2d = vxy[:, :2].astype(np.float32, copy=False)
+        if _is_degenerate_fill_input(coords2d, np.array([0, coords2d.shape[0]], dtype=np.int32)):
+            # 退化入力はそのまま返す（remove_boundary / density の有無に関わらず no-op）。
+            out_lines.append(vertices)
+            continue
+
+        # non-planar では「各ポリライン」をグループとみなし、poly_i でサイクルする。
+        if not bool(remove_boundary_seq[poly_i % len(remove_boundary_seq)]):
+            out_lines.append(vertices)
+
+        if not np.isfinite(density_i) or density_i <= 0.0:
+            continue
+
         ref_height = float(np.max(coords2d[:, 1]) - np.min(coords2d[:, 1]))
         base_spacing = _spacing_from_height(ref_height, density_i)
         if base_spacing <= 0.0:
