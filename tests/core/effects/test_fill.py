@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from grafix.api import E, G
-from grafix.core.effects.fill import _build_evenodd_groups
+from grafix.core.effects.fill import _build_evenodd_groups, _point_in_polygon
 from grafix.core.primitive_registry import primitive
 from grafix.core.realize import realize
 from grafix.core.realized_geometry import RealizedGeometry
@@ -168,6 +168,24 @@ def test_fill_evenodd_grouping_does_not_treat_touching_polygons_as_hole() -> Non
     offsets = np.array([0, outer.shape[0], outer.shape[0] + touching.shape[0]], dtype=np.int32)
 
     assert _build_evenodd_groups(coords2d, offsets) == [[0], [1]]
+
+
+def test_point_in_polygon_treats_boundary_as_outside() -> None:
+    poly = np.array(
+        [
+            [0.0, 0.0],
+            [10.0, 0.0],
+            [10.0, 10.0],
+            [0.0, 10.0],
+            [0.0, 0.0],
+        ],
+        dtype=np.float32,
+    )
+
+    assert _point_in_polygon(np.array([5.0, 5.0], dtype=np.float32), poly)
+    assert not _point_in_polygon(np.array([0.0, 5.0], dtype=np.float32), poly)
+    assert not _point_in_polygon(np.array([0.0, 0.0], dtype=np.float32), poly)
+    assert not _point_in_polygon(np.array([15.0, 5.0], dtype=np.float32), poly)
 
 
 def _mean_dir_from_segments(segments: list[np.ndarray]) -> np.ndarray:
