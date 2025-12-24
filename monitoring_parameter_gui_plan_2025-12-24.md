@@ -33,17 +33,14 @@
 
 ### 2) CPU 使用率（プロセス）
 
-- 依存追加なし案: `time.process_time()` と `time.perf_counter()` の差分から算出する。
-  - `cpu% = 100 * Δprocess_time / Δwall_time`
-  - スレッド/Numba 等により 100% を超え得る（「複数コア使用」として許容する）
-- mp-draw（別プロセス）が有効な場合、ワーカー CPU は **この値に含まれない**（制約として明示）。
+- `psutil` を使い、「このプロセス + 子プロセス（mp-draw worker）合算」の CPU 使用率を表示する。
+  - `cpu% = 100 * Δ(sum(user+system)) / Δwall_time`
+  - 100% を超え得る（複数コア使用として解釈する）
 
 ### 3) メモリ使用量（プロセス）
 
-- 候補 A（依存なし）: `resource.getrusage(RUSAGE_SELF).ru_maxrss` を **ピーク RSS** として表示する。
-  - 「現在値ではない」のでラベルを明確にする（例: `RSS peak`）。
-- 候補 B（依存追加）: `psutil` で **現在 RSS** を表示する（mp-draw 子プロセス合算も可能）。
-  - 依存追加になるため Ask-first。
+- `psutil` を使い、「このプロセス + 子プロセス（mp-draw worker）合算」の **現在 RSS** を表示する。
+  - `rss_mb = sum(rss_bytes) / (1024**2)`
 
 ### 4) 描画中の頂点数 / ライン数
 
@@ -52,7 +49,7 @@
 - **頂点数**: 実際に描画対象になった頂点数（GL に渡す座標数）。
   - `RealizedGeometry.coords` のうち、`offsets` で長さ `>=2` の polyline に含まれる頂点の合計。
 - **ライン数**: 実際に描画対象になった polyline 本数（長さ `>=2`）。
-- 任意: 追加で **セグメント数**（線分数）も表示する（`sum(max(0, length-1))`）。
+- **セグメント数（線分数）**は `segments = vertices - lines` で導けるため、今回は表示しない（内部値としては必要なら持てる）。
 
 ## 提案アーキテクチャ
 
@@ -66,8 +63,8 @@
 - 追加ファイル案: `src/grafix/interactive/runtime/monitor.py`
 - 役割:
   - フレーム tick（時刻）を受け取り FPS/CPU% を更新する
-  - 一定周期（例: 0.5s）で memory をサンプリングする
-  - draw 側から「頂点/ライン/セグメント/レイヤ数」を受け取り保持する
+  - 一定周期（例: 0.5s）で cpu/memory をサンプリングする（psutil）
+  - draw 側から「頂点/ライン/レイヤ数」を受け取り保持する
   - `snapshot()` で GUI 表示用の dataclass（数値のみ）を返す
 
 データモデル案（例）:
@@ -75,10 +72,9 @@
 - `MonitorSnapshot`
   - `fps: float`
   - `cpu_percent: float`
-  - `rss_mb: float`（または `rss_peak_mb`）
+  - `rss_mb: float`
   - `vertices: int`
   - `lines: int`
-  - `segments: int`（任意）
   - `layers: int`
 
 ### 2) 頂点/ライン数の集計の置き場所
@@ -90,8 +86,8 @@
 
 提案（どちらか）:
 
-1. `build_line_indices_and_stats(offsets)` を新設し、`(indices, stats)` を返す（推奨）
-   - stats: `draw_vertices` / `draw_lines` / `draw_segments` 等
+1. `build_line_indices_and_stats(offsets)` を新設し、`(indices, stats)` を返す（推奨）；こちらで
+   - stats: `draw_vertices` / `draw_lines` 等（`draw_segments` は `vertices-lines` で導出可）
    - LRU キャッシュも `(indices, stats)` ごと効く
 2. `build_line_indices` を破壊的に変更して stats も返す（リポは未配布なので許容はできる）
 
@@ -111,15 +107,15 @@
 - `src/grafix/interactive/parameter_gui/gui.py` は
   - 上部に monitor bar を描画
   - その下に既存の `render_store_parameter_table(...)` を置く
-- UI はまずはテキストのみ（固定 1 行 + 改行 1〜2 行）でよい。
+- UI はテキストのみ（上部に固定 1 行）でよい。
   - 例: `FPS 58.4 | CPU 123% | RSS 512MB | Vtx 1,234,567 | Lines 12,345`
 - 将来拡張（今回やらないが、設計余地として残す）:
-  - 折りたたみ（ImGui CollapsingHeader）
   - warn 閾値で色を変える（FPS < 30 等）
 
 ## 実装チェックリスト（コード変更前提）
 
-- [ ] 指標の最終定義を確定（特に: “ライン数” を polyline 本数にするか、セグメント数も併記するか）
+- [x] 指標の定義を確定（lines=polyline 本数、cpu/mem=psutil で process+children 合算、表示は上部 1 行）
+- [ ] `psutil` を依存に追加（cpu/mem 取得）
 - [ ] `RuntimeMonitor` / `MonitorSnapshot` を追加（runtime）
 - [ ] indices 生成から stats を取得できる API を用意（`build_line_indices_and_stats` 推奨）
 - [ ] `run()` で monitor を生成し、Draw/GUI system に配線する
@@ -137,12 +133,12 @@
 
 ## リスク / 注意点
 
-- memory を依存なしでやる場合、ピーク値（ru_maxrss）になり「現在値」とズレる。
-- mp-draw 有効時、CPU/memory を「メインのみ」にするか「子プロセス合算」にするかで意味が変わる。
+- `psutil` は追加依存（ビルド済み wheel 前提）。ただし cpu/mem の実装は最も単純になる。
+- mp-draw 有効時に子プロセスを合算するため、プロセス生成/終了タイミングで値がわずかに揺れる可能性がある。
 - offsets が巨大なケースで、追加走査が入ると測定自体が負荷になり得る（stats は indices 生成と同時に取る）。
 
-## 事前確認（あなたに確認したいこと）
+## 前提（確定）
 
-1) 「ライン数」は **polyline 本数（length>=2）** の意味で良い？それとも **線分数** を指している？（併記でも可）  
-2) memory は依存なしの **RSS peak** 表示でまず良い？それとも `psutil` を追加して **現在 RSS / 子プロセス合算** までやる？（依存追加が必要）  
-3) monitor 表示は「上部 1 行固定」で良い？それとも折りたたみ（詳細表示）も最初から欲しい？
+1. ライン数 = **polyline 本数（length>=2）** とする。線分数は頂点数と相関が強く、`segments = vertices - lines` で導けるため表示しない。
+2. cpu/memory は `psutil` を追加し、**プロセス + 子プロセス合算**の現在値を表示する（依存追加 OK）。
+3. monitor 表示は **上部 1 行固定** とする。
