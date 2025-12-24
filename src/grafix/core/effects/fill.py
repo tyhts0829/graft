@@ -339,6 +339,182 @@ def _estimate_global_xy_transform_pca(
     return aligned_all, rot, z_offset
 
 
+@njit(cache=True)  # type: ignore[misc]
+def _polygon_area_abs_coords_njit(coords_2d_all: np.ndarray, start: int, end: int) -> float:
+    """2D ポリゴンの面積絶対値を返す（閉じは仮定しない、Numba 版）。"""
+    n = int(end - start)
+    if n < 3:
+        return 0.0
+    area2 = 0.0
+    x1 = float(coords_2d_all[end - 1, 0])
+    y1 = float(coords_2d_all[end - 1, 1])
+    for i in range(start, end):
+        x2 = float(coords_2d_all[i, 0])
+        y2 = float(coords_2d_all[i, 1])
+        area2 += x1 * y2 - x2 * y1
+        x1, y1 = x2, y2
+    if area2 < 0.0:
+        area2 = -area2
+    return 0.5 * area2
+
+
+@njit(cache=True)  # type: ignore[misc]
+def _point_in_polygon_coords_njit(
+    coords_2d_all: np.ndarray,
+    start: int,
+    end: int,
+    x: float,
+    y: float,
+) -> bool:
+    """点が多角形内部にあるかを返す（境界上は False 扱い、Numba 版）。"""
+    n = int(end - start)
+    if n < 3:
+        return False
+
+    # 境界上を明示的に除外してから、偶奇レイキャストで内部判定する。
+    eps = 1e-6
+
+    x1 = float(coords_2d_all[end - 1, 0])
+    y1 = float(coords_2d_all[end - 1, 1])
+    for k in range(n):
+        i = int(start + k)
+        x2 = float(coords_2d_all[i, 0])
+        y2 = float(coords_2d_all[i, 1])
+
+        if abs(x - x2) <= eps and abs(y - y2) <= eps:
+            return False
+
+        dx = x2 - x1
+        dy = y2 - y1
+
+        min_x = x1 if x1 < x2 else x2
+        max_x = x2 if x1 < x2 else x1
+        min_y = y1 if y1 < y2 else y2
+        max_y = y2 if y1 < y2 else y1
+        if (
+            x >= min_x - eps
+            and x <= max_x + eps
+            and y >= min_y - eps
+            and y <= max_y + eps
+        ):
+            cross = dx * (y - y1) - dy * (x - x1)
+            tol = eps * (abs(dx) + abs(dy))
+            if tol < eps:
+                tol = eps
+            if abs(cross) <= tol:
+                dot = (x - x1) * (x - x2) + (y - y1) * (y - y2)
+                if dot <= eps * eps:
+                    return False
+
+        x1, y1 = x2, y2
+
+    inside = False
+    x1 = float(coords_2d_all[end - 1, 0])
+    y1 = float(coords_2d_all[end - 1, 1])
+    for k in range(n):
+        i = int(start + k)
+        x2 = float(coords_2d_all[i, 0])
+        y2 = float(coords_2d_all[i, 1])
+        if (y1 > y) != (y2 > y):
+            x_int = (x2 - x1) * (y - y1) / (y2 - y1) + x1
+            if x < x_int:
+                inside = not inside
+        x1, y1 = x2, y2
+    return inside
+
+
+@njit(cache=True)  # type: ignore[misc]
+def _evenodd_parent_outer_njit(
+    coords_2d_all: np.ndarray,
+    ring_start: np.ndarray,
+    ring_end: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """even-odd の outer 判定と、hole の親 outer を返す（Numba 版）。"""
+    r = int(ring_start.shape[0])
+    area_abs = np.empty((r,), dtype=np.float64)
+    contains_count = np.zeros((r,), dtype=np.int32)
+    parent_min = np.full((r,), -1, dtype=np.int32)
+    parent_area = np.full((r,), 1e308, dtype=np.float64)
+
+    min_x = np.empty((r,), dtype=np.float32)
+    max_x = np.empty((r,), dtype=np.float32)
+    min_y = np.empty((r,), dtype=np.float32)
+    max_y = np.empty((r,), dtype=np.float32)
+
+    for i in range(r):
+        s = int(ring_start[i])
+        e = int(ring_end[i])
+        area_abs[i] = _polygon_area_abs_coords_njit(coords_2d_all, s, e)
+
+        bx0 = float(coords_2d_all[s, 0])
+        bx1 = bx0
+        by0 = float(coords_2d_all[s, 1])
+        by1 = by0
+        for k in range(s + 1, e):
+            xk = float(coords_2d_all[k, 0])
+            yk = float(coords_2d_all[k, 1])
+            if xk < bx0:
+                bx0 = xk
+            elif xk > bx1:
+                bx1 = xk
+            if yk < by0:
+                by0 = yk
+            elif yk > by1:
+                by1 = yk
+        min_x[i] = np.float32(bx0)
+        max_x[i] = np.float32(bx1)
+        min_y[i] = np.float32(by0)
+        max_y[i] = np.float32(by1)
+
+    eps = 1e-6
+    for i in range(r):
+        s_i = int(ring_start[i])
+        x = float(coords_2d_all[s_i, 0])
+        y = float(coords_2d_all[s_i, 1])
+        for j in range(r):
+            if i == j:
+                continue
+            if (
+                x < float(min_x[j]) - eps
+                or x > float(max_x[j]) + eps
+                or y < float(min_y[j]) - eps
+                or y > float(max_y[j]) + eps
+            ):
+                continue
+            if _point_in_polygon_coords_njit(
+                coords_2d_all,
+                int(ring_start[j]),
+                int(ring_end[j]),
+                x,
+                y,
+            ):
+                contains_count[i] += 1
+                a = float(area_abs[j])
+                if a < float(parent_area[i]):
+                    parent_area[i] = a
+                    parent_min[i] = int(j)
+
+    is_outer = np.zeros((r,), dtype=np.uint8)
+    for i in range(r):
+        if contains_count[i] % 2 == 0:
+            is_outer[i] = 1
+
+    parent_outer = np.full((r,), -1, dtype=np.int32)
+    for i in range(r):
+        if is_outer[i] == 1:
+            continue
+        p = int(parent_min[i])
+        hops = 0
+        while p != -1 and is_outer[p] == 0 and hops < r:
+            p = int(parent_min[p])
+            hops += 1
+        if hops >= r:
+            p = -1
+        parent_outer[i] = np.int32(p)
+
+    return is_outer, parent_outer
+
+
 def _build_evenodd_groups(coords_2d_all: np.ndarray, offsets: np.ndarray) -> list[list[int]]:
     """外周＋穴を even-odd でグルーピングし、[outer, hole...] のリストを返す。"""
     # 目的:
@@ -350,60 +526,55 @@ def _build_evenodd_groups(coords_2d_all: np.ndarray, offsets: np.ndarray) -> lis
     # 2) 「内包している外側リングの個数」の偶奇で outer/hole を決める。
     # 3) hole は、それを含む outer のうち「面積が最小のもの」にぶら下げる。
     # 4) outer が見つからない hole は単独グループに落とし、リングが脱落しないようにする。
-    ring_indices = [
-        i
-        for i in range(int(offsets.size) - 1)
-        if int(offsets[i + 1]) - int(offsets[i]) >= 3
-    ]
+    ring_indices: list[int] = []
+    ring_start: list[int] = []
+    ring_end: list[int] = []
+    for i in range(int(offsets.size) - 1):
+        s = int(offsets[i])
+        e = int(offsets[i + 1])
+        if e - s >= 3:
+            ring_indices.append(int(i))
+            ring_start.append(s)
+            ring_end.append(e)
     if not ring_indices:
         return []
 
-    rings: dict[int, np.ndarray] = {}
-    rep: dict[int, np.ndarray] = {}
-    area: dict[int, float] = {}
-    for i in ring_indices:
-        s = int(offsets[i])
-        e = int(offsets[i + 1])
-        poly = coords_2d_all[s:e]
-        rings[i] = poly
-        # 代表点は「重心」ではなく第1頂点を使う（非凸/ドーナツで重心が穴側へ落ちる破綻を避ける）。
-        rep[i] = poly[0]
-        area[i] = _polygon_area_abs(poly)
+    ring_ids = np.asarray(ring_indices, dtype=np.int32)
+    ring_start_arr = np.asarray(ring_start, dtype=np.int32)
+    ring_end_arr = np.asarray(ring_end, dtype=np.int32)
 
-    # containers[i] = 「リング i を含む（と判定された）リング」のリスト。
-    containers: dict[int, list[int]] = {i: [] for i in ring_indices}
-    for i in ring_indices:
-        rp = rep[i]
-        for j in ring_indices:
-            if i == j:
-                continue
-            if _point_in_polygon(rp, rings[j]):
-                containers[i].append(j)
+    coords2d = np.asarray(coords_2d_all, dtype=np.float32)
+    is_outer_u8, parent_outer = _evenodd_parent_outer_njit(
+        coords2d,
+        ring_start_arr,
+        ring_end_arr,
+    )
 
-    # even-odd: 内包数が偶数なら outer、奇数なら hole。
-    is_outer: dict[int, bool] = {i: (len(containers[i]) % 2) == 0 for i in ring_indices}
-    outer_indices = [i for i in ring_indices if is_outer[i]]
-    groups: dict[int, list[int]] = {oi: [oi] for oi in outer_indices}
+    outer_ring_list = [i for i in range(int(ring_ids.shape[0])) if bool(is_outer_u8[i])]
+    groups: dict[int, list[int]] = {oi: [oi] for oi in outer_ring_list}
+    orphan_keys: list[int] = []
 
-    for i in ring_indices:
-        if is_outer[i]:
+    for i in range(int(ring_ids.shape[0])):
+        if bool(is_outer_u8[i]):
             continue
-        # hole を含む outer が複数ある場合は、最も近い親（面積最小）にぶら下げる。
-        cands = [j for j in outer_indices if j in containers[i]]
-        if cands:
-            j_best = min(cands, key=lambda j: area.get(j, 0.0))
-            groups.setdefault(j_best, []).append(i)
+        p = int(parent_outer[i])
+        if p >= 0 and p != i:
+            groups.setdefault(p, []).append(i)
         else:
             # 数値誤差や入力の歪みで outer が見つからない場合でも、ここで脱落させない。
             groups.setdefault(i, []).append(i)
+            orphan_keys.append(i)
 
     # 出力順は安定化する: outer は入力順、各グループ内の ring index も昇順。
     ordered: list[list[int]] = []
-    for oi in outer_indices:
-        ordered.append(sorted(groups.get(oi, [oi])))
-    for k, v in groups.items():
-        if k not in set(outer_indices):
-            ordered.append(sorted(v))
+    for oi in outer_ring_list:
+        members = groups.get(oi, [oi])
+        members_sorted = sorted(members, key=lambda idx: int(ring_ids[idx]))
+        ordered.append([int(ring_ids[idx]) for idx in members_sorted])
+    for key in orphan_keys:
+        members = groups.get(key, [key])
+        members_sorted = sorted(members, key=lambda idx: int(ring_ids[idx]))
+        ordered.append([int(ring_ids[idx]) for idx in members_sorted])
     return ordered
 
 

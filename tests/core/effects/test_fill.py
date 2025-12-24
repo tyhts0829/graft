@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from grafix.api import E, G
-from grafix.core.effects.fill import _build_evenodd_groups, _point_in_polygon
+from grafix.core.effects.fill import _build_evenodd_groups, _point_in_polygon, _polygon_area_abs
 from grafix.core.primitive_registry import primitive
 from grafix.core.realize import realize
 from grafix.core.realized_geometry import RealizedGeometry
@@ -141,6 +141,13 @@ def test_fill_outer_with_hole_avoids_hole_region() -> None:
         assert not (3.0 < float(mid[0]) < 7.0 and 3.0 < float(mid[1]) < 7.0)
 
 
+def test_fill_evenodd_grouping_groups_square_with_hole() -> None:
+    g = G.fill_test_square_with_hole()
+    base = realize(g)
+    coords2d = base.coords[:, :2].astype(np.float32, copy=False)
+    assert _build_evenodd_groups(coords2d, base.offsets) == [[0, 1]]
+
+
 def test_fill_evenodd_grouping_does_not_treat_touching_polygons_as_hole() -> None:
     # 隣接セル（共有辺/頂点）の代表点が「境界上」に載るケースを想定し、
     # グルーピングが誤って hole 扱いしないことを担保する。
@@ -186,6 +193,45 @@ def test_point_in_polygon_treats_boundary_as_outside() -> None:
     assert not _point_in_polygon(np.array([0.0, 5.0], dtype=np.float32), poly)
     assert not _point_in_polygon(np.array([0.0, 0.0], dtype=np.float32), poly)
     assert not _point_in_polygon(np.array([15.0, 5.0], dtype=np.float32), poly)
+
+
+def test_fill_text_o_respects_hole() -> None:
+    g = G.text(text="o", font="SFNS.ttf", scale=(100.0, 100.0, 1.0))
+    boundary = realize(g)
+    coords2d = boundary.coords[:, :2].astype(np.float32, copy=False)
+    groups = _build_evenodd_groups(coords2d, boundary.offsets)
+
+    hole_poly: np.ndarray | None = None
+    for group in groups:
+        if len(group) < 2:
+            continue
+        areas: list[tuple[float, int]] = []
+        for ring_i in group:
+            s = int(boundary.offsets[ring_i])
+            e = int(boundary.offsets[ring_i + 1])
+            areas.append((_polygon_area_abs(coords2d[s:e]), int(ring_i)))
+        areas.sort(key=lambda t: t[0])
+        hole_i = areas[0][1]
+        s = int(boundary.offsets[hole_i])
+        e = int(boundary.offsets[hole_i + 1])
+        hole_poly = coords2d[s:e]
+        break
+
+    assert hole_poly is not None
+    x0 = float(np.min(hole_poly[:, 0]))
+    x1 = float(np.max(hole_poly[:, 0]))
+    y0 = float(np.min(hole_poly[:, 1]))
+    y1 = float(np.max(hole_poly[:, 1]))
+    probe = np.array([(x0 + x1) * 0.5, (y0 + y1) * 0.5], dtype=np.float32)
+    assert _point_in_polygon(probe, hole_poly)
+
+    filled = realize(E.fill(angle_sets=1, angle=0.0, density=25.0, remove_boundary=True)(g))
+    assert filled.coords.shape[0] > 0
+    for seg in _iter_polylines(filled):
+        if seg.shape != (2, 3):
+            continue
+        mid = seg.mean(axis=0)
+        assert not _point_in_polygon(mid[:2].astype(np.float32, copy=False), hole_poly)
 
 
 def _mean_dir_from_segments(segments: list[np.ndarray]) -> np.ndarray:
