@@ -15,8 +15,24 @@ from .pyglet_backend import _create_imgui_pyglet_renderer, _sync_imgui_io_for_wi
 from .store_bridge import render_store_parameter_table
 from .table import COLUMN_WEIGHTS_DEFAULT
 
-_DEFAULT_GUI_FONT_PATH = Path("data/input/font/SFNS.ttf")
-_DEFAULT_GUI_FONT_SIZE_PX = 24.0
+_DEFAULT_GUI_FONT_PATH = (
+    Path(__file__).resolve().parents[4] / "data/input/font/SFNS.ttf"
+)
+_GUI_FONT_SIZE_BASE_PX = 12.0
+
+
+def _compute_window_backing_scale(gui_window: Any) -> float:
+    """ウィンドウの backing scale（DPI 倍率）を返す。"""
+
+    scale = getattr(gui_window, "scale", None)
+    if scale is not None:
+        return float(max(float(scale), 1.0))
+
+    get_pixel_ratio = getattr(gui_window, "get_pixel_ratio", None)
+    if callable(get_pixel_ratio):
+        return float(max(float(get_pixel_ratio()), 1.0))
+
+    return 1.0
 
 
 class ParameterGUI:
@@ -60,30 +76,48 @@ class ParameterGUI:
         imgui.style_colors_dark()
         imgui.set_current_context(self._context)
 
+        # pyglet は環境によって「座標系が backing pixel」になり得る。
+        # その場合、Retina では物理サイズが小さく見えるため、フォント生成 px を DPI で補正する。
+        imgui.get_io().font_global_scale = 1.0
+
         # ImGui の draw_data を実際に OpenGL へ流す renderer を作る。
         # ここで作られた renderer は内部に GL リソースを保持する。
         self._renderer = _create_imgui_pyglet_renderer(imgui_pyglet, gui_window)
 
-        # お試し: フォントを差し替えて文字サイズだけ調整する。
-        # ここでは「既定フォントを丸ごと置き換える」ため、push/pop は不要。
-        if _DEFAULT_GUI_FONT_PATH.is_file():
-            io = imgui.get_io()
-            io.fonts.clear()
-            io.fonts.add_font_from_file_ttf(
-                str(_DEFAULT_GUI_FONT_PATH),
-                float(_DEFAULT_GUI_FONT_SIZE_PX),
-            )
-
-        refresh_font = getattr(self._renderer, "refresh_font_texture", None)
-        if callable(refresh_font):
-            # backend によっては初期化時にフォントテクスチャが未生成なので、明示的に更新する。
-            refresh_font()
+        self._custom_font_path: Path | None = (
+            _DEFAULT_GUI_FONT_PATH if _DEFAULT_GUI_FONT_PATH.is_file() else None
+        )
+        self._font_backing_scale: float | None = None
+        self._sync_font_for_window()
 
         import time
 
         # ImGui に渡す delta_time 用の前回時刻。
         self._prev_time = time.monotonic()
         self._closed = False
+
+    def _sync_font_for_window(self) -> None:
+        """ウィンドウの backing scale に合わせてフォントを同期する。"""
+
+        if self._custom_font_path is None:
+            return
+
+        backing_scale = _compute_window_backing_scale(self._window)
+        if self._font_backing_scale == backing_scale:
+            return
+
+        io = self._imgui.get_io()
+        io.fonts.clear()
+        io.fonts.add_font_from_file_ttf(
+            str(self._custom_font_path),
+            float(_GUI_FONT_SIZE_BASE_PX * backing_scale),
+        )
+
+        refresh_font = getattr(self._renderer, "refresh_font_texture", None)
+        if callable(refresh_font):
+            refresh_font()
+
+        self._font_backing_scale = backing_scale
 
     def draw_frame(self) -> bool:
         """1 フレーム分の GUI を描画し、変更があれば store に反映する。
@@ -106,6 +140,7 @@ class ParameterGUI:
 
         # 以降の ImGui 呼び出しはこのインスタンスの context を対象にする。
         imgui.set_current_context(self._context)
+        self._sync_font_for_window()
 
         # 注: 呼び出し側（MultiWindowLoop）が事前に `self._window.switch_to()` 済みである前提。
         # ここで switch_to() を呼ぶと責務が分散し、点滅の原因（複数箇所での画面更新）になりやすい。
