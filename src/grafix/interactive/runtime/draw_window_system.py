@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 import time
 from pathlib import Path
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from pyglet.window import key
 
@@ -18,7 +18,7 @@ from grafix.core.pipeline import RealizedLayer
 from grafix.export.svg import export_svg
 from grafix.interactive.draw_window import create_draw_window
 from grafix.interactive.gl.draw_renderer import DrawRenderer
-from grafix.interactive.gl.index_buffer import build_line_indices
+from grafix.interactive.gl.index_buffer import build_line_indices_and_stats
 from grafix.interactive.render_settings import RenderSettings
 from grafix.core.scene import SceneItem
 from grafix.interactive.runtime.perf import PerfCollector
@@ -30,6 +30,9 @@ from grafix.interactive.runtime.style_resolver import StyleResolver
 from grafix.interactive.runtime.video_recorder import default_video_output_path
 
 _logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from grafix.interactive.runtime.monitor import RuntimeMonitor
 
 
 class DrawWindowSystem:
@@ -43,6 +46,7 @@ class DrawWindowSystem:
         defaults: LayerStyleDefaults,
         store: ParamStore,
         midi_controller: MidiController | None = None,
+        monitor: RuntimeMonitor | None = None,
         fps: float = 60.0,
         n_worker: int = 0,
     ) -> None:
@@ -52,6 +56,7 @@ class DrawWindowSystem:
         self._settings = settings
         self._store = store
         self._midi_controller = midi_controller
+        self._monitor = monitor
 
         self._style = StyleResolver(
             self._store,
@@ -169,9 +174,13 @@ class DrawWindowSystem:
                 recording=recording,
             )
             self._last_realized_layers = realized_layers
+            frame_vertices = 0
+            frame_lines = 0
             for item in realized_layers:
                 with perf.section("indices"):
-                    indices = build_line_indices(item.realized.offsets)
+                    indices, stats = build_line_indices_and_stats(item.realized.offsets)
+                frame_vertices += int(stats.draw_vertices)
+                frame_lines += int(stats.draw_lines)
                 with perf.section("render_layer"):
                     self._renderer.render_layer(
                         realized=item.realized,
@@ -180,6 +189,10 @@ class DrawWindowSystem:
                         color=item.color,
                         thickness=item.thickness,
                     )
+
+            monitor = self._monitor
+            if monitor is not None:
+                monitor.set_draw_counts(vertices=int(frame_vertices), lines=int(frame_lines))
 
             if recording:
                 with perf.section("video"):

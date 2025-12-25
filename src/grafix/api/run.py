@@ -118,6 +118,12 @@ def run(
         profile_name=script_stem,
     )
 
+    monitor = None
+    if parameter_gui:
+        from grafix.interactive.runtime.monitor import RuntimeMonitor
+
+        monitor = RuntimeMonitor()
+
     # --- サブシステムの組み立て ---
     # 描画ウィンドウは常に有効（メイン描画）。
     draw_window = DrawWindowSystem(
@@ -126,6 +132,7 @@ def run(
         defaults=defaults,
         store=param_store,
         midi_controller=midi_controller,
+        monitor=monitor,
         fps=float(fps),
         n_worker=int(n_worker),
     )
@@ -146,6 +153,7 @@ def run(
         gui = ParameterGUIWindowSystem(
             store=param_store,
             midi_controller=midi_controller,
+            monitor=monitor,
         )
         gui.window.set_location(*PARAMETER_GUI_POS)
         closers.append(gui.close)
@@ -154,7 +162,11 @@ def run(
     # --- ループの実行 ---
     # ここで複数ウィンドウを 1 つの手動ループで回す。
     # 目的: `flip()` を 1 箇所へ集約し、画面更新の競合（点滅）を避ける。
-    loop = MultiWindowLoop(tasks, fps=fps)
+    loop = MultiWindowLoop(
+        tasks,
+        fps=fps,
+        on_frame_start=None if monitor is None else monitor.tick_frame,
+    )
     try:
         loop.run()
     finally:

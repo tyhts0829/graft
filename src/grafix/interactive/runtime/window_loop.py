@@ -29,7 +29,13 @@ class MultiWindowLoop:
     `draw_frame()` は各ウィンドウの back buffer へ描画するだけにし、`flip()` はこのループが行う。
     """
 
-    def __init__(self, tasks: list[WindowTask], *, fps: float) -> None:
+    def __init__(
+        self,
+        tasks: list[WindowTask],
+        *,
+        fps: float,
+        on_frame_start: Callable[[], None] | None = None,
+    ) -> None:
         """ループを初期化する。
 
         Parameters
@@ -39,10 +45,13 @@ class MultiWindowLoop:
         fps : float
             目標フレームレート。`<=0` の場合はスロットリングしない。
             `>0` の場合、ループ末尾で sleep して目標に近づける。
+        on_frame_start : Callable[[], None] | None
+            各フレーム冒頭に呼ぶコールバック。計測などの用途を想定する。
         """
 
         self._tasks = list(tasks)
         self._fps = float(fps)
+        self._on_frame_start = on_frame_start
 
     def run(self) -> None:
         """ウィンドウが閉じられるまでループを実行する。"""
@@ -65,6 +74,10 @@ class MultiWindowLoop:
         # 1フレームは大きく「clock 更新 → イベント処理 → 描画 → flip → sleep」の順。
         # イベント処理と描画をまとめて制御することで、複数ウィンドウ間での更新競合（点滅など）を避ける。
         while running:
+            on_frame_start = self._on_frame_start
+            if on_frame_start is not None:
+                on_frame_start()
+
             # pyglet の clock を進める（内部タイムスタンプの更新など）。
             pyglet.clock.tick()
 

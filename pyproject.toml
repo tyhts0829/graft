@@ -21,6 +21,7 @@ dependencies = [
   "PyYAML",
   "mido",
   "python-rtmidi",
+  "psutil",
 ]
 
 [project.optional-dependencies]

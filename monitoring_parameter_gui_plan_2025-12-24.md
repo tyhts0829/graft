@@ -115,13 +115,13 @@
 ## 実装チェックリスト（コード変更前提）
 
 - [x] 指標の定義を確定（lines=polyline 本数、cpu/mem=psutil で process+children 合算、表示は上部 1 行）
-- [ ] `psutil` を依存に追加（cpu/mem 取得）
-- [ ] `RuntimeMonitor` / `MonitorSnapshot` を追加（runtime）
-- [ ] indices 生成から stats を取得できる API を用意（`build_line_indices_and_stats` 推奨）
-- [ ] `run()` で monitor を生成し、Draw/GUI system に配線する
-- [ ] `DrawWindowSystem.draw_frame()` で stats を更新する
-- [ ] `ParameterGUI` に monitor bar を追加して表示する
-- [ ] テスト追加（少なくとも counts の境界ケース）
+- [x] `psutil` を依存に追加（cpu/mem 取得）
+- [x] `RuntimeMonitor` / `MonitorSnapshot` を追加（runtime）
+- [x] indices 生成から stats を取得できる API を用意（`build_line_indices_and_stats` 推奨）
+- [x] `run()` で monitor を生成し、Draw/GUI system に配線する
+- [x] `DrawWindowSystem.draw_frame()` で stats を更新する
+- [x] `ParameterGUI` に monitor bar を追加して表示する
+- [x] テスト追加（少なくとも counts の境界ケース）
 - [ ] 手動確認（sketch を実行して表示の更新を確認）
 
 ## テスト/検証コマンド案

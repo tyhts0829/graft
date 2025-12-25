@@ -11,6 +11,7 @@ from grafix.core.parameters.store import ParamStore
 from grafix.interactive.midi import MidiController
 
 from .midi_learn import MidiLearnState
+from .monitor_bar import render_monitor_bar
 from .pyglet_backend import (
     DEFAULT_WINDOW_TARGET_FRAMEBUFFER_WIDTH_PX,
     _create_imgui_pyglet_renderer,
@@ -51,6 +52,7 @@ class ParameterGUI:
         *,
         store: ParamStore,
         midi_controller: MidiController | None = None,
+        monitor: Any | None = None,
         title: str = "Parameters",
         column_weights: tuple[float, float, float, float] = COLUMN_WEIGHTS_DEFAULT,
     ) -> None:
@@ -70,6 +72,7 @@ class ParameterGUI:
         self._window = gui_window
         self._store = store
         self._midi_controller = midi_controller
+        self._monitor = monitor
         self._midi_learn_state = MidiLearnState()
         self._title = str(title)
         self._column_weights = column_weights
@@ -189,17 +192,31 @@ class ParameterGUI:
             | imgui.WINDOW_NO_TITLE_BAR,
         )
 
-        # ParamStore をテーブルとして描画し、編集結果を store に反映する。
-        changed = render_store_parameter_table(
-            self._store,
-            column_weights=self._column_weights,
-            midi_learn_state=self._midi_learn_state,
-            midi_last_cc_change=(
-                None
-                if self._midi_controller is None
-                else self._midi_controller.last_cc_change
-            ),
-        )
+        monitor = self._monitor
+        if monitor is not None:
+            midi = self._midi_controller
+            render_monitor_bar(
+                imgui,
+                monitor.snapshot(),
+                midi_port_name=None if midi is None else str(midi.port_name),
+            )
+
+        # ParamStore の表だけをスクロール領域に閉じ込め、監視バーは常に見えるようにする。
+        imgui.begin_child("##parameter_table_scroll", 0, 0, border=False)
+        try:
+            # ParamStore をテーブルとして描画し、編集結果を store に反映する。
+            changed = render_store_parameter_table(
+                self._store,
+                column_weights=self._column_weights,
+                midi_learn_state=self._midi_learn_state,
+                midi_last_cc_change=(
+                    None
+                    if self._midi_controller is None
+                    else self._midi_controller.last_cc_change
+                ),
+            )
+        finally:
+            imgui.end_child()
         imgui.end()
 
         # --- ImGui フレーム終了（draw_data 構築）---

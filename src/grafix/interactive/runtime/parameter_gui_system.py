@@ -4,16 +4,25 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from grafix.interactive.parameter_gui import ParameterGUI, create_parameter_gui_window
 from grafix.core.parameters import ParamStore
 from grafix.interactive.midi import MidiController
+
+if TYPE_CHECKING:
+    from grafix.interactive.runtime.monitor import RuntimeMonitor
 
 
 class ParameterGUIWindowSystem:
     """Parameter GUI（別ウィンドウ）のサブシステム。"""
 
     def __init__(
-        self, *, store: ParamStore, midi_controller: MidiController | None = None
+        self,
+        *,
+        store: ParamStore,
+        midi_controller: MidiController | None = None,
+        monitor: RuntimeMonitor | None = None,
     ) -> None:
         """GUI 用の window と ParameterGUI を初期化する。"""
 
@@ -22,6 +31,7 @@ class ParameterGUIWindowSystem:
             self.window,
             store=store,
             midi_controller=midi_controller,
+            monitor=monitor,
         )
 
     def draw_frame(self) -> None:
