@@ -2,6 +2,10 @@
 どこで: `tools/gen_g_stubs.py`。
 何を: `grafix.api` の IDE 補完用スタブ `src/grafix/api/__init__.pyi` を自動生成する。
 なぜ: `G`/`E` が動的名前空間のため、静的解析が公開 API を把握できる形を用意するため。
+
+補足:
+- effect の public param の型アノテーションは「stub 側で解決可能な名前」だけを書く（自動 import 収集はしない）。
+- `ParamMeta.kind == "vec3"` の場合、`tuple[float, float, float]` アノテーションでも stub は `Vec3` 表現を優先する。
 """
 
 from __future__ import annotations
@@ -14,6 +18,9 @@ from pathlib import Path
 from typing import Any
 
 _VALID_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_VEC3_TUPLE_RE = re.compile(
+    r"(?:tuple|Tuple)\[\s*float\s*,\s*float\s*,\s*float\s*\]"
+)
 
 
 def _is_valid_identifier(name: str) -> bool:
@@ -149,19 +156,46 @@ def _type_for_kind(kind: str) -> str:
         return "Vec3"
     return "Any"
 
+def _type_str_from_annotation(annotation: Any) -> str | None:
+    if annotation is inspect._empty:
+        return None
+    if isinstance(annotation, str):
+        s = annotation.strip()
+        return s or None
+    try:
+        return inspect.formatannotation(annotation)
+    except Exception:
+        s = str(annotation).strip()
+        return s or None
 
-def _override_type_for_effect_param(effect_name: str, param_name: str) -> str | None:
-    if effect_name != "fill":
+
+def _type_str_from_impl_param(impl: Any, param_name: str) -> str | None:
+    try:
+        sig = inspect.signature(impl)
+    except Exception:
         return None
 
-    # `fill` は「グループごとにサイクルさせる」用途のため、シーケンス指定も許可する。
-    if param_name == "angle_sets":
-        return "int | Sequence[int]"
-    if param_name in {"angle", "density", "spacing_gradient"}:
-        return "float | Sequence[float]"
-    if param_name == "remove_boundary":
-        return "bool | Sequence[bool]"
-    return None
+    p = sig.parameters.get(param_name)
+    if p is None:
+        return None
+    return _type_str_from_annotation(p.annotation)
+
+
+def _type_str_for_effect_param(
+    *, impl: Any | None, param_name: str, meta: Any
+) -> str:
+    kind = str(getattr(meta, "kind", ""))
+    fallback = _type_for_kind(kind)
+    if impl is None:
+        return fallback
+
+    type_str = _type_str_from_impl_param(impl, param_name)
+    if type_str is None:
+        return fallback
+
+    if kind == "vec3":
+        type_str = _VEC3_TUPLE_RE.sub("Vec3", type_str)
+    return type_str
 
 
 def _resolve_impl_callable(kind: str, name: str) -> Any | None:
@@ -303,6 +337,8 @@ def _render_effect_builder_protocol(effect_names: list[str]) -> str:
     from grafix.core.effect_registry import effect_registry  # type: ignore[import]
 
     for eff in effect_names:
+        impl = _resolve_impl_callable("effect", eff)
+
         meta = effect_registry.get_meta(eff)
         meta_by_name: dict[str, Any] = dict(meta)
         param_order = list(meta_by_name.keys())
@@ -311,13 +347,11 @@ def _render_effect_builder_protocol(effect_names: list[str]) -> str:
         if meta_by_name:
             for p in param_order:
                 pm = meta_by_name[p]
-                kind = str(getattr(pm, "kind", ""))
-                override = _override_type_for_effect_param(eff, p)
-                params.append(f"{p}: {override or _type_for_kind(kind)} = ...")
+                type_str = _type_str_for_effect_param(impl=impl, param_name=p, meta=pm)
+                params.append(f"{p}: {type_str} = ...")
         else:
             params = ["**params: Any"]
 
-        impl = _resolve_impl_callable("effect", eff)
         if impl is not None:
             parsed_summary, parsed_docs = _parse_numpy_doc(inspect.getdoc(impl) or "")
         else:
@@ -354,6 +388,8 @@ def _render_e_protocol(effect_names: list[str]) -> str:
     from grafix.core.effect_registry import effect_registry  # type: ignore[import]
 
     for eff in effect_names:
+        impl = _resolve_impl_callable("effect", eff)
+
         meta = effect_registry.get_meta(eff)
         meta_by_name: dict[str, Any] = dict(meta)
         param_order = list(meta_by_name.keys())
@@ -362,13 +398,11 @@ def _render_e_protocol(effect_names: list[str]) -> str:
         if meta_by_name:
             for p in param_order:
                 pm = meta_by_name[p]
-                kind = str(getattr(pm, "kind", ""))
-                override = _override_type_for_effect_param(eff, p)
-                params.append(f"{p}: {override or _type_for_kind(kind)} = ...")
+                type_str = _type_str_for_effect_param(impl=impl, param_name=p, meta=pm)
+                params.append(f"{p}: {type_str} = ...")
         else:
             params = ["**params: Any"]
 
-        impl = _resolve_impl_callable("effect", eff)
         if impl is not None:
             parsed_summary, parsed_docs = _parse_numpy_doc(inspect.getdoc(impl) or "")
         else:
