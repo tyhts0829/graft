@@ -11,7 +11,11 @@ from grafix.core.parameters.store import ParamStore
 from grafix.interactive.midi import MidiController
 
 from .midi_learn import MidiLearnState
-from .pyglet_backend import _create_imgui_pyglet_renderer, _sync_imgui_io_for_window
+from .pyglet_backend import (
+    DEFAULT_WINDOW_TARGET_FRAMEBUFFER_WIDTH_PX,
+    _create_imgui_pyglet_renderer,
+    _sync_imgui_io_for_window,
+)
 from .store_bridge import render_store_parameter_table
 from .table import COLUMN_WEIGHTS_DEFAULT
 
@@ -69,6 +73,7 @@ class ParameterGUI:
         self._midi_learn_state = MidiLearnState()
         self._title = str(title)
         self._column_weights = column_weights
+        self._sync_window_width_for_scale()
 
         # ImGui は「グローバルな current context」を前提にするため、自前コンテキストを作って切り替えながら使う。
         self._imgui = imgui
@@ -95,6 +100,18 @@ class ParameterGUI:
         # ImGui に渡す delta_time 用の前回時刻。
         self._prev_time = time.monotonic()
         self._closed = False
+
+    def _sync_window_width_for_scale(self) -> None:
+        """backing scale に合わせてウィンドウ幅を同期する。"""
+
+        target_fb_width = float(DEFAULT_WINDOW_TARGET_FRAMEBUFFER_WIDTH_PX)
+        backing_scale = _compute_window_backing_scale(self._window)
+        desired_width = int(round(target_fb_width / backing_scale))
+
+        req_w, req_h = self._window.get_requested_size()
+        if int(req_w) == int(desired_width):
+            return
+        self._window.set_size(int(desired_width), int(req_h))
 
     def _sync_font_for_window(self) -> None:
         """ウィンドウの backing scale に合わせてフォントを同期する。"""
@@ -137,6 +154,8 @@ class ParameterGUI:
         self._prev_time = now
 
         imgui = self._imgui
+
+        self._sync_window_width_for_scale()
 
         # 以降の ImGui 呼び出しはこのインスタンスの context を対象にする。
         imgui.set_current_context(self._context)
