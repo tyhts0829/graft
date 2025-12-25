@@ -23,7 +23,7 @@ _POLYHEDRON_CACHE: dict[str, tuple[np.ndarray, ...]] = {}
 polyhedron_meta = {
     "type_index": ParamMeta(kind="int", ui_min=0, ui_max=len(_TYPE_ORDER) - 1),
     "center": ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0),
-    "scale": ParamMeta(kind="vec3", ui_min=0.0, ui_max=200.0),
+    "scale": ParamMeta(kind="float", ui_min=0.0, ui_max=200.0),
 }
 
 
@@ -68,7 +68,7 @@ def _polylines_to_realized(
     polylines: tuple[np.ndarray, ...],
     *,
     center: tuple[float, float, float],
-    scale: tuple[float, float, float],
+    scale: float,
 ) -> RealizedGeometry:
     """面ポリライン列を RealizedGeometry に変換する。"""
     if not polylines:
@@ -83,11 +83,9 @@ def _polylines_to_realized(
             "polyhedron の center は長さ 3 のシーケンスである必要がある"
         ) from exc
     try:
-        sx, sy, sz = scale
+        s_f = float(scale)
     except Exception as exc:
-        raise ValueError(
-            "polyhedron の scale は長さ 3 のシーケンスである必要がある"
-        ) from exc
+        raise ValueError("polyhedron の scale は float である必要がある") from exc
 
     coords = np.concatenate(polylines, axis=0).astype(np.float32, copy=False)
 
@@ -98,11 +96,9 @@ def _polylines_to_realized(
         offsets[i + 1] = acc
 
     cx_f, cy_f, cz_f = float(cx), float(cy), float(cz)
-    sx_f, sy_f, sz_f = float(sx), float(sy), float(sz)
-    if (cx_f, cy_f, cz_f) != (0.0, 0.0, 0.0) or (sx_f, sy_f, sz_f) != (1.0, 1.0, 1.0):
+    if (cx_f, cy_f, cz_f) != (0.0, 0.0, 0.0) or s_f != 1.0:
         center_vec = np.array([cx_f, cy_f, cz_f], dtype=np.float32)
-        scale_vec = np.array([sx_f, sy_f, sz_f], dtype=np.float32)
-        coords = coords * scale_vec + center_vec
+        coords = coords * np.float32(s_f) + center_vec
 
     return RealizedGeometry(coords=coords, offsets=offsets)
 
@@ -112,7 +108,7 @@ def polyhedron(
     *,
     type_index: int = 0,
     center: tuple[float, float, float] = (0.0, 0.0, 0.0),
-    scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
+    scale: float = 1.0,
 ) -> RealizedGeometry:
     """正多面体を面ポリライン列として生成する。
 
@@ -123,8 +119,8 @@ def polyhedron(
         0=tetrahedron, 1=hexahedron, 2=octahedron, 3=dodecahedron, 4=icosahedron。
     center : tuple[float, float, float], optional
         平行移動ベクトル (cx, cy, cz)。
-    scale : tuple[float, float, float], optional
-        成分ごとのスケール (sx, sy, sz)。
+    scale : float, optional
+        等方スケール倍率 s。縦横比変更は effect を使用する。
 
     Returns
     -------

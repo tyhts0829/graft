@@ -16,7 +16,7 @@ grid_meta = {
     "nx": ParamMeta(kind="int", ui_min=1, ui_max=500),
     "ny": ParamMeta(kind="int", ui_min=1, ui_max=500),
     "center": ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0),
-    "scale": ParamMeta(kind="vec3", ui_min=0.0, ui_max=200.0),
+    "scale": ParamMeta(kind="float", ui_min=0.0, ui_max=200.0),
 }
 
 
@@ -26,7 +26,7 @@ def grid(
     nx: int | float = 20,
     ny: int | float = 20,
     center: tuple[float, float, float] = (0.0, 0.0, 0.0),
-    scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
+    scale: float = 1.0,
 ) -> RealizedGeometry:
     """グリッド（縦線 nx 本 + 横線 ny 本）を生成する。
 
@@ -38,8 +38,8 @@ def grid(
         横線の本数。
     center : tuple[float, float, float], optional
         平行移動ベクトル (cx, cy, cz)。
-    scale : tuple[float, float, float], optional
-        成分ごとのスケール (sx, sy, sz)。
+    scale : float, optional
+        等方スケール倍率 s。縦横比変更は effect を使用する。
 
     Returns
     -------
@@ -98,19 +98,13 @@ def grid(
             "grid の center は長さ 3 のシーケンスである必要がある"
         ) from exc
     try:
-        sx, sy, sz = scale
+        s_f = float(scale)
     except Exception as exc:
-        raise ValueError("grid の scale は長さ 3 のシーケンスである必要がある") from exc
+        raise ValueError("grid の scale は float である必要がある") from exc
 
     cx_f, cy_f, cz_f = float(cx), float(cy), float(cz)
-    sx_f, sy_f, sz_f = float(sx), float(sy), float(sz)
-    if (cx_f, cy_f, cz_f) != (0.0, 0.0, 0.0) or (sx_f, sy_f, sz_f) != (
-        1.0,
-        1.0,
-        1.0,
-    ):
+    if (cx_f, cy_f, cz_f) != (0.0, 0.0, 0.0) or s_f != 1.0:
         center_vec = np.array([cx_f, cy_f, cz_f], dtype=np.float32)
-        scale_vec = np.array([sx_f, sy_f, sz_f], dtype=np.float32)
-        coords = coords * scale_vec + center_vec
+        coords = coords * np.float32(s_f) + center_vec
 
     return RealizedGeometry(coords=coords, offsets=offsets)

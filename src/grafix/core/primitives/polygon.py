@@ -18,7 +18,7 @@ polygon_meta = {
     "n_sides": ParamMeta(kind="int", ui_min=3, ui_max=128),
     "phase": ParamMeta(kind="float", ui_min=0.0, ui_max=360.0),
     "center": ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0),
-    "scale": ParamMeta(kind="vec3", ui_min=0, ui_max=200.0),
+    "scale": ParamMeta(kind="float", ui_min=0.0, ui_max=200.0),
 }
 
 
@@ -28,7 +28,7 @@ def polygon(
     n_sides: int | float = 6,
     phase: float = 0.0,
     center: tuple[float, float, float] = (0.0, 0.0, 0.0),
-    scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
+    scale: float = 1.0,
 ) -> RealizedGeometry:
     """正多角形の閉ポリラインを生成する。
 
@@ -40,8 +40,8 @@ def polygon(
         頂点開始角 [deg]。0° で +X 軸上に頂点を置く。
     center : tuple[float, float, float], optional
         平行移動ベクトル (cx, cy, cz)。
-    scale : tuple[float, float, float], optional
-        成分ごとのスケール (sx, sy, sz)。
+    scale : float, optional
+        等方スケール倍率 s。縦横比変更は effect を使用する。
 
     Returns
     -------
@@ -61,11 +61,9 @@ def polygon(
             "polygon の center は長さ 3 のシーケンスである必要がある"
         ) from exc
     try:
-        sx, sy, sz = scale
+        s_f = float(scale)
     except Exception as exc:
-        raise ValueError(
-            "polygon の scale は長さ 3 のシーケンスである必要がある"
-        ) from exc
+        raise ValueError("polygon の scale は float である必要がある") from exc
 
     angles = np.linspace(
         0.0,
@@ -82,9 +80,10 @@ def polygon(
     y = radius * np.sin(angles, dtype=np.float32)
     z = np.zeros_like(x)
 
-    x = x * np.float32(sx) + np.float32(cx)
-    y = y * np.float32(sy) + np.float32(cy)
-    z = z * np.float32(sz) + np.float32(cz)
+    s32 = np.float32(s_f)
+    x = x * s32 + np.float32(cx)
+    y = y * s32 + np.float32(cy)
+    z = z * s32 + np.float32(cz)
 
     coords = np.stack([x, y, z], axis=1).astype(np.float32, copy=False)
     # 先頭頂点を終端に複製してポリラインを閉じる。

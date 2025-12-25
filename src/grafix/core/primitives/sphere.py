@@ -28,7 +28,7 @@ sphere_meta = {
     # mode は latlon / rings スタイル専用（0: 横/緯度のみ, 1: 縦/経度のみ, 2: 両方）
     "mode": ParamMeta(kind="int", ui_min=0, ui_max=2),
     "center": ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0),
-    "scale": ParamMeta(kind="vec3", ui_min=0.0, ui_max=200.0),
+    "scale": ParamMeta(kind="float", ui_min=0.0, ui_max=200.0),
 }
 
 
@@ -45,7 +45,7 @@ def _polylines_to_realized(
     polylines: list[np.ndarray],
     *,
     center: tuple[float, float, float],
-    scale: tuple[float, float, float],
+    scale: float,
 ) -> RealizedGeometry:
     """ポリライン列を RealizedGeometry に変換する。"""
     filtered: list[np.ndarray] = []
@@ -72,9 +72,9 @@ def _polylines_to_realized(
     offsets[1:] = np.cumsum(np.asarray(lengths, dtype=np.int32), dtype=np.int32)
 
     cx, cy, cz = float(center[0]), float(center[1]), float(center[2])
-    sx, sy, sz = float(scale[0]), float(scale[1]), float(scale[2])
-    if (sx, sy, sz) != (1.0, 1.0, 1.0):
-        coords *= np.array([sx, sy, sz], dtype=np.float32)
+    s_f = float(scale)
+    if s_f != 1.0:
+        coords *= np.float32(s_f)
     if (cx, cy, cz) != (0.0, 0.0, 0.0):
         coords += np.array([cx, cy, cz], dtype=np.float32)
 
@@ -351,7 +351,7 @@ def sphere(
     type_index: int | float = 0,
     mode: int | float = 2,
     center: tuple[float, float, float] = (0.0, 0.0, 0.0),
-    scale: tuple[float, float, float] = (1.0, 1.0, 1.0),
+    scale: float = 1.0,
 ) -> RealizedGeometry:
     """球のワイヤーフレームをポリライン列として生成する。
 
@@ -366,8 +366,8 @@ def sphere(
         latlon/rings 用の線種（0: 横/緯度のみ, 1: 縦/経度のみ, 2: 両方）。範囲外はクランプ。
     center : tuple[float, float, float], optional
         平行移動ベクトル (cx, cy, cz)。
-    scale : tuple[float, float, float], optional
-        成分ごとのスケール (sx, sy, sz)。
+    scale : float, optional
+        等方スケール倍率 s。縦横比変更は effect を使用する。
 
     Returns
     -------
@@ -385,11 +385,9 @@ def sphere(
             "sphere の center は長さ 3 のシーケンスである必要がある"
         ) from exc
     try:
-        sx, sy, sz = scale
+        s_f = float(scale)
     except Exception as exc:
-        raise ValueError(
-            "sphere の scale は長さ 3 のシーケンスである必要がある"
-        ) from exc
+        raise ValueError("sphere の scale は float である必要がある") from exc
 
     if idx == 0:
         polylines = _sphere_latlon(s, m)
@@ -400,7 +398,7 @@ def sphere(
     else:
         polylines = _sphere_rings(s, m)
 
-    return _polylines_to_realized(polylines, center=(cx, cy, cz), scale=(sx, sy, sz))
+    return _polylines_to_realized(polylines, center=(cx, cy, cz), scale=s_f)
 
 
 __all__ = ["sphere", "sphere_meta"]
