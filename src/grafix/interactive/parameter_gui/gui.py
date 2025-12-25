@@ -35,7 +35,7 @@ def _compute_window_backing_scale(gui_window: Any) -> float:
 
     get_pixel_ratio = getattr(gui_window, "get_pixel_ratio", None)
     if callable(get_pixel_ratio):
-        return float(max(float(get_pixel_ratio()), 1.0))
+        return float(max(float(get_pixel_ratio()), 1.0))  # type: ignore[call-arg]
 
     return 1.0
 
