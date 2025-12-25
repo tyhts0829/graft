@@ -8,17 +8,17 @@ import numpy as np
 from numba import njit  # type: ignore[import-untyped]
 
 from grafix.core.effect_registry import effect
-from grafix.core.realized_geometry import RealizedGeometry
 from grafix.core.parameters.meta import ParamMeta
+from grafix.core.realized_geometry import RealizedGeometry
 
 displace_meta = {
-    "amplitude_mm": ParamMeta(kind="vec3", ui_min=0.0, ui_max=50.0),
+    "amplitude": ParamMeta(kind="vec3", ui_min=0.0, ui_max=50.0),
     "spatial_freq": ParamMeta(kind="vec3", ui_min=0.0, ui_max=0.1),
     "amplitude_gradient": ParamMeta(kind="vec3", ui_min=-4.0, ui_max=4.0),
     "frequency_gradient": ParamMeta(kind="vec3", ui_min=-4.0, ui_max=4.0),
     "min_gradient_factor": ParamMeta(kind="float", ui_min=0.0, ui_max=0.5),
     "max_gradient_factor": ParamMeta(kind="float", ui_min=1.0, ui_max=4.0),
-    "t_sec": ParamMeta(kind="float", ui_min=0.0, ui_max=1.0),
+    "t": ParamMeta(kind="float", ui_min=0.0, ui_max=1.0),
 }
 
 # ノイズ位相進行の係数（freq と独立）。
@@ -316,7 +316,9 @@ _GRAD3_12 = [
 ]
 
 NOISE_PERMUTATION_TABLE = np.asarray(_PERM_256, dtype=np.int32)
-NOISE_PERMUTATION_TABLE = np.concatenate([NOISE_PERMUTATION_TABLE, NOISE_PERMUTATION_TABLE])
+NOISE_PERMUTATION_TABLE = np.concatenate(
+    [NOISE_PERMUTATION_TABLE, NOISE_PERMUTATION_TABLE]
+)
 NOISE_GRADIENTS_3D = np.asarray(_GRAD3_12, dtype=np.float32)
 
 
@@ -401,12 +403,8 @@ def perlin_core(
         z = vertices[i, 2] * frequency[2] + phase[2]
 
         nx = perlin_noise_3d(x, y, z, perm_table, grad3_array)
-        ny = perlin_noise_3d(
-            x + 100.0, y + 100.0, z + 100.0, perm_table, grad3_array
-        )
-        nz = perlin_noise_3d(
-            x + 200.0, y + 200.0, z + 200.0, perm_table, grad3_array
-        )
+        ny = perlin_noise_3d(x + 100.0, y + 100.0, z + 100.0, perm_table, grad3_array)
+        nz = perlin_noise_3d(x + 200.0, y + 200.0, z + 200.0, perm_table, grad3_array)
         result[i, 0] = np.float32(nx)
         result[i, 1] = np.float32(ny)
         result[i, 2] = np.float32(nz)
@@ -457,7 +455,9 @@ def _apply_noise_to_coords(
     phase_tuple = (phase0, phase0, phase0)
 
     if not has_amp_grad and not has_freq_grad:
-        noise_offset = perlin_core(coords, frequency, phase_tuple, perm_table, grad3_array)
+        noise_offset = perlin_core(
+            coords, frequency, phase_tuple, perm_table, grad3_array
+        )
 
         n = coords.shape[0]
         result = np.empty_like(coords, dtype=np.float32)
@@ -482,7 +482,9 @@ def _apply_noise_to_coords(
         elif gz < -FGX:
             gz = np.float32(-FGX)
 
-        noise_offset = perlin_core(coords, frequency, phase_tuple, perm_table, grad3_array)
+        noise_offset = perlin_core(
+            coords, frequency, phase_tuple, perm_table, grad3_array
+        )
 
         min_x = np.float32(np.min(coords[:, 0]))
         max_x = np.float32(np.max(coords[:, 0]))
@@ -667,8 +669,12 @@ def _apply_noise_to_coords(
         pz = z * (fz_base * freq_fz) + phase0
 
         nx = perlin_noise_3d(px, py, pz, perm_table, grad3_array)
-        ny = perlin_noise_3d(px + offset1, py + offset1, pz + offset1, perm_table, grad3_array)
-        nz = perlin_noise_3d(px + offset2, py + offset2, pz + offset2, perm_table, grad3_array)
+        ny = perlin_noise_3d(
+            px + offset1, py + offset1, pz + offset1, perm_table, grad3_array
+        )
+        nz = perlin_noise_3d(
+            px + offset2, py + offset2, pz + offset2, perm_table, grad3_array
+        )
 
         result[i, 0] = x + nx * ax * amp_fx
         result[i, 1] = y + ny * ay * amp_fy
@@ -681,13 +687,13 @@ def _apply_noise_to_coords(
 def displace(
     inputs: Sequence[RealizedGeometry],
     *,
-    amplitude_mm: tuple[float, float, float] = (8.0, 8.0, 8.0),
+    amplitude: tuple[float, float, float] = (8.0, 8.0, 8.0),
     spatial_freq: tuple[float, float, float] = (0.04, 0.04, 0.04),
     amplitude_gradient: tuple[float, float, float] = (0.0, 0.0, 0.0),
     frequency_gradient: tuple[float, float, float] = (0.0, 0.0, 0.0),
     min_gradient_factor: float = MIN_GRADIENT_FACTOR_DEFAULT,
     max_gradient_factor: float = 2.0,
-    t_sec: float = 0.0,
+    t: float = 0.0,
 ) -> RealizedGeometry:
     """3D Perlin ノイズで頂点を変位する。
 
@@ -695,7 +701,7 @@ def displace(
     ----------
     inputs : Sequence[RealizedGeometry]
         変位対象の実体ジオメトリ列。通常は 1 要素。
-    amplitude_mm : tuple[float, float, float], default (8.0, 8.0, 8.0)
+    amplitude : tuple[float, float, float], default (8.0, 8.0, 8.0)
         変位量 [mm]（各軸別）。
     spatial_freq : tuple[float, float, float], default (0.04, 0.04, 0.04)
         空間周波数（各軸別）。
@@ -707,7 +713,7 @@ def displace(
         勾配適用時の最小係数（0.0–1.0）。
     max_gradient_factor : float, default 2.0
         勾配適用時の最大係数（1.0–4.0）。
-    t_sec : float, default 0.0
+    t : float, default 0.0
         時間オフセット（位相）。値を変えるとノイズが流れる。
 
     Returns
@@ -722,9 +728,9 @@ def displace(
     if base.coords.shape[0] == 0:
         return base
 
-    ax = float(amplitude_mm[0])
-    ay = float(amplitude_mm[1])
-    az = float(amplitude_mm[2])
+    ax = float(amplitude[0])
+    ay = float(amplitude[1])
+    az = float(amplitude[2])
     if ax == 0.0 and ay == 0.0 and az == 0.0:
         return base
 
@@ -760,7 +766,7 @@ def displace(
             float(frequency_gradient[1]),
             float(frequency_gradient[2]),
         ),
-        float(t_sec),
+        float(t),
         np.float32(min_factor_val),  # type: ignore[arg-type]
         np.float32(max_factor_val),  # type: ignore[arg-type]
         NOISE_PERMUTATION_TABLE,

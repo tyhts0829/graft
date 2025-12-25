@@ -5,10 +5,10 @@ from __future__ import annotations
 import numpy as np
 
 from grafix.api import E, G
+from grafix.core.effects.displace import displace as displace_impl
 from grafix.core.primitive_registry import primitive
 from grafix.core.realize import realize
 from grafix.core.realized_geometry import RealizedGeometry
-from grafix.core.effects.displace import displace as displace_impl
 
 
 @primitive
@@ -40,13 +40,13 @@ def test_displace_amplitude_zero_is_noop() -> None:
     base = realize(g)
     out = realize(
         E.displace(
-            amplitude_mm=(0.0, 0.0, 0.0),
+            amplitude=(0.0, 0.0, 0.0),
             spatial_freq=(0.04, 0.04, 0.04),
             amplitude_gradient=(0.0, 0.0, 0.0),
             frequency_gradient=(0.0, 0.0, 0.0),
             min_gradient_factor=0.1,
             max_gradient_factor=2.0,
-            t_sec=0.0,
+            t=0.0,
         )(g)
     )
     np.testing.assert_allclose(out.coords, base.coords, rtol=0.0, atol=0.0)
@@ -56,7 +56,9 @@ def test_displace_amplitude_zero_is_noop() -> None:
 def test_displace_changes_coords_and_preserves_offsets() -> None:
     g = G.displace_test_polyline()
     base = realize(g)
-    out = realize(E.displace(amplitude_mm=(8.0, 8.0, 8.0), spatial_freq=(0.04, 0.04, 0.04))(g))
+    out = realize(
+        E.displace(amplitude=(8.0, 8.0, 8.0), spatial_freq=(0.04, 0.04, 0.04))(g)
+    )
 
     assert out.coords.shape == base.coords.shape
     assert out.coords.dtype == np.float32
@@ -70,23 +72,23 @@ def test_displace_deterministic_for_same_inputs() -> None:
 
     out1 = displace_impl(
         [base],
-        amplitude_mm=(8.0, 8.0, 8.0),
+        amplitude=(8.0, 8.0, 8.0),
         spatial_freq=(0.04, 0.04, 0.04),
         amplitude_gradient=(0.0, 0.0, 0.0),
         frequency_gradient=(0.0, 0.0, 0.0),
         min_gradient_factor=0.1,
         max_gradient_factor=2.0,
-        t_sec=0.0,
+        t=0.0,
     )
     out2 = displace_impl(
         [base],
-        amplitude_mm=(8.0, 8.0, 8.0),
+        amplitude=(8.0, 8.0, 8.0),
         spatial_freq=(0.04, 0.04, 0.04),
         amplitude_gradient=(0.0, 0.0, 0.0),
         frequency_gradient=(0.0, 0.0, 0.0),
         min_gradient_factor=0.1,
         max_gradient_factor=2.0,
-        t_sec=0.0,
+        t=0.0,
     )
 
     np.testing.assert_allclose(out1.coords, out2.coords, rtol=0.0, atol=0.0)
@@ -99,21 +101,23 @@ def test_displace_time_changes_output() -> None:
 
     out0 = displace_impl(
         [base],
-        amplitude_mm=(8.0, 8.0, 8.0),
+        amplitude=(8.0, 8.0, 8.0),
         spatial_freq=(0.04, 0.04, 0.04),
-        t_sec=0.0,
+        t=0.0,
     )
     out1 = displace_impl(
         [base],
-        amplitude_mm=(8.0, 8.0, 8.0),
+        amplitude=(8.0, 8.0, 8.0),
         spatial_freq=(0.04, 0.04, 0.04),
-        t_sec=0.25,
+        t=0.25,
     )
     assert float(np.max(np.abs(out1.coords - out0.coords))) > 1e-4
 
 
 def test_displace_empty_geometry_is_noop() -> None:
     g = G.displace_test_empty()
-    out = realize(E.displace(amplitude_mm=(8.0, 8.0, 8.0), spatial_freq=(0.04, 0.04, 0.04))(g))
+    out = realize(
+        E.displace(amplitude=(8.0, 8.0, 8.0), spatial_freq=(0.04, 0.04, 0.04))(g)
+    )
     assert out.coords.shape == (0, 3)
     assert out.offsets.tolist() == [0]

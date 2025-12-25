@@ -17,7 +17,7 @@
   - B: 常に xyz を wobble（新コア的に一貫。2D 図形でも z が動き得る）；こちらで
 - [x] パラメータ名（単位表記）:
   - A: `amplitude / frequency / phase`（旧名踏襲）；こちらで
-  - B: `amplitude_mm / frequency / phase_deg`（単位を明示）
+  - B: `amplitude / frequency / phase_deg`（単位を明示）
 - [x] UI レンジ（`ParamMeta.ui_min/ui_max`）:
   - A: 旧 `amplitude<=20, frequency<=0.2, phase<=360` を踏襲;こちらで
   - B: 新プロジェクトの他 effect に合わせて再調整（例: displace の `spatial_freq<=0.1` 等）

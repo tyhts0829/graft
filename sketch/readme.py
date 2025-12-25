@@ -10,7 +10,19 @@ SUBTITLE = "line-based generative geometry,  python-native creative coding frame
 FUNC_TEXT = "polyhedron()       fill()       displace()"
 DESCRIPTION = """
     This framework approaches visual design with an audio mindset.
-    A minimal, line-based geometry engine keeps the representation intentionally simple, treating constraints as a source of creativity rather than a limitation. Instead of hiding structure and styling decisions inside a black-box renderer, pyxidraw keeps them close to your code: you build multi-layer sketches where each layer can carry its own color and line weight, echoing pen changes in a plotter. Effects are composed as method-chained processors, forming an effect chain that feels closer to a synth and pedalboard than a monolithic graphics API. MIDI control and LFO-driven modulation keep parameters in constant motion, making geometry something you can “play” rather than merely render. From real-time OpenGL preview to pen-plotter-ready G-code, pyxidraw offers a continuous path from experimental patch to physical output, with new Shapes and Effects defined as lightweight Python decorators. The aim is not just to produce images, but to compose line-based scores that unfold in time, on screen and on paper.
+    A minimal, line-based geometry engine keeps the representation intentionally simple,
+    treating constraints as a source of creativity rather than a limitation.
+    Instead of hiding structure and styling decisions inside a black-box renderer,
+    grafix keeps them close to your code: you build multi-layer sketches
+    where each layer can carry its own color and line weight,echoing pen changes in a plotter.
+    Effects are composed as method-chained processors,
+    forming an effect chain that feels closer to a synth and pedalboard than a monolithic graphics API.
+    MIDI control and LFO-driven modulation keep parameters in constant motion,
+    making geometry something you can “play” rather than merely render.
+    From real-time OpenGL preview to pen-plotter-ready G-code,
+    grafix offers a continuous path from experimental patch to physical output,
+    with new Shapes and Effects defined as lightweight Python decorators.
+    The aim is not just to produce images, but to compose line-based scores that unfold in time,on screen and on paper.
 """
 FOOTER = "PRIMITIVES | EFFECTS | LAYERS | MIDI | MODULATION | PARAMETER GUI | REAL-TIME RENDERING | PEN PLOTTING"
 
@@ -18,17 +30,17 @@ FOOTER = "PRIMITIVES | EFFECTS | LAYERS | MIDI | MODULATION | PARAMETER GUI | RE
 def draw(t: float):
     # 文字配置
     title = G(name="title").text(text=TITLE)
-    # subtitle = G(name="subtitle").text(text=SUBTITLE)
-    # func_text = G(name="func_text").text(text=FUNC_TEXT)
-    # description = G(name="description").text(text=DESCRIPTION)
-    # footer = G(name="footer").text(text=FOOTER)
+    subtitle = G(name="subtitle").text(text=SUBTITLE)
+    func_text = G(name="func_text").text(text=FUNC_TEXT)
+    description = G(name="description").text(text=DESCRIPTION)
+    footer = G(name="footer").text(text=FOOTER)
 
     text_fill = E(name="text_fill").fill()
     title_filled = text_fill(title)
-    # subtitle_filled = text_fill(subtitle)
-    # func_text_filled = text_fill(func_text)
-    # description_filled = text_fill(description)
-    # footer_filled = text_fill(footer)
+    subtitle_filled = text_fill(subtitle)
+    func_text_filled = text_fill(func_text)
+    description_filled = text_fill(description)
+    footer_filled = text_fill(footer)
 
     # 形状配置
     poly = G(name="poly").polyhedron()
@@ -54,10 +66,10 @@ def draw(t: float):
                 name="text",
                 geometry_or_list=[
                     title_filled,
-                    # subtitle_filled,
-                    # func_text_filled,
-                    # description_filled,
-                    # footer_filled,
+                    subtitle_filled,
+                    func_text_filled,
+                    description_filled,
+                    footer_filled,
                 ],
             ),
             L(

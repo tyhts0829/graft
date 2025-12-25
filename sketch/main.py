@@ -18,7 +18,7 @@ def draw(t: float):
         .mirror()
         .fill(density=1000)
         .subdivide(subdivisions=5)
-        .displace(t_sec=t * 0.1)
+        .displace(t=t * 0.1)
     )
     return eff1(ply1)
 

@@ -54,28 +54,28 @@ Out:
 
 ### P0: 生成側の実装
 
-- [ ] `tools/gen_g_stubs.py` に「impl の annotation から stub 型文字列を得る」ヘルパを追加する
+- [x] `tools/gen_g_stubs.py` に「impl の annotation から stub 型文字列を得る」ヘルパを追加する
   - `inspect.signature(impl).parameters[param].annotation` を使う（`from __future__ import annotations` 前提で文字列が得られる）
   - `inspect._empty` の場合は `None` 扱い
-- [ ] `_render_effect_builder_protocol()` / `_render_e_protocol()` の型決定を新ヘルパ経由に置換する（`_override_type_for_effect_param()` 呼び出しを排除）
-- [ ] `_override_type_for_effect_param()` を削除する（`fill` 特別扱いの撤去）
+- [x] `_render_effect_builder_protocol()` / `_render_e_protocol()` の型決定を新ヘルパ経由に置換する（`_override_type_for_effect_param()` 呼び出しを排除）
+- [x] `_override_type_for_effect_param()` を削除する（`fill` 特別扱いの撤去）
 
 ### P1: 出力確認と同期
 
-- [ ] `python -m tools.gen_g_stubs` を実行し、`src/grafix/api/__init__.pyi` を更新する
-- [ ] 同期テストを実行する: `PYTHONPATH=src pytest -q tests/stubs/test_api_stub_sync.py`
+- [x] `python -m tools.gen_g_stubs` を実行し、`src/grafix/api/__init__.pyi` を更新する
+- [x] 同期テストを実行する: `PYTHONPATH=src pytest -q tests/stubs/test_api_stub_sync.py`
 
 ### P2: 仕上げ（最低限）
 
-- [ ] lint: `ruff check tools/gen_g_stubs.py`
-- [ ] （必要なら）型注釈の運用ルールを `tools/gen_g_stubs.py` 冒頭に 2〜3 行で明記する
+- [ ] lint: `ruff check tools/gen_g_stubs.py`（この環境では `ruff` が見つからない）
+- [x] （必要なら）型注釈の運用ルールを `tools/gen_g_stubs.py` 冒頭に 2〜3 行で明記する
   - 例: 「effect の public param は stub で解決可能な型だけを書く（`Sequence`/builtins など）」。
 
 ## Done（受け入れ条件）
 
-- [ ] `fill` を含め、effect の `Sequence` 受け入れが stub に自動反映される（`fill` の特別扱いなし）
-- [ ] `PYTHONPATH=src pytest -q tests/stubs/test_api_stub_sync.py` が通る
-- [ ] `ruff check tools/gen_g_stubs.py` が通る
+- [x] `fill` を含め、effect の `Sequence` 受け入れが stub に自動反映される（`fill` の特別扱いなし）
+- [x] `PYTHONPATH=src pytest -q tests/stubs/test_api_stub_sync.py` が通る
+- [ ] `ruff check tools/gen_g_stubs.py` が通る（この環境では `ruff` が見つからない）
 
 ## リスク / 考慮点
 

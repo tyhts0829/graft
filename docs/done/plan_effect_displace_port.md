@@ -29,7 +29,7 @@
   - [x] 案 A: `src/effects/displace.py` を新規に作り、旧ファイルは参照用に残す（推奨）；こちらで
   - [ ] 案 B: 旧 `src/effects/from_previous_project/displace.py` を上書きして現仕様化し、そのまま登録する
 - [x] 引数名（API/GUI 表示）
-  - [x] 案 A: 旧名維持（`amplitude_mm`, `spatial_freq`, `t_sec` など）；旧仕様踏襲
+  - [x] 案 A: 旧名維持（`amplitude`, `spatial_freq`, `t` など）；旧仕様踏襲
   - [ ] 案 B: 現行寄せ（`amplitude`, `frequency`, `t` など）
 - [x] `amplitude` / `spatial_freq` の入力型
   - [x] 案 A: `vec3`（`tuple[float, float, float]`）のみ；こちらで
@@ -60,7 +60,7 @@
   - [x] no-op: `amplitude=(0,0,0)` で `coords` が不変、`offsets` も不変
   - [x] 変位: `amplitude>0` で少なくとも 1 点が変化し、shape/dtype が維持される
   - [x] 決定性: 同一 params で 2 回 `realize()` して同一結果（`assert_allclose`）
-  - [x] `t_sec` を変えると出力が変わる（位相が進むことの確認）
+  - [x] `t` を変えると出力が変わる（位相が進むことの確認）
 - [x] 仕上げ（対象限定）
   - [ ] `ruff check src/effects/displace.py tests/test_displace.py`（手元環境に ruff が無いため未実施）
   - [x] `pytest -q tests/test_displace.py`
