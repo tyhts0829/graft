@@ -28,45 +28,54 @@
 - ラベル命名規則（`circle#1` 等）やパラメータ key（`ParameterKey`）の仕様変更。
 - 既存のブロック化 UI（Style / primitive header / effect chain header）の全面刷新。
 
-## 「コードで書いた順」の定義（要確認）
+## 定義（採用）: 実行時の“初出順（観測順）”
 
-候補は 2 つある（どちらも“それっぽい”が、想定スクリプトで差が出る）。
+- 「書いた順」= `FrameParamsBuffer.record()` の append 順（= `merge_frame_params()` が受け取る `records` の順）とみなす。
+- (op, site_id) 単位の “group” を **この実行で初めて観測した順**に、`display_order=1..N` を採番する。
+- `display_order` は **実行中は固定**（毎フレームの並び替えで UI が跳ねない）。
+- `display_order` は **永続化しない**。
+  - 理由: 永続化すると「既存 group の途中に新しい行を挿入した」ケースで、新規 group が末尾へ押しやられやすい（コード順とズレる）。
+  - 目的は「現在のコードの順序に追従」なので、起動ごとに観測順で再構築する方が直感に一致する。
 
-1) **callsite（site_id）のソート順**で決める（実装が最小）
-   - `site_id` は `"{filename}:{co_firstlineno}:{f_lasti}"` 形式（`src/grafix/core/parameters/key.py`）。
-   - これを (filename, co_firstlineno, f_lasti) として比較し、GUI の並び順キーにする。
-   - 長所: 追加の永続化が不要。表示順だけ差し替え可能。
-   - 短所: 複数ファイル/複数関数にまたがる場合、「実行順」とズレる可能性がある。
+## 実装方針（採用: 観測順）
 
-2) **実行時の“初出順（観測順）”**で決める（より直感に近い可能性）
-   - `merge_frame_params()` で records を処理する順に、(op, site_id) にグローバルな表示 ordinal を採番する。
-   - 長所: 関数呼び出し/モジュール跨ぎでも「実行順＝書いた順（体感）」に一致しやすい。
-   - 短所: ParamStore に新しい永続化フィールド（display_ordinals など）を足すのが自然。
-
-まずは **(1) site_id ソート**で進め、必要なら (2) に切り替える方針を提案。
-
-## 実装方針（案: 1) site_id ソート）
-
-- Style（global/layer）は現行ロジックのまま先頭に固定。
-- それ以外の行を「ブロック単位」で並び替える:
-  - Primitive ブロック: 現行どおり (op, ordinal) 単位（≒同一 callsite）。
+- Style（global/layer）は現行ロジックのまま先頭に固定（固定順も維持）。
+- ParamStore の runtime に **group の表示順インデックス**を追加する（永続化しない）:
+  - 例: `ParamStoreRuntime.display_order_by_group: dict[tuple[str, str], int]`
+  - 例: `ParamStoreRuntime.next_display_order: int`
+- `merge_frame_params()` で records を処理する順に、
+  - group=(op, site_id) が未登録なら display_order を採番
+  - 以後、その group の表示順キーとして使う
+- GUI の並び順は「ブロック単位」で決める（Primitive/Effect を interleave させるため）:
+  - Primitive ブロック: 現行どおり (op, ordinal) 単位（= 同一 (op, site_id) の集合）。
   - Effect ブロック: 現行どおり chain_id 単位（見出し/折りたたみを維持）。
-  - other: 現行の扱いに合わせて（必要なら (op, ordinal) 単位）。
-- ブロック順のキー:
-  - Primitive: そのブロックに属する行の `site_id` を parse して得た callsite key。
-  - Effect chain: そのチェーンに属する全ステップの callsite key の **min**（最初に現れた位置）。
+  - other: (op, site_id) 単位（必要なら後で調整）。
+- ブロックの順序キー:
+  - Primitive: そのブロックの (op, site_id) の display_order。
+  - Effect chain: チェーン内ステップ（(op, site_id)）の display_order の **min**（チェーン先頭位置に寄せる）。
 - ブロック内の行順:
-  - 既存どおり `arg` ベースで安定（将来的に「よく触る順」テーブルを追加してもよいが今回は不要）。
+  - Primitive: `arg` で安定（現状維持）。
+  - Effect: `step_index → arg`（現状の “ステップ順” は維持）。
+
+## 付随タスク（UX 一貫性）
+
+表示順を変えると、ヘッダ名の衝突解消（`name#1/#2`）の “番号” が表示順と逆転する可能性がある。
+
+- Primitive ヘッダ（`G(name=...)` の dedup）: dedup の順序を **表示順**に合わせる。
+- Effect チェーンヘッダ（`E(name=...)` / `effect#N`）: `chain_ordinals` ではなく **表示順**（= 観測順由来）で `effect#1..` を割り当てる。
 
 ## チェックリスト（この順で進める）
 
-- [ ] 定義の確認: 「コード順」を (1) site_id ソート で良いか？（複数ファイル/関数のケースも想定するか？）
-- [ ] 仕様確定: Effect chain は “1 ブロック”のまま維持して良いか？（ステップ単位で分解する必要はあるか？）
-- [ ] 実装: `site_id` を安全に parse する関数を追加（失敗時のフォールバックも定義）
-- [ ] 実装: `store_bridge._order_rows_for_display()` を「style 固定 + 非 style をブロック化して callsite key でソート」に差し替え
+- [ ] 定義の確認: 「コード順」= **観測順（records の順）**で良いか？（ヘルパ関数跨ぎでも期待通りか？）
+- [ ] 仕様確定: Effect chain は “1 ブロック”維持で良いか？（ステップ単位で分解する必要はあるか？）
+- [ ] 実装: runtime に display_order index を追加（永続化しない）
+- [ ] 実装: `merge_frame_params()` で group の display_order を採番（records の順）
+- [ ] 実装: `store_bridge._order_rows_for_display()` を「style 固定 + 非 style をブロック化して display_order でソート」に差し替え
+- [ ] 実装: ヘッダ名 dedup / `effect#N` 採番も “表示順” に合わせる
 - [ ] テスト追加: `tests/interactive/parameter_gui/` に
   - [ ] Primitive と Effect が interleave する順序のテスト
-  - [ ] Effect chain が “最初のステップ位置”に出るテスト（必要なら）
+  - [ ] Effect chain が “最初のステップ位置”に出るテスト
+  - [ ] ヘッダ名の dedup 番号が表示順と矛盾しないテスト（必要なら）
   - [ ] 既存テスト（Style 順）の維持
 - [ ] 手動スモーク: `sketch/` の代表ケースで、GUI の順が意図通りか確認（Style が先頭、以降がコード順）
 - [ ] ドキュメント（任意）: `architecture.md` の parameter_gui 節に「表示順は code order」を追記
@@ -75,4 +84,3 @@
 
 - 典型ケースは「1つの draw 関数に順番に書く」か、「ヘルパ関数に分ける」か。
 - “コード順”が欲しい理由は「見た目の順」より「スクリプトの流れ」を追いたい、で合っているか。
-
