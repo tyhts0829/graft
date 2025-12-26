@@ -50,10 +50,12 @@ def primitive_header_display_names_from_snapshot(
     snapshot: Mapping[ParameterKey, tuple[object, object, int, str | None]],
     *,
     is_primitive_op: Callable[[str], bool],
+    display_order_by_group: Mapping[tuple[str, str], int] | None = None,
 ) -> dict[GroupKey, str]:
     """snapshot から Primitive 用のヘッダ表示名（衝突解消済み）を作る。"""
 
     base_name_by_group: dict[GroupKey, str] = {}
+    site_id_by_group: dict[GroupKey, str] = {}
     for key, (_meta, _state, ordinal, label) in snapshot.items():
         if not is_primitive_op(str(key.op)):
             continue
@@ -61,8 +63,17 @@ def primitive_header_display_names_from_snapshot(
         if group_key in base_name_by_group:
             continue
         base_name_by_group[group_key] = str(label) if label else str(key.op)
+        site_id_by_group[group_key] = str(key.site_id)
 
-    ordered = [(k, base_name_by_group[k]) for k in sorted(base_name_by_group)]
+    def _sort_key(group_key: GroupKey) -> tuple[int, str, int]:
+        op, ordinal = group_key
+        site_id = site_id_by_group.get(group_key, "")
+        order = 10**9
+        if display_order_by_group is not None:
+            order = int(display_order_by_group.get((str(op), str(site_id)), 10**9))
+        return (int(order), str(op), int(ordinal))
+
+    ordered = [(k, base_name_by_group[k]) for k in sorted(base_name_by_group, key=_sort_key)]
     return dedup_display_names_in_order(ordered)
 
 
@@ -93,7 +104,7 @@ def effect_chain_header_display_names_from_snapshot(
     snapshot: Mapping[ParameterKey, tuple[object, object, int, str | None]],
     *,
     step_info_by_site: Mapping[EffectStepKey, tuple[str, int]],
-    chain_ordinal_by_id: Mapping[str, int],
+    display_order_by_group: Mapping[tuple[str, str], int],
     is_effect_op: Callable[[str], bool],
 ) -> dict[str, str]:
     """snapshot から Effect チェーン用のヘッダ表示名（衝突解消済み）を作る。"""
@@ -114,10 +125,17 @@ def effect_chain_header_display_names_from_snapshot(
             continue
         label_by_chain[chain_id] = None if label is None else str(label)
 
-    # 表示順は “チェーンの ordinal → chain_id” に寄せる（表示の安定化目的）。
+    # 表示順は “コード順（観測順）” に寄せる。
+    chain_min_display_order: dict[str, int] = {}
+    for (op, site_id), (chain_id, _step_index) in step_info_by_site.items():
+        order = int(display_order_by_group.get((str(op), str(site_id)), 10**9))
+        prev = chain_min_display_order.get(str(chain_id))
+        if prev is None or order < prev:
+            chain_min_display_order[str(chain_id)] = int(order)
+
     chain_ids_sorted = sorted(
         label_by_chain.keys(),
-        key=lambda cid: (int(chain_ordinal_by_id.get(cid, 0)), str(cid)),
+        key=lambda cid: (int(chain_min_display_order.get(str(cid), 10**9)), str(cid)),
     )
 
     # effect#N は “無名チェーンだけ” を対象に 1..K へ正規化する。

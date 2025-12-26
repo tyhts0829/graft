@@ -30,17 +30,15 @@ FOOTER = "PRIMITIVES | EFFECTS | LAYERS | MIDI | MODULATION | PARAMETER GUI | RE
 def draw(t: float):
     # 文字配置
     title = G(name="title").text(text=TITLE)
+    title_filled = E(name="title_fill").fill()(title)
     subtitle = G(name="subtitle").text(text=SUBTITLE)
+    subtitle_filled = E(name="subtitle_fill").fill()(subtitle)
     func_text = G(name="func_text").text(text=FUNC_TEXT)
+    func_text_filled = E(name="func_text_fill").fill()(func_text)
     description = G(name="description").text(text=DESCRIPTION)
+    description_filled = E(name="description_fill").fill()(description)
     footer = G(name="footer").text(text=FOOTER)
-
-    text_fill = E(name="text_fill").fill()
-    title_filled = text_fill(title)
-    subtitle_filled = text_fill(subtitle)
-    func_text_filled = text_fill(func_text)
-    description_filled = text_fill(description)
-    footer_filled = text_fill(footer)
+    footer_filled = E(name="footer_fill").fill()(footer)
 
     # 形状配置
     poly = G(name="poly").polyhedron()

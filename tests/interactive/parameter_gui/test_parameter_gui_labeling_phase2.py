@@ -41,10 +41,14 @@ def test_effect_chain_header_and_step_ordinals():
     assert step_ordinals[("scale", scale1_site)] == 2
 
     snap = store_snapshot(store)
+    display_order_by_group = {
+        (op, site_id): i
+        for i, (op, site_id, _cid, _step_index) in enumerate(steps, start=1)
+    }
     chain_header_by_id = effect_chain_header_display_names_from_snapshot(
         snap,
         step_info_by_site=step_info_by_site,
-        chain_ordinal_by_id=store.chain_ordinals(),
+        display_order_by_group=display_order_by_group,
         is_effect_op=lambda op: op in effect_registry,
     )
     assert chain_header_by_id == {chain_id: "xf"}
@@ -65,37 +69,43 @@ def test_effect_chain_header_and_step_ordinals():
     assert_invariants(store)
 
 
-def test_effect_chain_header_normalizes_unnamed_chains_independent_of_chain_ordinal():
+def test_effect_chain_header_numbers_unnamed_chains_by_display_order():
     store = ParamStore()
 
     with parameter_context(store):
         g = G.polygon()
         named = E(name="xf").scale()
-        unnamed = E.scale()
+        unnamed1 = E.rotate()
+        unnamed2 = E.translate()
+        _out0 = unnamed1(g)
         _out1 = named(g)
-        _out2 = unnamed(g)
+        _out2 = unnamed2(g)
 
     snap = store_snapshot(store)
     step_info_by_site = store.effect_steps()
 
+    rotate_site = next(site_id for (op, site_id) in step_info_by_site if op == "rotate")
+    translate_site = next(
+        site_id for (op, site_id) in step_info_by_site if op == "translate"
+    )
+    scale_site = next(site_id for (op, site_id) in step_info_by_site if op == "scale")
+
+    rotate_chain_id = step_info_by_site[("rotate", rotate_site)][0]
+    translate_chain_id = step_info_by_site[("translate", translate_site)][0]
+    scale_chain_id = step_info_by_site[("scale", scale_site)][0]
+
     chain_header_by_id = effect_chain_header_display_names_from_snapshot(
         snap,
         step_info_by_site=step_info_by_site,
-        chain_ordinal_by_id=store.chain_ordinals(),
+        display_order_by_group={
+            ("rotate", rotate_site): 1,
+            ("scale", scale_site): 2,
+            ("translate", translate_site): 3,
+        },
         is_effect_op=lambda op: op in effect_registry,
     )
-    assert set(chain_header_by_id.values()) == {"xf", "effect#1"}
-
-    # chain_ordinal がギャップ/巨大値になっても、無名チェーンが 1 本なら表示は effect#1 のまま。
-    named_chain_id = next(cid for cid, name in chain_header_by_id.items() if name == "xf")
-    unnamed_chain_id = next(
-        cid for cid, name in chain_header_by_id.items() if name == "effect#1"
-    )
-    chain_header_by_id2 = effect_chain_header_display_names_from_snapshot(
-        snap,
-        step_info_by_site=step_info_by_site,
-        chain_ordinal_by_id={named_chain_id: 1, unnamed_chain_id: 99},
-        is_effect_op=lambda op: op in effect_registry,
-    )
-    assert chain_header_by_id2[unnamed_chain_id] == "effect#1"
+    assert set(chain_header_by_id.values()) == {"xf", "effect#1", "effect#2"}
+    assert chain_header_by_id[scale_chain_id] == "xf"
+    assert chain_header_by_id[rotate_chain_id] == "effect#1"
+    assert chain_header_by_id[translate_chain_id] == "effect#2"
     assert_invariants(store)

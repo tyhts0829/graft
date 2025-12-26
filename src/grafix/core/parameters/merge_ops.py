@@ -23,7 +23,11 @@ def merge_frame_params(store: ParamStore, records: list[FrameParamRecord]) -> No
     explicit_by_key_this_frame: dict[ParameterKey, bool] = {}
 
     for rec in records:
-        runtime.observed_groups.add((str(rec.key.op), str(rec.key.site_id)))
+        group = (str(rec.key.op), str(rec.key.site_id))
+        runtime.observed_groups.add(group)
+        if group not in runtime.display_order_by_group:
+            runtime.display_order_by_group[group] = int(runtime.next_display_order)
+            runtime.next_display_order += 1
         explicit_by_key_this_frame[rec.key] = bool(rec.explicit)
 
         ordinals.get_or_assign(rec.key.op, rec.key.site_id)

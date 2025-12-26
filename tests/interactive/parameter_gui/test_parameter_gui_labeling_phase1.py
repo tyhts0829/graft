@@ -56,3 +56,20 @@ def test_primitive_header_display_names_from_snapshot_fallbacks_to_op():
         ("polygon", 1): "polygon#1",
         ("polygon", 2): "polygon#2",
     }
+
+
+def test_primitive_header_display_names_from_snapshot_dedups_in_display_order():
+    snap = {
+        ParameterKey("polygon", "s1", "n_sides"): (None, None, 1, "A"),
+        ParameterKey("circle", "s2", "r"): (None, None, 1, "A"),
+    }
+
+    out = primitive_header_display_names_from_snapshot(
+        snap,
+        is_primitive_op=lambda op: op in {"polygon", "circle"},
+        display_order_by_group={("polygon", "s1"): 1, ("circle", "s2"): 2},
+    )
+    assert out == {
+        ("polygon", 1): "A#1",
+        ("circle", 1): "A#2",
+    }

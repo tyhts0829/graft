@@ -16,7 +16,8 @@ class ParamStoreRuntime:
     reconcile_applied: set[tuple[tuple[str, str], tuple[str, str]]] = field(
         default_factory=set
     )
+    display_order_by_group: dict[tuple[str, str], int] = field(default_factory=dict)
+    next_display_order: int = 1
 
 
 __all__ = ["ParamStoreRuntime"]
-

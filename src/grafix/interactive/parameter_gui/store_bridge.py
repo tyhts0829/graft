@@ -37,7 +37,7 @@ def _order_rows_for_display(
     rows: list[ParameterRow],
     *,
     step_info_by_site: Mapping[tuple[str, str], tuple[str, int]],
-    chain_ordinal_by_id: Mapping[str, int],
+    display_order_by_group: Mapping[tuple[str, str], int],
 ) -> list[ParameterRow]:
     """GUI 表示順に並び替えた rows を返す。"""
 
@@ -72,19 +72,84 @@ def _order_rows_for_display(
         key=lambda r: (int(r.ordinal), layer_style_order.get(r.arg, 999), r.arg)
     )
 
-    def _effect_sort_key(row: ParameterRow) -> tuple[int, int, str]:
+    def _display_order(row: ParameterRow) -> int:
+        return int(display_order_by_group.get((row.op, row.site_id), 10**9))
+
+    # --- Non-style: Primitive / Effect chain / other を “ブロック” として並べる ---
+    #
+    # - Primitive は (op, ordinal) 単位
+    # - Effect は chain_id 単位（折りたたみ維持）
+    # - other は (op, site_id) 単位（最小限）
+
+    primitive_blocks: dict[tuple[str, int], list[ParameterRow]] = {}
+    for row in primitive_rows:
+        primitive_blocks.setdefault((row.op, int(row.ordinal)), []).append(row)
+
+    effect_blocks: dict[str, list[ParameterRow]] = {}
+    effect_fallback_rows: list[ParameterRow] = []
+    for row in effect_rows:
         info = step_info_by_site.get((row.op, row.site_id))
         if info is None:
-            return (10**9, 10**9, row.arg)
-        chain_id, step_index = info
-        chain_ordinal = int(chain_ordinal_by_id.get(chain_id, 0))
-        return (chain_ordinal, int(step_index), row.arg)
+            effect_fallback_rows.append(row)
+            continue
+        chain_id, _step_index = info
+        effect_blocks.setdefault(str(chain_id), []).append(row)
 
-    # Effect 行を “チェーン順→ステップ順→arg” で並び替える。
-    effect_rows.sort(key=_effect_sort_key)
+    other_blocks: dict[tuple[str, str], list[ParameterRow]] = {}
+    for row in other_rows + effect_fallback_rows:
+        other_blocks.setdefault((row.op, row.site_id), []).append(row)
 
-    # 最終的な表示順: style → primitive → effect → other
-    return style_global_rows + style_layer_rows + primitive_rows + effect_rows + other_rows
+    chain_min_display_order: dict[str, int] = {}
+    for (op, site_id), (chain_id, _step_index) in step_info_by_site.items():
+        order = int(display_order_by_group.get((str(op), str(site_id)), 10**9))
+        prev = chain_min_display_order.get(str(chain_id))
+        if prev is None or order < prev:
+            chain_min_display_order[str(chain_id)] = int(order)
+
+    blocks: list[tuple[tuple[int, int, str], list[ParameterRow]]] = []
+
+    for group_key, block_rows in primitive_blocks.items():
+        op, ordinal = group_key
+        order = min(_display_order(r) for r in block_rows)
+        blocks.append(
+            (
+                (int(order), 0, f"{op}#{int(ordinal)}"),
+                sorted(block_rows, key=lambda r: str(r.arg)),
+            )
+        )
+
+    def _step_sort_key(r: ParameterRow) -> tuple[int, str]:
+        info = step_info_by_site.get((r.op, r.site_id))
+        if info is None:
+            return (10**9, str(r.arg))
+        _cid, step_index = info
+        return (int(step_index), str(r.arg))
+
+    for chain_id, block_rows in effect_blocks.items():
+        order = int(chain_min_display_order.get(chain_id, 10**9))
+        blocks.append(
+            (
+                (int(order), 1, str(chain_id)),
+                sorted(block_rows, key=_step_sort_key),
+            )
+        )
+
+    for group_key, block_rows in other_blocks.items():
+        op, site_id = group_key
+        order = min(_display_order(r) for r in block_rows)
+        blocks.append(
+            (
+                (int(order), 2, f"{op}:{site_id}"),
+                sorted(block_rows, key=lambda r: str(r.arg)),
+            )
+        )
+
+    out_non_style: list[ParameterRow] = []
+    for _sort_key, block_rows in sorted(blocks, key=lambda item: item[0]):
+        out_non_style.extend(block_rows)
+
+    # 最終的な表示順: style（global/layer 固定） → non-style（コード順 = display_order）
+    return style_global_rows + style_layer_rows + out_non_style
 
 
 def _apply_updated_rows_to_store(
@@ -177,6 +242,7 @@ def render_store_parameter_table(
     primitive_header_by_group = primitive_header_display_names_from_snapshot(
         snapshot,
         is_primitive_op=lambda op: op in primitive_registry,
+        display_order_by_group=store._runtime_ref().display_order_by_group,
     )
 
     # --- 3) Effect のチェーン境界/順序を取得し、ヘッダ表示名（E(name=...)）を解決 ---
@@ -186,16 +252,14 @@ def render_store_parameter_table(
     # - chain_id: チェーン識別子（EffectBuilder 生成時の site_id）
     # - step_index: チェーン内のステップ順序（E.scale().rotate()... の順番）
     step_info_by_site = store.effect_steps()
-    # chain_id ごとの ordinal は GUI の “effect#N” デフォルト名に使う。
-    chain_ordinal_by_id = store.chain_ordinals()
     # チェーンヘッダの表示名:
     # - E(name=...) があればそれ
-    # - 無ければ effect#N（N は chain_ordinal）
+    # - 無ければ effect#N（N は表示順=観測順）
     # - 同名衝突は表示専用に name#1/#2
     effect_chain_header_by_id = effect_chain_header_display_names_from_snapshot(
         snapshot,
         step_info_by_site=step_info_by_site,
-        chain_ordinal_by_id=chain_ordinal_by_id,
+        display_order_by_group=store._runtime_ref().display_order_by_group,
         is_effect_op=lambda op: op in effect_registry,
     )
     # “チェーン内の同一 op 連番”:
@@ -212,7 +276,7 @@ def render_store_parameter_table(
     rows_before = _order_rows_for_display(
         rows_before_raw,
         step_info_by_site=step_info_by_site,
-        chain_ordinal_by_id=chain_ordinal_by_id,
+        display_order_by_group=store._runtime_ref().display_order_by_group,
     )
 
     layer_style_name_by_site_id: dict[str, str] = {}

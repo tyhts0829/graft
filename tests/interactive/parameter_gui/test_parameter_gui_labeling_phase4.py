@@ -37,7 +37,9 @@ def test_order_rows_for_display_places_style_layer_rows_under_style():
         row("polygon", 1, "n_sides", site_id="p:1"),
     ]
 
-    out = _order_rows_for_display(rows, step_info_by_site={}, chain_ordinal_by_id={})
+    out = _order_rows_for_display(
+        rows, step_info_by_site={}, display_order_by_group={}
+    )
     assert [r.op for r in out[:5]] == [STYLE_OP, STYLE_OP, STYLE_OP, LAYER_STYLE_OP, LAYER_STYLE_OP]
     assert [r.arg for r in out[:5]] == [
         "background_color",
