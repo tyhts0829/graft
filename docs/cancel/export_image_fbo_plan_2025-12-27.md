@@ -18,10 +18,10 @@
 
 ## 実装方針（API）
 
-`src/grafix/export/image.py` を「layers→ 画像」ではなく、
-**「draw callback を FBO に描いて PNG にする」**関数として定義し直す（破壊的変更 OK）。
+`export_image`（layers ベース）は将来の headless export 用に温存し、
+オフスクリーン PNG は **別関数**として「draw callback を FBO に描いて PNG にする」を追加する。
 
-提案シグネチャ（案）:
+提案シグネチャ（採用）:
 
 - `export_png_offscreen(ctx: object, draw: Callable[[], None], path: str|Path, *, size_px: tuple[int,int], background_color: tuple[float,float,float]=(1,1,1), transparent: bool=False) -> Path`
 
@@ -62,7 +62,7 @@
 - 入力: `(w, h, rgba_bytes)`（len = `w*h*4`）
 - 出力: PNG bytes（IHDR/IDAT/IEND、zlib 圧縮、CRC32）
 - 走査線: filter type 0（None）
-- `vflip` 対応: `flip_y: bool` 引数で scanline 順を反転できるようにする
+- `vflip`: **常に反転**（OpenGL 座標系→画像座標系）
 
 ## 変更予定ファイル
 
@@ -75,15 +75,15 @@
 
 ## TODO（チェックリスト）
 
-- [ ] `src/grafix/export/image.py` の API を確定（`export_image` 名を残すか、`export_png_offscreen` にするか）
-- [ ] FBO キャプチャ処理を実装（viewport 退避/復元、FBO 作成/解放、clear/draw/read）
-- [ ] PNG writer 実装（RGBA→PNG、vflip 対応、エラー文言を簡潔に）
-- [ ] `tests/export/test_image_png_writer.py` 追加（2x2 などで PNG 復号して一致検証）
+- [x] `src/grafix/export/image.py` の API を確定（`export_image` は layers ベースのまま、`export_png_offscreen` を追加）
+- [x] FBO キャプチャ処理を実装（viewport 退避/復元、FBO 作成/解放、clear/draw/read）
+- [x] PNG writer 実装（RGBA→PNG、常に vflip）
+- [x] テスト追加（FakeContext + PNG 復号で一致検証）
 - [ ] 既存呼び出し元（`src/grafix/api/export.py`）の追従 or 撤去（未使用なら削る）
 - [ ] 手動確認（interactive 側で `draw()` を渡して 1200px 出力を確認）
 
 ## 事前確認したい点
 
-- [ ] `export_image` の公開 API は「layers ベース」より「draw callback ベース」で OK？（今回は方式 2 の踏襲を優先）
-- [ ] `transparent=True` のときは「背景だけ α=0、線は不透明」で OK？
-- [ ] vflip は「常に反転」か「必要時のみ（テストで確定）」どちらで進める？
+- [x] `export_image` の公開 API は layers ベースのままにし、FBO 経由は別関数で OK
+- [x] `transparent=True` のときは「背景だけ α=0、線は不透明」で OK
+- [x] vflip は常に反転で OK
