@@ -84,6 +84,7 @@ Core (default):
 - numpy
 - numba
 - shapely
+- pyclipper
 - moderngl
 - pyglet
 - imgui
@@ -92,6 +93,7 @@ Core (default):
 - PyYAML
 - mido
 - python-rtmidi
+- psutil
 
 Dev (optional):
 

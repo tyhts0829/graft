@@ -10,9 +10,9 @@
 ## 目的（こうしたい）
 
 - effect の各ステップ内の並び順を:
-  1) `bypass`（`@effect` デコレータ共通の予約パラメータ）
-  2) それ以外は **effect 関数の引数定義順（シグネチャ順）**
-  にする。
+  1. `bypass`（`@effect` デコレータ共通の予約パラメータ）
+  2. それ以外は **effect 関数の引数定義順（シグネチャ順）**
+     にする。
 - primitive の各呼び出し内の並び順を:
   - `bypass` は無いので、**primitive 関数の引数定義順（シグネチャ順）**にする。
 
@@ -28,6 +28,7 @@
 `store_bridge` 側で毎回 `inspect.signature()` するのではなく、登録時（デコレータ適用時）に一度だけ計算してレジストリに保持する。
 
 - `src/grafix/core/effect_registry.py`
+
   - `EffectRegistry` に `op -> tuple[str, ...]` の引数順情報を持たせる（例: `_param_order: dict[str, tuple[str, ...]]`）。
   - `@effect(meta=...)` の `decorator()` 内で `inspect.signature(f)` から **キーワード引数の定義順**を取り出す。
   - UI に出す対象は `meta` で管理されている引数だけなので、シグネチャ順を `meta.keys()` の集合でフィルタする。
@@ -39,7 +40,7 @@
   - UI に出す対象は `meta` 引数だけなので、シグネチャ順を `meta.keys()` の集合でフィルタしたものを保存する。
   - `primitive_registry.get_param_order(op)` のような参照 API を追加する。
 
-### 2) Parameter GUI のソートキーを「arg名」→「レジストリ順」へ置換する
+### 2) Parameter GUI のソートキーを「arg 名」→「レジストリ順」へ置換する
 
 `src/grafix/interactive/parameter_gui/store_bridge.py` の `_order_rows_for_display()` 内で、ブロック内の並び替えロジックを変更する。
 
@@ -63,16 +64,16 @@
 
 - parameter_gui 上で:
   - effect ステップ内の先頭が常に `bypass` になる。
-  - 2つめ以降が effect 関数の引数定義順になる。
+  - 2 つめ以降が effect 関数の引数定義順になる。
   - primitive 呼び出し内が primitive 関数の引数定義順になる。
 - 追加したテストが通る。
 - 少なくとも関連範囲の既存テスト（`tests/interactive/parameter_gui`）が通る。
 
 ## 未確定点（先に確認したい）
 
-- `meta` に含まれるがシグネチャに無い/順序が取れないケースは現状エラーになり得るが、今回も「組み込みは meta 必須＆整合前提」で進めて良い？（過度に防御的にはしない方針）
+- `meta` に含まれるがシグネチャに無い/順序が取れないケースは現状エラーになり得るが、今回も「組み込みは meta 必須＆整合前提」で進めて良い？（過度に防御的にはしない方針）；はい
 - シグネチャ/メタに存在しない未知 `arg` が UI 行に混じった場合の扱い:
-  - 案: 末尾に寄せて `arg` 辞書順で安定化（UI が壊れない範囲の最小限）。
+  - 案: 末尾に寄せて `arg` 辞書順で安定化（UI が壊れない範囲の最小限）。；
 
 ## 作業チェックリスト
 
@@ -83,4 +84,3 @@
 - [ ] テスト: `tests/interactive/parameter_gui/test_parameter_gui_param_order.py` を追加
 - [ ] 検証: `PYTHONPATH=src pytest -q tests/interactive/parameter_gui`
 - [ ] 検証: `ruff check`（対象限定）と `mypy src/grafix`（必要なら対象限定）
-
