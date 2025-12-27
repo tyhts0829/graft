@@ -3,13 +3,7 @@
 実行コマンド: `mypy src/grafix`  
 結果: `Found 13 errors in 7 files (checked 116 source files)`
 
-## 全体傾向（先に直すと効率が良いもの）
-
-- **依存ライブラリの型情報不足/不整合**（`numba`, `shapely`, `fontTools`, `pyglet`）。→ 方針は「(A) stub を入れる」「(B) 局所 `type: ignore[...]`」「(C) `typings/` に最小 stub を置く」のどれかに寄せるのがきれい。
-
 ---
-
-## ファイル別の詳細
 
 ### `src/grafix/core/parameters/style.py`
 
@@ -88,14 +82,3 @@
     - 代替: `cc_snapshot: dict[int, float] | None` にして後段で `None` をハンドリングする。
 
 ---
-
-## 修正方針の候補（チェックリスト）
-
-このレポートは「提案」まで。実際に直す場合の進め方案だけ置いておく。
-
-- [ ] `api/export.py` の `tuple(canvas_size)` を撤去（低リスク）
-- [ ] `partition.py` / `fill.py` の `no-redef` を解消（注釈位置の整理）
-- [ ] `style.py` の `coerce_rgb255` を型が付く形に整理（引数型の絞り込み）
-- [ ] `realized_geometry.py` の `new_offsets` に型注釈を付ける
-- [ ] `dash.py` の index 計算を `int(...)` に寄せる（mypy の assignment 解消）
-- [ ] `draw_window_system.py` の `cc_snapshot` 型を揃える（Optional の扱いを決める）
