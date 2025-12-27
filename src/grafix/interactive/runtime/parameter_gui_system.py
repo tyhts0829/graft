@@ -26,7 +26,7 @@ class ParameterGUIWindowSystem:
     ) -> None:
         """GUI 用の window と ParameterGUI を初期化する。"""
 
-        self.window = create_parameter_gui_window()
+        self.window = create_parameter_gui_window(vsync=False)
         self._gui = ParameterGUI(
             self.window,
             store=store,

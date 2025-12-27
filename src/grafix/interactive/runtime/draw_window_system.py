@@ -130,7 +130,7 @@ class DrawWindowSystem:
                 midi.poll_pending()
                 cc_snapshot = midi.snapshot()
 
-            # 注: 呼び出し側（MultiWindowLoop）が事前に self.window.switch_to() 済みである前提。
+            # 注: 呼び出し側（pyglet.window.Window.draw）が事前に self.window.switch_to() 済みである前提。
             # その前提が崩れると、別 window のコンテキストへ描いてしまう可能性がある。
             #
             # さらに、録画の read などで framebuffer binding が揺れるケースに備え、

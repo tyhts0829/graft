@@ -50,7 +50,7 @@ def draw(t: float):
     description_effed = E(name="description_eff").fill()(description)
 
     footer_square = G(name="footer_square").polygon()
-    footer_squared = E(name="fill_footer").fill().repeat()(footer_square)
+    footer_squared = E(name="fill_footer").affine().fill().repeat()(footer_square)
 
     grid = G(name="grid").grid()
     circle = G(name="circle").text(font="Cappadocia.otf", text="o")

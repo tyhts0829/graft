@@ -1,10 +1,9 @@
 # どこで: `src/grafix/interactive/runtime/window_loop.py`。
-# 何を: pyglet の複数ウィンドウを 1 つの手動ループで回すための最小ランナーを提供する。
-# なぜ: イベント処理→描画→flip の順序を 1 箇所に集約し、追加機能で制御フローが崩れるのを防ぐため。
+# 何を: pyglet の複数ウィンドウを 1 つの app loop（`pyglet.app.run()`）で回すための最小ランナーを提供する。
+# なぜ: OS 依存のイベント配送を pyglet に任せ、手動 `dispatch_events()` 由来の入力取りこぼしを避けるため。
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -19,14 +18,14 @@ class WindowTask:
     window: Any
 
     # 1フレーム分の描画処理（back buffer へ描くだけ）。
-    # `switch_to()` / `flip()` は MultiWindowLoop 側が担当する前提。
+    # `switch_to()` / `flip()` は pyglet（`Window.draw()`）が担当する前提。
     draw_frame: Callable[[], None]
 
 
 class MultiWindowLoop:
     """複数ウィンドウを同一ループで回す。
 
-    `draw_frame()` は各ウィンドウの back buffer へ描画するだけにし、`flip()` はこのループが行う。
+    `draw_frame()` は各ウィンドウの back buffer へ描画するだけにし、`flip()` は pyglet が行う。
     """
 
     def __init__(
@@ -44,7 +43,7 @@ class MultiWindowLoop:
             1 フレームごとに描画したいウィンドウと描画処理。
         fps : float
             目標フレームレート。`<=0` の場合はスロットリングしない。
-            `>0` の場合、ループ末尾で sleep して目標に近づける。
+            `>0` の場合、`pyglet.clock.schedule_interval` で描画頻度を制御する。
         on_frame_start : Callable[[], None] | None
             各フレーム冒頭に呼ぶコールバック。計測などの用途を想定する。
         """
@@ -56,61 +55,40 @@ class MultiWindowLoop:
     def run(self) -> None:
         """ウィンドウが閉じられるまでループを実行する。"""
 
-        # on_close ハンドラから停止させるためのフラグ。
-        # （pyglet.app.run() を使わず手動ループにしているので、自前で停止条件を持つ）
-        running = True
-        frame_dt = 1.0 / self._fps if self._fps > 0 else 0.0
-        next_frame_time = time.perf_counter()
+        tasks = list(self._tasks)
 
-        def stop_loop(*_: object) -> None:
+        def request_exit(*_: object) -> None:
             # pyglet の on_close から呼ばれるコールバックは引数が来る場合があるため *args を受ける。
-            nonlocal running
-            running = False
+            pyglet.app.exit()
 
         # どれかのウィンドウを閉じたら、ループ全体を止める。
-        for task in self._tasks:
-            task.window.push_handlers(on_close=stop_loop)
+        for task in tasks:
+            task.window.push_handlers(on_close=request_exit)
 
-        # 1フレームは大きく「clock 更新 → イベント処理 → 描画 → flip → sleep」の順。
-        # イベント処理と描画をまとめて制御することで、複数ウィンドウ間での更新競合（点滅など）を避ける。
-        while running:
+        # 各ウィンドウの on_draw で、そのウィンドウの描画処理を行う。
+        for task in tasks:
+            task.window.push_handlers(on_draw=task.draw_frame)
+
+        # 1フレームは大きく「frame start → Window.draw（on_draw→flip）」の順で進める。
+        # Window.draw は switch_to / on_draw / on_refresh / flip をまとめて行う。
+        def draw_all(dt: float) -> None:
             on_frame_start = self._on_frame_start
             if on_frame_start is not None:
                 on_frame_start()
 
-            # pyglet の clock を進める（内部タイムスタンプの更新など）。
-            pyglet.clock.tick()
+            for task in tasks:
+                # 閉じられたウィンドウへ draw すると例外になり得るため、開いているものだけ描く。
+                if task.window not in pyglet.app.windows:
+                    continue
+                task.window.draw(dt)
 
-            # --- イベント処理（入力/ウィンドウ操作など）---
-            # window ごとに OpenGL コンテキストを切り替えてから dispatch する。
-            # （バックエンドによっては現在コンテキストを前提にする処理が混ざり得るため）
-            for task in self._tasks:
-                task.window.switch_to()
-                task.window.dispatch_events()
+        # fps<=0 は「スロットリング無し（可能な限り回す）」として扱う。
+        if self._fps <= 0:
+            pyglet.clock.schedule(draw_all)
+        else:
+            pyglet.clock.schedule_interval(draw_all, 1.0 / float(self._fps))
 
-            # on_close で stop_loop() が呼ばれていたらここで抜ける。
-            if not running:
-                break
-
-            # has_exit が立った場合も終了する（on_close 以外の経路で exit になるケースを拾う）。
-            if any(task.window.has_exit for task in self._tasks):
-                break
-
-            # --- 描画 ---
-            # 重要: ここでは「描画→flip」を window 単位で必ず 1 回だけ行う。
-            # サブシステム側が勝手に flip すると、空フレームが挟まって点滅しやすくなる。
-            for task in self._tasks:
-                task.window.switch_to()
-                task.draw_frame()
-                task.window.flip()
-
-            # 目標 FPS の簡易スロットリング。
-            # 重いフレームで既に遅れている場合は余計に sleep しない。
-            if frame_dt > 0.0:
-                next_frame_time += frame_dt
-                now = time.perf_counter()
-                sleep_time = next_frame_time - now
-                if sleep_time > 0.0:
-                    time.sleep(sleep_time)
-                else:
-                    next_frame_time = now
+        try:
+            pyglet.app.run(interval=None)
+        finally:
+            pyglet.clock.unschedule(draw_all)

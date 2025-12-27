@@ -1,21 +1,9 @@
 # ParameterGUI: A（pyglet.app.run へ移行）実装改善計画（2025-12-27）
-
 #
-
 # どこで: `src/grafix/interactive/runtime/window_loop.py` / `src/grafix/api/run.py`（+ 関連サブシステム）。
-
-#
-
 # 何を: 手動 `Window.dispatch_events()` ループ（`MultiWindowLoop.run()`）を廃止し、`pyglet.app.run()` に寄せてイベント配送を安定化する。
-
-#
-
-# なぜ: macOS（arm64）で release 等の入力イベント取りこぼしが起き、ImGui 側の押下状態（`io.mouse_down`）が残留して
-
-# 「クリック不発 / ドラッグ解除不能」になる可能性が高いため。
-
-# 参照: `docs/memo/parameter_gui_mouse_stuck_drag_rootcause_report_2025-12-27.md` の対策候補 A。
-
+# なぜ: macOS（arm64）で release 等の入力イベント取りこぼしが起き、ImGui 側の押下状態（`io.mouse_down`）が残留して「クリック不発 / ドラッグ解除不能」になる可能性が高いため。
+#      参照: `docs/memo/parameter_gui_mouse_stuck_drag_rootcause_report_2025-12-27.md` の対策候補 A。
 #
 
 ## ゴール
@@ -26,44 +14,38 @@
 
 ## 非ゴール（この計画では扱わない）
 
-- `renderer.process_inputs()` を使わない/呼び方を見直す（対策候補 B）。
 - GUI 外 release / フォーカス喪失時の強制解除（対策候補 C/D）。
 - imgui/pyglet backend の fork/patch（対策候補 E）。
+- ImGui IO 同期順序の再設計など、対策候補 B の本格対応。
 
 ## 方針（A の設計メモ）
 
-- `pyglet.app` のイベントループが `Window.invalid=True` のウィンドウに対して `on_draw` を dispatch する仕様に寄せる。
-  - `on_draw` 内で描画して `window.invalid = False` に戻す（無限 redraw を防ぐ）。
-  - FPS 制御は `pyglet.clock.schedule_interval()` で `window.invalid = True` を立てることで行う。
-- 複数ウィンドウの描画は「各 window の `on_draw`」に寄せ、`switch_to()` / `flip()` の責務は pyglet に任せる。
-  - 既存の `draw_frame()` は `flip()` しない前提なので、そのまま `on_draw` から呼べる。
+- `pyglet.app.run(interval=None)` を使い、描画タイミングは `pyglet.clock.schedule(_interval)` で制御する。
+- 各 window の `on_draw` に `task.draw_frame()` をぶら下げ、`Window.draw(dt)` が `switch_to()` / `flip()` を担当する。
+- 複数 window の描画は「1つの scheduled 関数で tasks を順に `Window.draw(dt)`」として揃える。
 - 終了条件は「どれか 1 つのウィンドウが閉じられたら `pyglet.app.exit()`」で統一する。
 
 ## 実装チェックリスト（A）
 
 ### 1) `MultiWindowLoop` を `pyglet.app.run()` ベースに置換
 
-- [ ] `src/grafix/interactive/runtime/window_loop.py` の説明コメントを「手動ループ」前提から更新する
-- [ ] `MultiWindowLoop.run()` を以下の構造に置き換える
-  - [ ] 各 `WindowTask.window` に `on_draw` ハンドラを設定する（`task.draw_frame()` を呼ぶ）
-  - [ ] `on_draw` の末尾で `window.invalid = False` にする（描画は「必要時のみ」へ）
-  - [ ] `fps > 0` の場合
-    - [ ] `pyglet.clock.schedule_interval(tick, 1 / fps)` を設定する
-    - [ ] `tick` で `on_frame_start()` を呼び、全 window の `invalid = True` を立てる
-  - [ ] `fps <= 0` の場合
-    - [ ] `on_draw` で `invalid=False` にしない（= 可能な限り回す）か、
-          または `pyglet.clock.schedule(tick)` を使い「毎 tick invalid=True」にする（どちらかに統一）
-  - [ ] `on_close` をフックして `pyglet.app.exit()` を呼ぶ（どれか 1 つ閉じたら全体停止）
-  - [ ] `pyglet.app.run()` を呼び、戻ったら `schedule` を解除する（次回 run へ副作用を残さない）
+- [x] `src/grafix/interactive/runtime/window_loop.py` の説明コメントを「手動ループ」前提から更新する
+- [x] `MultiWindowLoop.run()` を以下の構造に置き換える
+  - [x] 各 `WindowTask.window` に `on_draw` ハンドラを設定する（`task.draw_frame()` を呼ぶ）
+  - [x] `fps > 0` の場合、`pyglet.clock.schedule_interval(draw_all, 1 / fps)` を設定する
+  - [x] `fps <= 0` の場合、`pyglet.clock.schedule(draw_all)` を設定する（可能な限り回す）
+  - [x] `on_close` をフックして `pyglet.app.exit()` を呼ぶ（どれか 1 つ閉じたら全体停止）
+  - [x] `pyglet.app.run(interval=None)` を呼び、戻ったら `unschedule` する（次回 run へ副作用を残さない）
 
 ### 2) `run()` 側の配線を A の前提に合わせる
 
-- [ ] `src/grafix/api/run.py` の「手動ループ」コメントを更新する（実態に合わせる）
-- [ ] `pyglet.options["vsync"]` と Parameter GUI window の `vsync` が食い違わないように整理する
-  - [ ] まずは変数を増やさないため、両 window とも明示的に `vsync=False` へ揃える（暫定）
-  - [ ] そのうえで `vsync=True` を戻せるかは A の後で検討（まずは入力安定を優先）
-- [ ] 「どちらかの window を閉じたら終了」時に `finally` が必ず通ることを確認する
-  - [ ] ParamStore 保存 → closers の順序が維持される
+- [x] `src/grafix/api/run.py` の「手動ループ」コメントを更新する（実態に合わせる）
+- [x] `pyglet.options["vsync"]` と Parameter GUI window の `vsync` が食い違わないように整理する（両 window を `vsync=False` へ）
+- [x] 「どちらかの window を閉じたら終了」時に `finally` が必ず通る（ParamStore 保存 → closers）構造を維持する
+
+### 2.1) A 実装中に見つけた、最小の追加修正（A を壊さない範囲）
+
+- [x] `renderer.process_inputs()` は内部で `pyglet.clock.tick()` を呼ぶため、`pyglet.app.run()` と相性が悪いので呼ばない（`src/grafix/interactive/parameter_gui/gui.py`）
 
 ### 3) 最小 QA（A の受け入れ条件）
 
@@ -74,10 +56,6 @@
 
 ## 最小の検証コマンド（変更後）
 
-- [ ] `ruff check src/grafix/interactive/runtime/window_loop.py src/grafix/api/run.py`
-- [ ] `mypy src/grafix/api/run.py`
-
-## 確認したい点（この計画で進めてよい？）
-
-- `fps <= 0`（スロットリング無し）の扱いは「常に `invalid=True`（無限 redraw）」で良い？それとも「毎 tick で invalid を立てる」に寄せる？；あなたの推奨でいいよ。
-- A は「`MultiWindowLoop` の中身を置き換える」方針で良い？（新規クラス/ファイル追加は最小にする前提）;はい
+- [x] `python -m py_compile src/grafix/interactive/runtime/window_loop.py src/grafix/api/run.py src/grafix/interactive/runtime/parameter_gui_system.py src/grafix/interactive/parameter_gui/gui.py src/grafix/interactive/runtime/draw_window_system.py`
+- [ ] `ruff check src/grafix/interactive/runtime/window_loop.py src/grafix/api/run.py src/grafix/interactive/runtime/parameter_gui_system.py src/grafix/interactive/parameter_gui/gui.py src/grafix/interactive/runtime/draw_window_system.py`（ruff 未導入）
+- [ ] `mypy src/grafix/api/run.py`（既存のプロジェクト全体エラーにより未完了）

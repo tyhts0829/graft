@@ -164,11 +164,12 @@ class ParameterGUI:
         imgui.set_current_context(self._context)
         self._sync_font_for_window()
 
-        # 注: 呼び出し側（MultiWindowLoop）が事前に `self._window.switch_to()` 済みである前提。
+        # 注: 呼び出し側（pyglet.window.Window.draw）が事前に `self._window.switch_to()` 済みである前提。
         # ここで switch_to() を呼ぶと責務が分散し、点滅の原因（複数箇所での画面更新）になりやすい。
 
-        # キーボード/マウス入力などを backend から ImGui IO へ取り込む。
-        self._renderer.process_inputs()
+        # 注: imgui.integrations.pyglet の process_inputs() は内部で pyglet.clock.tick() を呼ぶ。
+        # `pyglet.app.run()` 駆動時にこれを呼ぶと clock が二重に進みやすいので、ここでは呼ばない。
+        # 入力イベント自体は pyglet のイベント配送で io に反映される前提。
 
         # Parameter GUI のスクロール方向を反転する。
         # pyglet backend は `io.mouse_wheel = scroll` をそのまま入れるため、

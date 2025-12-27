@@ -85,7 +85,7 @@ def run(
 
     # pyglet の Window 作成前にオプションを設定する。
     # （vsync はウィンドウ作成時に参照される想定のため、ここで固定しておく）
-    # TrueにするとParameter GUIのクリックやドラッグが抜ける事がある。
+    # True にすると Parameter GUI のクリックやドラッグが抜ける事がある。
     pyglet.options["vsync"] = False
 
     # 描画の見た目/サイズに関わる設定値をまとめる。
@@ -160,8 +160,7 @@ def run(
         tasks.append(WindowTask(window=gui.window, draw_frame=gui.draw_frame))
 
     # --- ループの実行 ---
-    # ここで複数ウィンドウを 1 つの手動ループで回す。
-    # 目的: `flip()` を 1 箇所へ集約し、画面更新の競合（点滅）を避ける。
+    # ここで複数ウィンドウを 1 つの pyglet.app.run() で回す。
     loop = MultiWindowLoop(
         tasks,
         fps=fps,
