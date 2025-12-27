@@ -41,6 +41,13 @@ def _order_rows_for_display(
 ) -> list[ParameterRow]:
     """GUI 表示順に並び替えた rows を返す。"""
 
+    # この関数は「表示の読みやすさ」と「フレーム間の安定性」を優先して並べ替える。
+    #
+    # - style は “いつでも先頭” かつ固定順（ユーザーが探すことが多い）
+    # - primitive/effect/other は “コードに現れた順” を基本にする
+    #   （= display_order_by_group で安定化された順序）
+    # - effect は “チェーン単位” にまとめる（折りたたみの単位を壊さない）
+
     style_global_rows: list[ParameterRow] = []
     style_layer_rows: list[ParameterRow] = []
     primitive_rows: list[ParameterRow] = []
@@ -73,6 +80,8 @@ def _order_rows_for_display(
     )
 
     def _display_order(row: ParameterRow) -> int:
+        # display_order_by_group は (op, site_id) 単位の「観測順（コード順）」の近似。
+        # 見つからない場合は末尾へ回す（未知 group / 互換性のための保険）。
         return int(display_order_by_group.get((row.op, row.site_id), 10**9))
 
     # --- Non-style: Primitive / Effect chain / other を “ブロック” として並べる ---
@@ -83,11 +92,16 @@ def _order_rows_for_display(
 
     primitive_blocks: dict[tuple[str, int], list[ParameterRow]] = {}
     for row in primitive_rows:
+        # primitive は 1 つの呼び出し（site_id）に対して複数 arg 行がぶら下がる。
+        # GUI では `circle#3` のように op と ordinal でまとまりを認識するため、
+        # ブロックキーも (op, ordinal) に寄せる。
         primitive_blocks.setdefault((row.op, int(row.ordinal)), []).append(row)
 
     effect_blocks: dict[str, list[ParameterRow]] = {}
     effect_fallback_rows: list[ParameterRow] = []
     for row in effect_rows:
+        # effect は `step_info_by_site` で「どのチェーンの何番目か」を引ける。
+        # 引けないものは（不整合/旧データなど）other へフォールバックし、表示は崩さない。
         info = step_info_by_site.get((row.op, row.site_id))
         if info is None:
             effect_fallback_rows.append(row)
@@ -97,8 +111,13 @@ def _order_rows_for_display(
 
     other_blocks: dict[tuple[str, str], list[ParameterRow]] = {}
     for row in other_rows + effect_fallback_rows:
+        # other は「最小限のまとまり」として (op, site_id) 単位にする。
+        # （primitive/effect と違い、意味的なグルーピング規則が無い想定）
         other_blocks.setdefault((row.op, row.site_id), []).append(row)
 
+    # effect チェーンは “チェーン内の各ステップの display_order” を持つが、
+    # チェーン全体としては「最初に現れたステップの位置」に寄せて並べたい。
+    # そのため chain_id ごとに min(display_order) を求め、チェーンの並び順に使う。
     chain_min_display_order: dict[str, int] = {}
     for (op, site_id), (chain_id, _step_index) in step_info_by_site.items():
         order = int(display_order_by_group.get((str(op), str(site_id)), 10**9))
@@ -110,6 +129,8 @@ def _order_rows_for_display(
 
     for group_key, block_rows in primitive_blocks.items():
         op, ordinal = group_key
+        # primitive ブロックの位置は、そのブロック内行の display_order の最小値に寄せる。
+        # （同一 primitive 呼び出し内で arg 行の順序は固定だが、念のため min を取る）
         order = min(_display_order(r) for r in block_rows)
         blocks.append(
             (
@@ -119,6 +140,8 @@ def _order_rows_for_display(
         )
 
     def _step_sort_key(r: ParameterRow) -> tuple[int, str]:
+        # チェーン内では step_index（= effect 呼び出し順）を優先し、
+        # 同一 step 内は arg 名で安定に並べる。
         info = step_info_by_site.get((r.op, r.site_id))
         if info is None:
             return (10**9, str(r.arg))
@@ -126,6 +149,7 @@ def _order_rows_for_display(
         return (int(step_index), str(r.arg))
 
     for chain_id, block_rows in effect_blocks.items():
+        # effect チェーンの “ブロック位置” はチェーン内最小の display_order に寄せる。
         order = int(chain_min_display_order.get(chain_id, 10**9))
         blocks.append(
             (
@@ -136,6 +160,7 @@ def _order_rows_for_display(
 
     for group_key, block_rows in other_blocks.items():
         op, site_id = group_key
+        # other ブロックも primitive 同様、ブロック内の min(display_order) に寄せる。
         order = min(_display_order(r) for r in block_rows)
         blocks.append(
             (
@@ -146,6 +171,10 @@ def _order_rows_for_display(
 
     out_non_style: list[ParameterRow] = []
     for _sort_key, block_rows in sorted(blocks, key=lambda item: item[0]):
+        # blocks の sort_key は (display_order, kind_rank, stable_id)。
+        # - display_order : 基本の並び（コード順）
+        # - kind_rank     : 同順序なら primitive -> effect -> other の順で出す
+        # - stable_id     : 同順序のときも決定的にする（set/dict の揺れを潰す）
         out_non_style.extend(block_rows)
 
     # 最終的な表示順: style（global/layer 固定） → non-style（コード順 = display_order）
@@ -168,6 +197,24 @@ def _apply_updated_rows_to_store(
     for key, (meta, _state, ordinal, _label) in snapshot.items():
         entry_by_identity[(key.op, int(ordinal), key.arg)] = (key, meta)
 
+    def _cc_set(
+        cc_key: int | tuple[int | None, int | None, int | None] | None,
+    ) -> set[int]:
+        # cc_key は scalar(int) または vec3/rgb 用の (a,b,c) を取り得る。
+        # 「割当解除（CC が減った）」判定を set 差分でシンプルにするため、集合へ正規化する。
+        #
+        # - None            : 未割当（空集合）
+        # - int             : {cc}
+        # - (a,b,c)         : {a,b,c}（None 成分は除外）
+        #
+        # ここで例外処理を厚くしないのは、
+        # cc_key の型は update_state_from_ui / UI 側で既に正規化されている前提のため。
+        if cc_key is None:
+            return set()
+        if isinstance(cc_key, int):
+            return {int(cc_key)}
+        return {int(v) for v in cc_key if v is not None}
+
     reset_font_index_for: set[tuple[str, int]] = set()
 
     for before, after in zip(rows_before, rows_after, strict=True):
@@ -188,14 +235,37 @@ def _apply_updated_rows_to_store(
             or after.override != before.override
             or after.cc_key != before.cc_key
         ):
-            update_state_from_ui(
-                store,
-                key,
-                after.ui_value,
-                meta=effective_meta,
-                override=after.override,
-                cc_key=after.cc_key,
+            cc_removed = False
+            if after.cc_key != before.cc_key:
+                before_cc = _cc_set(before.cc_key)
+                after_cc = _cc_set(after.cc_key)
+                removed = before_cc - after_cc
+                added = after_cc - before_cc
+                cc_removed = bool(removed) and not bool(added)
+
+            baked_effective = (
+                store._runtime_ref().last_effective_by_key.get(key)
+                if cc_removed
+                else None
             )
+            if baked_effective is not None:
+                update_state_from_ui(
+                    store,
+                    key,
+                    baked_effective,
+                    meta=effective_meta,
+                    override=True,
+                    cc_key=after.cc_key,
+                )
+            else:
+                update_state_from_ui(
+                    store,
+                    key,
+                    after.ui_value,
+                    meta=effective_meta,
+                    override=after.override,
+                    cc_key=after.cc_key,
+                )
 
         if (
             key.op == "text"

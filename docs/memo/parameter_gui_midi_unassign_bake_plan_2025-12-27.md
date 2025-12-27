@@ -36,13 +36,12 @@
 
 ## チェックリスト
 
-- [ ] 事前確認: 「解除時に effective を ui_value へ焼き込み、override=True にする」方針で進めてよい
-- [ ] `src/grafix/core/parameters/runtime.py` に `last_effective_by_key` を追加（非永続）
-- [ ] `src/grafix/core/parameters/merge_ops.py` で `effective` を runtime に記録（`None` はスキップ）
-- [ ] `src/grafix/interactive/parameter_gui/store_bridge.py` で `cc_key` 解除検知 → bake を実装
-- [ ] テスト追加: scalar 解除で bake される（`override` が False でも True になる）
-- [ ] テスト追加: vec3 の 1 成分解除で bake される（解除成分が保持され、残り CC は継続）
-- [ ] テスト追加: 再アサイン（例: `12 -> 64`）では bake されない
-- [ ] 手動確認: Parameter GUI 上で CC 解除しても値がジャンプしない
-- [ ] 最低限の確認: `PYTHONPATH=src pytest -q tests/core/parameters tests/interactive/parameter_gui`
-
+- [x] 事前確認: 「解除時に effective を ui_value へ焼き込み、override=True にする」方針で進めてよい
+- [x] `src/grafix/core/parameters/runtime.py` に `last_effective_by_key` を追加（非永続）
+- [x] `src/grafix/core/parameters/merge_ops.py` で `effective` を runtime に記録（`None` はスキップ）
+- [x] `src/grafix/interactive/parameter_gui/store_bridge.py` で `cc_key` 解除検知 → bake を実装
+- [x] テスト追加: scalar 解除で bake される（`override` が False でも True になる）
+- [x] テスト追加: vec3 の 1 成分解除で bake される（解除成分が保持され、残り CC は継続）
+- [x] テスト追加: 再アサイン（例: `12 -> 64`）では bake されない
+- [x] 手動確認: Parameter GUI 上で CC 解除しても値がジャンプしない
+- [x] 最低限の確認: `PYTHONPATH=src pytest -q tests/core/parameters tests/interactive/parameter_gui`
