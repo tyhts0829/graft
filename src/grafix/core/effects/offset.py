@@ -144,7 +144,7 @@ def _extract_vertices_2d(buffered) -> list[np.ndarray]:
         return []
 
     # ローカル import（effect 未使用時に shapely import を避ける）
-    from shapely.geometry import (  # type: ignore[import-not-found]
+    from shapely.geometry import (  # type: ignore[import-not-found, import-untyped]
         LineString,
         MultiLineString,
         MultiPolygon,

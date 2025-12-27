@@ -12,38 +12,6 @@
 
 ## ファイル別の詳細
 
-### `src/grafix/core/parameters/style.py`
-
-- L50 `[call-overload]` `No overload variant of "int" matches argument type "object"`
-  - 原因: `_clamp(v: object)` の `v` が `object` すぎて `int(v)` 可能だと型的に言えない。
-  - 改善案:
-    - **推奨**: `value` を「長さ3の数値シーケンス」として絞り込む（`Sequence[SupportsInt | SupportsFloat]` 等）+ ランタイムチェック。
-    - 代替: `_clamp` を `v: int | float`（または `SupportsInt`）にして、取り出し時に `float(...)` / `int(...)` へ正規化する。
-
-- L53 `[has-type]` `Cannot determine type of "r" / "g" / "b"`
-  - 原因: `r, g, b = value  # type: ignore[misc]` により、`r/g/b` の型が `Any/不明` のまま流れている。
-  - 改善案:
-    - **推奨**: `value` を `Sequence[... ]` として判定し、`len==3` をチェックしてからアンパックする（`r0, g0, b0` 等へ取り出す）。
-    - 代替: `cast(tuple[...], value)` で型を与える（ただし実行時の不正値を防げないので、どのみち長さチェックは欲しい）。
-
----
-
-### `src/grafix/interactive/draw_window.py`
-
-- L17 `[abstract]` `Cannot instantiate abstract class "Config" with abstract attribute "match"`
-  - 原因: `pyglet` の型定義上 `Config` が abstract 扱いになっており、`Config(...)` が型的に許可されていない。
-  - 改善案:
-    - **推奨**: この行に `# type: ignore[abstract]` を付けて局所的に抑制（実行時は問題なく動く前提ならこれが最小）。
-    - 代替: `typings/pyglet/...` に最小 stub を置き、`Config` を具象として定義する（抑制を散らさずに済む）。
-
-- L19 `[abstract]` `Cannot instantiate abstract class "BaseWindow" ...`
-  - 原因: 型定義上 `pyglet.window.Window` が `BaseWindow`（abstract）として扱われている。
-  - 改善案:
-    - **推奨**: `pyglet.window.Window(...)` に `# type: ignore[abstract]`。
-    - 代替: 上と同様に `pyglet` の stub を `typings/` へ用意。
-
----
-
 ### `src/grafix/core/realized_geometry.py`
 
 - L96 `[var-annotated]` `Need type annotation for "new_offsets"`
@@ -58,7 +26,7 @@
 - L233 `[import-untyped]` `Skipping analyzing "fontTools.pens.recordingPen": ... missing library stubs or py.typed`
   - 原因: `fontTools` 側が mypy に型情報を提供していない（または stub が入っていない）。加えて、`type: ignore` が **import 文の行ではなく** `RecordingPen` 行に付いているため効いていない。
   - 改善案:
-    - **推奨**: `from fontTools.pens.recordingPen import RecordingPen  # type: ignore[import-untyped]` のように **import 行へ** ignore を付ける（括弧importは特に注意）。
+    - **推奨**: `from fontTools.pens.recordingPen import RecordingPen  # type: ignore[import-untyped]` のように **import 行へ** ignore を付ける（括弧 import は特に注意）。
     - 代替: stub パッケージ導入（もし存在すれば）/ `typings/fontTools/...` に最小 stub を置く。
 
 ---
@@ -68,26 +36,31 @@
 このファイルは **変数名の再利用**が原因で型が衝突している。
 
 - L315 `[assignment]` `expression has type "float", variable has type "ndarray[...]"`
+
   - 原因: 先行ブロックで `x` が `np.ndarray` になった後、別ブロックで `x = ...`（float）として再代入している。
   - 改善案:
     - **推奨**: `x`（スカラー）を `x_pos`、配列は `xs` のように分離する（同様に `y/z` も）。
 
 - L316 `[arg-type]` `Argument 1 to "sqrt" has incompatible type ...`
+
   - 原因: 上記の型衝突に引きずられて `max(0.0, _RADIUS*_RADIUS - x*x)` が「float」だと確定できていない。
   - 改善案:
     - **推奨**: 変数名の分離で `x` が常に `float` になれば自然に解決する。
 
 - L324 `[assignment]` `expression has type "ndarray[...]", variable has type "float"`
+
   - 原因: 別ブロックで `y` が float として使われた後に `y = (radius * np.cos(...)).astype(...)`（配列）へ再代入している。
   - 改善案:
     - **推奨**: `y_pos`（float）と `ys`（配列）へ分離。
 
 - L330 `[assignment]` `expression has type "float", variable has type "ndarray[...]"`
+
   - 原因: `z` の float/配列の再利用が `x` と同様に衝突している。
   - 改善案:
     - **推奨**: `z_pos` と `zs` に分離。
 
 - L331 `[arg-type]` `Argument 1 to "sqrt" has incompatible type ...`
+
   - 原因: `z` の型が確定せず、`sqrt` の引数が数値だと保証できない。
   - 改善案:
     - **推奨**: 変数名の分離で解消。
@@ -102,16 +75,18 @@
 ### `src/grafix/core/realize.py`
 
 - L74 `[assignment]` `Callable[[Sequence[RealizedGeometry], ...], ...]` を `Callable[[tuple[tuple[str, Any], ...]], ...]` へ代入している
+
   - 原因: `func` 変数に対して
     - primitive: `PrimitiveFunc(args) -> RealizedGeometry`
     - effect: `EffectFunc(inputs, args) -> RealizedGeometry`
-    を同名で入れており、**同一変数の型が揃わない**。
+      を同名で入れており、**同一変数の型が揃わない**。
   - 改善案:
     - **推奨**: 変数を分ける（`primitive_func` / `effect_func` など）。
     - 代替: `Callable[..., RealizedGeometry]` に落とす（型精度が落ちるので非推奨）。
 
 - L75 `[call-arg]` `Too many arguments`
-  - 原因: mypy が `func` を primitive 側の 1引数 callable と解釈している状態で、`func(realized_inputs, geometry.args)` と 2引数で呼んでいる。
+
+  - 原因: mypy が `func` を primitive 側の 1 引数 callable と解釈している状態で、`func(realized_inputs, geometry.args)` と 2 引数で呼んでいる。
   - 改善案:
     - **推奨**: 上と同じく `func` 変数の分離。
 
@@ -173,19 +148,23 @@
 ### `src/grafix/core/effects/mirror.py`
 
 - L8 `[attr-defined]` `Module "numba" has no attribute "njit"`
+
   - 原因/改善案: `util.py` と同様（`typings/numba` が最もきれい）。
 
 - L197 `[assignment]` `expression has type "int", variable has type "RealizedGeometry"`
+
   - 原因: 同一関数内で `base = inputs[0]`（`RealizedGeometry`）とした後、別の場所で `base = int(...)` と **別用途で再代入**している。
   - 改善案:
     - **推奨**: `base`（入力ジオメトリ）と `offset_base`（int）など、役割で変数名を分ける。
 
 - L199 `[operator]` `ndarray.__radd__` が `RealizedGeometry` を受け取れない
+
   - 原因: L197 の影響で `base` が `RealizedGeometry` 扱いになり、`base + ln * np.arange(...)` が型破綻している。
   - 改善案:
     - **推奨**: L197 の変数名衝突を解消（副作用で解決するはず）。
 
 - L309 `[assignment]` `expression has type "ndarray[...]", variable has type "int"`
+
   - 原因: 先行箇所で `ln = int(...)` を使っているのに、後半で `for i, ln in enumerate(uniq, ...)` と **同名 `ln` に ndarray を入れている**。
   - 改善案:
     - **推奨**: 後半ループの `ln` を `line` 等に変更。
@@ -228,6 +207,7 @@
 ### `src/grafix/core/effects/weave.py`
 
 - L14 `[attr-defined]` `Module "numba" has no attribute "njit"`
+
   - 原因: `from numba import njit, types` の時点で、`numba` 型情報に `njit` が無い。
   - 改善案:
     - **推奨**: `typings/numba/__init__.pyi` で `njit` を定義する。
@@ -252,6 +232,7 @@
 ### `src/grafix/interactive/parameter_gui/store_bridge.py`
 
 - L161 `[assignment]` `expression has type "tuple[str, str]", variable has type "tuple[str, int]"`
+
   - 原因: 直前のループで `group_key` が `tuple[str, int]`（例: `(op, ordinal)`）として推論され、その後の `for group_key, ... in other_blocks.items():` で `tuple[str, str]`（例: `(op, site_id)`）を代入して衝突している。
   - 改善案:
     - **推奨**: ループ変数名を分ける（`primitive_key` / `other_key` など）。
@@ -266,10 +247,11 @@
 ### `src/grafix/api/export.py`
 
 - L68 `[arg-type]` `Argument "canvas_size" ... has incompatible type "tuple[int, ...]"; expected "tuple[int, int] | None"`
+
   - 原因: `tuple(canvas_size)` によって、固定長 `tuple[int, int]` が **可変長 `tuple[int, ...]` に型が広がる**。
   - 改善案:
     - **推奨**: 変換せずそのまま渡す（`canvas_size=canvas_size`）。
-    - 代替: 入力が sequence の可能性があるなら、`(int(canvas_size[0]), int(canvas_size[1]))` のように **2要素のタプルを明示的に作る**（長さチェック付き）。
+    - 代替: 入力が sequence の可能性があるなら、`(int(canvas_size[0]), int(canvas_size[1]))` のように **2 要素のタプルを明示的に作る**（長さチェック付き）。
 
 - L74 `[arg-type]` `export_image(... canvas_size=...)` も同様
   - 原因/改善案: L68 と同じ。
@@ -287,4 +269,3 @@
 - [ ] `offset.py` の `shapely` ignore を `import-untyped` に揃える（または stub 導入）
 - [ ] `numba` の扱いを決める（`typings/numba` 追加 or 各所 ignore）
 - [ ] `pyglet`（interactive）の `abstract` をどう扱うか決める（ignore or stub）
-

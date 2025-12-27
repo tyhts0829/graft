@@ -230,9 +230,7 @@ class TextRenderer:
     ) -> tuple:
         """平坦化済みのグリフコマンド（`RecordingPen.value` 互換タプル）を返す。"""
         from fontPens.flattenPen import FlattenPen  # type: ignore[import-untyped]
-        from fontTools.pens.recordingPen import (
-            RecordingPen,  # type: ignore[import-untyped]
-        )
+        from fontTools.pens.recordingPen import RecordingPen  # type: ignore[import-untyped]
 
         resolved = font_path.resolve()
         key = (
