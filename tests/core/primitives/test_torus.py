@@ -70,14 +70,13 @@ def test_torus_center_and_scale_affect_coords() -> None:
             params={
                 **params,
                 "center": (10.0, 20.0, 30.0),
-                "scale": (2.0, 3.0, 4.0),
+                "scale": 2.0,
             },
         )
     )
 
-    scale_vec = np.array([2.0, 3.0, 4.0], dtype=np.float32)
     center_vec = np.array([10.0, 20.0, 30.0], dtype=np.float32)
-    expected = base.coords * scale_vec + center_vec
+    expected = base.coords * np.float32(2.0) + center_vec
     np.testing.assert_array_equal(scaled.coords, expected)
 
 

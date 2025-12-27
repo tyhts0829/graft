@@ -76,7 +76,7 @@ def test_sphere_center_and_scale_affect_coords() -> None:
             "type_index": 1,  # zigzag
             "subdivisions": 0,
             "center": (10.0, 20.0, 30.0),
-            "scale": (2.0, 3.0, 4.0),
+            "scale": 3.0,
         },
     )
     realized = realize(g)

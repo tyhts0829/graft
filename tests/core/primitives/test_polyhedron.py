@@ -50,17 +50,17 @@ def test_polyhedron_center_and_scale_affect_coords() -> None:
     base = realize(Geometry.create("polyhedron", params={"type_index": 0}))
 
     center = np.array([10.0, 20.0, 30.0], dtype=np.float32)
-    scale = np.array([2.0, 3.0, 4.0], dtype=np.float32)
+    scale = 2.0
     moved = realize(
         Geometry.create(
             "polyhedron",
             params={
                 "type_index": 0,
                 "center": (float(center[0]), float(center[1]), float(center[2])),
-                "scale": (float(scale[0]), float(scale[1]), float(scale[2])),
+                "scale": float(scale),
             },
         )
     )
 
-    expected = base.coords * scale + center
+    expected = base.coords * np.float32(scale) + center
     np.testing.assert_allclose(moved.coords, expected, rtol=0.0, atol=1e-6)

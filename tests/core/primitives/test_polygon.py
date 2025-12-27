@@ -41,7 +41,7 @@ def test_polygon_center_and_scale_affect_coords() -> None:
         params={
             "n_sides": 4,
             "center": (10.0, 20.0, 30.0),
-            "scale": (2.0, 3.0, 4.0),
+            "scale": 2.0,
         },
     )
     realized = realize(g)

@@ -48,16 +48,16 @@ def test_grid_applies_center_and_scale() -> None:
             "nx": 1,
             "ny": 1,
             "center": (1.0, 2.0, 3.0),
-            "scale": (2.0, 4.0, 6.0),
+            "scale": 2.0,
         },
     )
     realized = realize(g)
 
     assert realized.coords.shape == (4, 3)
-    np.testing.assert_allclose(realized.coords[0], (0.0, 0.0, 3.0))
-    np.testing.assert_allclose(realized.coords[1], (0.0, 4.0, 3.0))
-    np.testing.assert_allclose(realized.coords[2], (0.0, 0.0, 3.0))
-    np.testing.assert_allclose(realized.coords[3], (2.0, 0.0, 3.0))
+    np.testing.assert_allclose(realized.coords[0], (0.0, 1.0, 3.0))
+    np.testing.assert_allclose(realized.coords[1], (0.0, 3.0, 3.0))
+    np.testing.assert_allclose(realized.coords[2], (0.0, 1.0, 3.0))
+    np.testing.assert_allclose(realized.coords[3], (2.0, 1.0, 3.0))
 
 
 def test_grid_is_empty_when_both_zero() -> None:
