@@ -16,7 +16,7 @@ from grafix.core.parameters.persistence import default_param_store_path
 from grafix.core.layer import LayerStyleDefaults
 from grafix.core.pipeline import RealizedLayer
 from grafix.export.svg import export_svg
-from grafix.export.rasterize_svg import (
+from grafix.export.image import (
     default_png_output_path,
     png_output_size,
     rasterize_svg_to_png,
