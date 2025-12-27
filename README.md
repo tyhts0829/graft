@@ -1,4 +1,4 @@
-![](data/readme/readme.png)
+![](docs/readme/readme.png)
 
 Grafix is a lightweight toolkit for building line-based geometries, applying chained effects, and viewing the result in real time.
 
