@@ -7,7 +7,7 @@ CANVAS_HEIGHT = 297
 # TEXTS
 TITLE = "GRAFIX"
 SUBTITLE = "A Python-based creative coding framework"
-FUNC_TEXT = "polyhedron()       fill()       displace()"
+FUNC_TEXT = "polyhedron()                    fill()                    displace()"
 DESCRIPTION = """
     This framework approaches visual design with an audio mindset.
     A minimal, line-based geometry engine keeps the representation intentionally simple,
