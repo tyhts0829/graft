@@ -32,6 +32,7 @@ class EffectRegistry:
         self._items: dict[str, EffectFunc] = {}
         self._meta: dict[str, dict[str, ParamMeta]] = {}
         self._defaults: dict[str, dict[str, Any]] = {}
+        self._n_inputs: dict[str, int] = {}
 
     def _register(
         self,
@@ -39,6 +40,7 @@ class EffectRegistry:
         func: EffectFunc,
         *,
         overwrite: bool = True,
+        n_inputs: int = 1,
         meta: dict[str, ParamMeta] | None = None,
         defaults: dict[str, Any] | None = None,
     ) -> None:
@@ -52,6 +54,7 @@ class EffectRegistry:
         if not overwrite and name in self._items:
             raise ValueError(f"effect '{name}' は既に登録されている")
         self._items[name] = func
+        self._n_inputs[name] = int(n_inputs)
         if meta is not None:
             self._meta[name] = meta
         if defaults is not None:
@@ -97,6 +100,10 @@ class EffectRegistry:
         """op 名に対応するデフォルト引数辞書を取得する。"""
         return dict(self._defaults.get(name, {}))
 
+    def get_n_inputs(self, name: str) -> int:
+        """op 名に対応する入力 Geometry 数（arity）を返す。"""
+        return int(self._n_inputs.get(name, 1))
+
 
 effect_registry = EffectRegistry()
 """グローバルな effect レジストリインスタンス。"""
@@ -106,6 +113,7 @@ def effect(
     func: Callable[..., RealizedGeometry] | None = None,
     *,
     overwrite: bool = True,
+    n_inputs: int = 1,
     meta: dict[str, ParamMeta] | None = None,
 ):
     """グローバル effect レジストリ用デコレータ。
@@ -128,6 +136,10 @@ def effect(
 
     if meta is not None and "bypass" in meta:
         raise ValueError("effect の予約引数 'bypass' は meta に含められない")
+
+    n_inputs_i = int(n_inputs)
+    if n_inputs_i < 1:
+        raise ValueError("n_inputs は 1 以上である必要がある")
 
     def _defaults_from_signature(
         f: Callable[..., RealizedGeometry],
@@ -187,6 +199,7 @@ def effect(
             f.__name__,
             wrapper,
             overwrite=overwrite,
+            n_inputs=n_inputs_i,
             meta=meta_with_bypass,
             defaults=defaults,
         )

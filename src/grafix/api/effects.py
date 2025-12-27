@@ -30,6 +30,7 @@ from grafix.core.effects import repeat as _effect_repeat  # noqa: F401
 from grafix.core.effects import offset as _effect_offset  # noqa: F401
 from grafix.core.effects import drop as _effect_drop  # noqa: F401
 from grafix.core.effects import trim as _effect_trim  # noqa: F401
+from grafix.core.effects import clip as _effect_clip  # noqa: F401
 from grafix.core.effects import twist as _effect_twist  # noqa: F401
 from grafix.core.effects import weave as _effect_weave  # noqa: F401
 from grafix.core.parameters import caller_site_id
@@ -54,13 +55,15 @@ class EffectBuilder:
     chain_id: str
     label_name: str | None = None
 
-    def __call__(self, geometry: Geometry) -> Geometry:
+    def __call__(self, geometry: Geometry, *more_geometries: Geometry) -> Geometry:
         """保持している effect 列を Geometry に適用する。
 
         Parameters
         ----------
         geometry : Geometry
-            入力 Geometry。
+            入力 Geometry（1 つ目）。
+        *more_geometries : Geometry
+            追加入力 Geometry（multi-input effect 用）。
 
         Returns
         -------
@@ -69,6 +72,7 @@ class EffectBuilder:
         """
         # effect チェーンは「入力 Geometry に対して、steps を順番に wrap していく」だけの処理。
         # ここでは実体変換は行わず、あくまで Geometry DAG（レシピ）を構築する。
+        first_inputs = (geometry, *more_geometries)
         result = geometry
         for step_index, (op, params, site_id) in enumerate(self.steps):
             # site_id は「その effect ステップが宣言された呼び出し箇所」。
@@ -93,7 +97,20 @@ class EffectBuilder:
 
             # 直前までの result を inputs として 1 段 effect ノードを積む。
             # これを steps の数だけ繰り返すことでチェーン全体の DAG になる。
-            result = Geometry.create(op=op, inputs=(result,), params=resolved)
+            n_inputs = int(effect_registry.get_n_inputs(op))
+            if step_index == 0:
+                if len(first_inputs) != n_inputs:
+                    raise TypeError(
+                        f"effect {op!r} は入力 Geometry を {n_inputs} 個必要とします"
+                    )
+                inputs = first_inputs
+            else:
+                if n_inputs != 1:
+                    raise TypeError(
+                        f"multi-input effect はチェーンの先頭にのみ使用できます: {op!r}"
+                    )
+                inputs = (result,)
+            result = Geometry.create(op=op, inputs=inputs, params=resolved)
         return result
 
     def __getattr__(self, name: str) -> Callable[..., "EffectBuilder"]:

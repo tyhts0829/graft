@@ -101,7 +101,7 @@ class _G(Protocol):
         ...
 
 class _EffectBuilder(Protocol):
-    def __call__(self, geometry: Geometry) -> Geometry:
+    def __call__(self, geometry: Geometry, *more_geometries: Geometry) -> Geometry:
         """保持している effect 列を Geometry に適用する。"""
         ...
     def affine(self, *, bypass: bool = ..., auto_center: bool = ..., pivot: Vec3 = ..., rotation: Vec3 = ..., scale: Vec3 = ..., delta: Vec3 = ...) -> _EffectBuilder:
@@ -115,6 +115,16 @@ class _EffectBuilder(Protocol):
             rotation: 各軸の回転角 [deg]（rx, ry, rz）
             scale: 各軸の倍率（sx, sy, sz）
             delta: 最後に適用する平行移動量 [mm]（dx, dy, dz）
+        """
+        ...
+    def clip(self, *, bypass: bool = ..., mode: str = ..., draw_outline: bool = ...) -> _EffectBuilder:
+        """
+        XY 平面へ整列した上で、閉曲線マスクで線分列をクリップする。
+
+        引数:
+            bypass: bool
+            mode: `"inside"` はマスク内側だけ残す
+            draw_outline: True のとき、マスク輪郭を追加で出力に含める
         """
         ...
     def collapse(self, *, bypass: bool = ..., intensity: float = ..., subdivisions: int = ...) -> _EffectBuilder:
@@ -154,7 +164,7 @@ class _EffectBuilder(Protocol):
             t: 時間オフセット（位相）
         """
         ...
-    def drop(self, *, bypass: bool = ..., interval: int = ..., index_offset: int = ..., min_length: float = ..., max_length: float = ..., probability: float = ..., by: str = ..., keep_mode: str = ..., seed: int = ...) -> _EffectBuilder:
+    def drop(self, *, bypass: bool = ..., interval: int = ..., index_offset: int = ..., min_length: float = ..., max_length: float = ..., probability_base: Vec3 = ..., probability_slope: Vec3 = ..., by: str = ..., keep_mode: str = ..., seed: int = ...) -> _EffectBuilder:
         """
         線や面を条件で間引く。
 
@@ -164,10 +174,11 @@ class _EffectBuilder(Protocol):
             index_offset: interval 判定の開始オフセット
             min_length: この長さ以下の線を対象とする
             max_length: この長さ以上の線を対象とする
-            probability: 各線を確率的に対象とする比率
+            probability_base: ジオメトリ bbox の中心（正規化座標 t=0）における drop 確率（軸別）
+            probability_slope: 正規化座標 t∈[-1,+1] に対する確率勾配（軸別）
             by: 判定単位
             keep_mode: "drop": 条件に一致した線を捨てる
-            seed: probability 使用時の乱数シード
+            seed: probability_* 使用時の乱数シード
         """
         ...
     def extrude(self, *, bypass: bool = ..., delta: Vec3 = ..., scale: float = ..., subdivisions: int = ..., center_mode: str = ...) -> _EffectBuilder:
@@ -369,6 +380,16 @@ class _E(Protocol):
             delta: 最後に適用する平行移動量 [mm]（dx, dy, dz）
         """
         ...
+    def clip(self, *, bypass: bool = ..., mode: str = ..., draw_outline: bool = ...) -> _EffectBuilder:
+        """
+        XY 平面へ整列した上で、閉曲線マスクで線分列をクリップする。
+
+        引数:
+            bypass: bool
+            mode: `"inside"` はマスク内側だけ残す
+            draw_outline: True のとき、マスク輪郭を追加で出力に含める
+        """
+        ...
     def collapse(self, *, bypass: bool = ..., intensity: float = ..., subdivisions: int = ...) -> _EffectBuilder:
         """
         線分を細分化してノイズで崩す（非接続）。
@@ -406,7 +427,7 @@ class _E(Protocol):
             t: 時間オフセット（位相）
         """
         ...
-    def drop(self, *, bypass: bool = ..., interval: int = ..., index_offset: int = ..., min_length: float = ..., max_length: float = ..., probability: float = ..., by: str = ..., keep_mode: str = ..., seed: int = ...) -> _EffectBuilder:
+    def drop(self, *, bypass: bool = ..., interval: int = ..., index_offset: int = ..., min_length: float = ..., max_length: float = ..., probability_base: Vec3 = ..., probability_slope: Vec3 = ..., by: str = ..., keep_mode: str = ..., seed: int = ...) -> _EffectBuilder:
         """
         線や面を条件で間引く。
 
@@ -416,10 +437,11 @@ class _E(Protocol):
             index_offset: interval 判定の開始オフセット
             min_length: この長さ以下の線を対象とする
             max_length: この長さ以上の線を対象とする
-            probability: 各線を確率的に対象とする比率
+            probability_base: ジオメトリ bbox の中心（正規化座標 t=0）における drop 確率（軸別）
+            probability_slope: 正規化座標 t∈[-1,+1] に対する確率勾配（軸別）
             by: 判定単位
             keep_mode: "drop": 条件に一致した線を捨てる
-            seed: probability 使用時の乱数シード
+            seed: probability_* 使用時の乱数シード
         """
         ...
     def extrude(self, *, bypass: bool = ..., delta: Vec3 = ..., scale: float = ..., subdivisions: int = ..., center_mode: str = ...) -> _EffectBuilder:

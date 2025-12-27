@@ -330,7 +330,7 @@ def _render_g_protocol(primitive_names: list[str]) -> str:
 def _render_effect_builder_protocol(effect_names: list[str]) -> str:
     lines: list[str] = []
     lines.append("class _EffectBuilder(Protocol):\n")
-    lines.append("    def __call__(self, geometry: Geometry) -> Geometry:\n")
+    lines.append("    def __call__(self, geometry: Geometry, *more_geometries: Geometry) -> Geometry:\n")
     lines.append('        """保持している effect 列を Geometry に適用する。"""\n')
     lines.append("        ...\n")
 
