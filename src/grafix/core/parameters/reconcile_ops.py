@@ -73,6 +73,12 @@ def migrate_group(store: ParamStore, old_group: GroupKey, new_group: GroupKey) -
 
     ordinals.migrate(op, str(old_site_id), str(new_site_id))
 
+    collapsed = store._collapsed_headers_ref()
+    old_collapse_key = f"primitive:{op}:{old_site_id}"
+    if old_collapse_key in collapsed:
+        collapsed.discard(old_collapse_key)
+        collapsed.add(f"primitive:{op}:{new_site_id}")
+
     for old_key in _group_keys(store, op=op, site_id=str(old_site_id)):
         new_key = ParameterKey(op=op, site_id=str(new_site_id), arg=str(old_key.arg))
         old_meta = store._meta.get(old_key)
@@ -116,4 +122,3 @@ def _group_keys(store: ParamStore, *, op: str, site_id: str) -> list[ParameterKe
 
 
 __all__ = ["GroupKey", "reconcile_loaded_groups_for_runtime", "migrate_group"]
-

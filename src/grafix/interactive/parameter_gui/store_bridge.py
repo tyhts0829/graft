@@ -303,6 +303,7 @@ def render_store_parameter_table(
         effect_step_ordinal_by_site=effect_step_ordinal_by_site,
         midi_learn_state=midi_learn_state,
         midi_last_cc_change=midi_last_cc_change,
+        collapsed_headers=store._collapsed_headers_ref(),
     )
 
     # --- 7) 変更があった場合だけ store へ反映 ---

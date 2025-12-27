@@ -44,6 +44,8 @@ def prune_groups(store: ParamStore, groups_to_remove: Iterable[GroupKey]) -> Non
     labels = store._labels_ref()
     ordinals = store._ordinals_ref()
     effects = store._effects_ref()
+    collapsed = store._collapsed_headers_ref()
+    chain_ids_before = set(effects.chain_ordinals().keys())
 
     affected_ops: set[str] = set()
 
@@ -64,6 +66,7 @@ def prune_groups(store: ParamStore, groups_to_remove: Iterable[GroupKey]) -> Non
         affected_ops.add(str(op))
         ordinals.delete(op, site_id)
         effects.delete_step(op, site_id)
+        collapsed.discard(f"primitive:{op}:{site_id}")
         runtime.loaded_groups.discard((str(op), str(site_id)))
         runtime.observed_groups.discard((str(op), str(site_id)))
 
@@ -71,7 +74,9 @@ def prune_groups(store: ParamStore, groups_to_remove: Iterable[GroupKey]) -> Non
         ordinals.compact(op)
 
     effects.prune_unused_chains()
+    chain_ids_after = set(effects.chain_ordinals().keys())
+    for removed_chain_id in chain_ids_before - chain_ids_after:
+        collapsed.discard(f"effect_chain:{removed_chain_id}")
 
 
 __all__ = ["prune_stale_loaded_groups", "prune_groups"]
-

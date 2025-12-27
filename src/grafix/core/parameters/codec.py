@@ -78,6 +78,9 @@ def encode_param_store(store: ParamStore) -> dict[str, Any]:
             }
             for k, v in store._explicit_by_key.items()
         ],
+        "ui": {
+            "collapsed_headers": sorted(store._collapsed_headers_ref()),
+        },
     }
 
 
@@ -174,6 +177,16 @@ def decode_param_store(obj: object) -> ParamStore:
         except Exception:
             continue
         store._explicit_by_key[key] = bool(item.get("explicit", False))
+
+    ui_obj = obj.get("ui")
+    if isinstance(ui_obj, dict):
+        collapsed = ui_obj.get("collapsed_headers", [])
+        if isinstance(collapsed, list):
+            for item in collapsed:
+                try:
+                    store._collapsed_headers_ref().add(str(item))
+                except Exception:
+                    continue
 
     # explicit=True のキーは再起動時に override=False から開始する。
     for key, is_explicit in store._explicit_by_key.items():

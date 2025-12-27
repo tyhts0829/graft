@@ -10,6 +10,7 @@ from grafix.core.parameters.key import ParameterKey
 from grafix.core.parameters.view import ParameterRow
 
 from .group_blocks import group_blocks_from_rows
+from .group_blocks import GroupBlock
 from .labeling import format_param_row_label
 from .midi_learn import MidiLearnState
 from .rules import ui_rules_for_row
@@ -88,6 +89,23 @@ def _header_kind_for_group_id(group_id: tuple[str, object]) -> str | None:
         return "effect"
     if group_type in {"style", "primitive"}:
         return group_type
+    return None
+
+
+def _collapse_key_for_block(block: GroupBlock) -> str | None:
+    """ブロックの折りたたみ永続キーを返す。"""
+
+    group_type = str(block.group_id[0])
+    if group_type == "style":
+        return "style:global"
+    if group_type == "effect_chain":
+        chain_id = str(block.group_id[1])
+        return f"effect_chain:{chain_id}"
+    if group_type == "primitive":
+        if not block.items:
+            return None
+        row0 = block.items[0].row
+        return f"primitive:{row0.op}:{row0.site_id}"
     return None
 
 
@@ -463,6 +481,7 @@ def render_parameter_table(
     effect_step_ordinal_by_site: Mapping[tuple[str, str], int] | None = None,
     midi_learn_state: MidiLearnState | None = None,
     midi_last_cc_change: tuple[int, int] | None = None,
+    collapsed_headers: set[str] | None = None,
 ) -> tuple[bool, list[ParameterRow]]:
     """ParameterRow の列を 4 列テーブルとして描画し、更新後の rows を返す。"""
 
@@ -511,6 +530,22 @@ def render_parameter_table(
             # visible=None なので close ボタン無しで常に表示する。
             group_open = True
             if block.header:
+                collapse_key = (
+                    None if collapsed_headers is None else _collapse_key_for_block(block)
+                )
+                if collapsed_headers is not None and collapse_key is not None:
+                    want_open = collapse_key not in collapsed_headers
+                    set_next_item_open = getattr(imgui, "set_next_item_open", None)
+                    if callable(set_next_item_open):
+                        cond_always = getattr(imgui, "ALWAYS", None)
+                        try:
+                            if cond_always is None:
+                                set_next_item_open(bool(want_open))
+                            else:
+                                set_next_item_open(bool(want_open), cond_always)
+                        except TypeError:
+                            set_next_item_open(bool(want_open))
+
                 color_count = 0
                 header_kind = _header_kind_for_group_id(block.group_id)
                 if header_kind is not None:
@@ -531,6 +566,12 @@ def render_parameter_table(
                 finally:
                     if color_count:
                         imgui.pop_style_color(color_count)
+
+                if collapsed_headers is not None and collapse_key is not None:
+                    if group_open:
+                        collapsed_headers.discard(collapse_key)
+                    else:
+                        collapsed_headers.add(collapse_key)
 
             if not group_open:
                 # 折りたたみ中は描画しないが、rows_after の長さを揃えるため “変更なし” として返す。

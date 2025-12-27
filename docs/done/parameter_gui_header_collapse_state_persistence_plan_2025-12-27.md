@@ -93,7 +93,7 @@
   - `render_store_parameter_table()`（`store_bridge.py`）が `store` の set を渡す
 - `imgui.set_next_item_open()` の pyimgui API を確認し、無ければ代替（`TREE_NODE_DEFAULT_OPEN` の扱い含む）を選ぶ
 
-### 4) reconcile/prune への追従（reconcile は採用 / prune は任意）
+### 4) reconcile/prune への追従（採用）
 
 #### reconcile（採用）
 
@@ -103,37 +103,37 @@ site_id 変更を吸収する reconcile が既にあるため、Primitive の折
   - old: `primitive:{op}:{old_site_id}` が collapsed なら
   - new: `primitive:{op}:{new_site_id}` へ移す（コピー or 移動。移動でよい）
 
-#### prune（任意）
+#### prune（採用）
 
-削除したグループの collapse state は残っても実害は少ないが、ファイル肥大化を避けたいなら掃除する。
+削除したグループ/チェーンの collapse state を掃除し、ファイル肥大化とゴミ状態の蓄積を防ぐ。
 
 - `src/grafix/core/parameters/prune_ops.py:prune_groups()`
   - 削除対象 (op, site_id) から `primitive:{op}:{site_id}` を削除
-  - effect chain は steps から逆引きが必要になるので、ここでは触らない（必要なら別途）
+  - unused になった chain_id について `effect_chain:{chain_id}` も削除
 
 ## テスト計画
 
 - `tests/core/parameters/`
   - [ ] codec roundtrip: `ui.collapsed_headers` が保存/復元される
   - [ ] `migrate_group()` で Primitive collapse state が追従する（reconcile は採用）
-  - [ ] `prune_groups()` で Primitive collapse state が掃除される（prune を入れる場合）
+  - [ ] `prune_groups()` で collapse state が掃除される（prune は採用）
 - `tests/interactive/parameter_gui/`
   - [ ] `_collapse_key_for_block()` の単体テスト（ImGui を起動せずに検証）
 
 ## 作業チェックリスト（実装順）
 
 - [x] 永続キー仕様を確定（`primitive:{op}:{site_id}` / `effect_chain:{chain_id}` / `style:global`）
-- [ ] ParamStore に `collapsed_headers` を追加（永続データ）
-- [ ] codec に `ui.collapsed_headers` を追加（encode/decode）
-- [ ] table に復元/更新を実装（pyimgui API 確認含む）
-- [ ] reconcile 追従を実装（採用）
-- [ ] prune 掃除を入れるか決めて実装（任意）
-- [ ] テスト追加（core + interactive）
-- [ ] `PYTHONPATH=src pytest -q tests/core/parameters tests/interactive/parameter_gui` を通す
+- [x] ParamStore に `collapsed_headers` を追加（永続データ）
+- [x] codec に `ui.collapsed_headers` を追加（encode/decode）
+- [x] table に復元/更新を実装（pyimgui API 確認含む）
+- [x] reconcile 追従を実装（採用）
+- [x] prune 掃除を実装（採用）
+- [x] テスト追加（core + interactive）
+- [x] `PYTHONPATH=src pytest -q tests/core/parameters tests/interactive/parameter_gui` を通す
 
 ## 決定事項 / 未決事項
 
 - [x] 単位は「スクリプトごと（ParamStore ごと）」
 - [x] Primitive は site_id ベースで永続化（ordinal は使わない）
 - [x] reconcile に追従する（site_id 変更時も折りたたみ状態を維持）
-- [ ] prune の掃除は必要？（残っても実害は小さいので任意）
+- [x] prune の掃除も行う（削除グループ + unused chain を掃除）

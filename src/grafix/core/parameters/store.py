@@ -33,6 +33,7 @@ class ParamStore:
         self._labels = ParamLabels()
         self._ordinals = GroupOrdinals()
         self._effects = EffectChainIndex()
+        self._collapsed_headers: set[str] = set()
 
         # 永続化しない実行時情報（loaded/observed/reconcile-applied）。
         self._runtime = ParamStoreRuntime()
@@ -118,6 +119,9 @@ class ParamStore:
 
     def _effects_ref(self) -> EffectChainIndex:
         return self._effects
+
+    def _collapsed_headers_ref(self) -> set[str]:
+        return self._collapsed_headers
 
     def _runtime_ref(self) -> ParamStoreRuntime:
         return self._runtime
