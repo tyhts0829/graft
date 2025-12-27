@@ -250,7 +250,7 @@ class _EffectBuilder(Protocol):
             keep_original: True のときオフセット結果に加えて元のポリラインも出力に含める
         """
         ...
-    def partition(self, *, bypass: bool = ..., site_count: int = ..., seed: int = ...) -> _EffectBuilder:
+    def partition(self, *, bypass: bool = ..., site_count: int = ..., seed: int = ..., site_density_base: Vec3 = ..., site_density_slope: Vec3 = ..., auto_center: bool = ..., pivot: Vec3 = ...) -> _EffectBuilder:
         """
         偶奇規則の平面領域を Voronoi 分割し、閉ループ群を返す。
 
@@ -258,6 +258,10 @@ class _EffectBuilder(Protocol):
             bypass: bool
             site_count: Voronoi のサイト数
             seed: 乱数シード（再現性）
+            site_density_base: サイト密度（採用確率）の中心値（軸別）
+            site_density_slope: 正規化座標 t∈[-1,+1] に対する密度勾配（軸別）
+            auto_center: True のとき `pivot` を無視し、入力 bbox の中心を pivot として扱う
+            pivot: auto_center=False のときの pivot（ワールド座標）
         """
         ...
     def repeat(self, *, bypass: bool = ..., count: int = ..., cumulative_scale: bool = ..., cumulative_offset: bool = ..., cumulative_rotate: bool = ..., offset: Vec3 = ..., rotation_step: Vec3 = ..., scale: Vec3 = ..., curve: float = ..., auto_center: bool = ..., pivot: Vec3 = ...) -> _EffectBuilder:
@@ -513,7 +517,7 @@ class _E(Protocol):
             keep_original: True のときオフセット結果に加えて元のポリラインも出力に含める
         """
         ...
-    def partition(self, *, bypass: bool = ..., site_count: int = ..., seed: int = ...) -> _EffectBuilder:
+    def partition(self, *, bypass: bool = ..., site_count: int = ..., seed: int = ..., site_density_base: Vec3 = ..., site_density_slope: Vec3 = ..., auto_center: bool = ..., pivot: Vec3 = ...) -> _EffectBuilder:
         """
         偶奇規則の平面領域を Voronoi 分割し、閉ループ群を返す。
 
@@ -521,6 +525,10 @@ class _E(Protocol):
             bypass: bool
             site_count: Voronoi のサイト数
             seed: 乱数シード（再現性）
+            site_density_base: サイト密度（採用確率）の中心値（軸別）
+            site_density_slope: 正規化座標 t∈[-1,+1] に対する密度勾配（軸別）
+            auto_center: True のとき `pivot` を無視し、入力 bbox の中心を pivot として扱う
+            pivot: auto_center=False のときの pivot（ワールド座標）
         """
         ...
     def repeat(self, *, bypass: bool = ..., count: int = ..., cumulative_scale: bool = ..., cumulative_offset: bool = ..., cumulative_rotate: bool = ..., offset: Vec3 = ..., rotation_step: Vec3 = ..., scale: Vec3 = ..., curve: float = ..., auto_center: bool = ..., pivot: Vec3 = ...) -> _EffectBuilder:

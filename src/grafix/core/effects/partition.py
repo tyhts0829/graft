@@ -19,6 +19,10 @@ partition_meta = {
     # imgui.slider_int は内部で「min/max が int32 の半分レンジ以内」を要求するため、
     # GUI 用レンジは控えめにし、必要ならコード側で任意の seed を指定する。
     "seed": ParamMeta(kind="int", ui_min=0, ui_max=1_073_741_823),
+    "site_density_base": ParamMeta(kind="vec3", ui_min=0.0, ui_max=1.0),
+    "site_density_slope": ParamMeta(kind="vec3", ui_min=-1.0, ui_max=1.0),
+    "auto_center": ParamMeta(kind="bool"),
+    "pivot": ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0),
 }
 
 
@@ -208,6 +212,10 @@ def partition(
     *,
     site_count: int = 12,
     seed: int = 0,
+    site_density_base: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    site_density_slope: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    auto_center: bool = True,
+    pivot: tuple[float, float, float] = (0.0, 0.0, 0.0),
 ) -> RealizedGeometry:
     """偶奇規則の平面領域を Voronoi 分割し、閉ループ群を返す。
 
@@ -219,6 +227,15 @@ def partition(
         Voronoi のサイト数。1 未満は 1 扱い。
     seed : int, default 0
         乱数シード（再現性）。
+    site_density_base : tuple[float, float, float], default (0.0, 0.0, 0.0)
+        サイト密度（採用確率）の中心値（軸別）。各成分は 0.0〜1.0。
+        全成分が 0.0 かつ `site_density_slope` が全て 0.0 の場合、密度制御は無効。
+    site_density_slope : tuple[float, float, float], default (0.0, 0.0, 0.0)
+        正規化座標 t∈[-1,+1] に対する密度勾配（軸別）。
+    auto_center : bool, default True
+        True のとき `pivot` を無視し、入力 bbox の中心を pivot として扱う。
+    pivot : tuple[float, float, float], default (0.0, 0.0, 0.0)
+        auto_center=False のときの pivot（ワールド座標）。
 
     Returns
     -------
@@ -303,27 +320,150 @@ def partition(
     site_count = max(1, int(site_count))
     rng = np.random.default_rng(int(seed))
 
+    try:
+        base_x = float(site_density_base[0])
+        base_y = float(site_density_base[1])
+        base_z = float(site_density_base[2])
+    except Exception:
+        base_x = 0.0
+        base_y = 0.0
+        base_z = 0.0
+
+    if not np.isfinite(base_x):
+        base_x = 0.0
+    if not np.isfinite(base_y):
+        base_y = 0.0
+    if not np.isfinite(base_z):
+        base_z = 0.0
+
+    if base_x < 0.0:
+        base_x = 0.0
+    elif base_x > 1.0:
+        base_x = 1.0
+    if base_y < 0.0:
+        base_y = 0.0
+    elif base_y > 1.0:
+        base_y = 1.0
+    if base_z < 0.0:
+        base_z = 0.0
+    elif base_z > 1.0:
+        base_z = 1.0
+
+    try:
+        slope_x = float(site_density_slope[0])
+        slope_y = float(site_density_slope[1])
+        slope_z = float(site_density_slope[2])
+    except Exception:
+        slope_x = 0.0
+        slope_y = 0.0
+        slope_z = 0.0
+
+    if not np.isfinite(slope_x):
+        slope_x = 0.0
+    if not np.isfinite(slope_y):
+        slope_y = 0.0
+    if not np.isfinite(slope_z):
+        slope_z = 0.0
+
+    density_enabled = (
+        (base_x != 0.0)
+        or (base_y != 0.0)
+        or (base_z != 0.0)
+        or (slope_x != 0.0)
+        or (slope_y != 0.0)
+        or (slope_z != 0.0)
+    )
+
+    if density_enabled:
+        mins3 = np.min(base.coords, axis=0).astype(np.float64, copy=False)
+        maxs3 = np.max(base.coords, axis=0).astype(np.float64, copy=False)
+        bbox_center = (mins3 + maxs3) * 0.5
+        extent3 = (maxs3 - mins3) * 0.5
+
+        inv_extent3 = np.zeros((3,), dtype=np.float64)
+        for k in range(3):
+            extent_k = float(extent3[k])
+            inv_extent3[k] = 0.0 if extent_k < 1e-9 else 1.0 / extent_k
+
+        if auto_center:
+            pivot3 = bbox_center
+        else:
+            try:
+                pivot3 = np.array(
+                    [float(pivot[0]), float(pivot[1]), float(pivot[2])],
+                    dtype=np.float64,
+                )
+            except Exception:
+                pivot3 = np.zeros((3,), dtype=np.float64)
+            if not np.all(np.isfinite(pivot3)):
+                pivot3 = np.zeros((3,), dtype=np.float64)
+
+        o3 = basis.origin.astype(np.float64, copy=False)
+        u3 = basis.u.astype(np.float64, copy=False)
+        v3 = basis.v.astype(np.float64, copy=False)
+
+        def _p_eff_for_xy(xy: np.ndarray) -> np.ndarray:
+            p3 = o3[None, :] + xy[:, 0:1] * u3[None, :] + xy[:, 1:2] * v3[None, :]
+            t = (p3 - pivot3[None, :]) * inv_extent3[None, :]
+            t = np.clip(t, -1.0, 1.0)
+            tx = t[:, 0]
+            ty = t[:, 1]
+            tz = t[:, 2]
+
+            p_x = np.clip(base_x + slope_x * tx, 0.0, 1.0)
+            p_y = np.clip(base_y + slope_y * ty, 0.0, 1.0)
+            p_z = np.clip(base_z + slope_z * tz, 0.0, 1.0)
+            return 1.0 - (1.0 - p_x) * (1.0 - p_y) * (1.0 - p_z)
+
     minx, miny, maxx, maxy = region.bounds
     width = float(maxx) - float(minx)
     height = float(maxy) - float(miny)
 
     pts: list[tuple[float, float]] = []
     if width > 0.0 and height > 0.0:
-        trials_left = max(1000, site_count * 50)
+        trials_per_phase = max(1000, site_count * 50)
         batch = max(256, site_count * 20)
+
+        def _append_points(xs: np.ndarray, ys: np.ndarray) -> None:
+            need = int(site_count) - len(pts)
+            if need <= 0:
+                return
+            for x, y in zip(xs[:need], ys[:need], strict=False):
+                pts.append((float(x), float(y)))
+
+        trials_left = int(trials_per_phase)
         while len(pts) < site_count and trials_left > 0:
             n = min(int(batch), int(trials_left))
             xs = float(minx) + rng.random(n) * width
             ys = float(miny) + rng.random(n) * height
-            mask = shapely.contains_xy(region, xs, ys)
+            inside = shapely.contains_xy(region, xs, ys)
+            if not np.any(inside):
+                trials_left -= n
+                continue
 
-            if np.any(mask):
-                accepted = np.stack([xs[mask], ys[mask]], axis=1)
-                need = int(site_count) - len(pts)
-                for x, y in accepted[:need]:
-                    pts.append((float(x), float(y)))
+            xs_in = xs[inside]
+            ys_in = ys[inside]
+            if density_enabled:
+                xy = np.stack([xs_in, ys_in], axis=1).astype(np.float64, copy=False)
+                p_eff = _p_eff_for_xy(xy)
+                take = rng.random(int(p_eff.shape[0])) < p_eff
+                _append_points(xs_in[take], ys_in[take])
+            else:
+                _append_points(xs_in, ys_in)
 
             trials_left -= n
+
+        # top-up: density で足りない場合は、一様サンプリングで埋めて site_count を満たす。
+        if density_enabled and len(pts) < site_count:
+            trials_left = int(trials_per_phase)
+            while len(pts) < site_count and trials_left > 0:
+                n = min(int(batch), int(trials_left))
+                xs = float(minx) + rng.random(n) * width
+                ys = float(miny) + rng.random(n) * height
+                inside = shapely.contains_xy(region, xs, ys)
+                if np.any(inside):
+                    _append_points(xs[inside], ys[inside])
+                trials_left -= n
 
     if not pts:
         try:

@@ -89,41 +89,41 @@
 
 ### 1) meta / シグネチャ / docstring 更新
 
-- [ ] `src/grafix/core/effects/partition.py` の `partition_meta` に追加
-  - [ ] `site_density_base: ParamMeta(kind="vec3", ui_min=0.0, ui_max=1.0)`
-  - [ ] `site_density_slope: ParamMeta(kind="vec3", ui_min=-1.0, ui_max=1.0)`
-  - [ ] `auto_center: ParamMeta(kind="bool")`
-  - [ ] `pivot: ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0)`（仮レンジ）
-- [ ] `partition()` の引数に追加（型は `tuple[float,float,float]` / `bool`）
-- [ ] docstring に追加（auto_center と pivot の関係、密度制御が「サイト分布」を変える点）
+- [x] `src/grafix/core/effects/partition.py` の `partition_meta` に追加
+  - [x] `site_density_base: ParamMeta(kind="vec3", ui_min=0.0, ui_max=1.0)`
+  - [x] `site_density_slope: ParamMeta(kind="vec3", ui_min=-1.0, ui_max=1.0)`
+  - [x] `auto_center: ParamMeta(kind="bool")`
+  - [x] `pivot: ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0)`（仮レンジ）
+- [x] `partition()` の引数に追加（型は `tuple[float,float,float]` / `bool`）
+- [x] docstring に追加（auto_center と pivot の関係、密度制御が「サイト分布」を変える点）
 
 ### 2) `p_eff` 計算と候補点の採用
 
-- [ ] bbox（`base.coords`）から `bbox_center/extent/inv_extent` を計算
-- [ ] pivot を決定（auto_center なら bbox_center、そうでなければ user pivot）
-- [ ] region 内候補点（2D）をワールドへ lift して `p_eff` を計算
-  - [ ] `_lift_to_3d` をベースに batch vectorize（`o + x*u + y*v`）
-- [ ] `p_eff` による acceptance を追加し、`site_count` 個まで集める
-- [ ] `site_count` に満たない場合の top-up（一様採用）を追加
+- [x] bbox（`base.coords`）から `bbox_center/extent/inv_extent` を計算
+- [x] pivot を決定（auto_center なら bbox_center、そうでなければ user pivot）
+- [x] region 内候補点（2D）をワールドへ lift して `p_eff` を計算
+  - [x] `_lift_to_3d` をベースに batch vectorize（`o + x*u + y*v`）
+- [x] `p_eff` による acceptance を追加し、`site_count` 個まで集める
+- [x] `site_count` に満たない場合の top-up（一様採用）を追加
 
 ### 3) テスト
 
-- [ ] `tests/core/effects/test_partition.py` を追加
-  - [ ] shapely が無ければ skip
-  - [ ] 基本: 1 つの矩形ループ（XY 平面）を用意し、`seed` 固定で実行
-  - [ ] `site_density_*` 無効（既定）と有効（+X 側を強める）で、出力ループ centroid の x 分布が変わることを確認
-  - [ ] `auto_center=False` + `pivot` をずらすと、偏りの中心が変わることを確認
+- [x] `tests/core/effects/test_partition.py` を追加
+  - [x] shapely が無ければ skip
+  - [x] 基本: 1 つの矩形ループ（XY 平面）を用意し、`seed` 固定で実行
+  - [x] `site_density_*` 無効（既定）と有効（+X 側を強める）で、出力ループ centroid の x 分布が変わることを確認
+  - [x] `auto_center=False` + `pivot` をずらすと、偏りの中心が変わることを確認
 
 ### 4) stubs 再生成
 
-- [ ] `python -m tools.gen_g_stubs` を実行し、`src/grafix/api/__init__.pyi` を更新
-- [ ] `PYTHONPATH=src pytest -q tests/stubs/test_api_stub_sync.py` を通す
+- [x] `python -m tools.gen_g_stubs` を実行し、`src/grafix/api/__init__.pyi` を更新
+- [x] `PYTHONPATH=src pytest -q tests/stubs/test_api_stub_sync.py` を通す
 
 ### 5) 最小の検証コマンド
 
-- [ ] `PYTHONPATH=src pytest -q tests/core/effects/test_partition.py`
-- [ ] `ruff check src/grafix/core/effects/partition.py tests/core/effects/test_partition.py`
-- [ ] `mypy src/grafix/core/effects/partition.py`
+- [x] `PYTHONPATH=src pytest -q tests/core/effects/test_partition.py`
+- [ ] `ruff check src/grafix/core/effects/partition.py tests/core/effects/test_partition.py`（この環境では `ruff` が見つからない）
+- [x] `mypy src/grafix/core/effects/partition.py`
 
 ## 事前確認したい点（この仕様で進めてよい？）
 
