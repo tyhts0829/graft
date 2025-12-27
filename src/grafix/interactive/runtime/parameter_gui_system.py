@@ -1,6 +1,6 @@
 # どこで: `src/grafix/interactive/runtime/parameter_gui_system.py`。
 # 何を: Parameter GUI を「1フレーム描画できるサブシステム」として提供する。
-# なぜ: `src/grafix/api/run.py` の `run()` から GUI 初期化/描画/後始末を分離し、肥大化を防ぐため。
+# なぜ: `src/grafix/api/runner.py` の `run()` から GUI 初期化/描画/後始末を分離し、肥大化を防ぐため。
 
 from __future__ import annotations
 

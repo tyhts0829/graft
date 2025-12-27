@@ -1,6 +1,6 @@
 # どこで: `src/grafix/interactive/runtime/draw_window_system.py`。
 # 何を: `draw(t)` が返すシーンを描画ウィンドウへ描画するサブシステムを提供する。
-# なぜ: `src/grafix/api/run.py` の `run()` を「配線」に寄せ、描画責務を独立させるため。
+# なぜ: `src/grafix/api/runner.py` の `run()` を「配線」に寄せ、描画責務を独立させるため。
 
 from __future__ import annotations
 

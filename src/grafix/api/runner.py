@@ -1,5 +1,5 @@
 """
-どこで: `src/grafix/api/run.py`。公開 API のランナー実装。
+どこで: `src/grafix/api/runner.py`。公開 API のランナー実装。
 何を: pyglet + ModernGL を使い、`draw(t)` が返す Geometry/Layer/シーンをウィンドウに描画するランナーを提供する。
 なぜ: `main.py` を実行して実際に線をプレビューできる経路を用意するため。
 """

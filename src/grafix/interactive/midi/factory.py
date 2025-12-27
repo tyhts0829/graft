@@ -1,6 +1,6 @@
 # どこで: `src/grafix/interactive/midi/factory.py`。
 # 何を: port_name/mode に従って MidiController を生成する（auto 接続 / mido 有無を含む）。
-# なぜ: `src/grafix/api/run.py` を配線に寄せ、MIDI 依存ロジックを interactive 側に閉じ込めるため。
+# なぜ: `src/grafix/api/runner.py` を配線に寄せ、MIDI 依存ロジックを interactive 側に閉じ込めるため。
 
 from __future__ import annotations
 
@@ -44,4 +44,3 @@ def create_midi_controller(
             "midi_port_name を指定するには mido が必要です（pip で導入してください）。"
         ) from exc
     return MidiController(port_name, mode=mode, profile_name=profile_name)
-

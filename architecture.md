@@ -81,7 +81,7 @@ src/grafix/interactive     : pyglet + ModernGL + Parameter GUI（対話プレビ
 
 重要な「呼び出し順」は次。
 
-1. `src/grafix/api/run.py:run()` が `ParamStore` とウィンドウサブシステムを作る
+1. `src/grafix/api/runner.py:run()` が `ParamStore` とウィンドウサブシステムを作る
 2. `src/grafix/interactive/runtime/window_loop.py:MultiWindowLoop.run()` がフレームループを回す
 3. 毎フレーム `DrawWindowSystem.draw_frame()` が
    - Style（背景色/線幅/線色）を `ParamStore` から解決し
@@ -304,7 +304,7 @@ interactive の 1 フレーム描画は、概ね次の順で行う。
   - flip の呼び出し箇所を 1 箇所に集約し、点滅や更新競合を避ける
   - GUI と描画を同一 FPS で同期させやすくする
 
-`src/grafix/api/run.py` はこのループの “配線” に徹し、
+`src/grafix/api/runner.py` はこのループの “配線” に徹し、
 
 - 描画: `DrawWindowSystem`（`src/grafix/interactive/runtime/draw_window_system.py`）
 - GUI: `ParameterGUIWindowSystem`（`src/grafix/interactive/runtime/parameter_gui_system.py`）

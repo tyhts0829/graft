@@ -17,6 +17,6 @@ __all__ = ["E", "Export", "G", "L", "effect", "primitive", "run"]
 def run(*args, **kwargs):
     """公開 run API へのラッパ（遅延インポートで GUI 依存を後回しにする）。"""
 
-    from .run import run as _run
+    from .runner import run as _run
 
     return _run(*args, **kwargs)
