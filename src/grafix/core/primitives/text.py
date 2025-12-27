@@ -230,7 +230,10 @@ class TextRenderer:
     ) -> tuple:
         """平坦化済みのグリフコマンド（`RecordingPen.value` 互換タプル）を返す。"""
         from fontPens.flattenPen import FlattenPen  # type: ignore[import-untyped]
-        from fontTools.pens.recordingPen import RecordingPen  # type: ignore[import-untyped]
+        from fontTools.pens.recordingPen import (  # type: ignore[import-untyped]
+            DecomposingRecordingPen,
+            RecordingPen,
+        )
 
         resolved = font_path.resolve()
         key = (
@@ -269,8 +272,17 @@ class TextRenderer:
             cls._glyph_cache.set(key, tuple())
             return tuple()
 
-        rec = RecordingPen()
-        glyph.draw(rec)
+        rec = DecomposingRecordingPen(glyph_set, reverseFlipped=True)
+        try:
+            glyph.draw(rec)
+        except rec.MissingComponentError:  # type: ignore[attr-defined]
+            logger.warning(
+                "Glyph '%s' has missing components in font '%s'",
+                glyph_name,
+                str(resolved),
+            )
+            cls._glyph_cache.set(key, tuple())
+            return tuple()
 
         flat = RecordingPen()
         flatten_pen = FlattenPen(
