@@ -28,19 +28,12 @@ FOOTER = "PRIMITIVES | EFFECTS | LAYERS | MIDI | MODULATION | PARAMETER GUI | RE
 
 
 def draw(t: float):
-    # 文字配置
     title = G(name="title").text(text=TITLE)
-    title_filled = E(name="title_fill").fill()(title)
+    title_effed = E(name="title_eff").fill()(title)
     subtitle = G(name="subtitle").text(text=SUBTITLE)
-    subtitle_filled = E(name="subtitle_fill").fill()(subtitle)
-    func_text = G(name="func_text").text(text=FUNC_TEXT)
-    func_text_filled = E(name="func_text_fill").fill()(func_text)
-    description = G(name="description").text(text=DESCRIPTION)
-    description_filled = E(name="description_fill").fill()(description)
-    footer = G(name="footer").text(text=FOOTER)
-    footer_filled = E(name="footer_fill").fill()(footer)
+    subtitle_effed = E(name="subtitle_eff").fill()(subtitle)
+    line = G.line()
 
-    # 形状配置
     poly = G(name="poly").polyhedron()
     poly_affine = E(name="poly_affine").affine()
     poly_fill = E(name="poly_fill").translate().fill()
@@ -50,36 +43,45 @@ def draw(t: float):
     poly_filled = poly_fill(poly_affined)
     poly_displaced = poly_displace(poly_filled)
 
-    footer_square = G.polygon()
-    foooter_eff = E(name="fill_footer").fill().repeat()
-    footer = foooter_eff(footer_square)
+    func_text = G(name="func_text").text(text=FUNC_TEXT)
+    func_text_effed = E(name="func_text_eff").fill()(func_text)
 
-    repeat_eff = E(name="repeat").repeat()
+    description = G(name="description").text(text=DESCRIPTION)
+    description_effed = E(name="description_eff").fill()(description)
+
+    footer_square = G.polygon()
+    footer_squareed = E(name="fill_footer").fill().repeat()(footer_square)
+
     grid = G.grid()
     circle = G.text(font="Cappadocia.otf", text="o")
-    fill_circle = E(name="fill_circle").fill()
+    filled_circle = E(name="fill_circle").fill()(circle)
+
+    footer = G(name="footer").text(text=FOOTER)
+    footer_effed = E(name="footer_eff").fill()(footer)
+
     return (
         (
             L(
                 name="text",
                 geometry_or_list=[
-                    title_filled,
-                    subtitle_filled,
-                    func_text_filled,
-                    description_filled,
-                    footer_filled,
+                    title_effed,
+                    subtitle_effed,
+                    func_text_effed,
+                    description_effed,
+                    footer_effed,
                 ],
             ),
             L(
                 name="shapes",
-                geometry_or_list=poly_affine(
-                    poly_affined + poly_filled + poly_displaced
-                ),
+                geometry_or_list=[
+                    poly_affine(poly_affined + poly_filled + poly_displaced),
+                    line,
+                ],
             ),
         ),
         L(
             name="grid_pattern",
-            geometry_or_list=[repeat_eff(grid), fill_circle(circle)],
+            geometry_or_list=[grid, filled_circle],
         ),
         L(name="footer_pattern", geometry_or_list=footer),
     )
