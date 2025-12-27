@@ -1,8 +1,8 @@
 # pyclipper clip_xy effect 実装計画（2025-12-27）
 
-目的: `pyclipper` を使い、2 つの Geometry（A=被切り抜き, B=閉曲線マスク）から **A を B の内側（または外側）領域に切り抜く**新規 effect を追加する。処理は **両入力を XY 平面へ射影**して 2D で行う（Z は無視）。
+目的: `pyclipper` を使い、2 つの Geometry（A=被切り抜き, B=閉曲線マスク）から **A を B の内側（または外側）領域に切り抜く**新規 effect を追加する。処理は **両入力を同一の姿勢変換で XY 平面へ整列**して 2D で行い、結果を **逆変換して姿勢復元**する。
 
-参考: `fill` effect の「2D 化して処理する」方針（ただし本 effect は XY 射影で、姿勢復元はしない）。
+参考: `fill` effect の「2D 化して処理し、必要なら姿勢を戻す」方針（`grafix.core.effects.util.transform_to_xy_plane/transform_back`）。
 
 非目的:
 
@@ -16,24 +16,26 @@
   - `inputs[0] = A`（被切り抜き geometry。開いたポリラインを含む想定）
   - `inputs[1] = B`（閉曲線 geometry。リングとして扱う）
 - 処理:
-  - A/B を XY 平面へ射影（`(x,y,z)->(x,y)`）して、pyclipper の整数座標で計算する
+  - B（マスク）の代表リングから「XY 平面へ整列する剛体変換」を決める
+  - A/B をその変換で XY 平面へ整列し、pyclipper の整数座標で計算する
+  - 結果を逆変換して元の姿勢へ戻す
 - 結果:
   - A のポリラインを **B の内側**（または **外側**）の部分だけ残したポリライン列
-  - 出力は XY 平面上（`z=0`）の `RealizedGeometry`
+  - 出力は「元の座標系に戻した」`RealizedGeometry`（マスク平面上に乗る）
 
 ## 1) 仕様の決定事項（あなたの確認が必要）
 
 - [ ] (1-1) effect 名
-  - A: `clip_xy`（本仕様が明確）
+  - A: `clip_xy`（本仕様が明確）；こちらで
   - B: `clip`（短いが将来の「任意平面 clip」と紛れやすい）
 - [ ] (1-2) 内側/外側の指定方法（UI）
-  - A: `mode: choice ("inside"|"outside")`（推奨）
+  - A: `mode: choice ("inside"|"outside")`（推奨）；こちらで
   - B: `invert: bool`（シンプル）
 - [ ] (1-3) マスク B の複数リングの解釈
-  - A: even-odd（`fill` と同様に「ネストが穴になる」扱い）
+  - A: even-odd（`fill` と同様に「ネストが穴になる」扱い）；こちらで
   - B: union 扱い（穴は考えない）
 - [ ] (1-4) 量子化スケール（float -> int）
-  - 既定 `scale=1000`（mm を想定し、1e-3 精度）
+  - 既定 `scale=1000`（mm を想定し、1e-3 精度）；こちらで
 
 ## 2) 最小仕様（案）
 
@@ -64,11 +66,15 @@
   - `scale: int`
 - [ ] `@effect(meta=clip_xy_meta)` で `clip_xy(inputs, *, ...) -> RealizedGeometry` を実装する
   - `pyclipper` はローカル import（未使用時の import 回避）
+  - 姿勢変換（推奨）:
+    - B の最初の有効リングを代表として `transform_to_xy_plane` を呼び、`rotation_matrix, z_offset` を得る
+    - A/B の全頂点に同じ変換を適用して XY 平面へ整列する（z は 0 近傍のはず）
+    - 非共平面っぽい場合（整列後の |z| が閾値を超える等）は no-op（A を返す）
   - A のポリライン列を open path として登録（`closed=False`）
   - B のリング列を clip polygon として登録（`closed=True`）
   - fill rule は (1-3) を反映
   - 実行は open path 対応の `Execute2` + `OpenPathsFromPolyTree` を使用する（inside/outside の両方で open path が欲しいため）
-  - XY 射影 → int 量子化 → clip → float 復元（z=0）で `RealizedGeometry` を組み立てる
+  - XY 整列 → int 量子化 → clip → float 復元（z=0）→ `transform_back` で姿勢復元、で `RealizedGeometry` を組み立てる
 
 ### 3.3 API 登録（E から使えるように）
 
@@ -98,7 +104,8 @@
   - [ ] inside: `G.grid(...)` 等を `B=G.polygon(...)` の内側にクリップし、bbox が縮む
   - [ ] outside: inside と逆（bbox が元より大きくならず、かつ内側が消える）
   - [ ] B が無効（開いている/点数不足）なら no-op（A と同じ）
-  - [ ] 期待値は「点列一致」ではなく、`offsets` 本数・bbox・z=0 などの **壊れにくい条件**で評価する
+  - [ ] 姿勢復元: 入力を回転させたケースで、出力が `z=0` に潰れず「元の平面」に戻っていること
+  - [ ] 期待値は「点列一致」ではなく、`offsets` 本数・bbox・平面性（同一平面へ乗る）などの **壊れにくい条件**で評価する
 
 ### 3.7 最小品質ゲート（対象限定）
 
@@ -110,3 +117,4 @@
 
 - [ ] pyclipper の open path 差分（outside）が期待通り動くか（`ctDifference` + `OpenPathsFromPolyTree`）
 - [ ] 境界上の扱い（線がマスク境界と一致するケース）を「どちらでも OK」にできるよう、テストは許容幅を持たせる
+- [ ] 姿勢変換が安定しているか（B の代表リングの選び方で結果が暴れないか）
