@@ -1,7 +1,7 @@
 # mypy エラー原因と改善案（2025-12-27）
 
 実行コマンド: `mypy src/grafix`  
-結果: `Found 38 errors in 20 files (checked 115 source files)`
+結果: `Found 28 errors in 11 files (checked 115 source files)`
 
 ## 全体傾向（先に直すと効率が良いもの）
 
@@ -18,16 +18,6 @@
   - 原因: `new_offsets = []` だと要素型が推論できない。
   - 改善案:
     - **推奨**: `new_offsets: list[int] = []`（`offsets` は index の列なので `int` が自然）。
-
----
-
-### `src/grafix/core/primitives/text.py`
-
-- L233 `[import-untyped]` `Skipping analyzing "fontTools.pens.recordingPen": ... missing library stubs or py.typed`
-  - 原因: `fontTools` 側が mypy に型情報を提供していない（または stub が入っていない）。加えて、`type: ignore` が **import 文の行ではなく** `RecordingPen` 行に付いているため効いていない。
-  - 改善案:
-    - **推奨**: `from fontTools.pens.recordingPen import RecordingPen  # type: ignore[import-untyped]` のように **import 行へ** ignore を付ける（括弧 import は特に注意）。
-    - 代替: stub パッケージ導入（もし存在すれば）/ `typings/fontTools/...` に最小 stub を置く。
 
 ---
 
@@ -107,49 +97,7 @@
 
 ---
 
-### `src/grafix/core/effects/offset.py`
-
-- L147 `[import-untyped]` `Library stubs not installed for "shapely.geometry"`
-  - 原因: `shapely` の型 stub が無い（または `py.typed` が無い）。現在の ignore は `# type: ignore[import-not-found]` で、実際のエラーコード `import-untyped` を抑制できていない。
-  - 改善案:
-    - **推奨**: `# type: ignore[import-untyped]`（必要なら `import-not-found` も併記）に直す。
-    - 代替: `types-shapely` を導入する（依存追加になる）。
-    - 代替: `typings/shapely/geometry.pyi` を最小限で置く（`Polygon` 等、使用している型だけ定義）。
-
----
-
-### `src/grafix/core/effects/util.py`
-
-- L4 `[attr-defined]` `Module "numba" has no attribute "njit"`
-  - 原因: mypy が参照している `numba` の型情報上 `njit` が定義されていない（stub 不足/不整合）。現状の ignore は `import-untyped` で、実際の `attr-defined` を抑制できていない。
-  - 改善案:
-    - **推奨**: `typings/numba/__init__.pyi` を追加し、`njit` を `Callable` なデコレータとして定義する（関連ファイル全体のエラーを一括で消せる）。
-    - 代替: import 行を `# type: ignore[attr-defined]` にする（ファイル数が多いので散らばりやすい）。
-
----
-
-### `src/grafix/core/effects/subdivide.py`
-
-- L8 `[attr-defined]` `Module "numba" has no attribute "njit"`
-  - 原因: `numba` 型情報不足（上と同じ）。
-  - 改善案:
-    - **推奨**: `typings/numba/...` を用意して `njit` を定義。
-    - 代替: `# type: ignore[attr-defined]`。
-
----
-
-### `src/grafix/core/effects/repeat.py`
-
-- L9 `[attr-defined]` `Module "numba" has no attribute "njit"`
-  - 原因/改善案: `subdivide.py` と同様。
-
----
-
 ### `src/grafix/core/effects/mirror.py`
-
-- L8 `[attr-defined]` `Module "numba" has no attribute "njit"`
-
-  - 原因/改善案: `util.py` と同様（`typings/numba` が最もきれい）。
 
 - L197 `[assignment]` `expression has type "int", variable has type "RealizedGeometry"`
 
@@ -173,49 +121,6 @@
   - 原因: L309 と同根で、mypy が `ln` を `int` と解釈している。
   - 改善案:
     - **推奨**: L309 の変数名衝突解消。
-
----
-
-### `src/grafix/core/effects/extrude.py`
-
-- L19 `[attr-defined]` `Module "numba" has no attribute "njit"`
-  - 原因/改善案: `util.py` と同様。
-
----
-
-### `src/grafix/core/effects/displace.py`
-
-- L8 `[attr-defined]` `Module "numba" has no attribute "njit"`
-  - 原因/改善案: `util.py` と同様。
-
----
-
-### `src/grafix/core/effects/dash.py`
-
-- L8 `[attr-defined]` `Module "numba" has no attribute "njit"`
-  - 原因/改善案: `util.py` と同様。
-
----
-
-### `src/grafix/core/effects/collapse.py`
-
-- L9 `[attr-defined]` `Module "numba" has no attribute "njit"`
-  - 原因/改善案: `util.py` と同様。
-
----
-
-### `src/grafix/core/effects/weave.py`
-
-- L14 `[attr-defined]` `Module "numba" has no attribute "njit"`
-
-  - 原因: `from numba import njit, types` の時点で、`numba` 型情報に `njit` が無い。
-  - 改善案:
-    - **推奨**: `typings/numba/__init__.pyi` で `njit` を定義する。
-
-- L14 `[attr-defined]` `Module "numba" has no attribute "types"`
-  - 原因: 同上。`types` も型情報に存在しない。
-  - 改善案:
-    - **推奨**: `typings/numba/__init__.pyi` で `types` を定義する（必要最低限で OK）。
 
 ---
 
@@ -265,7 +170,3 @@
 - [ ] `sphere.py` / `mirror.py` / `store_bridge.py` / `realize.py` の **変数名衝突**を解消（低リスクで大量に消える）
 - [ ] `api/export.py` の `tuple(canvas_size)` を撤去（低リスク）
 - [ ] `partition.py` / `fill.py` の `no-redef` を解消（注釈位置の整理）
-- [ ] `text.py` の `fontTools` import ignore を **import 行へ**移動
-- [ ] `offset.py` の `shapely` ignore を `import-untyped` に揃える（または stub 導入）
-- [ ] `numba` の扱いを決める（`typings/numba` 追加 or 各所 ignore）
-- [ ] `pyglet`（interactive）の `abstract` をどう扱うか決める（ignore or stub）
