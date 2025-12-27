@@ -1,10 +1,17 @@
 # drop_probability_base_slope_plan_2025-12-27.md
+
 #
+
 # どこで: `src/grafix/core/effects/drop.py`（+ stubs/tests）。
+
 #
+
 # 何を: drop effect に「位置ベースの確率勾配」を追加する（`probability_base(vec3)` + `probability_slope(vec3)`）。
+
 #
+
 # なぜ: ジオメトリ中心から +X/+Y/+Z 側へ行くほど drop されやすい等、空間的な密度勾配を直感的に作るため。
+
 #
 
 ## 前提 / 差分
@@ -24,7 +31,7 @@
 ## 非ゴール
 
 - 旧 `probability: float` 互換の維持（ラッパー/シムを作らない）。
-- 非線形カーブ（S字、ノイズ、距離減衰など）の導入。
+- 非線形カーブ（S 字、ノイズ、距離減衰など）の導入。
 - 「向き」で確率を変える（方向/法線ベース）の導入。
 
 ## 仕様（採用案）
@@ -36,7 +43,7 @@
   - 意味: **中心位置**（t=0）の drop 確率（軸別）
 - `probability_slope: tuple[float, float, float] = (0.0, 0.0, 0.0)`
   - 各成分は概ね -1..+1 を想定（範囲外でも可だが最終確率で clamp）
-  - 意味: 正規化座標 `t∈[-1,+1]` に対して、各軸の確率 `p_axis` を線形に変える係数（中心→端）
+  - 意味: 正規化座標 `t∈[-1,+1]` に対して、各軸の確率 `p_axis` を線形に変える係数（中心 → 端）
     - 例: `base_x=0.5, slope_x=0.5` なら、X- 端で 0.0、X+ 端で 1.0
 
 ### 代表点（line/face ごとの位置）
@@ -120,7 +127,7 @@
   - [ ] `probability_base=(0.5,0,0), probability_slope=(0.5,0,0)` で
     - x=- 側は `p_eff=0`（drop されない）
     - x=+ 側は `p_eff=1`（必ず drop）
-    を確認
+      を確認
 
 ### 4) stubs 再生成
 
@@ -135,5 +142,5 @@
 
 ## 事前確認したい点（この仕様で進めてよい？）
 
-- 代表点は「頂点平均（centroid）」で良い？（長い polyline が中心を跨ぐ場合は、中心寄りに評価される）
-- `p_eff = 1-Π(1-p_axis)`（OR 合成）で良い？（別案: `max(p_axis)` / `clamp(sum(p_axis),0,1)`）
+- 代表点は「頂点平均（centroid）」で良い？（長い polyline が中心を跨ぐ場合は、中心寄りに評価される）；はい
+- `p_eff = 1-Π(1-p_axis)`（OR 合成）で良い？（別案: `max(p_axis)` / `clamp(sum(p_axis),0,1)`）；はい

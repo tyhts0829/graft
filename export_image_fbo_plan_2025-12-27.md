@@ -1,8 +1,8 @@
-# `export_image`（FBOオフスクリーンPNG）実装計画（2025-12-27）
+# `export_image`（FBO オフスクリーン PNG）実装計画（2025-12-27）
 
 ## 目的
 
-旧プロジェクトの「方式2（FBO 経由で高解像度・オーバーレイ除外）」と同じ発想で、
+旧プロジェクトの「方式 2（FBO 経由で高解像度・オーバーレイ除外）」と同じ発想で、
 `src/grafix/export/image.py` に **PNG 保存**を実装する。
 
 - 画面スクショではなく「ラインのみ」を保存できる経路を用意する
@@ -18,14 +18,15 @@
 
 ## 実装方針（API）
 
-`src/grafix/export/image.py` を「layers→画像」ではなく、
-**「draw callback を FBO に描いて PNG にする」**関数として定義し直す（破壊的変更OK）。
+`src/grafix/export/image.py` を「layers→ 画像」ではなく、
+**「draw callback を FBO に描いて PNG にする」**関数として定義し直す（破壊的変更 OK）。
 
 提案シグネチャ（案）:
 
 - `export_png_offscreen(ctx: object, draw: Callable[[], None], path: str|Path, *, size_px: tuple[int,int], background_color: tuple[float,float,float]=(1,1,1), transparent: bool=False) -> Path`
 
 ポイント:
+
 - `ctx` は ModernGL Context を想定するが、export パッケージ側では型を固定しない
 - `draw()` は「現在 bind 済みの framebuffer に、viewport 前提で描く」関数を呼び出し側が渡す
 
@@ -65,7 +66,7 @@
 
 ## 変更予定ファイル
 
-- `src/grafix/export/image.py`（スタブ撤去、FBOオフスクリーンPNG実装）
+- `src/grafix/export/image.py`（スタブ撤去、FBO オフスクリーン PNG 実装）
 - `src/grafix/api/export.py`
   - 破壊的変更に追従（将来 headless export を繋ぐなら api 側で ctx を用意する）
 - テスト
@@ -75,7 +76,7 @@
 ## TODO（チェックリスト）
 
 - [ ] `src/grafix/export/image.py` の API を確定（`export_image` 名を残すか、`export_png_offscreen` にするか）
-- [ ] FBO キャプチャ処理を実装（viewport 退避/復元、FBO作成/解放、clear/draw/read）
+- [ ] FBO キャプチャ処理を実装（viewport 退避/復元、FBO 作成/解放、clear/draw/read）
 - [ ] PNG writer 実装（RGBA→PNG、vflip 対応、エラー文言を簡潔に）
 - [ ] `tests/export/test_image_png_writer.py` 追加（2x2 などで PNG 復号して一致検証）
 - [ ] 既存呼び出し元（`src/grafix/api/export.py`）の追従 or 撤去（未使用なら削る）
@@ -83,7 +84,6 @@
 
 ## 事前確認したい点
 
-- [ ] `export_image` の公開 API は「layers ベース」より「draw callback ベース」でOK？（今回は方式2の踏襲を優先）
-- [ ] `transparent=True` のときは「背景だけ α=0、線は不透明」でOK？
+- [ ] `export_image` の公開 API は「layers ベース」より「draw callback ベース」で OK？（今回は方式 2 の踏襲を優先）
+- [ ] `transparent=True` のときは「背景だけ α=0、線は不透明」で OK？
 - [ ] vflip は「常に反転」か「必要時のみ（テストで確定）」どちらで進める？
-
