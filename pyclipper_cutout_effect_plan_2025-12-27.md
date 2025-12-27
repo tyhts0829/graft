@@ -1,4 +1,4 @@
-# pyclipper clip_xy effect 実装計画（2025-12-27）
+# pyclipper clip effect 実装計画（2025-12-27）
 
 目的: `pyclipper` を使い、2 つの Geometry（A=被切り抜き, B=閉曲線マスク）から **A を B の内側（または外側）領域に切り抜く**新規 effect を追加する。処理は **両入力を同一の姿勢変換で XY 平面へ整列**して 2D で行い、結果を **逆変換して姿勢復元**する。
 
@@ -25,46 +25,43 @@
 
 ## 1) 仕様の決定事項（あなたの確認が必要）
 
-- [ ] (1-1) effect 名
-  - A: `clip_xy`（本仕様が明確）；こちらで
-  - B: `clip`（短いが将来の「任意平面 clip」と紛れやすい）
+- [x] (1-1) effect 名: `clip`
 - [ ] (1-2) 内側/外側の指定方法（UI）
   - A: `mode: choice ("inside"|"outside")`（推奨）；こちらで
   - B: `invert: bool`（シンプル）
 - [ ] (1-3) マスク B の複数リングの解釈
   - A: even-odd（`fill` と同様に「ネストが穴になる」扱い）；こちらで
   - B: union 扱い（穴は考えない）
-- [ ] (1-4) 量子化スケール（float -> int）
-  - 既定 `scale=1000`（mm を想定し、1e-3 精度）；こちらで
+- [x] (1-4) 量子化スケール（float -> int）: 固定 `1000`（引数としては公開しない）
 
 ## 2) 最小仕様（案）
 
-- effect 名: (1-1) に従う（以下では仮に `clip_xy` と呼ぶ）
+- effect 名: `clip`
 - パラメータ（最小）:
-  - `mode` または `invert`
-  - `scale: int`（pyclipper 用）
+  - `mode`
+  - `draw_outline: bool`
 - no-op / 例外方針:
   - `inputs` が空 → 空
   - `len(inputs) < 2` → A を返す（=入力そのまま）
   - A が空 → A を返す
   - B に「有効な閉リング」が 1 つも無い → A を返す
-  - `pyclipper` 未導入 → `RuntimeError("clip_xy effect は pyclipper が必要です")`
+  - `pyclipper` 未導入 → `RuntimeError("clip effect は pyclipper が必要です")`
 
 ## 3) 実装チェックリスト（承認後に実施）
 
 ### 3.1 依存追加
 
-- [ ] `pyproject.toml` の `dependencies` に `pyclipper` を追加する
+- [x] `pyproject.toml` の `dependencies` に `pyclipper` を追加する
 
 ### 3.2 effect 実装（core）
 
-- [ ] 新規ファイル: `src/grafix/core/effects/clip_xy.py`
+- [x] 新規ファイル: `src/grafix/core/effects/clip.py`
   - 先頭 docstring は「効果の説明」だけを書く（`src/grafix/core/effects/AGENTS.md` 準拠）
   - 他 effect モジュールへ依存しない（`util.py` の利用は可）
-- [ ] `clip_xy_meta: dict[str, ParamMeta]` を定義する
-  - `mode: choice`（または `invert: bool`）
-  - `scale: int`
-- [ ] `@effect(meta=clip_xy_meta)` で `clip_xy(inputs, *, ...) -> RealizedGeometry` を実装する
+- [x] `clip_meta: dict[str, ParamMeta]` を定義する
+  - `mode: choice`
+  - `draw_outline: bool`
+- [x] `@effect(meta=clip_meta)` で `clip(inputs, *, ...) -> RealizedGeometry` を実装する
   - `pyclipper` はローカル import（未使用時の import 回避）
   - 姿勢変換（推奨）:
     - B の最初の有効リングを代表として `transform_to_xy_plane` を呼び、`rotation_matrix, z_offset` を得る
@@ -78,12 +75,12 @@
 
 ### 3.3 API 登録（E から使えるように）
 
-- [ ] `src/grafix/api/effects.py` に `clip_xy` の import 登録を追加する（他 effect と同様）
+- [x] `src/grafix/api/effects.py` に `clip` の import 登録を追加する（他 effect と同様）
 
 ### 3.4 「2 Geometry 入力」を API で渡す（方針）
 
-- [ ] `EffectBuilder.__call__` を「複数入力対応」に拡張する（推奨・最小）
-  - 使い方: `E.clip_xy(...)(a, b)`（a=被切り抜き, b=マスク）
+- [x] `EffectBuilder.__call__` を「複数入力対応」に拡張する（推奨・最小）
+  - 使い方: `E.clip(...)(a, b)`（a=被切り抜き, b=マスク）
   - 仕様:
     - 1 ステップ目の `Geometry.create(...)` は `inputs=(a,b,...)`
     - 2 ステップ目以降は従来通り `inputs=(result,)`
@@ -93,25 +90,26 @@
 
 ### 3.5 スタブ同期
 
-- [ ] `tools/gen_g_stubs.py` を更新し、`src/grafix/api/__init__.pyi` を再生成する
-  - `clip_xy` が `_EffectBuilder` に追加されること
+- [x] `tools/gen_g_stubs.py` を更新し、`src/grafix/api/__init__.pyi` を再生成する
+  - `clip` が `_EffectBuilder` に追加されること
   - `EffectBuilder.__call__` の型を更新する場合は、それも stub に反映する
-- [ ] `PYTHONPATH=src pytest -q tests/stubs/test_api_stub_sync.py` を通す
+- [x] `PYTHONPATH=src pytest -q tests/stubs/test_api_stub_sync.py` を通す
 
 ### 3.6 テスト（最小）
 
-- [ ] `tests/core/effects/test_clip_xy.py` を追加する
-  - [ ] inside: `G.grid(...)` 等を `B=G.polygon(...)` の内側にクリップし、bbox が縮む
-  - [ ] outside: inside と逆（bbox が元より大きくならず、かつ内側が消える）
-  - [ ] B が無効（開いている/点数不足）なら no-op（A と同じ）
-  - [ ] 姿勢復元: 入力を回転させたケースで、出力が `z=0` に潰れず「元の平面」に戻っていること
-  - [ ] 期待値は「点列一致」ではなく、`offsets` 本数・bbox・平面性（同一平面へ乗る）などの **壊れにくい条件**で評価する
+- [x] `tests/core/effects/test_clip.py` を追加する
+  - [x] inside: `G.grid(...)` を `B=G.polygon(...)` の内側にクリップし、bbox が縮む
+  - [x] outside: マスクが全域を覆うケースで結果が空になる
+  - [x] B が無効（開いている/点数不足）なら no-op（A と同じ）
+  - [x] 姿勢復元: 入力を回転させたケースで、出力が `z=0` に潰れず「元の平面」に戻っていること
+  - [x] draw_outline: 結果が空でも輪郭が出ること
+  - [x] 期待値は「点列一致」ではなく、bbox・平面性などの壊れにくい条件で評価する
 
 ### 3.7 最小品質ゲート（対象限定）
 
-- [ ] `ruff check src/grafix/core/effects/clip_xy.py src/grafix/api/effects.py tests/core/effects/test_clip_xy.py`
-- [ ] `mypy src/grafix`（難しければ少なくとも追加ファイル周辺）
-- [ ] `PYTHONPATH=src pytest -q tests/core/effects/test_clip_xy.py`
+- [ ] `ruff check src/grafix/core/effects/clip.py src/grafix/api/effects.py tests/core/effects/test_clip.py`（この環境では `ruff` 未導入）
+- [ ] `mypy src/grafix`（この環境の `mypy` が `KeyError: 'setter_type'` でクラッシュするため未実行）
+- [x] `PYTHONPATH=src pytest -q tests/core/effects/test_clip.py`
 
 ## 4) 実装中に追記する観測ポイント
 
