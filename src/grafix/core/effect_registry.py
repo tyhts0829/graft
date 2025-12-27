@@ -33,6 +33,7 @@ class EffectRegistry:
         self._meta: dict[str, dict[str, ParamMeta]] = {}
         self._defaults: dict[str, dict[str, Any]] = {}
         self._n_inputs: dict[str, int] = {}
+        self._param_order: dict[str, tuple[str, ...]] = {}
 
     def _register(
         self,
@@ -41,6 +42,7 @@ class EffectRegistry:
         *,
         overwrite: bool = True,
         n_inputs: int = 1,
+        param_order: Sequence[str] | None = None,
         meta: dict[str, ParamMeta] | None = None,
         defaults: dict[str, Any] | None = None,
     ) -> None:
@@ -55,6 +57,9 @@ class EffectRegistry:
             raise ValueError(f"effect '{name}' は既に登録されている")
         self._items[name] = func
         self._n_inputs[name] = int(n_inputs)
+        self._param_order[name] = (
+            tuple(str(a) for a in param_order) if param_order is not None else ()
+        )
         if meta is not None:
             self._meta[name] = meta
         if defaults is not None:
@@ -99,6 +104,11 @@ class EffectRegistry:
     def get_defaults(self, name: str) -> dict[str, Any]:
         """op 名に対応するデフォルト引数辞書を取得する。"""
         return dict(self._defaults.get(name, {}))
+
+    def get_param_order(self, name: str) -> tuple[str, ...]:
+        """op 名に対応する GUI 用の引数順序を返す。"""
+
+        return tuple(self._param_order.get(name, ()))
 
     def get_n_inputs(self, name: str) -> int:
         """op 名に対応する入力 Geometry 数（arity）を返す。"""
@@ -195,11 +205,18 @@ def effect(
         if meta is not None:
             defaults = _defaults_from_signature(f, meta)
             defaults = {"bypass": False, **defaults}
+            sig = inspect.signature(f)
+            meta_keys = set(meta.keys())
+            sig_order = [name for name in sig.parameters if name in meta_keys]
+            param_order = ("bypass", *sig_order)
+        else:
+            param_order = None
         effect_registry._register(
             f.__name__,
             wrapper,
             overwrite=overwrite,
             n_inputs=n_inputs_i,
+            param_order=param_order,
             meta=meta_with_bypass,
             defaults=defaults,
         )

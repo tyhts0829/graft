@@ -46,7 +46,7 @@ def test_order_rows_for_display_effect_chain_is_placed_by_min_step_display_order
     rows = [
         _row(op="polygon", site_id="p:1", ordinal=1, arg="n_sides"),
         _row(op="scale", site_id="e:scale", ordinal=99, arg="auto_center"),
-        _row(op="rotate", site_id="e:rotate", ordinal=99, arg="deg"),
+        _row(op="rotate", site_id="e:rotate", ordinal=99, arg="rotation"),
         _row(op="circle", site_id="c:1", ordinal=1, arg="r"),
     ]
 
@@ -64,4 +64,3 @@ def test_order_rows_for_display_effect_chain_is_placed_by_min_step_display_order
         },
     )
     assert [r.op for r in out] == ["polygon", "scale", "rotate", "circle"]
-

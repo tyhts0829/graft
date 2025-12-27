@@ -71,16 +71,18 @@
 
 ## 未確定点（先に確認したい）
 
-- `meta` に含まれるがシグネチャに無い/順序が取れないケースは現状エラーになり得るが、今回も「組み込みは meta 必須＆整合前提」で進めて良い？（過度に防御的にはしない方針）；はい
-- シグネチャ/メタに存在しない未知 `arg` が UI 行に混じった場合の扱い；raise して
-  - 案: 末尾に寄せて `arg` 辞書順で安定化（UI が壊れない範囲の最小限）。
+- ✅ `meta` とシグネチャの不整合:
+  - 「組み込みは meta 必須＆整合前提」で進める（過度に防御的にはしない）。
+- ✅ シグネチャ/メタに存在しない未知 `arg` の扱い:
+  - `raise` する（末尾へ回す等はしない）。
 
 ## 作業チェックリスト
 
-- [ ] 仕様確認: 上の「未確定点」を確定する
-- [ ] 実装: `src/grafix/core/effect_registry.py` に `op -> param_order` を保持・参照する仕組みを追加
-- [ ] 実装: `src/grafix/core/primitive_registry.py` に `op -> param_order` を保持・参照する仕組みを追加
-- [ ] 実装: `src/grafix/interactive/parameter_gui/store_bridge.py` のブロック内ソートを `param_order` ベースに変更
-- [ ] テスト: `tests/interactive/parameter_gui/test_parameter_gui_param_order.py` を追加
-- [ ] 検証: `PYTHONPATH=src pytest -q tests/interactive/parameter_gui`
-- [ ] 検証: `ruff check`（対象限定）と `mypy src/grafix`（必要なら対象限定）
+- [x] 仕様確認: 上の「未確定点」を確定する
+- [x] 実装: `src/grafix/core/effect_registry.py` に `op -> param_order` を保持・参照する仕組みを追加
+- [x] 実装: `src/grafix/core/primitive_registry.py` に `op -> param_order` を保持・参照する仕組みを追加
+- [x] 実装: `src/grafix/interactive/parameter_gui/store_bridge.py` のブロック内ソートを `param_order` ベースに変更
+- [x] テスト: `tests/interactive/parameter_gui/test_parameter_gui_param_order.py` を追加
+- [x] 検証: `PYTHONPATH=src pytest -q tests/interactive/parameter_gui`
+- [ ] 検証: ruff（この環境には無い: `ruff` / `python -m ruff` が見つからない）
+- [x] 検証: mypy（対象限定）: `mypy src/grafix/core/effect_registry.py src/grafix/core/primitive_registry.py src/grafix/interactive/parameter_gui/store_bridge.py`

@@ -29,6 +29,7 @@ class PrimitiveRegistry:
         self._items: dict[str, PrimitiveFunc] = {}
         self._meta: dict[str, dict[str, ParamMeta]] = {}
         self._defaults: dict[str, dict[str, Any]] = {}
+        self._param_order: dict[str, tuple[str, ...]] = {}
 
     def _register(
         self,
@@ -36,6 +37,7 @@ class PrimitiveRegistry:
         func: PrimitiveFunc,
         *,
         overwrite: bool = True,
+        param_order: tuple[str, ...] | None = None,
         meta: dict[str, ParamMeta] | None = None,
         defaults: dict[str, Any] | None = None,
     ) -> None:
@@ -49,6 +51,9 @@ class PrimitiveRegistry:
         if not overwrite and name in self._items:
             raise ValueError(f"primitive '{name}' は既に登録されている")
         self._items[name] = func
+        self._param_order[name] = (
+            tuple(str(a) for a in param_order) if param_order is not None else ()
+        )
         if meta is not None:
             self._meta[name] = meta
         if defaults is not None:
@@ -93,6 +98,11 @@ class PrimitiveRegistry:
     def get_defaults(self, name: str) -> dict[str, Any]:
         """op 名に対応するデフォルト引数辞書を取得する。"""
         return dict(self._defaults.get(name, {}))
+
+    def get_param_order(self, name: str) -> tuple[str, ...]:
+        """op 名に対応する GUI 用の引数順序を返す。"""
+
+        return tuple(self._param_order.get(name, ()))
 
 
 primitive_registry = PrimitiveRegistry()
@@ -163,10 +173,17 @@ def primitive(
             return f(**params)
 
         defaults = None if meta is None else _defaults_from_signature(f, meta)
+        param_order = None
+        if meta is not None:
+            sig = inspect.signature(f)
+            meta_keys = set(meta.keys())
+            sig_order = [name for name in sig.parameters if name in meta_keys]
+            param_order = tuple(sig_order)
         primitive_registry._register(
             f.__name__,
             wrapper,
             overwrite=overwrite,
+            param_order=param_order,
             meta=meta,
             defaults=defaults,
         )

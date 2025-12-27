@@ -90,6 +90,27 @@ def _order_rows_for_display(
     # - Effect は chain_id 単位（折りたたみ維持）
     # - other は (op, site_id) 単位（最小限）
 
+    primitive_arg_index_by_op: dict[str, dict[str, int]] = {}
+    effect_arg_index_by_op: dict[str, dict[str, int]] = {}
+
+    def _primitive_arg_index(op: str, arg: str) -> int:
+        if op not in primitive_arg_index_by_op:
+            order = primitive_registry.get_param_order(op)
+            primitive_arg_index_by_op[op] = {a: i for i, a in enumerate(order)}
+        index_by_arg = primitive_arg_index_by_op[op]
+        if arg not in index_by_arg:
+            raise ValueError(f"primitive 引数が未登録です: op={op!r} arg={arg!r}")
+        return int(index_by_arg[arg])
+
+    def _effect_arg_index(op: str, arg: str) -> int:
+        if op not in effect_arg_index_by_op:
+            order = effect_registry.get_param_order(op)
+            effect_arg_index_by_op[op] = {a: i for i, a in enumerate(order)}
+        index_by_arg = effect_arg_index_by_op[op]
+        if arg not in index_by_arg:
+            raise ValueError(f"effect 引数が未登録です: op={op!r} arg={arg!r}")
+        return int(index_by_arg[arg])
+
     primitive_blocks: dict[tuple[str, int], list[ParameterRow]] = {}
     for row in primitive_rows:
         # primitive は 1 つの呼び出し（site_id）に対して複数 arg 行がぶら下がる。
@@ -135,18 +156,24 @@ def _order_rows_for_display(
         blocks.append(
             (
                 (int(order), 0, f"{op}#{int(ordinal)}"),
-                sorted(block_rows, key=lambda r: str(r.arg)),
+                sorted(block_rows, key=lambda r: _primitive_arg_index(op, str(r.arg))),
             )
         )
 
-    def _step_sort_key(r: ParameterRow) -> tuple[int, str]:
+    def _step_sort_key(r: ParameterRow) -> tuple[int, int, str]:
         # チェーン内では step_index（= effect 呼び出し順）を優先し、
         # 同一 step 内は arg 名で安定に並べる。
         info = step_info_by_site.get((r.op, r.site_id))
         if info is None:
-            return (10**9, str(r.arg))
+            # effect_blocks の対象は step_info がある前提だが、
+            # ここは保険として「末尾へ回す」だけに留める（過度に防御しない）。
+            return (10**9, 10**9, str(r.arg))
         _cid, step_index = info
-        return (int(step_index), str(r.arg))
+        return (
+            int(step_index),
+            _effect_arg_index(str(r.op), str(r.arg)),
+            str(r.arg),
+        )
 
     for chain_id, block_rows in effect_blocks.items():
         # effect チェーンの “ブロック位置” はチェーン内最小の display_order に寄せる。
@@ -162,10 +189,14 @@ def _order_rows_for_display(
         op, site_id = other_key
         # other ブロックも primitive 同様、ブロック内の min(display_order) に寄せる。
         order = min(_display_order(r) for r in block_rows)
+        if op in effect_registry:
+            ordered = sorted(block_rows, key=lambda r: _effect_arg_index(op, str(r.arg)))
+        else:
+            ordered = sorted(block_rows, key=lambda r: str(r.arg))
         blocks.append(
             (
                 (int(order), 2, f"{op}:{site_id}"),
-                sorted(block_rows, key=lambda r: str(r.arg)),
+                ordered,
             )
         )
 
