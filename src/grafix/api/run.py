@@ -19,6 +19,7 @@ from grafix.core.parameters.persistence import (
 )
 from grafix.core.scene import SceneItem
 from grafix.interactive.midi.factory import create_midi_controller
+from grafix.interactive.midi.midi_controller import maybe_load_frozen_cc_snapshot
 from grafix.interactive.render_settings import RenderSettings
 from grafix.interactive.runtime.draw_window_system import DrawWindowSystem
 from grafix.interactive.runtime.window_loop import MultiWindowLoop, WindowTask
@@ -66,6 +67,7 @@ def run(
     midi_port_name : str | None
         MIDI 入力ポート名。
         - `"auto"`: 利用可能な入力ポートがあれば 1 つ目へ自動接続する（既定）。
+          接続できない場合でも、前回保存した CC スナップショットを凍結して使う（描画が変わらない）。
         - `"TX-6 Bluetooth"` のような文字列: 指定ポートへ接続する。
         - None: MIDI を無効化する。
     midi_mode : str
@@ -117,6 +119,11 @@ def run(
         mode=str(midi_mode),
         profile_name=script_stem,
     )
+    frozen_cc_snapshot = maybe_load_frozen_cc_snapshot(
+        port_name=midi_port_name,
+        controller=midi_controller,
+        profile_name=script_stem,
+    )
 
     monitor = None
     if parameter_gui:
@@ -132,6 +139,7 @@ def run(
         defaults=defaults,
         store=param_store,
         midi_controller=midi_controller,
+        frozen_cc_snapshot=frozen_cc_snapshot,
         monitor=monitor,
         fps=float(fps),
         n_worker=int(n_worker),

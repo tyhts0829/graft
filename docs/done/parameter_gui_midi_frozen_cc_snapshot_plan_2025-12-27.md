@@ -36,7 +36,7 @@
 ## 変更箇所（案）
 
 - `src/grafix/interactive/midi/midi_controller.py`
-  - 既存の `default_cc_snapshot_path()` / `load_cc_snapshot()` を frozen ロードに流用する（命名ルールは現行維持）。
+  - `maybe_load_frozen_cc_snapshot()` を追加し、MIDI 未接続時に frozen snapshot をロードできるようにする（命名ルールは現行維持）。
 - `src/grafix/api/run.py`
   - `midi_port_name is not None and midi_controller is None` の場合のみ `frozen_cc_snapshot` をロード。
   - `DrawWindowSystem(..., frozen_cc_snapshot=...)` のように渡す（引数追加）。
@@ -48,7 +48,7 @@
 
 - 既存の `tests/interactive/midi/test_midi_persistence.py` は「保存→復元（JSON→cc_snapshot）」の経路としてそのまま有効。
 - 追加（最小）:
-  - `DrawWindowSystem` が `midi_controller=None` のときに frozen `cc_snapshot` を渡す経路を、軽量な単体テストで確認する（pyglet を避けたいので、純粋関数へ切り出す等で対応）。
+  - `maybe_load_frozen_cc_snapshot()` が「MIDI 無効/接続あり/接続なし」で期待通りの値を返すことをテストする。
 
 ## 互換性 / 既存データ
 
@@ -56,10 +56,10 @@
 
 ## チェックリスト
 
-- [ ] 事前確認: 「MIDI なしでも frozen `cc_snapshot` を渡す」「命名ルールは現行維持（コントローラー分離しない）」で進めてよい
-- [ ] `run()` から `DrawWindowSystem` へ `frozen_cc_snapshot` を渡す
-- [ ] `DrawWindowSystem.draw_frame()` で `cc_snapshot` を live/frozen から選ぶ
-- [ ] テスト追加: `midi_controller=None` のとき frozen が使われること
+- [x] 事前確認: 「MIDI なしでも frozen `cc_snapshot` を渡す」「命名ルールは現行維持（コントローラー分離しない）」で進めてよい
+- [x] `run()` から `DrawWindowSystem` へ `frozen_cc_snapshot` を渡す
+- [x] `DrawWindowSystem.draw_frame()` で `cc_snapshot` を live/frozen から選ぶ
+- [x] テスト追加: `maybe_load_frozen_cc_snapshot()` を追加
 - [ ] 手動確認:
   - MIDI 接続ありで CC を動かす → 終了（保存）
   - MIDI 切断 → 再起動 → 描画が変わらない

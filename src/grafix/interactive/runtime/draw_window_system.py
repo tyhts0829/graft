@@ -46,6 +46,7 @@ class DrawWindowSystem:
         defaults: LayerStyleDefaults,
         store: ParamStore,
         midi_controller: MidiController | None = None,
+        frozen_cc_snapshot: dict[int, float] | None = None,
         monitor: RuntimeMonitor | None = None,
         fps: float = 60.0,
         n_worker: int = 0,
@@ -56,6 +57,9 @@ class DrawWindowSystem:
         self._settings = settings
         self._store = store
         self._midi_controller = midi_controller
+        self._frozen_cc_snapshot = (
+            dict(frozen_cc_snapshot) if frozen_cc_snapshot is not None else None
+        )
         self._monitor = monitor
 
         self._style = StyleResolver(
@@ -125,10 +129,11 @@ class DrawWindowSystem:
         perf = self._perf
         with perf.frame():
             midi = self._midi_controller
-            cc_snapshot: dict[int, float] | None = None
             if midi is not None:
                 midi.poll_pending()
                 cc_snapshot = midi.snapshot()
+            else:
+                cc_snapshot = self._frozen_cc_snapshot
 
             # 注: 呼び出し側（pyglet.window.Window.draw）が事前に self.window.switch_to() 済みである前提。
             # その前提が崩れると、別 window のコンテキストへ描いてしまう可能性がある。

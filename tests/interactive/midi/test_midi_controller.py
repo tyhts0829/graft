@@ -5,7 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from grafix.interactive.midi.midi_controller import MidiController
+from grafix.interactive.midi.midi_controller import (
+    MidiController,
+    default_cc_snapshot_path,
+    maybe_load_frozen_cc_snapshot,
+    save_cc_snapshot,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,3 +103,48 @@ def test_save_load_roundtrip(tmp_path: Path) -> None:
     ctrl2 = _controller(tmp_dir=tmp_path, mode="7bit")
     assert ctrl2.cc == ctrl.cc
 
+
+def test_maybe_load_frozen_cc_snapshot_returns_none_when_midi_disabled(tmp_path: Path) -> None:
+    assert (
+        maybe_load_frozen_cc_snapshot(
+            port_name=None,
+            controller=None,
+            profile_name="main",
+            save_dir=tmp_path,
+        )
+        is None
+    )
+
+
+def test_maybe_load_frozen_cc_snapshot_returns_none_when_controller_present(
+    tmp_path: Path,
+) -> None:
+    ctrl = MidiController(
+        "Dummy Port",
+        mode="7bit",
+        profile_name="main",
+        save_dir=tmp_path,
+        inport=DummyInPort([]),
+    )
+    assert (
+        maybe_load_frozen_cc_snapshot(
+            port_name="auto",
+            controller=ctrl,
+            profile_name="main",
+            save_dir=tmp_path,
+        )
+        is None
+    )
+
+
+def test_maybe_load_frozen_cc_snapshot_loads_when_no_controller(tmp_path: Path) -> None:
+    path = default_cc_snapshot_path(profile_name="main", save_dir=tmp_path)
+    save_cc_snapshot({1: 0.25, 2: 1.0}, path)
+
+    loaded = maybe_load_frozen_cc_snapshot(
+        port_name="auto",
+        controller=None,
+        profile_name="main",
+        save_dir=tmp_path,
+    )
+    assert loaded == {1: 0.25, 2: 1.0}

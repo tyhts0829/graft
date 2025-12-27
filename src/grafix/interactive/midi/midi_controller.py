@@ -75,6 +75,41 @@ def save_cc_snapshot(snapshot: dict[int, float], path: Path) -> None:
     )
 
 
+def load_frozen_cc_snapshot(
+    *, profile_name: str, save_dir: Path | None = None
+) -> dict[int, float]:
+    """永続化済みの CC スナップショットをロードして返す。
+
+    Notes
+    -----
+    - 「MIDI が未接続でも前回の CC 値を凍結して使う」用途を想定する。
+    - ファイル命名ルールは `default_cc_snapshot_path()` に従う（現行維持）。
+    """
+
+    path = default_cc_snapshot_path(profile_name=str(profile_name), save_dir=save_dir)
+    return load_cc_snapshot(path)
+
+
+def maybe_load_frozen_cc_snapshot(
+    *,
+    port_name: str | None,
+    controller: "MidiController | None",
+    profile_name: str,
+    save_dir: Path | None = None,
+) -> dict[int, float] | None:
+    """MIDI 接続に失敗した場合に限り、凍結 CC スナップショットを返す。
+
+    - port_name=None（ユーザーが明示的に MIDI 無効）なら凍結しない。
+    - controller が存在するなら live snapshot が使えるので凍結しない。
+    """
+
+    if port_name is None:
+        return None
+    if controller is not None:
+        return None
+    return load_frozen_cc_snapshot(profile_name=profile_name, save_dir=save_dir)
+
+
 class InvalidPortError(Exception):
     """要求された MIDI ポート名が存在しない場合に送出される例外。"""
 
