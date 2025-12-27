@@ -47,7 +47,7 @@ def coerce_rgb255(value: object) -> tuple[int, int, int]:
         raise ValueError(f"rgb value must be a length-3 sequence: {value!r}") from exc
 
     def _clamp(v: object) -> int:
-        iv = int(v)
+        iv = int(v)  # type: ignore[misc]
         return 0 if iv < 0 else 255 if iv > 255 else iv
 
     return _clamp(r), _clamp(g), _clamp(b)
