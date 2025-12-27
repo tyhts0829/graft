@@ -16,6 +16,11 @@ from grafix.core.parameters.persistence import default_param_store_path
 from grafix.core.layer import LayerStyleDefaults
 from grafix.core.pipeline import RealizedLayer
 from grafix.export.svg import export_svg
+from grafix.export.rasterize_svg import (
+    default_png_output_path,
+    png_output_size,
+    rasterize_svg_to_png,
+)
 from grafix.interactive.draw_window import create_draw_window
 from grafix.interactive.gl.draw_renderer import DrawRenderer
 from grafix.interactive.gl.index_buffer import build_line_indices_and_stats
@@ -75,9 +80,11 @@ class DrawWindowSystem:
 
         script_stem = default_param_store_path(draw).stem
         self._svg_output_path = Path("data") / "output" / "svg" / f"{script_stem}.svg"
+        self._png_output_path = default_png_output_path(draw)
         video_output_path = default_video_output_path(draw, ext="mp4")
         self._recording = VideoRecordingSystem(output_path=video_output_path, fps=float(fps))
         self._last_realized_layers: list[RealizedLayer] = []
+        self._pending_png_save = False
         self.window.push_handlers(on_key_press=self._on_key_press)
 
         # draw(t) に渡す t の基準時刻。
@@ -90,6 +97,9 @@ class DrawWindowSystem:
         if symbol == key.S:
             path = self.save_svg()
             print(f"Saved SVG: {path}")
+            return
+        if symbol == key.P:
+            self._pending_png_save = True
             return
         if symbol == key.V:
             if not self._recording.is_recording:
@@ -202,6 +212,21 @@ class DrawWindowSystem:
             if recording:
                 with perf.section("video"):
                     self._recording.write_frame(self._renderer.ctx.screen)
+
+            if self._pending_png_save:
+                self._pending_png_save = False
+                try:
+                    svg_path = self.save_svg()
+                    png_path = rasterize_svg_to_png(
+                        svg_path,
+                        self._png_output_path,
+                        output_size=png_output_size(self._settings.canvas_size),
+                        background_color_rgb01=style.bg_color_rgb01,
+                    )
+                    print(f"Saved PNG: {png_path}")
+                except Exception as e:
+                    _logger.exception("Failed to save PNG")
+                    print(f"Failed to save PNG: {e}")
 
             if perf.enabled and perf.gpu_finish:
                 with perf.section("gpu_finish"):
