@@ -5,7 +5,7 @@ CANVAS_WIDTH = 210
 CANVAS_HEIGHT = 297
 
 # TEXTS
-TITLE = "GRAFIX"
+TITLE = "Grafix"
 SUBTITLE = "A Python-based creative coding framework"
 FUNC_TEXT = "polyhedron()                    fill()                    displace()"
 DESCRIPTION = """
@@ -24,7 +24,7 @@ DESCRIPTION = """
     with new Shapes and Effects defined as lightweight Python decorators.
     The aim is not just to produce images, but to compose line-based scores that unfold in time,on screen and on paper.
 """
-FOOTER = "PRIMITIVES | EFFECTS | LAYERS | MIDI | MODULATION | PARAMETER GUI | REAL-TIME RENDERING | PEN PLOTTING"
+FOOTER = "PRIMITIVES  |  EFFECTS  |  LAYERS  |  MIDI  |  PARAMETER GUI  |  PEN PLOTTING"
 
 
 def draw(t: float):
