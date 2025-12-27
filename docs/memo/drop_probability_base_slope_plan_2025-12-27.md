@@ -97,48 +97,48 @@
 
 ### 1) API と meta の更新
 
-- [ ] `src/grafix/core/effects/drop.py` の meta を更新
-  - [ ] `probability` を廃止
-  - [ ] `probability_base: ParamMeta(kind="vec3", ui_min=0.0, ui_max=1.0)` を追加
-  - [ ] `probability_slope: ParamMeta(kind="vec3", ui_min=-1.0, ui_max=1.0)` を追加
-- [ ] `src/grafix/core/effects/drop.py:drop()` のシグネチャ更新
-  - [ ] `probability_base: tuple[float, float, float] = (0.0, 0.0, 0.0)`
-  - [ ] `probability_slope: tuple[float, float, float] = (0.0, 0.0, 0.0)`
-- [ ] docstring 更新（中心/端での意味、式）
+- [x] `src/grafix/core/effects/drop.py` の meta を更新
+  - [x] `probability` を廃止
+  - [x] `probability_base: ParamMeta(kind="vec3", ui_min=0.0, ui_max=1.0)` を追加
+  - [x] `probability_slope: ParamMeta(kind="vec3", ui_min=-1.0, ui_max=1.0)` を追加
+- [x] `src/grafix/core/effects/drop.py:drop()` のシグネチャ更新
+  - [x] `probability_base: tuple[float, float, float] = (0.0, 0.0, 0.0)`
+  - [x] `probability_slope: tuple[float, float, float] = (0.0, 0.0, 0.0)`
+- [x] docstring 更新（中心/端での意味、式）
 
 ### 2) `p_eff` 計算の実装
 
-- [ ] `src/grafix/core/effects/drop.py` に小さな純関数ヘルパを追加
-  - [ ] bbox から `center/extent` を計算
-  - [ ] ポリライン（start:end）から代表点 `c`（頂点平均）を計算
-  - [ ] `t` を計算（extent 0 回避 + clamp）
-  - [ ] `p_eff` を計算（`p_x/p_y/p_z` を作り、`1-Π(1-p_axis)` で合成）
-- [ ] 既存の loop に組み込み、`rng.random() < p_eff` を cond に反映
+- [x] `src/grafix/core/effects/drop.py` に小さな純関数ヘルパを追加
+  - [x] bbox から `center/extent` を計算
+  - [x] ポリライン（start:end）から代表点 `c`（頂点平均）を計算
+  - [x] `t` を計算（extent 0 回避 + clamp）
+  - [x] `p_eff` を計算（`p_x/p_y/p_z` を作り、`1-Π(1-p_axis)` で合成）
+- [x] 既存の loop に組み込み、`rng.random() < p_eff` を cond に反映
 
 ### 3) テスト更新（+ 追加）
 
-- [ ] `tests/core/effects/test_drop.py` を更新（引数名/型の変更）
-  - [ ] deterministic: `probability_base=(0.5,0.5,0.5), probability_slope=(0,0,0), seed=42`
-  - [ ] clamp: `probability_base=(-1,-1,-1)` は noop、`probability_base=(2,2,2)` は全 drop（line/face の既存期待に合わせる）
-  - [ ] non-finite: `probability_base=(nan,0,0)` / `(inf,0,0)` は noop（impl 直呼びテスト）
-  - [ ] face: `by="face", probability_base=(1,1,1)` で「faces は全 drop / lines は残る」
-- [ ] 追加テスト: 位置勾配が効く最小例
-  - [ ] x=-1 と x=+1 にそれぞれ line/face を置く primitive を用意
-  - [ ] `probability_base=(0.5,0,0), probability_slope=(0.5,0,0)` で
-    - x=- 側は `p_eff=0`（drop されない）
-    - x=+ 側は `p_eff=1`（必ず drop）
+- [x] `tests/core/effects/test_drop.py` を更新（引数名/型の変更）
+  - [x] deterministic: `probability_base=(0.5,0.5,0.5), probability_slope=(0,0,0), seed=42`
+  - [x] clamp: `probability_base=(-1,-1,-1)` は noop、`probability_base=(2,2,2)` は全 drop（line/face の既存期待に合わせる）
+  - [x] non-finite: `probability_base=(nan,0,0)` / `(inf,0,0)` は noop（impl 直呼びテスト）
+  - [x] face: `by="face", probability_base=(1,1,1)` で「faces は全 drop / lines は残る」
+- [x] 追加テスト: 位置勾配が効く最小例
+  - [x] x=-1 と x=+1 にそれぞれ line/face を置く primitive を用意
+  - [x] `probability_base=(0.5,0,0), probability_slope=(0.5,0,0)` で
+    - [x] x=- 側は `p_eff=0`（drop されない）
+    - [x] x=+ 側は `p_eff=1`（必ず drop）
       を確認
 
 ### 4) stubs 再生成
 
-- [ ] `python -m tools.gen_g_stubs` を実行し、`src/grafix/api/__init__.pyi` を更新
-- [ ] `PYTHONPATH=src pytest -q tests/stubs/test_api_stub_sync.py` を通す
+- [x] `python -m tools.gen_g_stubs` を実行し、`src/grafix/api/__init__.pyi` を更新
+- [x] `PYTHONPATH=src pytest -q tests/stubs/test_api_stub_sync.py` を通す
 
 ### 5) 最小の検証コマンド
 
-- [ ] `PYTHONPATH=src pytest -q tests/core/effects/test_drop.py`
-- [ ] `ruff check src/grafix/core/effects/drop.py tests/core/effects/test_drop.py`
-- [ ] `mypy src/grafix/core/effects/drop.py`
+- [x] `PYTHONPATH=src pytest -q tests/core/effects/test_drop.py`
+- [ ] `ruff check src/grafix/core/effects/drop.py tests/core/effects/test_drop.py`（この環境では `ruff` が見つからない）
+- [x] `mypy src/grafix/core/effects/drop.py`
 
 ## 事前確認したい点（この仕様で進めてよい？）
 

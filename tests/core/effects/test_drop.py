@@ -61,6 +61,24 @@ def drop_test_lines_and_faces() -> RealizedGeometry:
     return RealizedGeometry(coords=coords, offsets=offsets)
 
 
+@primitive
+def drop_test_lines_xneg_xpos() -> RealizedGeometry:
+    """x=-1 と x=+1 に 2 点ポリラインを 1 本ずつ返す。"""
+    coords = np.array(
+        [
+            # line at x=-1
+            [-1.0, 0.0, 0.0],
+            [-1.0, 1.0, 0.0],
+            # line at x=+1
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+        ],
+        dtype=np.float32,
+    )
+    offsets = np.array([0, 2, 4], dtype=np.int32)
+    return RealizedGeometry(coords=coords, offsets=offsets)
+
+
 def test_drop_interval_drop_mode_respects_index_offset() -> None:
     g = G.drop_test_lines5()
     out = E.drop(interval=2, index_offset=1, keep_mode="drop")(g)
@@ -119,12 +137,22 @@ def test_drop_length_filters_union() -> None:
 
 def test_drop_probability_is_deterministic_for_same_seed() -> None:
     g = G.drop_test_lines5()
-    out1 = E.drop(probability=0.5, seed=42, keep_mode="drop")(g)
+    out1 = E.drop(
+        probability_base=(0.5, 0.5, 0.5),
+        probability_slope=(0.0, 0.0, 0.0),
+        seed=42,
+        keep_mode="drop",
+    )(g)
     r1 = realize(out1)
 
     # realize_cache を回避して同じ計算を再実行するため、別 ID の no-op ノードを噛ませる。
     g2 = E.translate(delta=(0.0, 0.0, 0.0))(g)
-    out2 = E.drop(probability=0.5, seed=42, keep_mode="drop")(g2)
+    out2 = E.drop(
+        probability_base=(0.5, 0.5, 0.5),
+        probability_slope=(0.0, 0.0, 0.0),
+        seed=42,
+        keep_mode="drop",
+    )(g2)
     r2 = realize(out2)
 
     np.testing.assert_allclose(r2.coords, r1.coords, rtol=0.0, atol=0.0)
@@ -144,11 +172,24 @@ def test_drop_probability_clamps_range() -> None:
     g = G.drop_test_lines5()
     base = realize(g)
 
-    out_neg = realize(E.drop(probability=-0.25, keep_mode="drop")(g))
+    out_neg = realize(
+        E.drop(
+            probability_base=(-1.0, -1.0, -1.0),
+            probability_slope=(0.0, 0.0, 0.0),
+            keep_mode="drop",
+        )(g)
+    )
     np.testing.assert_allclose(out_neg.coords, base.coords, rtol=0.0, atol=0.0)
     assert out_neg.offsets.tolist() == base.offsets.tolist()
 
-    out_over = realize(E.drop(probability=2.0, seed=0, keep_mode="drop")(g))
+    out_over = realize(
+        E.drop(
+            probability_base=(2.0, 2.0, 2.0),
+            probability_slope=(0.0, 0.0, 0.0),
+            seed=0,
+            keep_mode="drop",
+        )(g)
+    )
     assert out_over.coords.shape == (0, 3)
     assert out_over.offsets.tolist() == [0]
 
@@ -157,11 +198,19 @@ def test_drop_probability_non_finite_is_noop_in_impl() -> None:
     g = G.drop_test_lines5()
     base = realize(g)
 
-    out_nan = drop_impl([base], probability=float("nan"))
+    out_nan = drop_impl(
+        [base],
+        probability_base=(float("nan"), 0.0, 0.0),
+        probability_slope=(0.0, 0.0, 0.0),
+    )
     np.testing.assert_allclose(out_nan.coords, base.coords, rtol=0.0, atol=0.0)
     assert out_nan.offsets.tolist() == base.offsets.tolist()
 
-    out_inf = drop_impl([base], probability=float("inf"))
+    out_inf = drop_impl(
+        [base],
+        probability_base=(float("inf"), 0.0, 0.0),
+        probability_slope=(0.0, 0.0, 0.0),
+    )
     np.testing.assert_allclose(out_inf.coords, base.coords, rtol=0.0, atol=0.0)
     assert out_inf.offsets.tolist() == base.offsets.tolist()
 
@@ -243,7 +292,13 @@ def test_drop_face_length_uses_closed_perimeter() -> None:
 
 def test_drop_face_probability_one_drops_all_faces_but_keeps_lines() -> None:
     g = G.drop_test_lines_and_faces()
-    out = E.drop(probability=1.0, seed=0, by="face", keep_mode="drop")(g)
+    out = E.drop(
+        probability_base=(1.0, 1.0, 1.0),
+        probability_slope=(0.0, 0.0, 0.0),
+        seed=0,
+        by="face",
+        keep_mode="drop",
+    )(g)
     realized = realize(out)
 
     expected_coords = np.array(
@@ -259,3 +314,24 @@ def test_drop_face_probability_one_drops_all_faces_but_keeps_lines() -> None:
     )
     np.testing.assert_allclose(realized.coords, expected_coords, rtol=0.0, atol=1e-6)
     assert realized.offsets.tolist() == [0, 2, 4]
+
+
+def test_drop_probability_position_gradient_by_x() -> None:
+    g = G.drop_test_lines_xneg_xpos()
+    out = E.drop(
+        probability_base=(0.5, 0.0, 0.0),
+        probability_slope=(0.5, 0.0, 0.0),
+        seed=0,
+        keep_mode="drop",
+    )(g)
+    realized = realize(out)
+
+    expected_coords = np.array(
+        [
+            [-1.0, 0.0, 0.0],
+            [-1.0, 1.0, 0.0],
+        ],
+        dtype=np.float32,
+    )
+    np.testing.assert_allclose(realized.coords, expected_coords, rtol=0.0, atol=1e-6)
+    assert realized.offsets.tolist() == [0, 2]

@@ -4,23 +4,16 @@
 なぜ: 動作確認用の最小エントリポイントとして利用するため。
 """
 
-from grafix import E, G, L, cc, run
+from grafix import E, G, run
 
 CANVAS_WIDTH = 300
 CANVAS_HEIGHT = 300
 
 
 def draw(t: float):
-    ply1 = G.text(font="Cappadocia.otf", text="GRAFIX")
-    eff1 = (
-        E(name="pl2")
-        .affine()
-        .mirror()
-        .fill(density=1000)
-        .subdivide(subdivisions=5)
-        .displace(t=t * 0.1)
-    )
-    return eff1(ply1)
+    g = G.polygon()
+    e = E.partition().drop().fill(angle=(10, 20, 30, 40, 50))
+    return e(g)
 
 
 if __name__ == "__main__":
