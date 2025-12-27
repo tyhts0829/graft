@@ -35,10 +35,10 @@ PNG は **SVG を正（ソース）**として「SVG→PNG のラスタライズ
 
 - `src/grafix/interactive/runtime/draw_window_system.py`（P キー追加 + 保存フラグ処理）
 - （新規）SVG→PNG ラスタライズ
-  - 案 1: `src/grafix/export/rasterize_svg.py`（headless / interactive から再利用しやすい）
+  - 案 1: `src/grafix/export/image.py`（headless / interactive から再利用しやすい）
   - 案 2: `src/grafix/interactive/runtime/png_save_system.py`（interactive 専用に閉じる）
 - テスト
-  - `tests/export/test_rasterize_svg.py`（コマンド生成 + エラー整形をモックで検証）
+  - `tests/export/test_image.py`（コマンド生成 + エラー整形をモックで検証）
 - （任意）`README.md` にキー操作（S/V/P）を追記
 
 ## TODO（チェックリスト）
