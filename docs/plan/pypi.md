@@ -6,26 +6,26 @@
 
 ## 0. 事前準備（アカウントとセキュリティ）
 
-- [ ] PyPI アカウントを用意する（登録 / ログイン確認）
-- [ ] 2 要素認証（2FA）を有効化する
-- [ ] リカバリコードを生成して安全な場所に保管する
+- [x] PyPI アカウントを用意する（登録 / ログイン確認）
+- [x] 2 要素認証（2FA）を有効化する
+- [x] リカバリコードを生成して安全な場所に保管する
 
 ## 1. 配布名（PyPI のプロジェクト名）を決める
 
-- [ ] 配布名候補を決める（`pip install <配布名>` の名前）
-- [ ] PyPI で同名が存在しないことを検索して確認する
-- [ ] 「配布名」と `import` 名は別物だと整理する（例: 配布名 `grafix-art` / `import grafix`）
+- [x] 配布名候補を決める（`pip install <配布名>` の名前）: grafix
+- [x] PyPI で同名が存在しないことを検索して確認する
+- [x] 「配布名」は grafix
 
 ## 2. `pyproject.toml` を整備する（最重要）
 
-- [ ] `project.name` を配布名にする
-- [ ] `project.version` を手動固定で入れる（例: `0.1.0`）
-- [ ] `project.readme = "README.md"` を設定する
-- [ ] `project.license = { file = "LICENSE" }` を設定する
-- [ ] `project.requires-python` を決める（例: `>=3.10`）
+- [x] `project.name` を配布名にする
+- [x] `project.version` を手動固定で入れる（例: `0.1.0`）
+- [x] `project.readme = "README.md"` を設定する
+- [x] `project.license = { file = "LICENSE" }` を設定する
+- [x] `project.requires-python` を決める（例: `>=3.10`）
 - [ ] 依存を必須から最小化し、必要なら extras（`optional-dependencies`）へ分離する
 - [ ] `project.classifiers` を埋める（PyPI 公式一覧から選ぶ）
-- [ ] `src/` 配置のパッケージ探索設定を入れる（例: setuptools の `find` で `where = ["src"]`）
+- [x] `src/` 配置のパッケージ探索設定を入れる（例: setuptools の `find` で `where = ["src"]`）
 
 ## 3. 配布物（sdist / wheel）をローカルでビルドする
 
