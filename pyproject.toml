@@ -13,6 +13,7 @@ dependencies = [
   "numpy",
   "numba",
   "shapely",
+  "pyclipper",
   "moderngl",
   "pyglet",
   "imgui",
