@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Any
 
 DEFAULT_WINDOW_WIDTH = 800
-DEFAULT_WINDOW_HEIGHT = 1200
+DEFAULT_WINDOW_HEIGHT = 1000
 # Retina(2x) を基準にしたターゲット framebuffer 幅（外部モニタでの見切れ対策）。
 DEFAULT_WINDOW_TARGET_FRAMEBUFFER_WIDTH_PX = DEFAULT_WINDOW_WIDTH * 1.5
 
