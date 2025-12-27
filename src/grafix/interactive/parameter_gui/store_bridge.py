@@ -127,8 +127,8 @@ def _order_rows_for_display(
 
     blocks: list[tuple[tuple[int, int, str], list[ParameterRow]]] = []
 
-    for group_key, block_rows in primitive_blocks.items():
-        op, ordinal = group_key
+    for primitive_key, block_rows in primitive_blocks.items():
+        op, ordinal = primitive_key
         # primitive ブロックの位置は、そのブロック内行の display_order の最小値に寄せる。
         # （同一 primitive 呼び出し内で arg 行の順序は固定だが、念のため min を取る）
         order = min(_display_order(r) for r in block_rows)
@@ -158,8 +158,8 @@ def _order_rows_for_display(
             )
         )
 
-    for group_key, block_rows in other_blocks.items():
-        op, site_id = group_key
+    for other_key, block_rows in other_blocks.items():
+        op, site_id = other_key
         # other ブロックも primitive 同様、ブロック内の min(display_order) に寄せる。
         order = min(_display_order(r) for r in block_rows)
         blocks.append(

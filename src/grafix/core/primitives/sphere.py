@@ -295,8 +295,8 @@ def _sphere_rings(subdivisions: int, mode: int) -> list[np.ndarray]:
     # 高さごとに水平リング（Y 一定の XZ 面の円）
     if m in (0, 2):
         for i in range(ring_count):
-            y = -_RADIUS + (i / (ring_count - 1)) * (2.0 * _RADIUS)
-            radius = float(math.sqrt(max(0.0, _RADIUS * _RADIUS - y * y)))
+            y_pos = -_RADIUS + (i / (ring_count - 1)) * (2.0 * _RADIUS)
+            radius = float(math.sqrt(max(0.0, _RADIUS * _RADIUS - y_pos * y_pos)))
             if radius <= 1e-9:
                 continue
             segments = int(
@@ -304,16 +304,16 @@ def _sphere_rings(subdivisions: int, mode: int) -> list[np.ndarray]:
             )
             segments = max(min_segments, segments)
             angles = np.linspace(0.0, 2.0 * math.pi, segments + 1, dtype=np.float32)
-            x = (radius * np.cos(angles)).astype(np.float32)
-            z = (radius * np.sin(angles)).astype(np.float32)
-            y_arr = np.full_like(x, fill_value=np.float32(y))
-            polylines.append(np.stack((x, y_arr, z), axis=1).astype(np.float32))
+            xs = (radius * np.cos(angles)).astype(np.float32)
+            zs = (radius * np.sin(angles)).astype(np.float32)
+            ys = np.full_like(xs, fill_value=np.float32(y_pos))
+            polylines.append(np.stack((xs, ys, zs), axis=1).astype(np.float32))
 
     # 縦リング（X 固定の YZ 円 / Z 固定の XY 円）
     if m in (1, 2):
         for i in range(ring_count):
-            x = -_RADIUS + (i / (ring_count - 1)) * (2.0 * _RADIUS)
-            radius = float(math.sqrt(max(0.0, _RADIUS * _RADIUS - x * x)))
+            x_pos = -_RADIUS + (i / (ring_count - 1)) * (2.0 * _RADIUS)
+            radius = float(math.sqrt(max(0.0, _RADIUS * _RADIUS - x_pos * x_pos)))
             if radius <= 1e-9:
                 continue
             segments = int(
@@ -321,14 +321,14 @@ def _sphere_rings(subdivisions: int, mode: int) -> list[np.ndarray]:
             )
             segments = max(min_segments, segments)
             angles = np.linspace(0.0, 2.0 * math.pi, segments + 1, dtype=np.float32)
-            y = (radius * np.cos(angles)).astype(np.float32)
-            z = (radius * np.sin(angles)).astype(np.float32)
-            x_arr = np.full_like(y, fill_value=np.float32(x))
-            polylines.append(np.stack((x_arr, y, z), axis=1).astype(np.float32))
+            ys = (radius * np.cos(angles)).astype(np.float32)
+            zs = (radius * np.sin(angles)).astype(np.float32)
+            xs = np.full_like(ys, fill_value=np.float32(x_pos))
+            polylines.append(np.stack((xs, ys, zs), axis=1).astype(np.float32))
 
         for i in range(ring_count):
-            z = -_RADIUS + (i / (ring_count - 1)) * (2.0 * _RADIUS)
-            radius = float(math.sqrt(max(0.0, _RADIUS * _RADIUS - z * z)))
+            z_pos = -_RADIUS + (i / (ring_count - 1)) * (2.0 * _RADIUS)
+            radius = float(math.sqrt(max(0.0, _RADIUS * _RADIUS - z_pos * z_pos)))
             if radius <= 1e-9:
                 continue
             segments = int(
@@ -336,10 +336,10 @@ def _sphere_rings(subdivisions: int, mode: int) -> list[np.ndarray]:
             )
             segments = max(min_segments, segments)
             angles = np.linspace(0.0, 2.0 * math.pi, segments + 1, dtype=np.float32)
-            x = (radius * np.cos(angles)).astype(np.float32)
-            y = (radius * np.sin(angles)).astype(np.float32)
-            z_arr = np.full_like(x, fill_value=np.float32(z))
-            polylines.append(np.stack((x, y, z_arr), axis=1).astype(np.float32))
+            xs = (radius * np.cos(angles)).astype(np.float32)
+            ys = (radius * np.sin(angles)).astype(np.float32)
+            zs = np.full_like(xs, fill_value=np.float32(z_pos))
+            polylines.append(np.stack((xs, ys, zs), axis=1).astype(np.float32))
 
     return polylines
 

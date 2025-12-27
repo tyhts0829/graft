@@ -72,20 +72,20 @@ def mirror(
     if not inputs:
         return _empty_geometry()
 
-    base = inputs[0]
-    coords = base.coords
-    offsets = base.offsets
+    base_geom = inputs[0]
+    coords = base_geom.coords
+    offsets = base_geom.offsets
     if coords.shape[0] == 0:
-        return base
+        return base_geom
 
     n = int(n_mirror)
     if n < 1:
-        return base
+        return base_geom
 
     cx_f = float(cx)
     cy_f = float(cy)
     if not (np.isfinite(cx_f) and np.isfinite(cy_f)):
-        return base
+        return base_geom
 
     sx = 1 if bool(source_positive_x) else -1
     sy = 1 if bool(source_positive_y) else -1
@@ -194,9 +194,9 @@ def mirror(
                 out_coords_arr[v_cursor : v_cursor + block],
             )
             # 各コピーは同じ頂点数なので offsets は等差で埋める。
-            base = int(out_offsets_arr[o_cursor])
+            offset_base = int(out_offsets_arr[o_cursor])
             out_offsets_arr[o_cursor + 1 : o_cursor + 2 * n + 1] = (
-                base + ln * np.arange(1, 2 * n + 1, dtype=np.int32)
+                offset_base + ln * np.arange(1, 2 * n + 1, dtype=np.int32)
             )
             o_cursor += 2 * n
             v_cursor += block
@@ -306,8 +306,8 @@ def mirror(
     all_coords = np.vstack(uniq).astype(np.float32, copy=False)
     new_offsets = np.zeros((len(uniq) + 1,), dtype=np.int32)
     acc = 0
-    for i, ln in enumerate(uniq, start=1):
-        acc += int(ln.shape[0])
+    for i, line in enumerate(uniq, start=1):
+        acc += int(line.shape[0])
         new_offsets[i] = acc
     return RealizedGeometry(coords=all_coords, offsets=new_offsets)
 

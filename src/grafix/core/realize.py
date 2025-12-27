@@ -66,13 +66,13 @@ def _evaluate_geometry_node(geometry: Geometry) -> RealizedGeometry:
 
     if not geometry.inputs:
         # primitive
-        func = primitive_registry.get(op)
-        return func(geometry.args)
+        primitive_func = primitive_registry.get(op)
+        return primitive_func(geometry.args)
 
     # effect
     realized_inputs = [realize(g) for g in geometry.inputs]
-    func = effect_registry.get(op)
-    return func(realized_inputs, geometry.args)
+    effect_func = effect_registry.get(op)
+    return effect_func(realized_inputs, geometry.args)
 
 
 def realize(geometry: Geometry) -> RealizedGeometry:
