@@ -1,0 +1,167 @@
+# src/ モジュール群 厳しめコードレビュー（2025-12-27）
+
+## 対象範囲 / 前提
+
+- 対象: `src/grafix/` 配下（API / core / export / interactive / parameters など）
+- **除外**: `src/grafix/core/primitives/` と `src/grafix/core/effects/` の「個別実装ファイル」の内容レビュー（ただし、登録・呼び出し・依存関係・型・運用上の影響は俯瞰として指摘）
+- 追加で確認したもの: `mypy src/grafix` の結果（ruff は環境に未導入で実行不可）
+- 注: 作業ツリーに既存の未コミット差分がある状態でのレビューです（レビュー結果のファイル追加以外は変更していません）。
+
+---
+
+## 総評（厳しめ）
+
+設計の「骨格」はかなり良いです。特に **core ↔ interactive/export の依存方向**、`parameters` サブシステムの **レイヤ分割（store/snapshot/ops/context/resolver/codec）**、`SceneItem`→`Layer` 正規化→`realize_scene` の導線など、後から大きく育てても破綻しにくい形になっています。
+
+一方で、現状は **型チェックが赤（mypy が大量エラー）**、`site_id` の設計が **永続化/引き継ぎの安定性を根本的に弱くしている**、`realize_cache` が **無制限でメモリ事故の種**、そして「便利な import」が **依存をパッケージ全体へ拡散**させている、という“足腰の弱点”があります。今のうちに手当てしないと、利用範囲が広がった瞬間に詰みやすいタイプです。
+
+---
+
+## 良い点（伸ばすべき）
+
+- **責務境界が明確**:
+  - `grafix/core` が「モデルと純粋ロジック」に寄っている
+  - `grafix/interactive` が GUI/GL/MIDI/録画を隔離している
+  - `grafix/export` が headless の導線を用意している
+- **parameters の設計が良い**:
+  - `parameter_context` でフレーム内の snapshot を固定し、決定性を担保している
+  - `store_snapshot()` を pure に保つ方針がはっきりしている（`architecture.md` が特に良い）
+  - ops 経由で store mutate を集約しようとしている（踏み抜き防止）
+- **描画ループ設計が良い**:
+  - 複数ウィンドウを `MultiWindowLoop` で統制して `flip()` を集約している（点滅回避の観点で正しい）
+- **RealizedGeometry の不変条件チェック**は堅い（writeable=False、形状・dtype 検証）
+
+---
+
+## クリティカル（優先度: 最上位）
+
+### 1) mypy が大きく壊れている（= 型が“設計ドキュメント”として機能していない）
+
+`mypy src/grafix` で **40 errors / 21 files**。この状態だと、型は「安心材料」ではなく「放置された負債」になります。
+
+特に primitives/effects 個別は除外対象ですが、**core の共通コード**や **API/export/interactive**にもエラーが出ているため、設計のメインストリームに影響しています。
+
+代表例（個別 primitive/effect を除く）:
+
+- `src/grafix/core/realize.py`:
+  - primitive と effect の関数型が違うのに同じ変数名で扱っていて、mypy が破綻（`func` の型が混ざる）
+  - 実害: 今後 refactor で簡単にバグが混入する（型で守れない）
+- `src/grafix/core/realized_geometry.py`:
+  - `new_offsets` の型推論が効かずエラー
+- `src/grafix/core/parameters/style.py`:
+  - `coerce_rgb255()` の入力を `object` で受けて `int()` しており、mypy 的に不正
+- `src/grafix/api/export.py`:
+  - `tuple(canvas_size)` が `tuple[int, ...]` になり `tuple[int, int]` に合わない
+- `src/grafix/interactive/parameter_gui/store_bridge.py`:
+  - いくつかの tuple の型が崩れてエラー（表示順ロジック周り）
+
+提案（最小・素直）:
+
+- **「mypy を通す」ことを最優先の品質ゲートにする**
+  - 依存スタブ問題（pyglet/numba/shapely 等）は、まずは `type: ignore` や `Any` で“境界”に押し込め、core の型を守る
+- `realize.py` は単純に `primitive_func` / `effect_func` に分ける（型混線を解消）
+- `export.py` は `canvas_size` を明示的に `(int(w), int(h))` にする（型も実値も安定）
+
+---
+
+### 2) `site_id` の安定性が弱く、永続化と reconcile が根本から揺れる
+
+`ParameterKey.site_id` が `make_site_id()` で
+
+- **絶対パス**
+- `co_firstlineno`
+- `frame.f_lasti`（バイトコード依存）
+
+を含む設計です。
+
+問題:
+
+- 絶対パスは **環境差（別PC/別clone/パス変更）で即死**しやすい
+- `f_lasti` は Python バージョンや最適化・微妙な編集で変わりやすく、**ちょっとした編集で GUI キーが大量に変わる**
+- reconcile があるとはいえ、fingerprint 依存（args/kind/label）で、複数候補があると対応付けしない仕様なので、**一度ズレると引き継ぎ不能**になりやすい
+
+提案:
+
+- 少なくとも **絶対パスを repo 相対**へ（同一 repo 内での安定性が上がる）
+- `f_lasti` は「同一行に複数呼び出し」を区別したい意図は分かるが、コストが高い。必要なら “その行の N 回目呼び出し” のような方式に寄せる（ただし実装が重くなるので要検討）
+
+---
+
+### 3) `realize_cache` が無制限で、アニメーション/探索で簡単にメモリ事故る
+
+`realize_cache` は `GeometryId -> RealizedGeometry` を無制限に保持します。`GeometryId` は引数に依存するので、アニメーションやランダム生成で毎フレーム新しい id が出ると **際限なく増える**構造です。
+
+提案:
+
+- まずは **上限付き LRU**（件数でいい）にする
+- もしくは「録画中」「一定時間」など条件で cache を抑制する
+
+---
+
+## メジャー（優先度: 高）
+
+### 4) “import するだけで重い依存” がパッケージ全体に波及している
+
+`grafix/__init__.py` が `grafix.api` を import し、`grafix.api.effects/primitives` が built-in 群を import して registry 登録するため、
+
+- `import grafix` しただけで numba/shapely/fontTools 等の重い依存を踏みやすい
+- 「interactive だけが重い」のつもりでも、現状は **API import がすでに重い**
+
+提案:
+
+- built-in 登録は「必要になったときだけ」実行する導線へ寄せる（遅延 import の境界を揃える）
+- もしくは “全部入り” を前提にするなら、依存関係の宣言とインストール導線を明確にする（現状は壊れやすい）
+
+---
+
+### 5) 永続化/復元が「静かに失敗して空ストア」で進む（データロスが見えない）
+
+`load_param_store()` が例外を握りつぶして `ParamStore()` を返す設計は、ユーザー体験としては優しい一方で、開発段階では **壊れているのに気づけない**のが致命的です。
+
+提案:
+
+- 少なくともログを残す（破損・decode 失敗・権限・IO）
+- “壊れてたらバックアップして退避” のような運用を入れる（ただし複雑化は注意）
+
+---
+
+### 6) optional 依存の境界が曖昧（core/interactive に混ざる）
+
+例:
+
+- `interactive/gl/index_buffer.py` は import 時点で numba を要求（環境差で即落ち）
+- GUI 系は遅延 import が多いが、まだ境界が一貫していない
+
+提案:
+
+- import を「使う場所」に寄せて、core を薄く保つ（特に最上位 import で落ちないように）
+
+---
+
+## マイナー（優先度: 中〜低、ただし積み上がる）
+
+### 7) ファイル先頭ヘッダと docstring のスタイルが一部揺れている
+
+多くは「どこで・何を・なぜ」が統一されていて良いが、一部に揺れがある（例: `gl/shader.py`, `gl/line_mesh.py`, `core/realize.py` のパス表記など）。今のうちに揃えると、後から読むコストが下がります。
+
+### 8) `print` が混ざる（ログ方針が曖昧）
+
+録画開始/停止や保存メッセージなどが `print`。ライブラリとして使う想定があるなら logger に寄せた方が扱いやすいです（ただし個人ツールなら現状でもOK）。
+
+### 9) GUI の “repo 直参照パス” はインストール形態で壊れやすい
+
+`Path(__file__).resolve().parents[4] / "data/input/font/..."` のような参照は、editable install 以外で破綻しやすいです。将来配布するなら `importlib.resources` などへ移したいところ。
+
+### 10) `SceneItem` の受け入れが広い（Sequence 判定）
+
+`normalize_scene()` は `Sequence` を広く受けます。想定外の `Sequence`（例えば numpy 配列など）を渡すと“ネスト列”扱いになります。API で渡せる型をもっと絞るか、エラーを分かりやすくする余地があります。
+
+---
+
+## 次アクション案（最小の改善順）
+
+1. **mypy を通す（core+api+interactive の骨格だけでも）**
+2. `site_id` の絶対パス問題を潰す（repo 相対化）
+3. `realize_cache` を上限制にする（LRU）
+4. import の重さ（built-in 登録）を整理する
+

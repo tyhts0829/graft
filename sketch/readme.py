@@ -6,7 +6,7 @@ CANVAS_HEIGHT = 297
 
 # TEXTS
 TITLE = "GRAFIX"
-SUBTITLE = "line-based generative geometry,  python-native creative coding framework, modulate everything via effects pipeline"
+SUBTITLE = "A Python-based creative coding framework"
 FUNC_TEXT = "polyhedron()       fill()       displace()"
 DESCRIPTION = """
     This framework approaches visual design with an audio mindset.
