@@ -2,7 +2,7 @@
 #
 # どこで: `src/grafix/core/effects/drop.py`（+ stubs/tests）。
 #
-# 何を: drop effect に「位置ベースの確率勾配」を追加する（`probability_base` + `probability_slope(vec3)`）。
+# 何を: drop effect に「位置ベースの確率勾配」を追加する（`probability_base(vec3)` + `probability_slope(vec3)`）。
 #
 # なぜ: ジオメトリ中心から +X/+Y/+Z 側へ行くほど drop されやすい等、空間的な密度勾配を直感的に作るため。
 #
@@ -18,7 +18,7 @@
 - 各軸の寄与は独立に調整できる（X/Y/Z を別パラメータで指定）。
 - `seed` で決定的（同じ入力/引数なら同じ結果）。
 - GUI/CC:
-  - `probability_base` は scalar CC で制御できる
+  - `probability_base` は vec3 CC で成分別に制御できる
   - `probability_slope` は vec3 CC で成分別に制御できる
 
 ## 非ゴール
@@ -31,13 +31,13 @@
 
 ### パラメータ
 
-- `probability_base: float = 0.0`
-  - 0..1 を想定（非有限は 0.0 扱い、範囲外は clamp）
-  - 意味: **中心位置**（t=0）の drop 確率
+- `probability_base: tuple[float, float, float] = (0.0, 0.0, 0.0)`
+  - 各成分は 0..1 を想定（非有限は 0.0 扱い、範囲外は clamp）
+  - 意味: **中心位置**（t=0）の drop 確率（軸別）
 - `probability_slope: tuple[float, float, float] = (0.0, 0.0, 0.0)`
   - 各成分は概ね -1..+1 を想定（範囲外でも可だが最終確率で clamp）
-  - 意味: 正規化座標 `t∈[-1,+1]` に対して、`base` からの増減量（中心→端）
-    - 例: `base=0.5, slope_x=0.5` なら、X- 端で 0.0、X+ 端で 1.0
+  - 意味: 正規化座標 `t∈[-1,+1]` に対して、各軸の確率 `p_axis` を線形に変える係数（中心→端）
+    - 例: `base_x=0.5, slope_x=0.5` なら、X- 端で 0.0、X+ 端で 1.0
 
 ### 代表点（line/face ごとの位置）
 
@@ -62,8 +62,12 @@
 
 `t = (tx, ty, tz)` として、
 
-- `p_eff_raw = probability_base + slope_x*tx + slope_y*ty + slope_z*tz`
-- `p_eff = clamp(p_eff_raw, 0.0, 1.0)`
+- 軸別確率:
+  - `p_x = clamp(base_x + slope_x * tx, 0.0, 1.0)`
+  - `p_y = clamp(base_y + slope_y * ty, 0.0, 1.0)`
+  - `p_z = clamp(base_z + slope_z * tz, 0.0, 1.0)`
+- 合成（OR のイメージ）:
+  - `p_eff = 1.0 - (1.0 - p_x) * (1.0 - p_y) * (1.0 - p_z)`
 
 ### 既存条件との合成
 
@@ -88,10 +92,10 @@
 
 - [ ] `src/grafix/core/effects/drop.py` の meta を更新
   - [ ] `probability` を廃止
-  - [ ] `probability_base: ParamMeta(kind="float", ui_min=0.0, ui_max=1.0)` を追加
+  - [ ] `probability_base: ParamMeta(kind="vec3", ui_min=0.0, ui_max=1.0)` を追加
   - [ ] `probability_slope: ParamMeta(kind="vec3", ui_min=-1.0, ui_max=1.0)` を追加
 - [ ] `src/grafix/core/effects/drop.py:drop()` のシグネチャ更新
-  - [ ] `probability_base: float = 0.0`
+  - [ ] `probability_base: tuple[float, float, float] = (0.0, 0.0, 0.0)`
   - [ ] `probability_slope: tuple[float, float, float] = (0.0, 0.0, 0.0)`
 - [ ] docstring 更新（中心/端での意味、式）
 
@@ -101,19 +105,19 @@
   - [ ] bbox から `center/extent` を計算
   - [ ] ポリライン（start:end）から代表点 `c`（頂点平均）を計算
   - [ ] `t` を計算（extent 0 回避 + clamp）
-  - [ ] `p_eff` を計算（base + dot(slope, t) を 0..1 clamp）
+  - [ ] `p_eff` を計算（`p_x/p_y/p_z` を作り、`1-Π(1-p_axis)` で合成）
 - [ ] 既存の loop に組み込み、`rng.random() < p_eff` を cond に反映
 
 ### 3) テスト更新（+ 追加）
 
 - [ ] `tests/core/effects/test_drop.py` を更新（引数名/型の変更）
-  - [ ] deterministic: `probability_base=0.5, probability_slope=(0,0,0), seed=42`
-  - [ ] clamp: `probability_base<0` は noop、`probability_base>1` は全 drop（line/face の既存期待に合わせる）
-  - [ ] non-finite: `probability_base=nan/inf` は noop（impl 直呼びテスト）
-  - [ ] face: `by="face", probability_base=1.0` で「faces は全 drop / lines は残る」
+  - [ ] deterministic: `probability_base=(0.5,0.5,0.5), probability_slope=(0,0,0), seed=42`
+  - [ ] clamp: `probability_base=(-1,-1,-1)` は noop、`probability_base=(2,2,2)` は全 drop（line/face の既存期待に合わせる）
+  - [ ] non-finite: `probability_base=(nan,0,0)` / `(inf,0,0)` は noop（impl 直呼びテスト）
+  - [ ] face: `by="face", probability_base=(1,1,1)` で「faces は全 drop / lines は残る」
 - [ ] 追加テスト: 位置勾配が効く最小例
   - [ ] x=-1 と x=+1 にそれぞれ line/face を置く primitive を用意
-  - [ ] `probability_base=0.5, probability_slope=(0.5,0,0)` で
+  - [ ] `probability_base=(0.5,0,0), probability_slope=(0.5,0,0)` で
     - x=- 側は `p_eff=0`（drop されない）
     - x=+ 側は `p_eff=1`（必ず drop）
     を確認
@@ -132,5 +136,4 @@
 ## 事前確認したい点（この仕様で進めてよい？）
 
 - 代表点は「頂点平均（centroid）」で良い？（長い polyline が中心を跨ぐ場合は、中心寄りに評価される）
-- `p_eff` の合成は `base + dot(slope, t)`（3軸の線形和）で良い？（別案: `max` や `1-Π(1-p_axis)`）
-
+- `p_eff = 1-Π(1-p_axis)`（OR 合成）で良い？（別案: `max(p_axis)` / `clamp(sum(p_axis),0,1)`）
