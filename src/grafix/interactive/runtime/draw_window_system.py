@@ -62,8 +62,8 @@ class DrawWindowSystem:
         self._settings = settings
         self._store = store
         self._midi_controller = midi_controller
-        self._frozen_cc_snapshot = (
-            dict(frozen_cc_snapshot) if frozen_cc_snapshot is not None else None
+        self._frozen_cc_snapshot: dict[int, float] = (
+            dict(frozen_cc_snapshot) if frozen_cc_snapshot is not None else {}
         )
         self._monitor = monitor
 

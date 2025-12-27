@@ -65,13 +65,13 @@ class Export:
         self.layers: list[RealizedLayer] = realize_scene(draw, float(t), defaults)
 
         if self.fmt == "svg":
-            export_svg(self.layers, self.path, canvas_size=tuple(canvas_size))
+            export_svg(self.layers, self.path, canvas_size=canvas_size)
             return
         if self.fmt in {"image", "png"}:
             export_image(
                 self.layers,
                 self.path,
-                canvas_size=tuple(canvas_size),
+                canvas_size=canvas_size,
                 background_color=background_color,
             )
             return
@@ -80,4 +80,3 @@ class Export:
             return
 
         raise ValueError(f"未対応の export fmt: {fmt!r}")
-

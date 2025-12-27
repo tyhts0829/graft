@@ -93,7 +93,7 @@ def concat_realized_geometries(*geometries: RealizedGeometry) -> RealizedGeometr
 
     total_coords = np.concatenate(coords_list, axis=0)
 
-    new_offsets = []
+    new_offsets: list[int] = []
     offset_base = 0
     for offsets in offsets_list:
         # 先頭 0 を除いた差分部分だけをシフトして足し込む。

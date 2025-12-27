@@ -257,12 +257,12 @@ def _count_line(
             u_pos, dash_len, offset, length, upper
         )
         if has_seg:
-            s_idx = np.searchsorted(s, t_start)
-            e_idx = np.searchsorted(s, t_end)
+            s_idx = int(np.searchsorted(s, t_start))
+            e_idx = int(np.searchsorted(s, t_end))
             interior = e_idx - s_idx
             if interior < 0:
                 interior = 0
-            total_vertices += 2 + int(interior)
+            total_vertices += 2 + interior
             m += 1
 
         u_pos += pattern
@@ -322,8 +322,8 @@ def _fill_line(
             u_pos, dash_len, offset, length, upper
         )
         if has_seg:
-            s_idx = np.searchsorted(s, t_start)
-            e_idx = np.searchsorted(s, t_end)
+            s_idx = int(np.searchsorted(s, t_start))
+            e_idx = int(np.searchsorted(s, t_end))
 
             # start 補間
             s0 = s_idx - 1

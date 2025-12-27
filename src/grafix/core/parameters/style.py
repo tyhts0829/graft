@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 from .key import ParameterKey
 
 STYLE_OP = "__style__"
@@ -41,13 +43,16 @@ def coerce_rgb255(value: object) -> tuple[int, int, int]:
         長さ 3 のシーケンスでない場合。
     """
 
+    r: object
+    g: object
+    b: object
     try:
         r, g, b = value  # type: ignore[misc]
     except Exception as exc:
         raise ValueError(f"rgb value must be a length-3 sequence: {value!r}") from exc
 
     def _clamp(v: object) -> int:
-        iv = int(v)  # type: ignore[misc]
+        iv = int(cast(Any, v))
         return 0 if iv < 0 else 255 if iv > 255 else iv
 
     return _clamp(r), _clamp(g), _clamp(b)

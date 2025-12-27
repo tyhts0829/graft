@@ -840,9 +840,11 @@ def fill(
         if _is_degenerate_fill_input(coords2d_all, base.offsets):
             return base
         groups = _build_evenodd_groups(coords2d_all, base.offsets)
+
+        out_lines: list[np.ndarray]
         if not groups:
             # ループが無い（またはリング条件を満たさない）場合は境界の有無だけを反映して返す。
-            out_lines: list[np.ndarray] = []
+            out_lines = []
             for poly_i in range(int(base.offsets.size) - 1):
                 if bool(remove_boundary_seq[poly_i % len(remove_boundary_seq)]):
                     continue
@@ -864,7 +866,7 @@ def fill(
                     out_lines.append(base.coords[s:e])
             return _lines_to_realized(out_lines)
 
-        out_lines: list[np.ndarray] = []
+        out_lines = []
         for gi, ring_indices in enumerate(groups):
             # groupwise cycle
             remove_boundary_i = bool(remove_boundary_seq[gi % len(remove_boundary_seq)])

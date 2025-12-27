@@ -332,6 +332,7 @@ def partition(
         except Exception:
             return base
 
+    loops_2d: list[np.ndarray]
     if len(pts) <= 1:
         loops_2d = _collect_polygon_exteriors(region)
     else:
@@ -341,7 +342,7 @@ def partition(
         except Exception:
             return base
 
-        loops_2d: list[np.ndarray] = []
+        loops_2d = []
         for cell in getattr(vd, "geoms", []):  # type: ignore[attr-defined]
             try:
                 inter = cell.intersection(region)
