@@ -49,11 +49,11 @@ def draw(t: float):
     description = G(name="description").text(text=DESCRIPTION)
     description_effed = E(name="description_eff").fill()(description)
 
-    footer_square = G.polygon()
-    footer_squareed = E(name="fill_footer").fill().repeat()(footer_square)
+    footer_square = G(name="footer_square").polygon()
+    footer_squared = E(name="fill_footer").fill().repeat()(footer_square)
 
-    grid = G.grid()
-    circle = G.text(font="Cappadocia.otf", text="o")
+    grid = G(name="grid").grid()
+    circle = G(name="circle").text(font="Cappadocia.otf", text="o")
     filled_circle = E(name="fill_circle").fill()(circle)
 
     footer = G(name="footer").text(text=FOOTER)
@@ -76,6 +76,7 @@ def draw(t: float):
                 geometry_or_list=[
                     poly_affine(poly_affined + poly_filled + poly_displaced),
                     line,
+                    footer_squared,
                 ],
             ),
         ),
@@ -83,7 +84,7 @@ def draw(t: float):
             name="grid_pattern",
             geometry_or_list=[grid, filled_circle],
         ),
-        L(name="footer_pattern", geometry_or_list=footer),
+        L(name="footer", geometry_or_list=footer),
     )
 
 
