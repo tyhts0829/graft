@@ -5,16 +5,19 @@
 from __future__ import annotations
 
 import inspect
+import logging
 import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from .codec import dumps_param_store, loads_param_store
-from .prune_ops import prune_stale_loaded_groups
+from .prune_ops import prune_stale_loaded_groups, prune_unknown_args_in_known_ops
 from .store import ParamStore
 
 from grafix.core.runtime_config import output_root_dir
+
+_logger = logging.getLogger(__name__)
 
 
 def _sanitize_filename_fragment(text: str) -> str:
@@ -75,5 +78,17 @@ def save_param_store(store: ParamStore, path: Path) -> None:
 
     # 保存前に「旧 site_id の残骸」を掃除して、GUI ヘッダ増殖とファイル肥大化を防ぐ。
     prune_stale_loaded_groups(store)
+    removed_unknown = prune_unknown_args_in_known_ops(store)
+    if removed_unknown:
+        pairs = sorted({(str(k.op), str(k.arg)) for k in removed_unknown})
+        preview = ", ".join(f"{op}.{arg}" for op, arg in pairs[:10])
+        suffix = "" if len(pairs) <= 10 else ", ..."
+        _logger.warning(
+            "未登録引数を永続化から削除しました: count=%d pairs=%d [%s%s]",
+            len(removed_unknown),
+            len(pairs),
+            preview,
+            suffix,
+        )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(dumps_param_store(store) + "\n", encoding="utf-8")

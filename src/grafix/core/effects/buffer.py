@@ -1,4 +1,4 @@
-"""ポリライン列を平面へ射影して輪郭をオフセットし、外形線を生成する effect。"""
+"""ポリライン列を推定平面へ射影し、Shapely の buffer で外側輪郭を生成する effect。"""
 
 from __future__ import annotations
 
@@ -11,16 +11,16 @@ from grafix.core.effect_registry import effect
 from grafix.core.realized_geometry import RealizedGeometry
 from grafix.core.parameters.meta import ParamMeta
 
-offset_meta = {
+buffer_meta = {
     "join": ParamMeta(kind="choice", choices=("mitre", "round", "bevel")),
     "distance": ParamMeta(kind="float", ui_min=0.0, ui_max=25.0),
-    "segments_per_circle": ParamMeta(kind="int", ui_min=1, ui_max=100),
+    "quad_segs": ParamMeta(kind="int", ui_min=1, ui_max=100),
     "keep_original": ParamMeta(kind="bool"),
 }
 
 _JOIN_STYLE_SET = {"mitre", "round", "bevel"}
 _AUTO_CLOSE_THRESHOLD = 1e-3
-_SEGMENTS_PER_CIRCLE_MAX = 256
+_QUAD_SEGS_MAX = 256
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,16 +176,16 @@ def _extract_vertices_2d(buffered) -> list[np.ndarray]:
     return out
 
 
-@effect(meta=offset_meta)
-def offset(
+@effect(meta=buffer_meta)
+def buffer(
     inputs: Sequence[RealizedGeometry],
     *,
     join: str = "round",  # "mitre" | "round" | "bevel"
-    segments_per_circle: int = 12,  # Shapely の quad_segs（1/4 円あたりの分割）
+    quad_segs: int = 12,  # Shapely の quad_segs（1/4 円あたりの分割）
     distance: float = 5.0,
     keep_original: bool = False,
 ) -> RealizedGeometry:
-    """Shapely の buffer を用いて輪郭をオフセットする（外側のみ）。
+    """Shapely の buffer を用いて外側輪郭を生成する（外側のみ）。
 
     Parameters
     ----------
@@ -193,23 +193,23 @@ def offset(
         入力実体ジオメトリ列。通常は 1 要素。
     join : str, default "round"
         角の処理。`"mitre" | "round" | "bevel"` を指定。
-    segments_per_circle : int, default 12
+    quad_segs : int, default 12
         円弧近似分割数（Shapely の `quad_segs` 相当）。
     distance : float, default 5.0
-        オフセット距離 [mm]。0 以下は no-op。
+        buffer 距離 [mm]。0 以下は no-op。
     keep_original : bool, default False
-        True のときオフセット結果に加えて元のポリラインも出力に含める。
+        True のとき buffer 結果に加えて元のポリラインも出力に含める。
 
     Returns
     -------
     RealizedGeometry
-        オフセット後の実体ジオメトリ。
+        buffer 後の実体ジオメトリ。
 
     Notes
     -----
     旧実装の挙動を最小限で踏襲する:
     - 端点が近い線は自動で閉じる（閾値 `1e-3`）。
-    - distance は 0 以下を no-op 扱いとする（内側オフセットは未対応）。
+    - distance は 0 以下を no-op 扱いとする（内側 buffer は未対応）。
     """
     if not inputs:
         return _empty_geometry()
@@ -226,11 +226,11 @@ def offset(
     if join_style not in _JOIN_STYLE_SET:
         return base
 
-    quad_segs = int(segments_per_circle)
-    if quad_segs < 1:
-        quad_segs = 1
-    if quad_segs > _SEGMENTS_PER_CIRCLE_MAX:
-        quad_segs = _SEGMENTS_PER_CIRCLE_MAX
+    quad_segs_i = int(quad_segs)
+    if quad_segs_i < 1:
+        quad_segs_i = 1
+    if quad_segs_i > _QUAD_SEGS_MAX:
+        quad_segs_i = _QUAD_SEGS_MAX
 
     # ローカル import（effect 未使用時に shapely import を避ける）
     from shapely.geometry import LineString  # type: ignore[import-not-found]
@@ -252,7 +252,7 @@ def offset(
 
         buffered = LineString(line2).buffer(  # type: ignore[arg-type]
             d,
-            quad_segs=quad_segs,
+            quad_segs=quad_segs_i,
             join_style=join_style,
         )
         for v2 in _extract_vertices_2d(buffered):

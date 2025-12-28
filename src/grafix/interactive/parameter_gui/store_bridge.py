@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
 
 from grafix.core.effect_registry import effect_registry
@@ -25,6 +26,8 @@ from .labeling import (
 )
 from .midi_learn import MidiLearnState
 from .table import COLUMN_WEIGHTS_DEFAULT, render_parameter_table
+
+_logger = logging.getLogger(__name__)
 
 
 def _row_identity(row: ParameterRow) -> tuple[str, int, str]:
@@ -98,18 +101,14 @@ def _order_rows_for_display(
             order = primitive_registry.get_param_order(op)
             primitive_arg_index_by_op[op] = {a: i for i, a in enumerate(order)}
         index_by_arg = primitive_arg_index_by_op[op]
-        if arg not in index_by_arg:
-            raise ValueError(f"primitive 引数が未登録です: op={op!r} arg={arg!r}")
-        return int(index_by_arg[arg])
+        return int(index_by_arg.get(arg, 10**9))
 
     def _effect_arg_index(op: str, arg: str) -> int:
         if op not in effect_arg_index_by_op:
             order = effect_registry.get_param_order(op)
             effect_arg_index_by_op[op] = {a: i for i, a in enumerate(order)}
         index_by_arg = effect_arg_index_by_op[op]
-        if arg not in index_by_arg:
-            raise ValueError(f"effect 引数が未登録です: op={op!r} arg={arg!r}")
-        return int(index_by_arg[arg])
+        return int(index_by_arg.get(arg, 10**9))
 
     primitive_blocks: dict[tuple[str, int], list[ParameterRow]] = {}
     for row in primitive_rows:
@@ -156,7 +155,10 @@ def _order_rows_for_display(
         blocks.append(
             (
                 (int(order), 0, f"{op}#{int(ordinal)}"),
-                sorted(block_rows, key=lambda r: _primitive_arg_index(op, str(r.arg))),
+                sorted(
+                    block_rows,
+                    key=lambda r: (_primitive_arg_index(op, str(r.arg)), str(r.arg)),
+                ),
             )
         )
 
@@ -190,7 +192,10 @@ def _order_rows_for_display(
         # other ブロックも primitive 同様、ブロック内の min(display_order) に寄せる。
         order = min(_display_order(r) for r in block_rows)
         if op in effect_registry:
-            ordered = sorted(block_rows, key=lambda r: _effect_arg_index(op, str(r.arg)))
+            ordered = sorted(
+                block_rows,
+                key=lambda r: (_effect_arg_index(op, str(r.arg)), str(r.arg)),
+            )
         else:
             ordered = sorted(block_rows, key=lambda r: str(r.arg))
         blocks.append(
@@ -371,6 +376,47 @@ def render_store_parameter_table(
     # rows は元々 (op, ordinal, arg) でソートされるが、
     # Effect については「チェーン順/ステップ順」で見せたいので、ここで並び替える。
     rows_before_raw = rows_from_snapshot(snapshot)
+    runtime = store._runtime_ref()
+
+    primitive_known_args_by_op: dict[str, set[str]] = {}
+    effect_known_args_by_op: dict[str, set[str]] = {}
+
+    unknown_args_new: set[tuple[str, str]] = set()
+    rows_before_raw_filtered: list[ParameterRow] = []
+    for row in rows_before_raw:
+        op = str(row.op)
+        arg = str(row.arg)
+
+        if op in primitive_registry:
+            known_args = primitive_known_args_by_op.get(op)
+            if known_args is None:
+                known_args = set(primitive_registry.get_meta(op).keys())
+                primitive_known_args_by_op[op] = known_args
+            if arg not in known_args:
+                pair = (op, arg)
+                if pair not in runtime.warned_unknown_args:
+                    runtime.warned_unknown_args.add(pair)
+                    unknown_args_new.add(pair)
+                continue
+
+        elif op in effect_registry:
+            known_args = effect_known_args_by_op.get(op)
+            if known_args is None:
+                known_args = set(effect_registry.get_meta(op).keys())
+                effect_known_args_by_op[op] = known_args
+            if arg not in known_args:
+                pair = (op, arg)
+                if pair not in runtime.warned_unknown_args:
+                    runtime.warned_unknown_args.add(pair)
+                    unknown_args_new.add(pair)
+                continue
+
+        rows_before_raw_filtered.append(row)
+
+    if unknown_args_new:
+        pairs = ", ".join(f"{op}.{arg}" for op, arg in sorted(unknown_args_new))
+        _logger.warning("未登録引数を無視します（次回保存で削除）: %s", pairs)
+    rows_before_raw = rows_before_raw_filtered
 
     # 最終的な表示順: style → primitive → effect → other
     # ※ この rows_before の順番が、そのまま GUI の並び順になる。

@@ -5,7 +5,7 @@ A5 = (148, 210)
 
 def draw(t):
     t = G.text()
-    e = E.partition().drop().relax().fill().quantize()
+    e = E.partition().buffer().buffer()
     return e(t)
 
 

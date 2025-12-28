@@ -237,7 +237,7 @@ def _bench_params_for_effect(name: str) -> dict[str, Any]:
         "repeat": {"count": 5},
         "mirror": {"n_mirror": 3},
         # shapely 系は依存未導入なら skipped になる設計（パラメータは軽め）。
-        "offset": {"distance": 5.0, "segments_per_circle": 8, "join": "round"},
+        "buffer": {"distance": 5.0, "quad_segs": 8, "join": "round"},
         "partition": {"site_count": 30, "seed": 0},
     }
 

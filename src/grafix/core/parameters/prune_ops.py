@@ -6,6 +6,10 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from grafix.core.effect_registry import effect_registry
+from grafix.core.primitive_registry import primitive_registry
+
+from .key import ParameterKey
 from .reconcile_ops import GroupKey, reconcile_loaded_groups_for_runtime
 from .store import ParamStore
 
@@ -31,6 +35,53 @@ def prune_stale_loaded_groups(store: ParamStore) -> None:
 
     stale = loaded_targets - observed_targets
     prune_groups(store, stale)
+
+
+def prune_unknown_args_in_known_ops(store: ParamStore) -> list[ParameterKey]:
+    """登録済み primitive/effect の未登録引数（arg）をストアから削除する。
+
+    Notes
+    -----
+    - `op` が未登録（primitive/effect どちらでもない）のものは削除しない。
+      （プラグイン未ロード等の可能性があるため）
+    - 判定は registry の meta keys を基準にする（`param_order` は並び専用）。
+    """
+
+    removed: list[ParameterKey] = []
+
+    primitive_known_args_by_op: dict[str, set[str]] = {}
+    effect_known_args_by_op: dict[str, set[str]] = {}
+
+    keys = set(store._states) | set(store._meta) | set(store._explicit_by_key)
+    for key in sorted(keys, key=lambda k: (str(k.op), str(k.site_id), str(k.arg))):
+        op = str(key.op)
+        arg = str(key.arg)
+
+        if op in primitive_registry:
+            known_args = primitive_known_args_by_op.get(op)
+            if known_args is None:
+                known_args = set(primitive_registry.get_meta(op).keys())
+                primitive_known_args_by_op[op] = known_args
+            if arg in known_args:
+                continue
+
+        elif op in effect_registry:
+            known_args = effect_known_args_by_op.get(op)
+            if known_args is None:
+                known_args = set(effect_registry.get_meta(op).keys())
+                effect_known_args_by_op[op] = known_args
+            if arg in known_args:
+                continue
+
+        else:
+            continue
+
+        removed.append(key)
+        store._states.pop(key, None)
+        store._meta.pop(key, None)
+        store._explicit_by_key.pop(key, None)
+
+    return removed
 
 
 def prune_groups(store: ParamStore, groups_to_remove: Iterable[GroupKey]) -> None:
@@ -79,4 +130,4 @@ def prune_groups(store: ParamStore, groups_to_remove: Iterable[GroupKey]) -> Non
         collapsed.discard(f"effect_chain:{removed_chain_id}")
 
 
-__all__ = ["prune_stale_loaded_groups", "prune_groups"]
+__all__ = ["prune_stale_loaded_groups", "prune_unknown_args_in_known_ops", "prune_groups"]

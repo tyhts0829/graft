@@ -10,7 +10,7 @@
 
 方針（今回の決定）:
 
-- **整合検査**（現行の primitive/effect レジストリが持つ `param_order` と照合）で「未登録 arg」を検出する。
+- **整合検査**（現行の primitive/effect レジストリが持つ **meta keys** と照合）で「未登録 arg」を検出する（`param_order` は“並び”専用）。
 - 検出した未登録 arg は **実行中は無視**（GUI の行として扱わない / 落とさない）。
 - 未登録 arg は **終了時の保存（`save_param_store`）で永続化から削除**する（自己修復）。
 
@@ -22,10 +22,12 @@
 
 ## 0) 事前に決める（あなたの確認が必要）
 
-- [ ] 「未登録」の定義は `param_order` 基準（= 現行の `primitive_registry.get_param_order(op)` / `effect_registry.get_param_order(op)` に含まれない arg）でよい
+- [ ] 「未登録」の定義は **meta keys** 基準（= `primitive_registry.get_meta(op).keys()` / `effect_registry.get_meta(op).keys()` に含まれない arg）でよい（`param_order` は“並び”専用）
 - [ ] 対象は `op in primitive_registry` と `op in effect_registry` のみ（`op` 不明は保持）でよい
 - [ ] GUI の挙動: 未登録 arg は **表示しない**（完全に無視）でよい
-- [ ] ログ: 未登録 arg を検出/削除したら、終了時保存で **1 回だけ** warning を出す（出力先は `logging`）でよい
+- [ ] ログ:
+  - [ ] 未登録 arg を **検出した時点で（初回だけ）** warning（「保存時に削除される」旨も含める）
+  - [ ] 保存時は「削除件数 + 先頭 N 件」などの要約 warning（またはログ無し）でよい
 
 ## 1) 受け入れ条件（完了の定義）
 
@@ -44,8 +46,9 @@
 
 - 対象: `src/grafix/interactive/parameter_gui/store_bridge.py`
 - `render_store_parameter_table()` 内で `rows_before_raw` を作った直後に、未登録 arg 行をフィルタする。
-  - 判定は「op が primitive/effect で、arg がレジストリの `param_order` に無い」。
+  - 判定は「op が primitive/effect で、arg がレジストリの **meta keys** に無い」。
   - フィルタした結果は `rows_before`（描画対象）にのみ反映し、store 自体はその場では触らない（保存時に消す）。
+- フィルタで未登録 arg を見つけたら `logging.warning` を **初回だけ** 出す（同一 run 内で spam しない）。
 - 追加の安全柵として、`_primitive_arg_index()` / `_effect_arg_index()` は未登録 arg を例外にせず末尾扱い（巨大 index）にする（将来の呼び出し経路変化で落ちないため）。
 
 ### B) 終了時（永続化）: 未登録 arg を ParamStore から削除する
@@ -57,9 +60,10 @@
     - [ ] `store._states`
     - [ ] `store._explicit_by_key`（`encode_param_store` が explicit を無条件に永続化するため）
   - [ ] `op` が primitive/effect として登録済みのときだけ arg を検査する（`op` 不明は保持）
+  - [ ] 判定は `get_meta(op).keys()` 基準（`param_order` は使わない）
 - 対象: `src/grafix/core/parameters/persistence.py`
   - [ ] `save_param_store()` 内で `prune_unknown_args_in_known_ops(store)` を呼ぶ（`prune_stale_loaded_groups(store)` と同列の「保存前掃除」）
-  - [ ] 何か削除した場合だけ `logging.warning` で `(op, site_id, arg)` の要約を出す（長ければ件数 + 先頭 N 件）
+  - [ ] 何か削除した場合だけ `logging.warning` で要約を出す（件数 + 先頭 N 件）
 
 ## 3) 変更箇所（ファイル単位）
 

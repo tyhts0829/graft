@@ -120,6 +120,18 @@ class _EffectBuilder(Protocol):
             delta: 最後に適用する平行移動量 [mm]（dx, dy, dz）
         """
         ...
+    def buffer(self, *, bypass: bool = ..., join: str = ..., distance: float = ..., quad_segs: int = ..., keep_original: bool = ...) -> _EffectBuilder:
+        """
+        Shapely の buffer を用いて外側輪郭を生成する（外側のみ）。
+
+        引数:
+            bypass: bool
+            join: 角の処理
+            distance: buffer 距離 [mm]
+            quad_segs: 円弧近似分割数（Shapely の `quad_segs` 相当）
+            keep_original: True のとき buffer 結果に加えて元のポリラインも出力に含める
+        """
+        ...
     def clip(self, *, bypass: bool = ..., mode: str = ..., draw_outline: bool = ...) -> _EffectBuilder:
         """
         XY 平面へ整列した上で、閉曲線マスクで線分列をクリップする。
@@ -239,18 +251,6 @@ class _EffectBuilder(Protocol):
             group: "polyhedral" の回転群（T=12, O=24, I=60）
             use_reflection: "polyhedral" で代表反射（y=0）を追加して倍化する
             show_planes: 対称面を可視化用の十字線として出力に追加する
-        """
-        ...
-    def offset(self, *, bypass: bool = ..., join: str = ..., distance: float = ..., segments_per_circle: int = ..., keep_original: bool = ...) -> _EffectBuilder:
-        """
-        Shapely の buffer を用いて輪郭をオフセットする（外側のみ）。
-
-        引数:
-            bypass: bool
-            join: 角の処理
-            distance: オフセット距離 [mm]
-            segments_per_circle: 円弧近似分割数（Shapely の `quad_segs` 相当）
-            keep_original: True のときオフセット結果に加えて元のポリラインも出力に含める
         """
         ...
     def partition(self, *, bypass: bool = ..., site_count: int = ..., seed: int = ..., site_density_base: Vec3 = ..., site_density_slope: Vec3 = ..., auto_center: bool = ..., pivot: Vec3 = ...) -> _EffectBuilder:
@@ -406,6 +406,18 @@ class _E(Protocol):
             delta: 最後に適用する平行移動量 [mm]（dx, dy, dz）
         """
         ...
+    def buffer(self, *, bypass: bool = ..., join: str = ..., distance: float = ..., quad_segs: int = ..., keep_original: bool = ...) -> _EffectBuilder:
+        """
+        Shapely の buffer を用いて外側輪郭を生成する（外側のみ）。
+
+        引数:
+            bypass: bool
+            join: 角の処理
+            distance: buffer 距離 [mm]
+            quad_segs: 円弧近似分割数（Shapely の `quad_segs` 相当）
+            keep_original: True のとき buffer 結果に加えて元のポリラインも出力に含める
+        """
+        ...
     def clip(self, *, bypass: bool = ..., mode: str = ..., draw_outline: bool = ...) -> _EffectBuilder:
         """
         XY 平面へ整列した上で、閉曲線マスクで線分列をクリップする。
@@ -525,18 +537,6 @@ class _E(Protocol):
             group: "polyhedral" の回転群（T=12, O=24, I=60）
             use_reflection: "polyhedral" で代表反射（y=0）を追加して倍化する
             show_planes: 対称面を可視化用の十字線として出力に追加する
-        """
-        ...
-    def offset(self, *, bypass: bool = ..., join: str = ..., distance: float = ..., segments_per_circle: int = ..., keep_original: bool = ...) -> _EffectBuilder:
-        """
-        Shapely の buffer を用いて輪郭をオフセットする（外側のみ）。
-
-        引数:
-            bypass: bool
-            join: 角の処理
-            distance: オフセット距離 [mm]
-            segments_per_circle: 円弧近似分割数（Shapely の `quad_segs` 相当）
-            keep_original: True のときオフセット結果に加えて元のポリラインも出力に含める
         """
         ...
     def partition(self, *, bypass: bool = ..., site_count: int = ..., seed: int = ..., site_density_base: Vec3 = ..., site_density_slope: Vec3 = ..., auto_center: bool = ..., pivot: Vec3 = ...) -> _EffectBuilder:

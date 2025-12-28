@@ -3,17 +3,10 @@
 旧プロジェクトからの primitive, effect の移行
 parameter_gui Style, Effect, Primitive のヘッダ色指定
 Color Palette 統合
-Midi Controller 統合
 LFO 実装
-stub 生成
-displace amp と freq は傾きを成分指定
-gui にエフェクトごとの横線
 weave 回すと seed 変わる。
-pyclipper 導入
-gui 順序
 text buffer
 shadow プリミティブ
 packing エフェクト
 polygon 途中まで書く
 partition z!=0 のとき外れる
-text tole -> precision

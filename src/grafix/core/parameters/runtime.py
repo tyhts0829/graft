@@ -21,6 +21,7 @@ class ParamStoreRuntime:
     display_order_by_group: dict[tuple[str, str], int] = field(default_factory=dict)
     next_display_order: int = 1
     last_effective_by_key: dict[ParameterKey, object] = field(default_factory=dict)
+    warned_unknown_args: set[tuple[str, str]] = field(default_factory=set)
 
 
 __all__ = ["ParamStoreRuntime"]
