@@ -43,6 +43,7 @@ def test_order_rows_for_display_effect_step_uses_bypass_then_signature_arg_order
         _row(op="scale", site_id="e:1", ordinal=1, arg="scale"),
         _row(op="scale", site_id="e:1", ordinal=1, arg="pivot"),
         _row(op="scale", site_id="e:1", ordinal=1, arg="auto_center"),
+        _row(op="scale", site_id="e:1", ordinal=1, arg="mode"),
         _row(op="scale", site_id="e:1", ordinal=1, arg="bypass"),
     ]
     out = _order_rows_for_display(
@@ -50,7 +51,7 @@ def test_order_rows_for_display_effect_step_uses_bypass_then_signature_arg_order
         step_info_by_site={("scale", "e:1"): ("chain:1", 0)},
         display_order_by_group={("scale", "e:1"): 1},
     )
-    assert [r.arg for r in out] == ["bypass", "auto_center", "pivot", "scale"]
+    assert [r.arg for r in out] == ["bypass", "mode", "auto_center", "pivot", "scale"]
 
 
 def test_order_rows_for_display_places_unknown_arg_last_for_primitive():

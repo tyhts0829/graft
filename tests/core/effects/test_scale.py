@@ -34,6 +34,25 @@ def scale_test_empty() -> RealizedGeometry:
     return RealizedGeometry(coords=coords, offsets=offsets)
 
 
+@primitive
+def scale_test_mixed_open_and_closed() -> RealizedGeometry:
+    """開ポリライン 1 本 + 閉曲線 1 本を返す。"""
+    coords = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [4.0, 0.0, 0.0],
+            [9.0, -1.0, 0.0],
+            [11.0, -1.0, 0.0],
+            [11.0, 1.0, 0.0],
+            [9.0, 1.0, 0.0],
+            [9.0, -1.0, 0.0],
+        ],
+        dtype=np.float32,
+    )
+    offsets = np.array([0, 2, 7], dtype=np.int32)
+    return RealizedGeometry(coords=coords, offsets=offsets)
+
+
 def test_scale_about_origin() -> None:
     g = G.scale_test_line2_xy()
     scaled = E.scale(auto_center=False, pivot=(0.0, 0.0, 0.0), scale=(2.0, 0.5, 1.0))(g)
@@ -70,3 +89,44 @@ def test_scale_empty_geometry_is_noop() -> None:
     assert realized.coords.shape == (0, 3)
     assert realized.offsets.tolist() == [0]
 
+
+def test_scale_by_line_scales_each_open_polyline_and_keeps_closed_ones() -> None:
+    g = G.scale_test_mixed_open_and_closed()
+    scaled = E.scale(mode="by_line", scale=(0.5, 0.5, 1.0))(g)
+    realized = realize(scaled)
+
+    expected = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [3.0, 0.0, 0.0],
+            [9.0, -1.0, 0.0],
+            [11.0, -1.0, 0.0],
+            [11.0, 1.0, 0.0],
+            [9.0, 1.0, 0.0],
+            [9.0, -1.0, 0.0],
+        ],
+        dtype=np.float32,
+    )
+    np.testing.assert_allclose(realized.coords, expected, rtol=0.0, atol=1e-6)
+    assert realized.offsets.tolist() == [0, 2, 7]
+
+
+def test_scale_by_face_scales_each_closed_polyline_and_keeps_open_ones() -> None:
+    g = G.scale_test_mixed_open_and_closed()
+    scaled = E.scale(mode="by_face", scale=(0.5, 0.5, 1.0))(g)
+    realized = realize(scaled)
+
+    expected = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [4.0, 0.0, 0.0],
+            [9.5, -0.5, 0.0],
+            [10.5, -0.5, 0.0],
+            [10.5, 0.5, 0.0],
+            [9.5, 0.5, 0.0],
+            [9.5, -0.5, 0.0],
+        ],
+        dtype=np.float32,
+    )
+    np.testing.assert_allclose(realized.coords, expected, rtol=0.0, atol=1e-6)
+    assert realized.offsets.tolist() == [0, 2, 7]
