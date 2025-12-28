@@ -267,6 +267,25 @@ class _EffectBuilder(Protocol):
             pivot: auto_center=False のときの pivot（ワールド座標）
         """
         ...
+    def quantize(self, *, bypass: bool = ..., step: Vec3 = ...) -> _EffectBuilder:
+        """
+        頂点座標を各軸のステップ幅で量子化する（XYZ）。
+
+        引数:
+            bypass: bool
+            step: 各軸の格子間隔 (sx, sy, sz)
+        """
+        ...
+    def relax(self, *, bypass: bool = ..., relaxation_iterations: int = ..., step: float = ...) -> _EffectBuilder:
+        """
+        線分ネットワークをグラフとして弾性緩和する。
+
+        引数:
+            bypass: bool
+            relaxation_iterations: 反復回数（0–50 にクランプ）
+            step: 1 ステップの移動係数（0.0–0.5 にクランプ）
+        """
+        ...
     def repeat(self, *, bypass: bool = ..., count: int = ..., cumulative_scale: bool = ..., cumulative_offset: bool = ..., cumulative_rotate: bool = ..., offset: Vec3 = ..., rotation_step: Vec3 = ..., scale: Vec3 = ..., curve: float = ..., auto_center: bool = ..., pivot: Vec3 = ...) -> _EffectBuilder:
         """
         入力ジオメトリを複製して、規則的な配列を作る。
@@ -532,6 +551,25 @@ class _E(Protocol):
             site_density_slope: 正規化座標 t∈[-1,+1] に対する密度勾配（軸別）
             auto_center: True のとき `pivot` を無視し、入力 bbox の中心を pivot として扱う
             pivot: auto_center=False のときの pivot（ワールド座標）
+        """
+        ...
+    def quantize(self, *, bypass: bool = ..., step: Vec3 = ...) -> _EffectBuilder:
+        """
+        頂点座標を各軸のステップ幅で量子化する（XYZ）。
+
+        引数:
+            bypass: bool
+            step: 各軸の格子間隔 (sx, sy, sz)
+        """
+        ...
+    def relax(self, *, bypass: bool = ..., relaxation_iterations: int = ..., step: float = ...) -> _EffectBuilder:
+        """
+        線分ネットワークをグラフとして弾性緩和する。
+
+        引数:
+            bypass: bool
+            relaxation_iterations: 反復回数（0–50 にクランプ）
+            step: 1 ステップの移動係数（0.0–0.5 にクランプ）
         """
         ...
     def repeat(self, *, bypass: bool = ..., count: int = ..., cumulative_scale: bool = ..., cumulative_offset: bool = ..., cumulative_rotate: bool = ..., offset: Vec3 = ..., rotation_step: Vec3 = ..., scale: Vec3 = ..., curve: float = ..., auto_center: bool = ..., pivot: Vec3 = ...) -> _EffectBuilder:
