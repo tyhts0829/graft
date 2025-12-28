@@ -19,5 +19,6 @@ shadow プリミティブ
 drop, partitiox vec3 に
 プリミティブのスケールはスカラーに
 packing エフェクト
-clipper つかった clip エフェクト
 polygon 途中まで書く
+partition z!=0 のとき外れる
+text tole -> precision
