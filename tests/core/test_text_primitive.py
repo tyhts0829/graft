@@ -93,3 +93,14 @@ def test_text_scale_scales_extent() -> None:
     assert extent_b_y > extent_a_y
     assert np.isclose(extent_b_x, extent_a_x * 2.0, rtol=1e-3, atol=1e-4)
     assert np.isclose(extent_b_y, extent_a_y * 2.0, rtol=1e-3, atol=1e-4)
+
+
+def test_text_quality_increases_point_count() -> None:
+    low = realize(
+        G.text(text="O", font="GoogleSans-Regular.ttf", scale=10.0, quality=0.0)
+    )
+    high = realize(
+        G.text(text="O", font="GoogleSans-Regular.ttf", scale=10.0, quality=1.0)
+    )
+
+    assert high.coords.shape[0] > low.coords.shape[0]

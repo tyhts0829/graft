@@ -73,7 +73,7 @@ class _G(Protocol):
             scale: 等方スケール倍率 s
         """
         ...
-    def text(self, *, text: str = ..., font: str = ..., font_index: int = ..., text_align: str = ..., letter_spacing_em: float = ..., line_height: float = ..., tolerance: float = ..., center: Vec3 = ..., scale: float = ...) -> Geometry:
+    def text(self, *, text: str = ..., font: str = ..., font_index: int = ..., text_align: str = ..., letter_spacing_em: float = ..., line_height: float = ..., quality: float = ..., center: Vec3 = ..., scale: float = ...) -> Geometry:
         """
         フォントアウトラインからテキストのポリライン列を生成する。
 
@@ -84,7 +84,7 @@ class _G(Protocol):
             text_align: 行揃え（`left|center|right`）
             letter_spacing_em: 文字間の追加スペーシング（em 比）
             line_height: 行送り（em 比）
-            tolerance: 平坦化許容差（em 基準の近似セグメント長）
+            quality: 平坦化品質（0..1）
             center: 平行移動ベクトル (cx, cy, cz)
             scale: 等方スケール倍率 s
         """

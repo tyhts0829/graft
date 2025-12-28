@@ -24,27 +24,27 @@
 
 ## 1) 受け入れ条件（完了の定義）
 
-- [ ] `G.text(quality=...)` で、`quality` を上げるほど点数（`coords.shape[0]`）が増える。
-- [ ] 公開 API から `tolerance` 引数が無くなる（破壊的変更を許容）。
-- [ ] Param GUI で `quality` が `0..1` のスライダーとして表示される。
-- [ ] スタブ（`src/grafix/api/__init__.pyi`）が再生成され、スタブ同期テストが通る。
+- [x] `G.text(quality=...)` で、`quality` を上げるほど点数（`coords.shape[0]`）が増える。
+- [x] 公開 API から `tolerance` 引数が無くなる（破壊的変更を許容）。
+- [x] Param GUI で `quality` が `0..1` のスライダーとして表示される。
+- [x] スタブ（`src/grafix/api/__init__.pyi`）が再生成され、スタブ同期テストが通る。
 
 ## 2) 実装タスク（コード変更）
 
-- [ ] `src/grafix/core/primitives/text.py` の `text_meta` を `tolerance` → `quality` に置換（`ui_min=0.0`, `ui_max=1.0`）。
-- [ ] `src/grafix/core/primitives/text.py` の `text()` 引数を `tolerance` → `quality` に置換し、docstring も更新する。
-- [ ] `src/grafix/core/primitives/text.py` 内部で `quality` を `0..1` にクランプし、`tolerance = 0.1 * (0.001 / 0.1) ** quality` で `seg_len_units` を決める。
-- [ ] `rg -n "tolerance" src/grafix` で残存参照を消す（必要なら docs/sketch も更新）。
+- [x] `src/grafix/core/primitives/text.py` の `text_meta` を `tolerance` → `quality` に置換（`ui_min=0.0`, `ui_max=1.0`）。
+- [x] `src/grafix/core/primitives/text.py` の `text()` 引数を `tolerance` → `quality` に置換し、docstring も更新する。
+- [x] `src/grafix/core/primitives/text.py` 内部で `quality` を `0..1` にクランプし、`tolerance = 0.1 * (0.001 / 0.1) ** quality` で `seg_len_units` を決める。
+- [x] `rg -n "tolerance" src/grafix` で公開 API 側の残存参照を消す（必要なら docs/sketch も更新）。
 
 ## 3) スタブ生成（公開 API の反映）
 
-- [ ] スタブ生成元（`tools/gen_g_stubs.py` など）を更新し、`G.text(..., quality=..., ...)` が生成されるようにする。
-- [ ] `python -m tools.gen_g_stubs` を実行し、`src/grafix/api/__init__.pyi` を更新する（手編集しない）。
+- [x] スタブ生成元の更新が不要なことを確認する（primitive の meta 更新で `G.text(..., quality=..., ...)` が生成される）。
+- [x] `python -m tools.gen_g_stubs` を実行し、`src/grafix/api/__init__.pyi` を更新する（手編集しない）。
 
 ## 4) テスト（最小の安全柵）
 
-- [ ] `tests/core/test_text_primitive.py` に「`quality` を上げると点数が増える」テストを追加する。
-- [ ] `PYTHONPATH=src pytest -q tests/core/test_text_primitive.py tests/stubs/test_api_stub_sync.py` を通す。
+- [x] `tests/core/test_text_primitive.py` に「`quality` を上げると点数が増える」テストを追加する。
+- [x] `PYTHONPATH=src pytest -q tests/core/test_text_primitive.py tests/stubs/test_api_stub_sync.py` を通す。
 
 ## 5) 追加で事前確認したほうがいい点 / 追加提案（気づいたら追記）
 

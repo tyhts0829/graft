@@ -347,7 +347,7 @@ text_meta = {
     "text_align": ParamMeta(kind="choice", choices=("left", "center", "right")),
     "letter_spacing_em": ParamMeta(kind="float", ui_min=0.0, ui_max=0.5),
     "line_height": ParamMeta(kind="float", ui_min=0.8, ui_max=3.0),
-    "tolerance": ParamMeta(kind="float", ui_min=0.001, ui_max=0.1),
+    "quality": ParamMeta(kind="float", ui_min=0.0, ui_max=1.0),
     "center": ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0),
     "scale": ParamMeta(kind="float", ui_min=0.0, ui_max=200.0),
 }
@@ -362,7 +362,7 @@ def text(
     text_align: str = "left",
     letter_spacing_em: float = 0.0,
     line_height: float = 1.2,
-    tolerance: float = 0.1,
+    quality: float = 0.5,
     center: tuple[float, float, float] = (0.0, 0.0, 0.0),
     scale: float = 1.0,
 ) -> RealizedGeometry:
@@ -386,8 +386,8 @@ def text(
         文字間の追加スペーシング（em 比）。
     line_height : float, optional
         行送り（em 比）。
-    tolerance : float, optional
-        平坦化許容差（em 基準の近似セグメント長）。
+    quality : float, optional
+        平坦化品質（0..1）。大きいほど精緻（点が増える）。
     center : tuple[float, float, float], optional
         平行移動ベクトル (cx, cy, cz)。
     scale : float, optional
@@ -414,7 +414,16 @@ def text(
     font_path = resolve_font_path(font)
     tt_font = TEXT_RENDERER.get_font(font_path, fi)
     units_per_em = float(tt_font["head"].unitsPerEm)  # type: ignore[index]
-    seg_len_units = max(1.0, float(tolerance) * units_per_em)
+    q = float(quality)
+    if q < 0.0:
+        q = 0.0
+    elif q > 1.0:
+        q = 1.0
+
+    tol_min_em = 0.001
+    tol_max_em = 0.1
+    flat_seg_len_em = tol_max_em * (tol_min_em / tol_max_em) ** q
+    seg_len_units = max(1.0, flat_seg_len_em * units_per_em)
 
     lines = str(text).split("\n")
     polylines: list[np.ndarray] = []
