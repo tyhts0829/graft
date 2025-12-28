@@ -7,8 +7,8 @@ tools/cache_check/*.dot
 data
 .mypy_cache/
 src/grafix.egg-info/
-src/grafix.egg-info/
 .venv_test
 dist/
 .wheel_extract
 build/lib
+.numba_cache
