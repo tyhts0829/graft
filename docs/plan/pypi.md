@@ -31,8 +31,8 @@
 
 - [x] 作業用 venv を用意する
 - [x] ビルドツールを入れる: `python -m pip install -U build twine`
-- [ ] 配布物を生成する: `python -m build`（`dist/` に `.tar.gz` と `.whl`）
-- [ ] 配布物を検査する: `python -m twine check dist/*`（README 表示やメタデータ不備を検出）
+- [x] 配布物を生成する: `python -m build`（`dist/` に `.tar.gz` と `.whl`）
+- [x] 配布物を検査する: `python -m twine check dist/*`（README 表示やメタデータ不備を検出）
 
 ## 4. 生成された配布物の中身を検品する
 
