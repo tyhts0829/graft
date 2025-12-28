@@ -12,12 +12,7 @@ weave 回すと seed 変わる。
 pyclipper 導入
 gui 順序
 text buffer
-gridfit エフェクト
-effect エフェクト
-primitive プリミティブ
 shadow プリミティブ
-drop, partitiox vec3 に
-プリミティブのスケールはスカラーに
 packing エフェクト
 polygon 途中まで書く
 partition z!=0 のとき外れる

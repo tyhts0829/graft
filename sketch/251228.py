@@ -5,7 +5,7 @@ A5 = (148, 210)
 
 def draw(t):
     t = G.text()
-    e = E.partition().drop().fill(angle=(30, 60, 90), density=(0, 600, 600, 600))
+    e = E.partition().drop().relax().fill().quantize()
     return e(t)
 
 
