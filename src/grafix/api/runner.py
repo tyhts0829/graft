@@ -12,7 +12,7 @@ from typing import Callable
 import pyglet
 
 from grafix.core.layer import LayerStyleDefaults
-from grafix.core.runtime_config import set_config_path
+from grafix.core.runtime_config import runtime_config, set_config_path
 from grafix.core.parameters import ParamStore
 from grafix.core.parameters.persistence import (
     default_param_store_path,
@@ -25,9 +25,6 @@ from grafix.interactive.midi.midi_controller import maybe_load_frozen_cc_snapsho
 from grafix.interactive.render_settings import RenderSettings
 from grafix.interactive.runtime.draw_window_system import DrawWindowSystem
 from grafix.interactive.runtime.window_loop import MultiWindowLoop, WindowTask
-
-DRAW_WINDOW_POS = (25, 25)
-PARAMETER_GUI_POS = (950, 25)
 
 
 def run(
@@ -91,6 +88,7 @@ def run(
     """
 
     set_config_path(config_path)
+    cfg = runtime_config()
 
     # pyglet の Window 作成前にオプションを設定する。
     # （vsync はウィンドウ作成時に参照される想定のため、ここで固定しておく）
@@ -151,7 +149,7 @@ def run(
         fps=float(fps),
         n_worker=int(n_worker),
     )
-    draw_window.window.set_location(*DRAW_WINDOW_POS)
+    draw_window.window.set_location(*cfg.window_pos_draw)
 
     # `closers` は teardown 用（close 順もここで管理する）。
     closers: list[Callable[[], None]] = [draw_window.close]
@@ -170,7 +168,7 @@ def run(
             midi_controller=midi_controller,
             monitor=monitor,
         )
-        gui.window.set_location(*PARAMETER_GUI_POS)
+        gui.window.set_location(*cfg.window_pos_parameter_gui)
         closers.append(gui.close)
         tasks.append(WindowTask(window=gui.window, draw_frame=gui.draw_frame))
 

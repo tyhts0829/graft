@@ -44,18 +44,22 @@ python sketch/perf_sketch.py
 
 Grafix can read a YAML config file to locate external assets (fonts) and to choose where it writes runtime outputs.
 
-Config discovery (highest priority first):
+Grafix always starts from the packaged defaults (`grafix/resource/default_config.yaml`), then overlays user configs.
 
-- `run(..., config_path="path/to/config.yaml")`
+Config overlay order (later wins):
+
+- packaged defaults: `grafix/resource/default_config.yaml`
 - `./.grafix/config.yaml` (project-local)
 - `~/.config/grafix/config.yaml` (per-user)
+- `run(..., config_path="path/to/config.yaml")`
 
 Paths support `~` and environment variables like `$HOME`.
 
-Create a project-local config:
+Create a project-local config (starting from the packaged defaults):
 
 ```bash
 mkdir -p .grafix
+python -c "from importlib.resources import files; print(files('grafix').joinpath('resource','default_config.yaml').read_text())" > .grafix/config.yaml
 $EDITOR .grafix/config.yaml
 ```
 
@@ -63,29 +67,27 @@ $EDITOR .grafix/config.yaml
 
 ```yaml
 # ./.grafix/config.yaml
-font_dirs:
-  - "~/Fonts"
-output_dir: "./out"
+paths:
+  font_dirs:
+    - "~/Fonts"
+  output_dir: "./out"
 ```
 
 ### Keys
 
-- `font_dirs` (list of paths): searched for `G.text(font=...)` and the Parameter GUI font picker.
-- `output_dir` (path): base directory for auto-saved outputs (default: `data/output`).
+- `paths.font_dirs` (list of paths): searched for `G.text(font=...)` and the Parameter GUI font picker.
+- `paths.output_dir` (path): base directory for auto-saved outputs (default: `data/output`).
   - Parameter GUI state: `{output_dir}/param_store/{script}.json`
   - Interactive saves: `{output_dir}/svg`, `{output_dir}/png`, `{output_dir}/video`
   - MIDI snapshots: `{output_dir}/midi`
+- `ui.window_positions.draw` (2 ints): draw window position `(x, y)` in pixels.
+- `ui.window_positions.parameter_gui` (2 ints): Parameter GUI window position `(x, y)` in pixels.
+- `ui.parameter_gui.window_size` (2 ints): Parameter GUI window size `(width, height)` in pixels.
+- `export.png.scale` (float): PNG output scale multiplier relative to `canvas_size`.
 
-All runtime outputs are written under `output_dir`.
+All runtime outputs are written under `paths.output_dir`.
 
-Tip: Parameter persistence stores the selected `font` value. If you move a sketch to another machine and the font is not available, set `font_dirs` (or reset state by deleting the corresponding `{output_dir}/param_store/*.json` file).
-
-### Environment variables (optional)
-
-- `GRAFIX_FONT_DIRS` (paths separated by your OS path separator)
-- `GRAFIX_OUTPUT_DIR`
-
-Environment variables are used only when the corresponding key is not set in `config.yaml`.
+Tip: Parameter persistence stores the selected `font` value. If you move a sketch to another machine and the font is not available, set `paths.font_dirs` (or reset state by deleting the corresponding `{output_dir}/param_store/*.json` file).
 
 ## Extending (custom primitives / effects)
 

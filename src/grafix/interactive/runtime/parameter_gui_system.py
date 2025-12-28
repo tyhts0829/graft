@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from grafix.interactive.parameter_gui import ParameterGUI, create_parameter_gui_window
 from grafix.core.parameters import ParamStore
+from grafix.core.runtime_config import runtime_config
 from grafix.interactive.midi import MidiController
 
 if TYPE_CHECKING:
@@ -26,7 +27,9 @@ class ParameterGUIWindowSystem:
     ) -> None:
         """GUI 用の window と ParameterGUI を初期化する。"""
 
-        self.window = create_parameter_gui_window(vsync=False)
+        cfg = runtime_config()
+        w, h = cfg.parameter_gui_window_size
+        self.window = create_parameter_gui_window(width=w, height=h, vsync=False)
         self._gui = ParameterGUI(
             self.window,
             store=store,

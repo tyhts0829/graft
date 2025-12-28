@@ -28,7 +28,19 @@ def test_resolve_font_path_respects_priority_explicit_path_over_config(tmp_path)
     copied.write_bytes(bundled.read_bytes())
 
     cfg_path = tmp_path / "config.yaml"
-    cfg_path.write_text(f"font_dirs:\n  - {font_dir}\n", encoding="utf-8")
+    cfg_path.write_text(
+        "\n".join(
+            [
+                "version: 1",
+                "paths:",
+                '  output_dir: "data/output"',
+                "  font_dirs:",
+                f'    - "{font_dir}"',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
 
     set_config_path(cfg_path)
     try:

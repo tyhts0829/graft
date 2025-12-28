@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
@@ -15,8 +16,12 @@ class RuntimeConfig:
     """grafix の実行時設定。"""
 
     config_path: Path | None
-    output_dir: Path | None
+    output_dir: Path
     font_dirs: tuple[Path, ...]
+    window_pos_draw: tuple[int, int]
+    window_pos_parameter_gui: tuple[int, int]
+    parameter_gui_window_size: tuple[int, int]
+    png_scale: float
 
 
 _EXPLICIT_CONFIG_PATH: Path | None = None
@@ -86,38 +91,80 @@ def _as_path_list(value: Any) -> list[Path]:
     return out
 
 
-def _load_yaml_config(path: Path) -> dict[str, Any]:
+def _as_mapping(value: Any, *, key: str) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return dict(value)
+    raise RuntimeError(f"{key} は mapping である必要があります: got={value!r}")
+
+
+def _as_int_pair(value: Any, *, key: str) -> tuple[int, int] | None:
+    if value is None:
+        return None
+    try:
+        seq = list(value)
+    except Exception as exc:
+        raise RuntimeError(f"{key} は [x, y] の配列である必要があります: got={value!r}") from exc
+    if len(seq) != 2:
+        raise RuntimeError(f"{key} は [x, y] の配列である必要があります: got={value!r}")
+    try:
+        x = int(seq[0])
+        y = int(seq[1])
+    except Exception as exc:
+        raise RuntimeError(f"{key} は [x, y] の整数配列である必要があります: got={value!r}") from exc
+    return (x, y)
+
+
+def _as_float(value: Any, *, key: str) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except Exception as exc:
+        raise RuntimeError(f"{key} は数値である必要があります: got={value!r}") from exc
+
+
+def _load_yaml_text(text: str, *, source: str) -> dict[str, Any]:
     try:
         import yaml  # type: ignore[import-untyped]
     except Exception as exc:  # pragma: no cover
         raise RuntimeError(f"PyYAML を import できません: {exc}") from exc
 
     try:
-        text = path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        return {}
-
-    try:
         data = yaml.safe_load(text)
     except Exception as exc:
-        raise RuntimeError(f"config.yaml の読み込みに失敗しました: path={path}") from exc
+        raise RuntimeError(f"config.yaml の読み込みに失敗しました: source={source}") from exc
 
     if data is None:
         return {}
     if not isinstance(data, dict):
-        raise RuntimeError(f"config.yaml は mapping である必要があります: path={path}")
+        raise RuntimeError(f"config.yaml は mapping である必要があります: source={source}")
 
     return dict(data)
 
 
-def _env_optional_path(name: str) -> Path | None:
-    v = os.environ.get(name)
-    return _as_optional_path(v)
+def _load_yaml_config(path: Path) -> dict[str, Any]:
+    text = path.read_text(encoding="utf-8")
+    return _load_yaml_text(text, source=str(path))
 
 
-def _env_path_list(name: str) -> list[Path]:
-    v = os.environ.get(name)
-    return _as_path_list(v)
+def _load_packaged_default_config() -> dict[str, Any]:
+    """同梱デフォルト config をロードして dict を返す。"""
+
+    try:
+        blob = (
+            resources.files("grafix")
+            .joinpath("resource", "default_config.yaml")
+            .read_text(encoding="utf-8")
+        )
+    except Exception as exc:  # pragma: no cover
+        raise RuntimeError(
+            "同梱 default_config.yaml の読み込みに失敗しました"
+            "（パッケージ配布物の package-data を確認してください）"
+        ) from exc
+
+    return _load_yaml_text(blob, source="grafix/resource/default_config.yaml")
 
 
 def runtime_config() -> RuntimeConfig:
@@ -127,32 +174,91 @@ def runtime_config() -> RuntimeConfig:
     if _CONFIG_CACHE is not None:
         return _CONFIG_CACHE
 
-    config_path: Path | None = None
-    if _EXPLICIT_CONFIG_PATH is not None:
-        config_path = _EXPLICIT_CONFIG_PATH
-    else:
-        for p in _default_config_candidates():
-            if p.is_file():
-                config_path = p
-                break
+    explicit_path = _EXPLICIT_CONFIG_PATH
+    if explicit_path is not None and not explicit_path.is_file():
+        raise FileNotFoundError(f"config.yaml が見つかりません: {explicit_path}")
 
-    payload: dict[str, Any] = {}
-    if config_path is not None and config_path.is_file():
-        payload = _load_yaml_config(config_path)
+    discovered_path: Path | None = None
+    for p in _default_config_candidates():
+        if p.is_file():
+            discovered_path = p
+            break
 
-    output_dir = _as_optional_path(payload.get("output_dir"))
-    font_dirs = _as_path_list(payload.get("font_dirs"))
+    payload = _load_packaged_default_config()
+    if discovered_path is not None:
+        payload.update(_load_yaml_config(discovered_path))
+    if explicit_path is not None:
+        payload.update(_load_yaml_config(explicit_path))
 
-    # 環境変数は「config が無い/未指定のキーの補完」にのみ使う。
+    version = payload.get("version")
+    if version is None:
+        raise RuntimeError(
+            "config.yaml の version が未設定です（同梱 default_config.yaml を確認してください）"
+        )
+    try:
+        version_i = int(version)
+    except Exception as exc:
+        raise RuntimeError(f"config.yaml の version は整数である必要があります: got={version!r}") from exc
+    if version_i != 1:
+        raise RuntimeError(f"未対応の config.yaml version です: got={version_i}")
+
+    paths = _as_mapping(payload.get("paths"), key="paths")
+    output_dir = _as_optional_path(paths.get("output_dir"))
     if output_dir is None:
-        output_dir = _env_optional_path("GRAFIX_OUTPUT_DIR")
-    if not font_dirs:
-        font_dirs = _env_path_list("GRAFIX_FONT_DIRS")
+        raise RuntimeError(
+            "paths.output_dir が未設定です（同梱 default_config.yaml を確認してください）"
+        )
+    font_dirs = _as_path_list(paths.get("font_dirs"))
+
+    ui = _as_mapping(payload.get("ui"), key="ui")
+    window_positions = _as_mapping(ui.get("window_positions"), key="ui.window_positions")
+
+    window_pos_draw = _as_int_pair(
+        window_positions.get("draw"),
+        key="ui.window_positions.draw",
+    )
+    if window_pos_draw is None:
+        raise RuntimeError(
+            "ui.window_positions.draw が未設定です（同梱 default_config.yaml を確認してください）"
+        )
+
+    window_pos_parameter_gui = _as_int_pair(
+        window_positions.get("parameter_gui"),
+        key="ui.window_positions.parameter_gui",
+    )
+    if window_pos_parameter_gui is None:
+        raise RuntimeError(
+            "ui.window_positions.parameter_gui が未設定です（同梱 default_config.yaml を確認してください）"
+        )
+
+    parameter_gui = _as_mapping(ui.get("parameter_gui"), key="ui.parameter_gui")
+    parameter_gui_window_size = _as_int_pair(
+        parameter_gui.get("window_size"),
+        key="ui.parameter_gui.window_size",
+    )
+    if parameter_gui_window_size is None:
+        raise RuntimeError(
+            "ui.parameter_gui.window_size が未設定です（同梱 default_config.yaml を確認してください）"
+        )
+
+    export = _as_mapping(payload.get("export"), key="export")
+    png = _as_mapping(export.get("png"), key="export.png")
+    png_scale = _as_float(png.get("scale"), key="export.png.scale")
+    if png_scale is None:
+        raise RuntimeError(
+            "export.png.scale が未設定です（同梱 default_config.yaml を確認してください）"
+        )
+    if png_scale <= 0:
+        raise ValueError(f"export.png.scale は正の値である必要があります: got={png_scale}")
 
     cfg = RuntimeConfig(
-        config_path=config_path,
+        config_path=explicit_path or discovered_path,
         output_dir=output_dir,
         font_dirs=tuple(font_dirs),
+        window_pos_draw=window_pos_draw,
+        window_pos_parameter_gui=window_pos_parameter_gui,
+        parameter_gui_window_size=parameter_gui_window_size,
+        png_scale=float(png_scale),
     )
     _CONFIG_CACHE = cfg
     return cfg
@@ -161,15 +267,14 @@ def runtime_config() -> RuntimeConfig:
 def output_root_dir() -> Path:
     """出力ファイルを保存する既定ルートディレクトリを返す。
 
-    優先順位:
-    1) config.yaml / 環境変数の `output_dir`
-    2) 既定: "data/output"
+    上書き順（後勝ち）:
+    1) 同梱 default_config.yaml
+    2) `./.grafix/config.yaml` / `~/.config/grafix/config.yaml`
+    3) `run(..., config_path=...)` の `config_path`
     """
 
     cfg = runtime_config()
-    if cfg.output_dir is not None:
-        return Path(cfg.output_dir)
-    return Path("data") / "output"
+    return Path(cfg.output_dir)
 
 
 __all__ = ["RuntimeConfig", "output_root_dir", "runtime_config", "set_config_path"]

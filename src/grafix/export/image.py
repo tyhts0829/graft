@@ -11,12 +11,10 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from grafix.core.parameters.persistence import default_param_store_path
-from grafix.core.runtime_config import output_root_dir
+from grafix.core.runtime_config import output_root_dir, runtime_config
 from grafix.core.pipeline import RealizedLayer
 from grafix.core.parameters.style import rgb01_to_rgb255
 from grafix.export.svg import export_svg
-
-PNG_SCALE: float = 8.0
 
 
 def export_image(
@@ -74,7 +72,8 @@ def png_output_size(canvas_size: tuple[int, int]) -> tuple[int, int]:
     canvas_w, canvas_h = canvas_size
     if int(canvas_w) <= 0 or int(canvas_h) <= 0:
         raise ValueError("canvas_size は正の (width, height) である必要がある")
-    return int(int(canvas_w) * float(PNG_SCALE)), int(int(canvas_h) * float(PNG_SCALE))
+    scale = float(runtime_config().png_scale)
+    return int(int(canvas_w) * scale), int(int(canvas_h) * scale)
 
 
 def _rgb01_to_hex(rgb01: tuple[float, float, float]) -> str:

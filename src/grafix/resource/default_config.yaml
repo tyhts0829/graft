@@ -1,0 +1,28 @@
+# どこで: grafix パッケージ同梱の既定設定。
+# 何を: runtime_config が常に読み込むベース設定。
+# なぜ: 使えるキー一覧を可視化し、既定値の真実を 1 箇所に集約するため。
+
+version: 1
+
+paths:
+  # 出力ファイルの保存先（ParamStore / SVG / PNG / video / MIDI スナップショット等）。
+  output_dir: "data/output"
+
+  # 外部フォント探索ディレクトリ（存在しない場合は無視される）。
+  font_dirs:
+    - "data/input/font"
+
+ui:
+  # ウィンドウ配置（ピクセル）。
+  window_positions:
+    draw: [25, 25]
+    parameter_gui: [950, 25]
+
+  # Parameter GUI ウィンドウサイズ（ピクセル）。
+  parameter_gui:
+    window_size: [800, 1000]
+
+export:
+  # PNG 変換のスケール倍率（canvas_size に対するピクセル倍率）。
+  png:
+    scale: 8.0

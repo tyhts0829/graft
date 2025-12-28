@@ -24,9 +24,9 @@ def test_normalize_scene_wraps_geometry() -> None:
 
 def test_normalize_scene_flattens_nested_sequences() -> None:
     g1, g2 = _g("circle"), _g("circle")
-    l = Layer(geometry=_g("circle"), site_id="layer:1", thickness=0.01)
-    layers = normalize_scene([g1, [l, g2]])
-    assert [layer.geometry for layer in layers] == [g1, l.geometry, g2]
+    layer1 = Layer(geometry=_g("circle"), site_id="layer:1", thickness=0.01)
+    layers = normalize_scene([g1, [layer1, g2]])
+    assert [layer.geometry for layer in layers] == [g1, layer1.geometry, g2]
     assert [layer.site_id for layer in layers] == ["implicit:1", "layer:1", "implicit:2"]
 
 

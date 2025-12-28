@@ -50,6 +50,7 @@ include = ["grafix*"]
 [tool.setuptools.package-data]
 grafix = [
   "py.typed",
+  "resource/default_config.yaml",
   "resource/font/Google_Sans/static/*.ttf",
   "resource/font/Google_Sans/OFL.txt",
   "resource/font/Google_Sans/README.txt",

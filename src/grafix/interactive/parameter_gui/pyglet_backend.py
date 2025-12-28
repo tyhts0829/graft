@@ -44,7 +44,7 @@ def create_parameter_gui_window(
     width: int = DEFAULT_WINDOW_WIDTH,
     height: int = DEFAULT_WINDOW_HEIGHT,
     caption: str = "Parameter GUI",
-    vsync: bool = True,
+    vsync: bool = False,
 ) -> Any:
     """Parameter GUI 用の pyglet ウィンドウを生成する。"""
 

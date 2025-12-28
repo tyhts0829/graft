@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from grafix.core.runtime_config import output_root_dir, set_config_path
+from grafix.core.runtime_config import output_root_dir, runtime_config, set_config_path
 
 
 @pytest.fixture(autouse=True)
@@ -12,66 +12,83 @@ def _reset_runtime_config() -> None:
     set_config_path(None)
 
 
-def test_output_root_dir_defaults_to_data_output(tmp_path: Path):
-    config_path = tmp_path / "config.yaml"
-    config_path.write_text("", encoding="utf-8")
-    set_config_path(config_path)
+def _isolate_config_discovery(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+
+def test_output_root_dir_uses_packaged_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    _isolate_config_discovery(tmp_path, monkeypatch)
 
     assert output_root_dir() == Path("data") / "output"
+    cfg = runtime_config()
+    assert cfg.config_path is None
+    assert cfg.output_dir == Path("data") / "output"
+    assert cfg.font_dirs == (Path("data") / "input" / "font",)
+    assert cfg.window_pos_draw == (25, 25)
+    assert cfg.window_pos_parameter_gui == (950, 25)
+    assert cfg.parameter_gui_window_size == (800, 1000)
+    assert cfg.png_scale == 8.0
 
 
-def test_output_root_dir_uses_output_dir_from_config(tmp_path: Path):
-    config_path = tmp_path / "config.yaml"
-    config_path.write_text('output_dir: "./out"\n', encoding="utf-8")
-    set_config_path(config_path)
+def test_discovered_config_overrides_packaged_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    _isolate_config_discovery(tmp_path, monkeypatch)
 
-    assert output_root_dir() == Path("out")
+    discovered = tmp_path / ".grafix" / "config.yaml"
+    discovered.parent.mkdir(parents=True, exist_ok=True)
+    discovered.write_text(
+        'paths:\n  output_dir: "./out_discovered"\n  font_dirs:\n    - "./fonts_discovered"\n',
+        encoding="utf-8",
+    )
 
-
-def test_output_root_dir_ignores_data_root_in_config(tmp_path: Path):
-    config_path = tmp_path / "config.yaml"
-    config_path.write_text('data_root: "./somewhere"\n', encoding="utf-8")
-    set_config_path(config_path)
-
-    assert output_root_dir() == Path("data") / "output"
-
-
-def test_output_root_dir_uses_output_dir_env_when_not_in_config(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    config_path = tmp_path / "config.yaml"
-    config_path.write_text("", encoding="utf-8")
-    set_config_path(config_path)
-
-    out_dir = tmp_path / "out_env"
-    monkeypatch.setenv("GRAFIX_OUTPUT_DIR", str(out_dir))
-    set_config_path(config_path)  # clear cache
-
-    assert output_root_dir() == out_dir
+    assert output_root_dir() == Path("out_discovered")
+    cfg = runtime_config()
+    assert cfg.config_path == discovered
+    assert cfg.output_dir == Path("out_discovered")
+    assert cfg.font_dirs == (Path("fonts_discovered"),)
 
 
-def test_output_root_dir_ignores_grafix_data_root_env(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    config_path = tmp_path / "config.yaml"
-    config_path.write_text("", encoding="utf-8")
-    set_config_path(config_path)
+def test_explicit_config_overrides_discovered_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    _isolate_config_discovery(tmp_path, monkeypatch)
 
-    monkeypatch.setenv("GRAFIX_DATA_ROOT", str(tmp_path / "data_root_env"))
-    set_config_path(config_path)  # clear cache
+    discovered = tmp_path / ".grafix" / "config.yaml"
+    discovered.parent.mkdir(parents=True, exist_ok=True)
+    discovered.write_text(
+        'paths:\n  output_dir: "./out_discovered"\n  font_dirs:\n    - "./fonts_discovered"\n',
+        encoding="utf-8",
+    )
 
-    assert output_root_dir() == Path("data") / "output"
+    explicit = tmp_path / "explicit.yaml"
+    explicit.write_text(
+        'paths:\n  output_dir: "./out_explicit"\n  font_dirs:\n    - "./fonts_discovered"\n',
+        encoding="utf-8",
+    )
+    set_config_path(explicit)
+
+    assert output_root_dir() == Path("out_explicit")
+    cfg = runtime_config()
+    assert cfg.config_path == explicit
+    assert cfg.output_dir == Path("out_explicit")
+    assert cfg.font_dirs == (Path("fonts_discovered"),)
 
 
-def test_output_root_dir_config_overrides_output_dir_env(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    config_path = tmp_path / "config.yaml"
-    config_path.write_text('output_dir: "./out_cfg"\n', encoding="utf-8")
-    set_config_path(config_path)
+def test_environment_variables_are_ignored(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    _isolate_config_discovery(tmp_path, monkeypatch)
 
     monkeypatch.setenv("GRAFIX_OUTPUT_DIR", str(tmp_path / "out_env"))
-    set_config_path(config_path)  # clear cache
+    monkeypatch.setenv("GRAFIX_FONT_DIRS", str(tmp_path / "fonts_env"))
 
-    assert output_root_dir() == Path("out_cfg")
+    assert output_root_dir() == Path("data") / "output"
+    cfg = runtime_config()
+    assert cfg.output_dir == Path("data") / "output"
+    assert cfg.font_dirs == (Path("data") / "input" / "font",)
 
+
+def test_explicit_config_path_missing_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    _isolate_config_discovery(tmp_path, monkeypatch)
+
+    missing = tmp_path / "missing.yaml"
+    set_config_path(missing)
+
+    with pytest.raises(FileNotFoundError):
+        output_root_dir()

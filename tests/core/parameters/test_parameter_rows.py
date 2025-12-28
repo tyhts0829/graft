@@ -1,5 +1,3 @@
-import pytest
-
 from grafix.core.parameters import ParameterKey, ParamMeta, ParamState, rows_from_snapshot
 
 

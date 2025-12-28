@@ -6,9 +6,20 @@ from pathlib import Path
 import pytest
 
 from grafix.export import image
+from grafix.core.runtime_config import runtime_config, set_config_path
 
 
 # `grafix.export.image`（SVG→PNG / resvg）をテストする。
+
+@pytest.fixture(autouse=True)
+def _reset_runtime_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    set_config_path(None)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    set_config_path(None)
+    yield
+    set_config_path(None)
+
 
 def test_default_png_output_path_uses_data_dir_and_script_stem():
     def draw(t: float) -> None:
@@ -23,10 +34,8 @@ def test_default_png_output_path_uses_data_dir_and_script_stem():
 
 
 def test_png_output_size_scales_canvas_by_png_scale():
-    expected = (
-        int(300 * float(image.PNG_SCALE)),
-        int(300 * float(image.PNG_SCALE)),
-    )
+    scale = float(runtime_config().png_scale)
+    expected = (int(300 * scale), int(300 * scale))
     assert image.png_output_size((300, 300)) == expected
 
 
