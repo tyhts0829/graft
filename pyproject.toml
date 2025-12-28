@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "grafix"
-version = "0.0.0"
+version = "0.0.1"
 description = "Line-based geometry toolkit with chained effects and real-time preview."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -48,7 +48,12 @@ where = ["src"]
 include = ["grafix*"]
 
 [tool.setuptools.package-data]
-grafix = ["py.typed"]
+grafix = [
+  "py.typed",
+  "resource/font/Google_Sans/static/*.ttf",
+  "resource/font/Google_Sans/OFL.txt",
+  "resource/font/Google_Sans/README.txt",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

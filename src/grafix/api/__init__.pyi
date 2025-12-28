@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from pathlib import Path
 from typing import Any, Protocol, TypeAlias
 
 from grafix.core.geometry import Geometry
@@ -76,7 +77,7 @@ class _G(Protocol):
 
         引数:
             text: 描画する文字列
-            font: `data/input/font/` から解決するフォント指定（ファイル名/ステム/部分一致）
+            font: フォント指定（実在パス / ファイル名 / ステム / 部分一致）
             font_index: `.ttc` の subfont 番号（0 以上）
             text_align: 行揃え（`left|center|right`）
             letter_spacing_em: 文字間の追加スペーシング（em 比）
@@ -657,6 +658,7 @@ from grafix.core.primitive_registry import primitive as primitive
 def run(
     draw: Callable[[float], SceneItem],
     *,
+    config_path: str | Path | None = ...,
     background_color: Vec3 = ...,
     line_thickness: float = ...,
     line_color: Vec3 = ...,
@@ -667,6 +669,7 @@ def run(
     midi_port_name: str | None = ...,
     midi_mode: str = ...,
     n_worker: int = ...,
+    fps: float = ...,
 ) -> None:
     """pyglet ウィンドウを生成し `draw(t)` のシーンをリアルタイム描画する。"""
     ...

@@ -53,7 +53,7 @@ def draw(t: float):
     footer_squared = E(name="fill_footer").affine().fill().repeat()(footer_square)
 
     grid = G(name="grid").grid()
-    circle = G(name="circle").text(font="Cappadocia.otf", text="o")
+    circle = G(name="circle").text(text="o")
     filled_circle = E(name="fill_circle").fill()(circle)
 
     footer = G(name="footer").text(text=FOOTER)

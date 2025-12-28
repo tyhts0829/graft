@@ -1,7 +1,7 @@
 """
 どこで: `src/grafix/core/primitives/text.py`。テキストプリミティブの実体生成。
-何を: `data/input/font/` のフォントアウトラインからテキストのポリライン列を生成する。
-なぜ: 最小依存で実用的なテキスト描画（サイズ/整列/追い込み）を提供するため。
+何を: 同梱フォントと `config.yaml` の `font_dirs` を用い、フォントアウトラインからテキストのポリライン列を生成する。
+なぜ: PyPI インストール環境でも確実に動く最小フォント経路を用意しつつ、外部フォントも扱えるようにするため。
 """
 
 from __future__ import annotations
@@ -13,15 +13,12 @@ from typing import Any, Iterable
 
 import numpy as np
 
+from grafix.core.font_resolver import DEFAULT_FONT_FILENAME, resolve_font_path
 from grafix.core.parameters.meta import ParamMeta
 from grafix.core.primitive_registry import primitive
 from grafix.core.realized_geometry import RealizedGeometry
 
 logger = logging.getLogger(__name__)
-
-_REPO_ROOT = Path(__file__).resolve().parents[4]
-_FONT_DIR = _REPO_ROOT / "data" / "input" / "font"
-_FONT_EXTENSIONS = (".ttf", ".otf", ".ttc")
 
 
 def _empty_geometry() -> RealizedGeometry:
@@ -108,81 +105,6 @@ class _LRU:
             self._od.popitem(last=False)
 
 
-_FONT_PATHS: tuple[Path, ...] | None = None
-
-
-def _list_font_files() -> tuple[Path, ...]:
-    """`data/input/font` 配下のフォントファイルを安定順で列挙して返す。"""
-    global _FONT_PATHS
-    if _FONT_PATHS is not None:
-        return _FONT_PATHS
-
-    if not _FONT_DIR.exists():
-        _FONT_PATHS = tuple()
-        return _FONT_PATHS
-
-    seen: set[Path] = set()
-    for ext in _FONT_EXTENSIONS:
-        for fp in _FONT_DIR.glob(f"**/*{ext}"):
-            try:
-                resolved = fp.resolve()
-            except Exception:
-                continue
-            if resolved.is_file():
-                seen.add(resolved)
-
-    _FONT_PATHS = tuple(sorted(seen))
-    return _FONT_PATHS
-
-
-def _default_font_path() -> Path:
-    """既定フォントパスを返す。存在しない場合は列挙先頭を使用する。"""
-    sfns = _FONT_DIR / "SFNS.ttf"
-    if sfns.is_file():
-        return sfns.resolve()
-    fonts = _list_font_files()
-    if fonts:
-        return fonts[0]
-    raise FileNotFoundError(f"フォントが見つかりません: {_FONT_DIR}")
-
-
-def _resolve_font_path(font: str) -> Path:
-    """`font` 指定を `data/input/font/` のファイルへ解決して返す。"""
-    raw = str(font).strip()
-    if not raw:
-        return _default_font_path()
-
-    # 1) `data/input/font/<raw>` を優先（ファイル名/相対パス想定）
-    direct = _FONT_DIR / raw
-    if direct.is_file():
-        return direct.resolve()
-
-    # 2) repo root からの相対パスを許容（例: "data/input/font/SFNS.ttf"）
-    repo_rel = _REPO_ROOT / raw
-    if repo_rel.is_file():
-        try:
-            resolved = repo_rel.resolve()
-        except Exception:
-            resolved = repo_rel
-        try:
-            font_dir_resolved = _FONT_DIR.resolve()
-        except Exception:
-            font_dir_resolved = _FONT_DIR
-        if resolved == font_dir_resolved or font_dir_resolved in resolved.parents:
-            return resolved
-
-    # 3) 部分一致で探索（安定ソート済み先頭を採用）
-    key = raw.lower().replace(" ", "")
-    for fp in _list_font_files():
-        name = fp.name.lower().replace(" ", "")
-        stem = fp.stem.lower().replace(" ", "")
-        if key in name or key in stem:
-            return fp
-
-    raise FileNotFoundError(
-        "指定フォントを data/input/font から解決できませんでした"
-        f": font={raw!r}, font_dir={_FONT_DIR}"
-    )
 
 
 class TextRenderer:
@@ -435,7 +357,7 @@ text_meta = {
 def text(
     *,
     text: str = "HELLO",
-    font: str = "SFNS.ttf",
+    font: str = DEFAULT_FONT_FILENAME,
     font_index: int | float = 0,
     text_align: str = "left",
     letter_spacing_em: float = 0.0,
@@ -451,7 +373,11 @@ def text(
     text : str, optional
         描画する文字列。`\\n` 区切りで複数行を表す。
     font : str, optional
-        `data/input/font/` から解決するフォント指定（ファイル名/ステム/部分一致）。
+        フォント指定（実在パス / ファイル名 / ステム / 部分一致）。
+        解決順は以下。
+        1) `font` が実在パスならそのファイル
+        2) config.yaml の `font_dirs`（先頭から）
+        3) grafix 同梱フォント（Google Sans）
     font_index : int | float, optional
         `.ttc` の subfont 番号（0 以上）。`.ttf/.otf` では無視される。
     text_align : str, optional
@@ -475,7 +401,7 @@ def text(
     Raises
     ------
     FileNotFoundError
-        `data/input/font/` からフォントを解決できない場合。
+        フォントを解決できない場合。
 
     Notes
     -----
@@ -485,7 +411,7 @@ def text(
     if fi < 0:
         fi = 0
 
-    font_path = _resolve_font_path(font)
+    font_path = resolve_font_path(font)
     tt_font = TEXT_RENDERER.get_font(font_path, fi)
     units_per_em = float(tt_font["head"].unitsPerEm)  # type: ignore[index]
     seg_len_units = max(1.0, float(tolerance) * units_per_em)

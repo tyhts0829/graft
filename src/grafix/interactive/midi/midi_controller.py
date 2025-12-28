@@ -10,7 +10,7 @@ import re
 import sys
 from pathlib import Path
 
-_DEFAULT_SAVE_DIR = Path("data") / "output" / "midi"
+from grafix.core.runtime_config import output_root_dir
 
 
 def _sanitize_filename_fragment(text: str) -> str:
@@ -32,7 +32,7 @@ def _default_profile_name() -> str:
 def default_cc_snapshot_path(*, profile_name: str, save_dir: Path | None) -> Path:
     """CC スナップショットの既定保存パスを返す。"""
 
-    base = save_dir if save_dir is not None else _DEFAULT_SAVE_DIR
+    base = save_dir if save_dir is not None else output_root_dir() / "midi"
     profile_fragment = _sanitize_filename_fragment(profile_name)
     return base / f"{profile_fragment}.json"
 
@@ -129,7 +129,7 @@ class MidiController:
     profile_name
         永続化ファイル名（stem）に埋め込む profile 名。未指定時は実行スクリプト名から推定する。
     save_dir
-        永続化ディレクトリ。未指定時は `data/output/midi/` を使う。
+        永続化ディレクトリ。未指定時は `{output_root}/midi/` を使う。
     persistence_path
         永続化ファイルパス。指定時は profile_name/save_dir より優先する。
     inport

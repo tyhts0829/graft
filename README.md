@@ -40,6 +40,53 @@ Run a sketch:
 python sketch/perf_sketch.py
 ```
 
+## Configuration (config.yaml) (optional)
+
+Grafix can read a YAML config file to locate external assets (fonts) and to choose where it writes runtime outputs.
+
+Config discovery (highest priority first):
+
+- `run(..., config_path="path/to/config.yaml")`
+- `./.grafix/config.yaml` (project-local)
+- `~/.config/grafix/config.yaml` (per-user)
+
+Paths support `~` and environment variables like `$HOME`.
+
+Create a project-local config:
+
+```bash
+mkdir -p .grafix
+$EDITOR .grafix/config.yaml
+```
+
+### Example
+
+```yaml
+# ./.grafix/config.yaml
+font_dirs:
+  - "~/Fonts"
+output_dir: "./out"
+```
+
+### Keys
+
+- `font_dirs` (list of paths): searched for `G.text(font=...)` and the Parameter GUI font picker.
+- `output_dir` (path): base directory for auto-saved outputs (default: `data/output`).
+  - Parameter GUI state: `{output_dir}/param_store/{script}.json`
+  - Interactive saves: `{output_dir}/svg`, `{output_dir}/png`, `{output_dir}/video`
+  - MIDI snapshots: `{output_dir}/midi`
+
+All runtime outputs are written under `output_dir`.
+
+Tip: Parameter persistence stores the selected `font` value. If you move a sketch to another machine and the font is not available, set `font_dirs` (or reset state by deleting the corresponding `{output_dir}/param_store/*.json` file).
+
+### Environment variables (optional)
+
+- `GRAFIX_FONT_DIRS` (paths separated by your OS path separator)
+- `GRAFIX_OUTPUT_DIR`
+
+Environment variables are used only when the corresponding key is not set in `config.yaml`.
+
 ## Extending (custom primitives / effects)
 
 You can register your own primitives and effects via decorators:

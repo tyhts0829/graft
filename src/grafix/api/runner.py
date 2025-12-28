@@ -6,11 +6,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Callable
 
 import pyglet
 
 from grafix.core.layer import LayerStyleDefaults
+from grafix.core.runtime_config import set_config_path
 from grafix.core.parameters import ParamStore
 from grafix.core.parameters.persistence import (
     default_param_store_path,
@@ -31,6 +33,7 @@ PARAMETER_GUI_POS = (950, 25)
 def run(
     draw: Callable[[float], SceneItem],
     *,
+    config_path: str | Path | None = None,
     background_color: tuple[float, float, float] = (1.0, 1.0, 1.0),
     line_thickness: float = 0.001,
     line_color: tuple[float, float, float] = (0.0, 0.0, 0.0),
@@ -49,6 +52,8 @@ def run(
     ----------
     draw : Callable[[float], SceneItem]
         フレーム経過秒 t を受け取り Geometry / Layer / それらの列を返すコールバック。
+    config_path : str | Path | None
+        設定ファイル（config.yaml）のパス。指定した場合は探索より優先する。
     background_color : tuple[float, float, float]
         背景色 RGB。alpha は 1.0 固定。既定は白。
     line_thickness : float
@@ -62,7 +67,7 @@ def run(
     parameter_gui : bool
         True の場合、別ウィンドウで Parameter GUI を起動し、ParamStore を編集できるようにする。
     parameter_persistence : bool
-        True の場合、ParamStore を `data/output/param_store/` に JSON 保存し、次回起動時に復元する。
+        True の場合、ParamStore を `{output_root}/param_store/` に JSON 保存し、次回起動時に復元する。
         保存ファイル名には draw の定義元ファイル名（stem）を含める。
     midi_port_name : str | None
         MIDI 入力ポート名。
@@ -84,6 +89,8 @@ def run(
     None
         どちらかのウィンドウを閉じると制御を返す。
     """
+
+    set_config_path(config_path)
 
     # pyglet の Window 作成前にオプションを設定する。
     # （vsync はウィンドウ作成時に参照される想定のため、ここで固定しておく）

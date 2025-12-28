@@ -196,7 +196,7 @@ def test_point_in_polygon_treats_boundary_as_outside() -> None:
 
 
 def test_fill_text_o_respects_hole() -> None:
-    g = G.text(text="o", font="SFNS.ttf", scale=100.0)
+    g = G.text(text="o", font="GoogleSans-Regular.ttf", scale=100.0)
     boundary = realize(g)
     coords2d = boundary.coords[:, :2].astype(np.float32, copy=False)
     groups = _build_evenodd_groups(coords2d, boundary.offsets)

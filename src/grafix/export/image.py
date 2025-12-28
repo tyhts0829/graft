@@ -11,6 +11,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from grafix.core.parameters.persistence import default_param_store_path
+from grafix.core.runtime_config import output_root_dir
 from grafix.core.pipeline import RealizedLayer
 from grafix.core.parameters.style import rgb01_to_rgb255
 from grafix.export.svg import export_svg
@@ -59,12 +60,12 @@ def default_png_output_path(draw: Callable[[float], object]) -> Path:
 
     Notes
     -----
-    パスは `data/output/png/{script_stem}.png`。
+    パスは `{output_root}/png/{script_stem}.png`。
     `script_stem` は ParamStore 永続化と同一の算出規則。
     """
 
     script_stem = default_param_store_path(draw).stem
-    return Path("data") / "output" / "png" / f"{script_stem}.png"
+    return output_root_dir() / "png" / f"{script_stem}.png"
 
 
 def png_output_size(canvas_size: tuple[int, int]) -> tuple[int, int]:

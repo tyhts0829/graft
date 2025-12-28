@@ -33,6 +33,7 @@ from grafix.interactive.runtime.recording_system import VideoRecordingSystem
 from grafix.interactive.runtime.scene_runner import SceneRunner
 from grafix.interactive.runtime.style_resolver import StyleResolver
 from grafix.interactive.runtime.video_recorder import default_video_output_path
+from grafix.core.runtime_config import output_root_dir
 
 _logger = logging.getLogger(__name__)
 
@@ -79,7 +80,7 @@ class DrawWindowSystem:
         self._renderer = DrawRenderer(self.window, settings)
 
         script_stem = default_param_store_path(draw).stem
-        self._svg_output_path = Path("data") / "output" / "svg" / f"{script_stem}.svg"
+        self._svg_output_path = output_root_dir() / "svg" / f"{script_stem}.svg"
         self._png_output_path = default_png_output_path(draw)
         video_output_path = default_video_output_path(draw, ext="mp4")
         self._recording = VideoRecordingSystem(output_path=video_output_path, fps=float(fps))

@@ -7,6 +7,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from grafix.core.font_resolver import default_font_path
 from grafix.core.parameters.store import ParamStore
 from grafix.interactive.midi import MidiController
 
@@ -20,9 +21,15 @@ from .pyglet_backend import (
 from .store_bridge import render_store_parameter_table
 from .table import COLUMN_WEIGHTS_DEFAULT
 
-_DEFAULT_GUI_FONT_PATH = (
-    Path(__file__).resolve().parents[4] / "data/input/font/SFNS.ttf"
-)
+
+def _default_gui_font_path() -> Path | None:
+    try:
+        return default_font_path()
+    except Exception:
+        return None
+
+
+_DEFAULT_GUI_FONT_PATH = _default_gui_font_path()
 _GUI_FONT_SIZE_BASE_PX = 12.0
 
 
@@ -92,9 +99,7 @@ class ParameterGUI:
         # ここで作られた renderer は内部に GL リソースを保持する。
         self._renderer = _create_imgui_pyglet_renderer(imgui_pyglet, gui_window)
 
-        self._custom_font_path: Path | None = (
-            _DEFAULT_GUI_FONT_PATH if _DEFAULT_GUI_FONT_PATH.is_file() else None
-        )
+        self._custom_font_path = _DEFAULT_GUI_FONT_PATH
         self._font_backing_scale: float | None = None
         self._sync_font_for_window()
 

@@ -7,7 +7,7 @@ from grafix.core.realize import realize
 
 
 def test_text_empty_returns_empty_geometry() -> None:
-    g = G.text(text="", font="SFNS.ttf")
+    g = G.text(text="", font="GoogleSans-Regular.ttf")
     realized = realize(g)
     assert realized.coords.dtype == np.float32
     assert realized.offsets.dtype == np.int32
@@ -17,13 +17,13 @@ def test_text_empty_returns_empty_geometry() -> None:
 
 def test_text_align_shifts_x() -> None:
     left = realize(
-        G.text(text="A", font="SFNS.ttf", scale=10.0, text_align="left")
+        G.text(text="A", font="GoogleSans-Regular.ttf", scale=10.0, text_align="left")
     )
     center = realize(
-        G.text(text="A", font="SFNS.ttf", scale=10.0, text_align="center")
+        G.text(text="A", font="GoogleSans-Regular.ttf", scale=10.0, text_align="center")
     )
     right = realize(
-        G.text(text="A", font="SFNS.ttf", scale=10.0, text_align="right")
+        G.text(text="A", font="GoogleSans-Regular.ttf", scale=10.0, text_align="right")
     )
 
     assert left.coords.shape[0] > 0
@@ -39,11 +39,11 @@ def test_text_align_shifts_x() -> None:
 
 
 def test_text_multiline_increases_y_extent() -> None:
-    single = realize(G.text(text="A", font="SFNS.ttf", scale=10.0))
+    single = realize(G.text(text="A", font="GoogleSans-Regular.ttf", scale=10.0))
     multi = realize(
         G.text(
             text="A\nA",
-            font="SFNS.ttf",
+            font="GoogleSans-Regular.ttf",
             scale=10.0,
             line_height=1.2,
         )
@@ -61,7 +61,7 @@ def test_text_center_translates_coords() -> None:
     base = realize(
         G.text(
             text="A",
-            font="SFNS.ttf",
+            font="GoogleSans-Regular.ttf",
             scale=10.0,
             center=(0.0, 0.0, 0.0),
         )
@@ -69,7 +69,7 @@ def test_text_center_translates_coords() -> None:
     shifted = realize(
         G.text(
             text="A",
-            font="SFNS.ttf",
+            font="GoogleSans-Regular.ttf",
             scale=10.0,
             center=(12.5, 7.25, 0.0),
         )
@@ -81,8 +81,8 @@ def test_text_center_translates_coords() -> None:
 
 
 def test_text_scale_scales_extent() -> None:
-    a = realize(G.text(text="A", font="SFNS.ttf", scale=10.0))
-    b = realize(G.text(text="A", font="SFNS.ttf", scale=20.0))
+    a = realize(G.text(text="A", font="GoogleSans-Regular.ttf", scale=10.0))
+    b = realize(G.text(text="A", font="GoogleSans-Regular.ttf", scale=20.0))
 
     extent_a_x = float(a.coords[:, 0].max() - a.coords[:, 0].min())
     extent_a_y = float(a.coords[:, 1].max() - a.coords[:, 1].min())

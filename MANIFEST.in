@@ -1,0 +1,3 @@
+include src/grafix/resource/font/Google_Sans/OFL.txt
+include src/grafix/resource/font/Google_Sans/README.txt
+recursive-include src/grafix/resource/font/Google_Sans/static *.ttf

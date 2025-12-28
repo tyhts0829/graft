@@ -8,60 +8,12 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from grafix.core.font_resolver import list_font_choices
 from grafix.core.parameters.view import ParameterRow
 
 WidgetFn = Callable[[ParameterRow], tuple[bool, Any]]
 
-_REPO_ROOT = Path(__file__).resolve().parents[4]
-_FONT_DIR = _REPO_ROOT / "data" / "input" / "font"
-_FONT_EXTENSIONS = (".ttf", ".otf", ".ttc")
-
-_FONT_CHOICES_CACHE: tuple[tuple[str, str, bool, str], ...] | None = None
 _FONT_FILTER_BY_KEY: dict[tuple[str, str, str], str] = {}
-
-
-def _list_font_choices() -> tuple[tuple[str, str, bool, str], ...]:
-    """フォント候補の列を返す（キャッシュ）。
-
-    Notes
-    -----
-    各要素は `(display_stem, value_rel_path, is_ttc, search_key)` を表す。
-    - display_stem: 表示名（拡張子なし）
-    - value_rel_path: `data/input/font` からの相対パス（拡張子あり）
-    - is_ttc: `.ttc` かどうか
-    - search_key: フィルター用の検索キー（小文字）
-    """
-    global _FONT_CHOICES_CACHE
-    if _FONT_CHOICES_CACHE is not None:
-        return _FONT_CHOICES_CACHE
-
-    if not _FONT_DIR.exists():
-        _FONT_CHOICES_CACHE = tuple()
-        return _FONT_CHOICES_CACHE
-
-    seen: set[Path] = set()
-    for ext in _FONT_EXTENSIONS:
-        for fp in _FONT_DIR.glob(f"**/*{ext}"):
-            try:
-                resolved = fp.resolve()
-            except Exception:
-                continue
-            if resolved.is_file():
-                seen.add(resolved)
-
-    choices: list[tuple[str, str, bool, str]] = []
-    for fp in sorted(seen):
-        try:
-            rel = fp.relative_to(_FONT_DIR).as_posix()
-        except Exception:
-            rel = fp.name
-        stem = fp.stem
-        is_ttc = fp.suffix.lower() == ".ttc"
-        search_key = f"{rel} {stem}".lower()
-        choices.append((stem, rel, is_ttc, search_key))
-
-    _FONT_CHOICES_CACHE = tuple(choices)
-    return _FONT_CHOICES_CACHE
 
 
 def _query_tokens_and(query: str) -> tuple[str, ...]:
@@ -277,7 +229,7 @@ def widget_font_picker(row: ParameterRow) -> tuple[bool, str]:
         filter_text = str(new_filter)
 
     # --- dropdown ---
-    choices = _list_font_choices()
+    choices = list_font_choices()
     filtered = _filter_choices_by_query_and(choices, query=str(filter_text))
 
     current_value = "" if row.ui_value is None else str(row.ui_value)

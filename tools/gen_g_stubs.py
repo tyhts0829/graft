@@ -156,6 +156,7 @@ def _type_for_kind(kind: str) -> str:
         return "Vec3"
     return "Any"
 
+
 def _type_str_from_annotation(annotation: Any) -> str | None:
     if annotation is inspect._empty:
         return None
@@ -482,6 +483,7 @@ def generate_stubs_str() -> str:
     lines: list[str] = [header]
     lines.append("from __future__ import annotations\n\n")
     lines.append("from collections.abc import Callable, Sequence\n")
+    lines.append("from pathlib import Path\n")
     lines.append("from typing import Any, Protocol, TypeAlias\n\n")
 
     lines.append("from grafix.core.geometry import Geometry\n")
@@ -509,6 +511,7 @@ def generate_stubs_str() -> str:
         "def run(\n"
         "    draw: Callable[[float], SceneItem],\n"
         "    *,\n"
+        "    config_path: str | Path | None = ...,\n"
         "    background_color: Vec3 = ...,\n"
         "    line_thickness: float = ...,\n"
         "    line_color: Vec3 = ...,\n"
@@ -519,6 +522,7 @@ def generate_stubs_str() -> str:
         "    midi_port_name: str | None = ...,\n"
         "    midi_mode: str = ...,\n"
         "    n_worker: int = ...,\n"
+        "    fps: float = ...,\n"
         ") -> None:\n"
         '    """pyglet ウィンドウを生成し `draw(t)` のシーンをリアルタイム描画する。"""\n'
         "    ...\n\n"
