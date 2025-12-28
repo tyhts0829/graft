@@ -2,3 +2,5 @@ include src/grafix/resource/font/Google_Sans/OFL.txt
 include src/grafix/resource/font/Google_Sans/README.txt
 include src/grafix/resource/default_config.yaml
 recursive-include src/grafix/resource/font/Google_Sans/static *.ttf
+recursive-include src/grafix/core/primitives/regular_polyhedron *.npz
+global-exclude .DS_Store

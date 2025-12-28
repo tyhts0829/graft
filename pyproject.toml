@@ -50,6 +50,7 @@ include = ["grafix*"]
 [tool.setuptools.package-data]
 grafix = [
   "py.typed",
+  "core/primitives/regular_polyhedron/*.npz",
   "resource/default_config.yaml",
   "resource/font/Google_Sans/static/*.ttf",
   "resource/font/Google_Sans/OFL.txt",

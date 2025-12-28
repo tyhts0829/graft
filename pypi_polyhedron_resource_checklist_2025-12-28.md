@@ -25,10 +25,10 @@
 
 ## 1) 受け入れ条件（完了の定義）
 
-- [ ] PyPI の wheel/sdist からインストールした環境で `.../site-packages/grafix/core/primitives/regular_polyhedron/*.npz` が存在する
-- [ ] wheel インストールのみの環境で `from grafix import G; from grafix.core.realize import realize; realize(G.polyhedron())` が例外なく通る
+- [x] wheel 展開物（インストール相当）で `grafix/core/primitives/regular_polyhedron/*.npz` が存在する
+- [x] wheel 展開物（インストール相当）で `realize(G.polyhedron())` が例外なく通る
 - [ ] wheel インストールのみの環境で `python ./sketch/readme.py` が（polyhedron データ欠落理由で）落ちない
-- [ ] 配布物（wheel/sdist）の中に `regular_polyhedron/*.npz` が含まれていることを機械的に確認できる
+- [x] 配布物（wheel/sdist）の中に `regular_polyhedron/*.npz` が含まれていることを機械的に確認できる
 
 ## 2) 即時回避（開発時のワークアラウンド）
 
@@ -37,17 +37,17 @@
 
 ## 3) packaging（wheel/sdist へ確実に入れる）
 
-- [ ] `pyproject.toml` の `[tool.setuptools.package-data]` に `.npz` を追加（wheel 対策）
+- [x] `pyproject.toml` の `[tool.setuptools.package-data]` に `.npz` を追加（wheel 対策）
   - 追加案: `grafix = ["core/primitives/regular_polyhedron/*.npz", ...]`
-- [ ] `MANIFEST.in` にも `.npz` を追加（sdist 対策）
+- [x] `MANIFEST.in` にも `.npz` を追加（sdist 対策）
   - 追加案: `recursive-include src/grafix/core/primitives/regular_polyhedron *.npz`
 - [ ] `.DS_Store` 等が配布物に入らないことを確認（必要なら `.gitignore` / MANIFEST 側で除外）
 
 ## 4) 検証（配布物の内容チェック）
 
-- [ ] wheel を作る（例: `python -m build` または `python -m pip wheel . -w dist --no-deps --no-build-isolation`）
-- [ ] wheel の中身を確認する（例: `python -m zipfile -l dist/*.whl | rg regular_polyhedron`）
-- [ ] sdist の中身を確認する（例: `tar -tf dist/*.tar.gz | rg regular_polyhedron`）
+- [x] wheel を作る（`setuptools.build_meta.build_wheel` で `dist/` に生成）
+- [x] wheel の中身を確認する（`python -m zipfile -l dist/*.whl | rg regular_polyhedron`）
+- [x] sdist の中身を確認する（`tar -tf dist/*.tar.gz | rg regular_polyhedron`）
 
 ## 5) 検証（実行テスト）
 
@@ -57,7 +57,7 @@
 
 ## 6) テスト（最小の安全柵）
 
-- [ ] `polyhedron` が参照する `.npz` の存在をユニットテストで検査（repo 実行での単純な存在確認）
+- [x] `polyhedron` が参照する `.npz` の存在をユニットテストで検査（repo 実行での単純な存在確認）
 - [ ] 可能なら「wheel を作って中身を検査する」軽量テストを追加（CI がある/作るなら）
 
 ## 7) ドキュメント（再発防止）
@@ -68,3 +68,4 @@
 ## 追加で事前確認したほうがいい点 / 追加提案（気づいたら追記）
 
 - [ ] 今後 `.npz` 以外のデータ（例: `.npy`, `.json`）を増やす予定があるなら、package-data の方針を先に固定する
+- [ ] 現状 wheel に `src/grafix/resource/.DS_Store` が紛れ込む（`python -m zipfile -l dist/*.whl | rg .DS_Store`）。不要なら削除/除外方針を決める
