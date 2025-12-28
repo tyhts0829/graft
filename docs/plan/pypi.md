@@ -36,9 +36,9 @@
 
 ## 4. 生成された配布物の中身を検品する
 
-- [ ] sdist に必要ファイルが入っていることを確認する（README / LICENSE など）
-- [ ] wheel に `grafix` パッケージが入っていることを確認する
-- [ ] 新規 venv で wheel を直接インストールして import テストする
+- [x] sdist に必要ファイルが入っていることを確認する（README / LICENSE など）
+- [x] wheel に `grafix` パッケージが入っていることを確認する
+- [x] 新規 venv で wheel を直接インストールして import テストする
 
 ```sh
 python -m venv .venv_test
