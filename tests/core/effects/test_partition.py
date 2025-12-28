@@ -29,6 +29,28 @@ def partition_test_square() -> RealizedGeometry:
     return RealizedGeometry(coords=coords, offsets=offsets)
 
 
+@primitive
+def partition_test_donut() -> RealizedGeometry:
+    """XY 平面上の外周+穴（2 リング）を返す。"""
+    coords = np.array(
+        [
+            # outer
+            [-2.0, -2.0, 0.0],
+            [2.0, -2.0, 0.0],
+            [2.0, 2.0, 0.0],
+            [-2.0, 2.0, 0.0],
+            # hole
+            [-0.5, -0.5, 0.0],
+            [0.5, -0.5, 0.0],
+            [0.5, 0.5, 0.0],
+            [-0.5, 0.5, 0.0],
+        ],
+        dtype=np.float32,
+    )
+    offsets = np.array([0, 4, 8], dtype=np.int32)
+    return RealizedGeometry(coords=coords, offsets=offsets)
+
+
 def _loop_centroid_xs(g: RealizedGeometry) -> np.ndarray:
     xs: list[float] = []
     offsets = g.offsets
@@ -123,3 +145,20 @@ def test_partition_pivot_affects_bias_only_when_auto_center_off() -> None:
     assert xs_neg.size >= 5
 
     assert float(xs_pos.mean()) > float(xs_neg.mean()) + 0.05
+
+
+def test_partition_mode_group_preserves_hole_region() -> None:
+    g = G.partition_test_donut()
+
+    r_ring = realize(E.partition(mode="ring", site_count=25, seed=0)(g))
+    r_merge = realize(E.partition(mode="merge", site_count=25, seed=0)(g))
+    r_group = realize(E.partition(mode="group", site_count=25, seed=0)(g))
+
+    def _has_vertex_inside_hole(r: RealizedGeometry) -> bool:
+        coords = r.coords
+        inside = (np.abs(coords[:, 0]) < 0.4) & (np.abs(coords[:, 1]) < 0.4)
+        return bool(np.any(inside))
+
+    assert _has_vertex_inside_hole(r_ring)
+    assert not _has_vertex_inside_hole(r_merge)
+    assert not _has_vertex_inside_hole(r_group)

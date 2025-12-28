@@ -15,6 +15,7 @@ NONPLANAR_EPS_ABS = 1e-6
 NONPLANAR_EPS_REL = 1e-5
 
 partition_meta = {
+    "mode": ParamMeta(kind="choice", choices=("merge", "group", "ring")),
     "site_count": ParamMeta(kind="int", ui_min=1, ui_max=500),
     # imgui.slider_int は内部で「min/max が int32 の半分レンジ以内」を要求するため、
     # GUI 用レンジは控えめにし、必要ならコード側で任意の seed を指定する。
@@ -206,10 +207,112 @@ def _collect_polygon_exteriors(geom) -> list[np.ndarray]:  # type: ignore[no-unt
     return out
 
 
+def _combine_evenodd(polys, Polygon):  # type: ignore[no-untyped-def]
+    if not polys:
+        return None
+
+    if len(polys) == 1:
+        return polys[0]
+
+    if len(polys) == 2:
+        a, b = polys
+        if a.geom_type == "Polygon" and b.geom_type == "Polygon" and a.contains(b):
+            try:
+                return Polygon(a.exterior.coords, holes=[b.exterior.coords])
+            except Exception:
+                return a.symmetric_difference(b)
+        if a.geom_type == "Polygon" and b.geom_type == "Polygon" and b.contains(a):
+            try:
+                return Polygon(b.exterior.coords, holes=[a.exterior.coords])
+            except Exception:
+                return a.symmetric_difference(b)
+        if a.disjoint(b):
+            return a.union(b)
+        return a.symmetric_difference(b)
+
+    region = None
+    for poly in polys:
+        region = poly if region is None else region.symmetric_difference(poly)
+    return region
+
+
+def _build_evenodd_groups(polys, rings_2d, Point):  # type: ignore[no-untyped-def]
+    """外周＋穴を even-odd でグルーピングし、[outer, hole...] のインデックス列を返す。"""
+    n = int(len(polys))
+    if n == 0:
+        return []
+    if n != int(len(rings_2d)):
+        raise ValueError("polys と rings_2d のサイズが一致しない")
+
+    rep_pts = [(float(ring[0, 0]), float(ring[0, 1])) for ring in rings_2d]
+    areas = [float(getattr(poly, "area", 0.0)) for poly in polys]
+
+    contains_count = [0] * n
+    for i in range(n):
+        x, y = rep_pts[i]
+        pt = Point(x, y)
+        count = 0
+        for j in range(n):
+            if j == i:
+                continue
+            try:
+                if polys[j].contains(pt):
+                    count += 1
+            except Exception:
+                continue
+        contains_count[i] = count
+
+    is_outer = [(c % 2) == 0 for c in contains_count]
+    outer_ids = [i for i in range(n) if is_outer[i]]
+
+    parent_outer = [-1] * n
+    for i in range(n):
+        if is_outer[i]:
+            continue
+        x, y = rep_pts[i]
+        pt = Point(x, y)
+        best = -1
+        best_area = float("inf")
+        for j in outer_ids:
+            if j == i:
+                continue
+            try:
+                if polys[j].contains(pt):
+                    a = float(areas[j])
+                    if a < best_area:
+                        best_area = a
+                        best = j
+            except Exception:
+                continue
+        parent_outer[i] = best
+
+    groups = {oi: [oi] for oi in outer_ids}
+    orphan_keys: list[int] = []
+    for i in range(n):
+        if is_outer[i]:
+            continue
+        p = int(parent_outer[i])
+        if p >= 0 and p != i:
+            groups.setdefault(p, [p]).append(i)
+        else:
+            groups[i] = [i]
+            orphan_keys.append(i)
+
+    ordered: list[list[int]] = []
+    for oi in outer_ids:
+        members = sorted(groups.get(oi, [oi]))
+        ordered.append(members)
+    for key in orphan_keys:
+        members = sorted(groups.get(key, [key]))
+        ordered.append(members)
+    return ordered
+
+
 @effect(meta=partition_meta)
 def partition(
     inputs: Sequence[RealizedGeometry],
     *,
+    mode: str = "merge",
     site_count: int = 12,
     seed: int = 0,
     site_density_base: tuple[float, float, float] = (0.0, 0.0, 0.0),
@@ -236,6 +339,11 @@ def partition(
         True のとき `pivot` を無視し、入力 bbox の中心を pivot として扱う。
     pivot : tuple[float, float, float], default (0.0, 0.0, 0.0)
         auto_center=False のときの pivot（ワールド座標）。
+    mode : str, default "merge"
+        入力リングの扱い。
+        `"merge"` は全リングを 1 つの領域へ畳み込んでから分割する。
+        `"group"` は even-odd で外周+穴をグループ化し、グループごとに分割する。
+        `"ring"` は各リングを独立領域として扱い、リングごとに分割する（穴構造は無視）。
 
     Returns
     -------
@@ -259,66 +367,58 @@ def partition(
 
     try:
         import shapely  # type: ignore
-        from shapely.geometry import MultiPoint, Polygon  # type: ignore
+        from shapely.geometry import MultiPoint, Point, Polygon  # type: ignore
         from shapely.ops import voronoi_diagram  # type: ignore
     except Exception as exc:  # pragma: no cover
         raise RuntimeError("partition effect は shapely が必要です") from exc
 
+    mode = str(mode)
+    if mode not in ("merge", "group", "ring"):
+        raise ValueError("partition の mode は 'merge'|'group'|'ring' のいずれかである必要がある")
+
     coords_2d_all = _project_to_2d(base.coords, basis)
 
-    rings_2d: list[np.ndarray] = []
     offsets = base.offsets
+    rings_2d: list[np.ndarray] = []
+    polys = []
     for i in range(int(offsets.size) - 1):
         s = int(offsets[i])
         e = int(offsets[i + 1])
         ring = coords_2d_all[s:e]
         if ring.shape[0] < 3:
             continue
-        rings_2d.append(_ensure_closed_2d(ring))
-
-    if not rings_2d:
-        return base
-
-    polys = []
-    for ring in rings_2d:
+        ring_2d = _ensure_closed_2d(ring)
         try:
-            poly = Polygon(ring)
+            poly = Polygon(ring_2d)
             if not poly.is_valid:
                 poly = poly.buffer(0)
         except Exception:
             continue
         if poly.is_empty:
             continue
+        rings_2d.append(ring_2d)
         polys.append(poly)
 
-    region = None
-    if len(polys) == 1:
-        region = polys[0]
-    elif len(polys) == 2:
-        a, b = polys
-        if a.geom_type == "Polygon" and b.geom_type == "Polygon" and a.contains(b):
-            try:
-                region = Polygon(a.exterior.coords, holes=[b.exterior.coords])
-            except Exception:
-                region = a.symmetric_difference(b)
-        elif a.geom_type == "Polygon" and b.geom_type == "Polygon" and b.contains(a):
-            try:
-                region = Polygon(b.exterior.coords, holes=[a.exterior.coords])
-            except Exception:
-                region = a.symmetric_difference(b)
-        elif a.disjoint(b):
-            region = a.union(b)
-        else:
-            region = a.symmetric_difference(b)
-    else:
-        for poly in polys:
-            region = poly if region is None else region.symmetric_difference(poly)
-
-    if region is None or region.is_empty:
+    if not polys:
         return base
 
     site_count = max(1, int(site_count))
     rng = np.random.default_rng(int(seed))
+
+    regions = []
+    if mode == "ring":
+        regions = list(polys)
+    elif mode == "group":
+        groups = _build_evenodd_groups(polys, rings_2d, Point)
+        for g in groups:
+            region = _combine_evenodd([polys[i] for i in g], Polygon)
+            if region is not None and not region.is_empty:
+                regions.append(region)
+    else:
+        region = _combine_evenodd(polys, Polygon)
+        if region is None or region.is_empty:
+            return base
+        regions = [region]
 
     try:
         base_x = float(site_density_base[0])
@@ -415,74 +515,75 @@ def partition(
             p_z = np.clip(base_z + slope_z * tz, 0.0, 1.0)
             return 1.0 - (1.0 - p_x) * (1.0 - p_y) * (1.0 - p_z)
 
-    minx, miny, maxx, maxy = region.bounds
-    width = float(maxx) - float(minx)
-    height = float(maxy) - float(miny)
+    all_loops_2d: list[np.ndarray] = []
+    for region in regions:
+        minx, miny, maxx, maxy = region.bounds
+        width = float(maxx) - float(minx)
+        height = float(maxy) - float(miny)
 
-    pts: list[tuple[float, float]] = []
-    if width > 0.0 and height > 0.0:
-        trials_per_phase = max(1000, site_count * 50)
-        batch = max(256, site_count * 20)
+        pts: list[tuple[float, float]] = []
+        if width > 0.0 and height > 0.0:
+            trials_per_phase = max(1000, site_count * 50)
+            batch = max(256, site_count * 20)
 
-        def _append_points(xs: np.ndarray, ys: np.ndarray) -> None:
-            need = int(site_count) - len(pts)
-            if need <= 0:
-                return
-            for x, y in zip(xs[:need], ys[:need], strict=False):
-                pts.append((float(x), float(y)))
+            def _append_points(xs: np.ndarray, ys: np.ndarray) -> None:
+                need = int(site_count) - len(pts)
+                if need <= 0:
+                    return
+                for x, y in zip(xs[:need], ys[:need], strict=False):
+                    pts.append((float(x), float(y)))
 
-        trials_left = int(trials_per_phase)
-        while len(pts) < site_count and trials_left > 0:
-            n = min(int(batch), int(trials_left))
-            xs = float(minx) + rng.random(n) * width
-            ys = float(miny) + rng.random(n) * height
-            inside = shapely.contains_xy(region, xs, ys)
-            if not np.any(inside):
-                trials_left -= n
-                continue
-
-            xs_in = xs[inside]
-            ys_in = ys[inside]
-            if density_enabled:
-                xy = np.stack([xs_in, ys_in], axis=1).astype(np.float64, copy=False)
-                p_eff = _p_eff_for_xy(xy)
-                take = rng.random(int(p_eff.shape[0])) < p_eff
-                _append_points(xs_in[take], ys_in[take])
-            else:
-                _append_points(xs_in, ys_in)
-
-            trials_left -= n
-
-        # top-up: density で足りない場合は、一様サンプリングで埋めて site_count を満たす。
-        if density_enabled and len(pts) < site_count:
             trials_left = int(trials_per_phase)
             while len(pts) < site_count and trials_left > 0:
                 n = min(int(batch), int(trials_left))
                 xs = float(minx) + rng.random(n) * width
                 ys = float(miny) + rng.random(n) * height
                 inside = shapely.contains_xy(region, xs, ys)
-                if np.any(inside):
-                    _append_points(xs[inside], ys[inside])
+                if not np.any(inside):
+                    trials_left -= n
+                    continue
+
+                xs_in = xs[inside]
+                ys_in = ys[inside]
+                if density_enabled:
+                    xy = np.stack([xs_in, ys_in], axis=1).astype(np.float64, copy=False)
+                    p_eff = _p_eff_for_xy(xy)
+                    take = rng.random(int(p_eff.shape[0])) < p_eff
+                    _append_points(xs_in[take], ys_in[take])
+                else:
+                    _append_points(xs_in, ys_in)
+
                 trials_left -= n
 
-    if not pts:
-        try:
-            c = region.representative_point()
-            pts = [(float(c.x), float(c.y))]
-        except Exception:
-            return base
+            # top-up: density で足りない場合は、一様サンプリングで埋めて site_count を満たす。
+            if density_enabled and len(pts) < site_count:
+                trials_left = int(trials_per_phase)
+                while len(pts) < site_count and trials_left > 0:
+                    n = min(int(batch), int(trials_left))
+                    xs = float(minx) + rng.random(n) * width
+                    ys = float(miny) + rng.random(n) * height
+                    inside = shapely.contains_xy(region, xs, ys)
+                    if np.any(inside):
+                        _append_points(xs[inside], ys[inside])
+                    trials_left -= n
 
-    loops_2d: list[np.ndarray]
-    if len(pts) <= 1:
-        loops_2d = _collect_polygon_exteriors(region)
-    else:
+        if not pts:
+            try:
+                c = region.representative_point()
+                pts = [(float(c.x), float(c.y))]
+            except Exception:
+                continue
+
+        if len(pts) <= 1:
+            all_loops_2d.extend(_collect_polygon_exteriors(region))
+            continue
+
         mp = MultiPoint(pts)
         try:
             vd = voronoi_diagram(mp, envelope=region.envelope, edges=False)  # type: ignore[arg-type]
         except Exception:
-            return base
+            continue
 
-        loops_2d = []
         for cell in getattr(vd, "geoms", []):  # type: ignore[attr-defined]
             try:
                 inter = cell.intersection(region)
@@ -490,9 +591,9 @@ def partition(
                 continue
             if inter.is_empty:
                 continue
-            loops_2d.extend(_collect_polygon_exteriors(inter))
+            all_loops_2d.extend(_collect_polygon_exteriors(inter))
 
-    loops_2d = [loop for loop in loops_2d if loop.shape[0] >= 4]
+    loops_2d = [loop for loop in all_loops_2d if loop.shape[0] >= 4]
     if not loops_2d:
         return base
 

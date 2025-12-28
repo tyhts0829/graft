@@ -25,8 +25,7 @@
 
 ### mode != "merge" のときの site_count の解釈（要合意）
 
-- もっとも単純: `site_count` を「グループ/リングあたり」とする（=総セル数が増える）。
-- 代替（やや複雑）: 総サイト数を面積比で配分する（上限/下限/丸めが必要）。
+決定: `site_count` は「グループ/リングあたり」とする（=総セル数が増える）。
 
 ## 実装概要
 
@@ -45,10 +44,9 @@
   - 実装場所は `partition.py` 内に最小コピーするか、共有ユーティリティへ移すかを決める。
   - “小さく”なら `partition.py` 内へ最小実装（Numba 依存は増やさない）。
 
-## 乱数（seed）の扱い（要合意）
+## 乱数（seed）の扱い（決定）
 
-- もっとも単純: 1 つの RNG を `regions` の処理順に使い回す（現行と同じ seed でも、region 数で結果が変わる）。
-- 代替: `seed` から region index を混ぜた派生 seed を作り、region ごとに RNG を独立化する（結果が直感的で比較しやすい）。
+- 1 つの RNG を `regions` の処理順に使い回す（現行と同じ seed でも、region 数で結果が変わる）。
 
 ## 変更対象（予定）
 
@@ -65,18 +63,17 @@
 
 ## 実装チェックリスト（実装開始前の合意ポイント込み）
 
-- [ ] `mode` の名称と choices を確定（`mode`/`scope`/`grouping` など）
-- [ ] `site_count` の意味を確定（per-region か、配分するか）
-- [ ] `seed` の扱いを確定（共有 RNG か、派生 seed で独立化するか）
-- [ ] `partition.py` に mode を追加し、`regions` ループへリファクタ（既存ロジックを最大限再利用）
-- [ ] `group` 用の even-odd グルーピングを実装（最小・読みやすさ優先）
-- [ ] スタブ再生成（`tools/gen_g_stubs.py` 相当の手順）
-- [ ] `tests/core/effects/test_partition.py` に mode テストを追加
-- [ ] `PYTHONPATH=src pytest -q tests/core/effects/test_partition.py` を実行して確認
+- [x] `mode` の名称と choices を確定（`merge|group|ring`）
+- [x] `site_count` の意味を確定（per-region）
+- [x] `seed` の扱いを確定（共有 RNG）
+- [x] `partition.py` に mode を追加し、`regions` ループへリファクタ（既存ロジックを最大限再利用）
+- [x] `group` 用の even-odd グルーピングを実装（最小・読みやすさ優先）
+- [x] スタブ再生成（`python -m tools.gen_g_stubs`）
+- [x] `tests/core/effects/test_partition.py` に mode テストを追加
+- [x] `PYTHONPATH=src pytest -q tests/core/effects/test_partition.py` を実行して確認
 
 ## 懸念点（デメリットの整理）
 
 - `mode="group"/"ring"` は **region 数 × Voronoi** になり、入力（特にテキスト）次第で重くなる。
 - `mode="ring"` は穴構造を壊すので、期待通りの領域にならないケースがある（文字の穴など）。
 - `mode="group"` でも `site_count` を per-group にすると総セル数が増える（意図した挙動だがコスト増）。
-
