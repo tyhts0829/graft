@@ -1,4 +1,4 @@
-"""ポリライン列を推定平面へ射影し、Shapely の buffer で外側輪郭を生成する effect。"""
+"""ポリライン列を推定平面へ射影し、Shapely の buffer で輪郭を生成する effect。"""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from grafix.core.parameters.meta import ParamMeta
 
 buffer_meta = {
     "join": ParamMeta(kind="choice", choices=("mitre", "round", "bevel")),
-    "distance": ParamMeta(kind="float", ui_min=0.0, ui_max=25.0),
+    "distance": ParamMeta(kind="float", ui_min=-25.0, ui_max=25.0),
     "quad_segs": ParamMeta(kind="int", ui_min=1, ui_max=100),
     "keep_original": ParamMeta(kind="bool"),
 }
@@ -138,8 +138,8 @@ def _lift_to_3d(coords_2d: np.ndarray, basis: _PlaneBasis) -> np.ndarray:
     return basis.origin[None, :] + xy[:, 0:1] * basis.u[None, :] + xy[:, 1:2] * basis.v[None, :]
 
 
-def _extract_vertices_2d(buffered) -> list[np.ndarray]:
-    """Shapely geometry から外周頂点列（Nx2）を抽出して返す。"""
+def _extract_vertices_2d(buffered, *, which: str) -> list[np.ndarray]:
+    """Shapely geometry から輪郭頂点列（Nx2）を抽出して返す。"""
     if buffered.is_empty:
         return []
 
@@ -152,27 +152,42 @@ def _extract_vertices_2d(buffered) -> list[np.ndarray]:
     )
 
     out: list[np.ndarray] = []
-    if isinstance(buffered, Polygon):
-        out.append(np.asarray(buffered.exterior.coords, dtype=np.float64))
-        return out
-    if isinstance(buffered, MultiPolygon):
-        for poly in buffered.geoms:
-            if not poly.is_empty:
-                out.append(np.asarray(poly.exterior.coords, dtype=np.float64))
-        return out
-    if isinstance(buffered, LineString):
-        out.append(np.asarray(buffered.coords, dtype=np.float64))
-        return out
-    if isinstance(buffered, MultiLineString):
-        for line in buffered.geoms:
-            out.append(np.asarray(line.coords, dtype=np.float64))
-        return out
+    if which == "exterior":
+        if isinstance(buffered, Polygon):
+            out.append(np.asarray(buffered.exterior.coords, dtype=np.float64))
+            return out
+        if isinstance(buffered, MultiPolygon):
+            for poly in buffered.geoms:
+                if not poly.is_empty:
+                    out.append(np.asarray(poly.exterior.coords, dtype=np.float64))
+            return out
+        if isinstance(buffered, LineString):
+            out.append(np.asarray(buffered.coords, dtype=np.float64))
+            return out
+        if isinstance(buffered, MultiLineString):
+            for line in buffered.geoms:
+                out.append(np.asarray(line.coords, dtype=np.float64))
+            return out
+    elif which == "interior":
+        if isinstance(buffered, Polygon):
+            for ring in buffered.interiors:
+                out.append(np.asarray(ring.coords, dtype=np.float64))
+            return out
+        if isinstance(buffered, MultiPolygon):
+            for poly in buffered.geoms:
+                if poly.is_empty:
+                    continue
+                for ring in poly.interiors:
+                    out.append(np.asarray(ring.coords, dtype=np.float64))
+            return out
+    else:
+        raise ValueError(f"unknown which: {which!r}")
 
     # GeometryCollection 等の可能性は浅く処理する（未知型は黙って捨てる）。
     geoms = getattr(buffered, "geoms", None)
     if geoms is not None:
         for g in geoms:
-            out.extend(_extract_vertices_2d(g))
+            out.extend(_extract_vertices_2d(g, which=which))
     return out
 
 
@@ -185,7 +200,7 @@ def buffer(
     distance: float = 5.0,
     keep_original: bool = False,
 ) -> RealizedGeometry:
-    """Shapely の buffer を用いて外側輪郭を生成する（外側のみ）。
+    """Shapely の buffer を用いて輪郭を生成する。
 
     Parameters
     ----------
@@ -196,7 +211,11 @@ def buffer(
     quad_segs : int, default 12
         円弧近似分割数（Shapely の `quad_segs` 相当）。
     distance : float, default 5.0
-        buffer 距離 [mm]。0 以下は no-op。
+        buffer 距離 [mm]。
+
+        - `distance > 0`: 外側輪郭（buffer 結果の exterior）
+        - `distance < 0`: 内側輪郭（buffer 結果の holes / interiors）
+        - `distance == 0`: no-op
     keep_original : bool, default False
         True のとき buffer 結果に加えて元のポリラインも出力に含める。
 
@@ -209,7 +228,7 @@ def buffer(
     -----
     旧実装の挙動を最小限で踏襲する:
     - 端点が近い線は自動で閉じる（閾値 `1e-3`）。
-    - distance は 0 以下を no-op 扱いとする（内側 buffer は未対応）。
+    - distance==0 は no-op 扱いとする。
     """
     if not inputs:
         return _empty_geometry()
@@ -219,8 +238,9 @@ def buffer(
         return base
 
     d = float(distance)
-    if not np.isfinite(d) or d <= 0.0:
+    if not np.isfinite(d) or d == 0.0:
         return base
+    abs_d = abs(d)
 
     join_style = str(join)
     if join_style not in _JOIN_STYLE_SET:
@@ -251,11 +271,12 @@ def buffer(
         line2 = _project_to_2d(line3, basis)
 
         buffered = LineString(line2).buffer(  # type: ignore[arg-type]
-            d,
+            abs_d,
             quad_segs=quad_segs_i,
             join_style=join_style,
         )
-        for v2 in _extract_vertices_2d(buffered):
+        which = "exterior" if d > 0.0 else "interior"
+        for v2 in _extract_vertices_2d(buffered, which=which):
             if v2.shape[0] < 2:
                 continue
             v3 = _lift_to_3d(v2[:, :2], basis).astype(np.float32, copy=False)
@@ -270,7 +291,7 @@ def buffer(
                 out_lines.append(original.astype(np.float32, copy=False))
 
     if not out_lines:
-        return base
+        return base if d > 0.0 else _empty_geometry()
 
     out_coords = np.concatenate(out_lines, axis=0).astype(np.float32, copy=False)
     out_offsets = np.empty((len(out_lines) + 1,), dtype=np.int32)
