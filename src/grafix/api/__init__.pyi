@@ -122,7 +122,7 @@ class _EffectBuilder(Protocol):
         ...
     def buffer(self, *, bypass: bool = ..., join: str = ..., distance: float = ..., quad_segs: int = ..., keep_original: bool = ...) -> _EffectBuilder:
         """
-        Shapely の buffer を用いて外側輪郭を生成する（外側のみ）。
+        Shapely の buffer を用いて輪郭を生成する。
 
         引数:
             bypass: bool
@@ -253,12 +253,13 @@ class _EffectBuilder(Protocol):
             show_planes: 対称面を可視化用の十字線として出力に追加する
         """
         ...
-    def partition(self, *, bypass: bool = ..., site_count: int = ..., seed: int = ..., site_density_base: Vec3 = ..., site_density_slope: Vec3 = ..., auto_center: bool = ..., pivot: Vec3 = ...) -> _EffectBuilder:
+    def partition(self, *, bypass: bool = ..., mode: str = ..., site_count: int = ..., seed: int = ..., site_density_base: Vec3 = ..., site_density_slope: Vec3 = ..., auto_center: bool = ..., pivot: Vec3 = ...) -> _EffectBuilder:
         """
         偶奇規則の平面領域を Voronoi 分割し、閉ループ群を返す。
 
         引数:
             bypass: bool
+            mode: 入力リングの扱い
             site_count: Voronoi のサイト数
             seed: 乱数シード（再現性）
             site_density_base: サイト密度（採用確率）の中心値（軸別）
@@ -315,14 +316,15 @@ class _EffectBuilder(Protocol):
             rotation: 各軸の回転角 [deg]（rx, ry, rz）
         """
         ...
-    def scale(self, *, bypass: bool = ..., auto_center: bool = ..., pivot: Vec3 = ..., scale: Vec3 = ...) -> _EffectBuilder:
+    def scale(self, *, bypass: bool = ..., mode: str = ..., auto_center: bool = ..., pivot: Vec3 = ..., scale: Vec3 = ...) -> _EffectBuilder:
         """
         スケール変換を適用（auto_center 対応）。
 
         引数:
             bypass: bool
+            mode: `"all"` は入力全体を 1 つの中心でスケールする
             auto_center: True なら平均座標を中心に使用
-            pivot: 変換の中心（`auto_center=False` のとき有効）
+            pivot: 変換の中心（`mode="all"` かつ `auto_center=False` のとき有効）
             scale: 各軸の倍率
         """
         ...
@@ -408,7 +410,7 @@ class _E(Protocol):
         ...
     def buffer(self, *, bypass: bool = ..., join: str = ..., distance: float = ..., quad_segs: int = ..., keep_original: bool = ...) -> _EffectBuilder:
         """
-        Shapely の buffer を用いて外側輪郭を生成する（外側のみ）。
+        Shapely の buffer を用いて輪郭を生成する。
 
         引数:
             bypass: bool
@@ -539,12 +541,13 @@ class _E(Protocol):
             show_planes: 対称面を可視化用の十字線として出力に追加する
         """
         ...
-    def partition(self, *, bypass: bool = ..., site_count: int = ..., seed: int = ..., site_density_base: Vec3 = ..., site_density_slope: Vec3 = ..., auto_center: bool = ..., pivot: Vec3 = ...) -> _EffectBuilder:
+    def partition(self, *, bypass: bool = ..., mode: str = ..., site_count: int = ..., seed: int = ..., site_density_base: Vec3 = ..., site_density_slope: Vec3 = ..., auto_center: bool = ..., pivot: Vec3 = ...) -> _EffectBuilder:
         """
         偶奇規則の平面領域を Voronoi 分割し、閉ループ群を返す。
 
         引数:
             bypass: bool
+            mode: 入力リングの扱い
             site_count: Voronoi のサイト数
             seed: 乱数シード（再現性）
             site_density_base: サイト密度（採用確率）の中心値（軸別）
@@ -601,14 +604,15 @@ class _E(Protocol):
             rotation: 各軸の回転角 [deg]（rx, ry, rz）
         """
         ...
-    def scale(self, *, bypass: bool = ..., auto_center: bool = ..., pivot: Vec3 = ..., scale: Vec3 = ...) -> _EffectBuilder:
+    def scale(self, *, bypass: bool = ..., mode: str = ..., auto_center: bool = ..., pivot: Vec3 = ..., scale: Vec3 = ...) -> _EffectBuilder:
         """
         スケール変換を適用（auto_center 対応）。
 
         引数:
             bypass: bool
+            mode: `"all"` は入力全体を 1 つの中心でスケールする
             auto_center: True なら平均座標を中心に使用
-            pivot: 変換の中心（`auto_center=False` のとき有効）
+            pivot: 変換の中心（`mode="all"` かつ `auto_center=False` のとき有効）
             scale: 各軸の倍率
         """
         ...
