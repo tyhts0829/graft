@@ -23,14 +23,14 @@
 - [x] `project.readme = "README.md"` を設定する
 - [x] `project.license = { file = "LICENSE" }` を設定する
 - [x] `project.requires-python` を決める（例: `>=3.10`）
-- [ ] 依存を必須から最小化し、必要なら extras（`optional-dependencies`）へ分離する
-- [ ] `project.classifiers` を埋める（PyPI 公式一覧から選ぶ）
+- [-] 依存を必須から最小化し、必要なら extras（`optional-dependencies`）へ分離する
+- [x] `project.classifiers` を埋める（PyPI 公式一覧から選ぶ）
 - [x] `src/` 配置のパッケージ探索設定を入れる（例: setuptools の `find` で `where = ["src"]`）
 
 ## 3. 配布物（sdist / wheel）をローカルでビルドする
 
-- [ ] 作業用 venv を用意する
-- [ ] ビルドツールを入れる: `python -m pip install -U build twine`
+- [x] 作業用 venv を用意する
+- [x] ビルドツールを入れる: `python -m pip install -U build twine`
 - [ ] 配布物を生成する: `python -m build`（`dist/` に `.tar.gz` と `.whl`）
 - [ ] 配布物を検査する: `python -m twine check dist/*`（README 表示やメタデータ不備を検出）
 

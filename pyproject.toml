@@ -9,6 +9,15 @@ description = "Line-based geometry toolkit with chained effects and real-time pr
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Multimedia :: Graphics",
+]
 dependencies = [
   "numpy",
   "numba",
