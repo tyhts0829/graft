@@ -28,6 +28,8 @@ dependencies = [
   "imgui",
   "fontPens",
   "fontTools",
+  "PyOpenGL",
+  "PyOpenGL_accelerate",
   "PyYAML",
   "mido",
   "python-rtmidi",
