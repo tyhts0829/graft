@@ -491,6 +491,7 @@ def render_store_parameter_table(
         effect_chain_header_by_id=effect_chain_header_by_id,
         step_info_by_site=step_info_by_site,
         effect_step_ordinal_by_site=effect_step_ordinal_by_site,
+        last_effective_by_key=store._runtime_ref().last_effective_by_key,
         midi_learn_state=midi_learn_state,
         midi_last_cc_change=midi_last_cc_change,
         collapsed_headers=store._collapsed_headers_ref(),

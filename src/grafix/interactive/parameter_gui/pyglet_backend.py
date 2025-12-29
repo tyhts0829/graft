@@ -12,6 +12,31 @@ DEFAULT_WINDOW_HEIGHT = 1000
 DEFAULT_WINDOW_TARGET_FRAMEBUFFER_WIDTH_PX = DEFAULT_WINDOW_WIDTH * 1.5
 
 
+def _install_imgui_clipboard_callbacks(imgui_mod: Any) -> None:
+    """ImGui の clipboard callback を OS と接続する。"""
+
+    io = imgui_mod.get_io()
+    if io.get_clipboard_text_fn is not None or io.set_clipboard_text_fn is not None:
+        return
+
+    import sys
+
+    if sys.platform == "darwin":
+        import subprocess
+
+        def _set_clipboard_text(text: str) -> None:
+            subprocess.run(["pbcopy"], input=str(text), text=True, check=False)
+
+        def _get_clipboard_text() -> str:
+            result = subprocess.run(
+                ["pbpaste"], capture_output=True, text=True, check=False
+            )
+            return str(result.stdout)
+
+        io.set_clipboard_text_fn = _set_clipboard_text
+        io.get_clipboard_text_fn = _get_clipboard_text
+
+
 def _create_imgui_pyglet_renderer(imgui_pyglet_mod: Any, gui_window: Any) -> Any:
     """pyglet 用の ImGui renderer を作成する。"""
 

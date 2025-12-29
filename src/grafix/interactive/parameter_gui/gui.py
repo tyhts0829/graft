@@ -16,6 +16,7 @@ from .monitor_bar import render_monitor_bar
 from .pyglet_backend import (
     DEFAULT_WINDOW_TARGET_FRAMEBUFFER_WIDTH_PX,
     _create_imgui_pyglet_renderer,
+    _install_imgui_clipboard_callbacks,
     _sync_imgui_io_for_window,
 )
 from .store_bridge import render_store_parameter_table
@@ -90,6 +91,7 @@ class ParameterGUI:
         self._context = imgui.create_context()
         imgui.style_colors_dark()
         imgui.set_current_context(self._context)
+        _install_imgui_clipboard_callbacks(imgui)
 
         # pyglet は環境によって「座標系が backing pixel」になり得る。
         # その場合、Retina では物理サイズが小さく見えるため、フォント生成 px を DPI で補正する。

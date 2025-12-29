@@ -1,4 +1,4 @@
-# Parameter GUI Snippet（リテラル出力）チェックリスト（2025-12-29）
+# Parameter GUI Code（リテラル出力）チェックリスト（2025-12-29）
 
 ## ゴール
 
@@ -11,13 +11,13 @@
 - スケッチ `.py` の自動編集。
 - “ユーザーの元コードを完全再構築” するコード生成（変数名や入力 Geometry までは推測しない）。
 - 依存追加が必要なクリップボード実装（imgui 側に API が無ければ手コピーで良い）。
+- 全グループ一括のスニペット出力（必要なら別機能として検討）。
 
 ## 仕様案（UX）
 
 ### UI（トリガと出力先）
 
-- v1: 各グループヘッダに `Snippet` ボタンを置く（= そのグループ単体を出力）。
-- （任意）Parameter GUI 上部に `Snippet (All)` ボタンを置く（= 全グループを連結して出力）。
+- v1: 各グループヘッダに `Code` ボタンを置く（= そのグループ単体を出力）。
 - 出力は **ファイル保存ではなくポップアップ**（modal）に表示する。
   - `input_text_multiline` の readonly に出し、**選択→コピー**で持ち帰れることを最優先。
   - ポップアップ表示直後にテキスト欄へ **フォーカス**を当て、`Ctrl/Cmd+A → Ctrl/Cmd+C` が即できるようにする。
@@ -26,7 +26,7 @@
 
 ### 出力単位
 
-- v1: **グループ単位**（GUI のヘッダ単位）に `Snippet` を出せる。
+- v1: **グループ単位**（GUI のヘッダ単位）に `Code` を出せる。
   - Primitive: 1 呼び出し（= `(op, site_id)` グループ）
   - Effect: 1 チェーン（= `chain_id`）
   - Style: global（= `__style__/__global__`）
@@ -95,43 +95,43 @@ E.affine(delta=(0.0, 0.0, 0.0)).dash(dash_length=(16.0, 4.0)).buffer().fill()
 
 ### A. 仕様確定（最初に決める）
 
-- [ ] デフォルトの値ソースを確定（推奨: `effective`）
-- [ ] `Snippet` の UI 配置を確定（推奨: 各グループヘッダにボタン + 任意で `Snippet (All)`）
-- [ ] 出力形式を確定（v1: `dict(...)` を基本、primitive/effect は `G./E.` 併記）
+- [x] デフォルトの値ソースを確定（推奨: `effective`）
+- [x] `Code` の UI 配置を確定（推奨: 各グループヘッダにボタン）
+- [x] 出力形式を確定（v1: `dict(...)` を基本、primitive/effect は `G./E.` 併記）
 
-### B. Snippet 生成（純粋関数）
+### B. Code 生成（純粋関数）
 
-- [ ] `src/grafix/interactive/parameter_gui/snippet.py`（仮）を追加
+- [x] `src/grafix/interactive/parameter_gui/snippet.py` を追加
 - [ ] 入力:
-  - [ ] `rows: list[ParameterRow]`
-  - [ ] `step_info_by_site`（effect チェーン用）
-  - [ ] `effect_chain_header_by_id` / `primitive_header_by_group`（表示名用、任意）
-  - [ ] `last_effective_by_key: dict[ParameterKey, object]`（任意）
+  - [x] `blocks: Sequence[GroupBlock]`（GUI 表示順）
+  - [x] `step_info_by_site`（effect チェーン用、任意）
+  - [x] `layer_style_name_by_site_id`（layer 名用、任意）
+  - [x] `last_effective_by_key: dict[ParameterKey, object]`（任意）
 - [ ] 出力:
-  - [ ] “グループ単位 snippet” を生成する API を用意（`group_id` → `str`）
-  - [ ] RGB255 → RGB01 変換（Style / Layer style）
-  - [ ] Python リテラル化（`repr()` 基本、tuple/float/int/str/bool）
+  - [x] “グループ単位 snippet” を生成する API（`GroupBlock -> str`）を用意
+  - [x] RGB255 → RGB01 変換（Style / Layer style）
+  - [x] Python リテラル化（`repr()` 基本、tuple/float/int/str/bool）
 
 ### C. UI（Parameter GUI）
 
-- [ ] `render_parameter_table(...)` の戻り値/引数を拡張し、snippet 要求イベントを返せるようにする
-- [ ] `store_bridge.render_store_parameter_table(...)` 側でイベントを受け取り、snippet 文字列を作って UI に渡す
-- [ ] ポップアップ（modal）で snippet を表示する
-  - [ ] `input_text_multiline` で全文表示（readonly）
-  - [ ] 表示直後にテキスト欄へフォーカス（`Ctrl/Cmd+A → Ctrl/Cmd+C` を即実行できる）
-  - [ ] （可能なら）`Copy` ボタンでクリップボードへ送る
-  - [ ] clipboard 不可の場合のコピー手順ヒントを表示する
+- [x] `render_parameter_table(...)` に `last_effective_by_key` を渡せるようにする
+- [x] 各グループヘッダに `Code` ボタンを追加する
+- [x] ポップアップ（modal）で snippet を表示する
+  - [x] `input_text_multiline` で全文表示（readonly）
+  - [x] 表示直後にテキスト欄へフォーカス（`Ctrl/Cmd+A → Ctrl/Cmd+C` を即実行できる）
+  - [x] `Copy` ボタンでクリップボードへ送る（imgui の clipboard API を使用）
+  - [x] コピー手順ヒントを表示する
 
 ### D. テスト
 
-- [ ] `snippet.py` を unit test で担保（GUI 依存は持たせない）
-- [ ] Style/layer の RGB 変換が正しいこと
-- [ ] Effect chain のステップ順が `step_index` に従うこと
-- [ ] 文字列出力が安定（辞書順/引数順）であること
+- [x] `snippet.py` を unit test で担保（GUI 依存は持たせない）
+- [x] Style/layer の RGB 変換が正しいこと
+- [x] Effect chain のステップ順が `step_index` に従うこと
+- [x] component が display_op（関数名）で出ること
 
 ## 事前に確認したいこと（返答ください）
 
-- 1. Snippet のデフォルト値は `effective` で OK？（CC 割当中でも “その瞬間の値” を焼く）；はい
+- 1. Code のデフォルト値は `effective` で OK？（CC 割当中でも “その瞬間の値” を焼く）；はい
 - 2. 出力形式は v1 ではこれで OK？；はい
   - Style/Layer: `dict(...)`
   - Primitive: `G.op(...)`

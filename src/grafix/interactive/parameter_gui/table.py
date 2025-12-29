@@ -10,14 +10,16 @@ from grafix.core.component_registry import component_registry
 from grafix.core.parameters.key import ParameterKey
 from grafix.core.parameters.view import ParameterRow
 
-from .group_blocks import group_blocks_from_rows
-from .group_blocks import GroupBlock
+from .group_blocks import GroupBlock, group_blocks_from_rows
 from .labeling import format_param_row_label
 from .midi_learn import MidiLearnState
 from .rules import ui_rules_for_row
+from .snippet import snippet_for_block
 from .widgets import render_value_widget
 
 COLUMN_WEIGHTS_DEFAULT = (0.20, 0.60, 0.15, 0.20)
+
+SNIPPET_POPUP_WINDOW_SIZE_PX = (1000.0, 1000.0)
 
 GROUP_HEADER_BASE_COLORS_RGBA: dict[str, tuple[int, int, int, int]] = {
     "style": (51, 102, 217, 140),
@@ -489,6 +491,7 @@ def render_parameter_table(
     effect_chain_header_by_id: Mapping[str, str] | None = None,
     step_info_by_site: Mapping[tuple[str, str], tuple[str, int]] | None = None,
     effect_step_ordinal_by_site: Mapping[tuple[str, str], int] | None = None,
+    last_effective_by_key: Mapping[ParameterKey, object] | None = None,
     midi_learn_state: MidiLearnState | None = None,
     midi_last_cc_change: tuple[int, int] | None = None,
     collapsed_headers: set[str] | None = None,
@@ -525,6 +528,12 @@ def render_parameter_table(
         effect_step_ordinal_by_site=effect_step_ordinal_by_site,
     )
 
+    # --- Code（ポップアップ出力）---
+    # “トリガ（ボタン）” と “表示（ポップアップ）” を分離し、コピペ用途に寄せる。
+    global _SNIPPET_POPUP_TEXT, _SNIPPET_POPUP_FOCUS_NEXT
+    want_open_snippet_popup = False
+    snippet_popup_text_new: str | None = None
+
     # 列ヘッダ（label/control/min-max/cc）は繰り返すとノイズになるので、
     # 最初に開いたグループのテーブルで 1 回だけ描画する。
     drew_column_headers = False
@@ -541,7 +550,9 @@ def render_parameter_table(
             group_open = True
             if block.header:
                 collapse_key = (
-                    None if collapsed_headers is None else _collapse_key_for_block(block)
+                    None
+                    if collapsed_headers is None
+                    else _collapse_key_for_block(block)
                 )
                 if collapsed_headers is not None and collapse_key is not None:
                     want_open = collapse_key not in collapsed_headers
@@ -568,14 +579,43 @@ def render_parameter_table(
                         imgui.push_style_color(imgui.COLOR_HEADER_ACTIVE, *active)
                         color_count = 3
                 try:
+                    allow_overlap_flag = getattr(
+                        imgui, "TREE_NODE_ALLOW_ITEM_OVERLAP", 0
+                    )
                     group_open, _visible = imgui.collapsing_header(
                         f"{block.header}##group_header",
                         None,
-                        flags=imgui.TREE_NODE_DEFAULT_OPEN,
+                        flags=imgui.TREE_NODE_DEFAULT_OPEN | allow_overlap_flag,
                     )
+                    set_item_allow_overlap = getattr(
+                        imgui, "set_item_allow_overlap", None
+                    )
+                    if callable(set_item_allow_overlap):
+                        set_item_allow_overlap()
                 finally:
                     if color_count:
                         imgui.pop_style_color(color_count)
+
+                # ヘッダ行の右側に Code ボタンを置く。
+                # collapsing_header は幅いっぱいを使うため、same_line(position=...) で明示配置する。
+                button_label = "Code"
+                text_w, _text_h = imgui.calc_text_size(button_label)
+                button_w = (
+                    float(text_w) + 32.0
+                )  # padding を雑に見積もる（過度に厳密にしない）
+                pos_x = float(imgui.get_window_width()) - float(button_w) - 12.0
+                if pos_x > 0.0:
+                    imgui.same_line(position=pos_x)
+                else:
+                    imgui.same_line()
+                if imgui.small_button(button_label):
+                    snippet_popup_text_new = snippet_for_block(
+                        block,
+                        last_effective_by_key=last_effective_by_key,
+                        layer_style_name_by_site_id=layer_style_name_by_site_id,
+                        step_info_by_site=step_info_by_site,
+                    )
+                    want_open_snippet_popup = True
 
                 if collapsed_headers is not None and collapse_key is not None:
                     if group_open:
@@ -642,6 +682,51 @@ def render_parameter_table(
         finally:
             imgui.pop_id()
 
+    # --- Code popup ---
+    #
+    # open_popup と begin_popup_modal は “同じ ID スタック” が必要なので、push_id の外で扱う。
+    if want_open_snippet_popup and snippet_popup_text_new is not None:
+        _SNIPPET_POPUP_TEXT = str(snippet_popup_text_new)
+        _SNIPPET_POPUP_FOCUS_NEXT = True
+        imgui.open_popup("Code##snippet_popup")
+
+    imgui.set_next_window_size(*SNIPPET_POPUP_WINDOW_SIZE_PX, condition=imgui.ONCE)
+    with imgui.begin_popup_modal("Code##snippet_popup") as popup:
+        if popup.opened:
+            if imgui.button("Close"):
+                imgui.close_current_popup()
+            imgui.same_line()
+            if imgui.button("Copy"):
+                imgui.set_clipboard_text(str(_SNIPPET_POPUP_TEXT))
+            imgui.same_line()
+            imgui.text_disabled("macOS Cmd+A→Cmd+C / Win/Linux Ctrl+A→Ctrl+C")
+
+            if _SNIPPET_POPUP_FOCUS_NEXT:
+                imgui.set_keyboard_focus_here()
+                _SNIPPET_POPUP_FOCUS_NEXT = False
+
+            _avail_w, avail_h = imgui.get_content_region_available()
+            height = max(120.0, float(avail_h) - 8.0)
+            _changed, _text_out = imgui.input_text_multiline(
+                "##snippet_text",
+                str(_SNIPPET_POPUP_TEXT),
+                -1,
+                SNIPPET_POPUP_WINDOW_SIZE_PX[0] - 16.0,
+                float(height),
+                flags=imgui.INPUT_TEXT_READ_ONLY | imgui.INPUT_TEXT_AUTO_SELECT_ALL,
+            )
+            if imgui.is_item_focused() or imgui.is_item_active():
+                io = imgui.get_io()
+                if (io.key_ctrl or io.key_super) and imgui.is_key_pressed(
+                    imgui.KEY_C, False
+                ):
+                    imgui.set_clipboard_text(str(_SNIPPET_POPUP_TEXT))
+
     # changed_any は「UI のどこかが変わったか」。
     # updated_rows は store へ差分適用するための “更新後” 行モデル列（rows と同じ長さ）。
     return changed_any, updated_rows
+
+
+# Code popup の一時状態（永続化しない）。
+_SNIPPET_POPUP_TEXT = ""
+_SNIPPET_POPUP_FOCUS_NEXT = False

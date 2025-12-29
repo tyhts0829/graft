@@ -104,4 +104,4 @@ def logo(*, center=(0, 0, 0), scale=1.0, name=None, key=None):
 
 ## 関連
 
-- Snippet 出力の独立計画: `param_snippet_checklist_2025-12-29.md`
+- Code 出力の独立計画: `param_snippet_checklist_2025-12-29.md`
