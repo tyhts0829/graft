@@ -5,6 +5,7 @@
 - Parameter GUI で調整した値を **Python リテラルとしてコピペ**できる。
 - `@component` の有無に関わらず動く（Style / Primitive / Effect / Layer style / その他）。
 - 出力は **純粋な Python コードのみ**（`#` コメント無し）で、貼り付け先の文脈に乗せやすいこと。
+- 出力は「関数内に貼る」用途を優先し、**全行を 4 スペースでインデント**する。
 
 ## 非ゴール
 
@@ -53,11 +54,11 @@
 - 出力例:
 
 ```py
-dict(
-    background_color=(1.0, 1.0, 1.0),
-    line_thickness=0.001,
-    line_color=(0.0, 0.0, 0.0),
-)
+    dict(
+        background_color=(1.0, 1.0, 1.0),
+        line_thickness=0.001,
+        line_color=(0.0, 0.0, 0.0),
+    )
 ```
 
 #### Layer style
@@ -67,7 +68,7 @@ dict(
 - 出力例:
 
 ```py
-dict(color=(0.0, 0.0, 0.0), thickness=0.002)
+    dict(color=(0.0, 0.0, 0.0), thickness=0.002)
 ```
 
 #### Primitive
@@ -75,7 +76,7 @@ dict(color=(0.0, 0.0, 0.0), thickness=0.002)
 - 出力例（call か kwargs のどちらか）:
 
 ```py
-G.circle(r=12.5, center=(50.0, 50.0, 0.0))
+    G.circle(r=12.5, center=(50.0, 50.0, 0.0))
 ```
 
 #### Effect chain
@@ -84,11 +85,11 @@ G.circle(r=12.5, center=(50.0, 50.0, 0.0))
 - 出力例:
 
 ```py
-E.affine(
-    delta=(0.0, 0.0, 0.0),
-).dash(
-    dash_length=(16.0, 4.0),
-).buffer().fill()
+    E.affine(
+        delta=(0.0, 0.0, 0.0),
+    ).dash(
+        dash_length=(16.0, 4.0),
+    ).buffer().fill()
 ```
 
 ## 実装チェックリスト

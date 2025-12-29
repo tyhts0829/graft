@@ -89,6 +89,7 @@ def test_snippet_style_converts_rgb255_to_rgb01_and_maps_keys() -> None:
         step_info_by_site={},
     )
 
+    assert out.startswith("    ")
     assert "background_color=(1.0, 0.0, 0.0)" in out
     assert "line_thickness=0.001" in out
     assert "line_color=(0.0, 0.0, 0.0)" in out
@@ -122,6 +123,7 @@ def test_snippet_effect_chain_orders_steps_by_step_index() -> None:
         step_info_by_site=step_info,
     )
 
+    assert out.startswith("    ")
     assert out.index("E.rotate") < out.index(".scale")
 
 
@@ -143,5 +145,6 @@ def test_snippet_component_uses_display_op_call_name() -> None:
         last_effective_by_key={ParameterKey("component.logo", "c:1", "x"): 2.0},
     )
 
+    assert out.startswith("    ")
     assert "logo(" in out
     assert "x=2.0" in out

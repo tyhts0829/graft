@@ -26,6 +26,20 @@ from grafix.core.parameters.view import ParameterRow
 from .group_blocks import GroupBlock
 
 
+_CODE_INDENT = "    "
+
+
+def _indent_code(code: str) -> str:
+    """コード文字列を “全行” インデントして返す。"""
+
+    if not code:
+        return ""
+    has_trailing_newline = code.endswith("\n")
+    lines = code.splitlines()
+    out = "\n".join(_CODE_INDENT + line for line in lines)
+    return out + ("\n" if has_trailing_newline else "")
+
+
 def _effective_or_ui_value(
     row: ParameterRow,
     *,
@@ -140,7 +154,7 @@ def snippet_for_block(
 
         if not out_blocks:
             return ""
-        return "\n\n".join(out_blocks).rstrip() + "\n"
+        return _indent_code("\n\n".join(out_blocks).rstrip() + "\n")
 
     if group_type == "component":
         row0 = rows[0]
@@ -150,7 +164,7 @@ def snippet_for_block(
             (str(r.arg), _py_literal(_effective_or_ui_value(r, last_effective_by_key=last_effective_by_key)))
             for r in rows
         ]
-        return _format_kwargs_call("", op=call_name, kwargs=kwargs).rstrip() + "\n"
+        return _indent_code(_format_kwargs_call("", op=call_name, kwargs=kwargs).rstrip() + "\n")
 
     if group_type == "primitive":
         row0 = rows[0]
@@ -159,7 +173,7 @@ def snippet_for_block(
             (str(r.arg), _py_literal(_effective_or_ui_value(r, last_effective_by_key=last_effective_by_key)))
             for r in rows
         ]
-        return _format_kwargs_call("G.", op=op, kwargs=kwargs).rstrip() + "\n"
+        return _indent_code(_format_kwargs_call("G.", op=op, kwargs=kwargs).rstrip() + "\n")
 
     if group_type == "effect_chain":
         steps: dict[tuple[int, str, str], list[ParameterRow]] = {}
@@ -203,7 +217,7 @@ def snippet_for_block(
                 continue
             out_lines.extend(call_lines[1:])
 
-        return "\n".join(out_lines).rstrip() + "\n"
+        return _indent_code("\n".join(out_lines).rstrip() + "\n")
 
     # fallback
     if rows:
@@ -213,7 +227,11 @@ def snippet_for_block(
             (str(r.arg), _py_literal(_effective_or_ui_value(r, last_effective_by_key=last_effective_by_key)))
             for r in rows
         ]
-        return ("dict(\n" + "\n".join(f"    {k}={v}," for k, v in kwargs) + "\n)").rstrip() + "\n"
+        return _indent_code(
+            ("dict(\n" + "\n".join(f"    {k}={v}," for k, v in kwargs) + "\n)")
+            .rstrip()
+            + "\n"
+        )
     return ""
 
 
