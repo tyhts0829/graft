@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from grafix.core.component_registry import component_registry
 from grafix.core.parameters.key import ParameterKey
 from grafix.core.parameters.view import ParameterRow
 
@@ -21,6 +22,7 @@ COLUMN_WEIGHTS_DEFAULT = (0.20, 0.60, 0.15, 0.20)
 GROUP_HEADER_BASE_COLORS_RGBA: dict[str, tuple[int, int, int, int]] = {
     "style": (51, 102, 217, 140),
     "primitive": (152, 74, 74, 140),
+    "component": (122, 71, 168, 140),
     "effect": (53, 117, 76, 140),
 }
 
@@ -82,12 +84,12 @@ def _derive_header_colors(
 
 
 def _header_kind_for_group_id(group_id: tuple[str, object]) -> str | None:
-    """GroupBlock.group_id からヘッダ種別（style/primitive/effect）を返す。"""
+    """GroupBlock.group_id からヘッダ種別（style/component/primitive/effect）を返す。"""
 
     group_type = str(group_id[0])
     if group_type == "effect_chain":
         return "effect"
-    if group_type in {"style", "primitive"}:
+    if group_type in {"style", "component", "primitive"}:
         return group_type
     return None
 
@@ -101,6 +103,11 @@ def _collapse_key_for_block(block: GroupBlock) -> str | None:
     if group_type == "effect_chain":
         chain_id = str(block.group_id[1])
         return f"effect_chain:{chain_id}"
+    if group_type == "component":
+        if not block.items:
+            return None
+        row0 = block.items[0].row
+        return f"component:{row0.op}:{row0.site_id}"
     if group_type == "primitive":
         if not block.items:
             return None
@@ -112,7 +119,10 @@ def _collapse_key_for_block(block: GroupBlock) -> str | None:
 def _row_visible_label(row: ParameterRow) -> str:
     """行の表示ラベル（`op#ordinal arg`）を返す。"""
 
-    return format_param_row_label(row.op, int(row.ordinal), row.arg)
+    op = str(row.op)
+    if op in component_registry:
+        op = component_registry.get_display_op(op)
+    return format_param_row_label(op, int(row.ordinal), row.arg)
 
 
 def _row_id(row: ParameterRow) -> str:

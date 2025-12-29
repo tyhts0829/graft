@@ -27,6 +27,9 @@ _cc_snapshot_var: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
 _store_var: contextvars.ContextVar[ParamStore | None] = contextvars.ContextVar(
     "param_store", default=None
 )
+_param_recording_enabled_var: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "param_recording_enabled", default=True
+)
 
 
 def current_param_snapshot() -> ParamSnapshot:
@@ -45,6 +48,23 @@ def current_cc_snapshot() -> dict | None:
 def current_param_store() -> ParamStore | None:
     """現在の ParamStore を返す（GUI/label 設定用）。"""
     return _store_var.get()
+
+
+def current_param_recording_enabled() -> bool:
+    """現在の param 観測（GUI/永続化）を有効にするかどうかを返す。"""
+
+    return bool(_param_recording_enabled_var.get(True))
+
+
+@contextlib.contextmanager
+def parameter_recording_muted() -> Iterator[None]:
+    """このコンテキスト内で param 観測（record/label）を無効化する。"""
+
+    token = _param_recording_enabled_var.set(False)
+    try:
+        yield
+    finally:
+        _param_recording_enabled_var.reset(token)
 
 
 @contextlib.contextmanager

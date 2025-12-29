@@ -5,11 +5,12 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import ItemsView
+from collections.abc import ItemsView, Mapping
 from typing import Any, Callable, Sequence
 
 from grafix.core.realized_geometry import RealizedGeometry, concat_realized_geometries
 from grafix.core.parameters.meta import ParamMeta
+from grafix.core.parameters.meta_spec import meta_dict_from_user
 
 EffectFunc = Callable[
     [Sequence[RealizedGeometry], tuple[tuple[str, Any], ...]],
@@ -124,7 +125,7 @@ def effect(
     *,
     overwrite: bool = True,
     n_inputs: int = 1,
-    meta: dict[str, ParamMeta] | None = None,
+    meta: Mapping[str, ParamMeta | Mapping[str, object]] | None = None,
 ):
     """グローバル effect レジストリ用デコレータ。
 
@@ -144,7 +145,8 @@ def effect(
         ...
     """
 
-    if meta is not None and "bypass" in meta:
+    meta_norm = None if meta is None else meta_dict_from_user(meta)
+    if meta_norm is not None and "bypass" in meta_norm:
         raise ValueError("effect の予約引数 'bypass' は meta に含められない")
 
     n_inputs_i = int(n_inputs)
@@ -178,13 +180,15 @@ def effect(
         f: Callable[..., RealizedGeometry],
     ) -> Callable[..., RealizedGeometry]:
         module = str(f.__module__)
-        if meta is None and (
+        if meta_norm is None and (
             module.startswith("grafix.core.effects.") or module.startswith("core.effects.")
         ):
             raise ValueError(f"組み込み effect は meta 必須: {f.__module__}.{f.__name__}")
 
         meta_with_bypass = (
-            {"bypass": ParamMeta(kind="bool"), **meta} if meta is not None else None
+            {"bypass": ParamMeta(kind="bool"), **meta_norm}
+            if meta_norm is not None
+            else None
         )
 
         def wrapper(
@@ -202,11 +206,11 @@ def effect(
             return f(inputs, **params)
 
         defaults = None
-        if meta is not None:
-            defaults = _defaults_from_signature(f, meta)
+        if meta_norm is not None:
+            defaults = _defaults_from_signature(f, meta_norm)
             defaults = {"bypass": False, **defaults}
             sig = inspect.signature(f)
-            meta_keys = set(meta.keys())
+            meta_keys = set(meta_norm.keys())
             sig_order = [name for name in sig.parameters if name in meta_keys]
             param_order = ("bypass", *sig_order)
         else:

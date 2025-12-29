@@ -5,11 +5,12 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import ItemsView
+from collections.abc import ItemsView, Mapping
 from typing import Any, Callable
 
 from grafix.core.realized_geometry import RealizedGeometry
 from grafix.core.parameters.meta import ParamMeta
+from grafix.core.parameters.meta_spec import meta_dict_from_user
 
 PrimitiveFunc = Callable[[tuple[tuple[str, Any], ...]], RealizedGeometry]
 
@@ -113,7 +114,7 @@ def primitive(
     func: Callable[..., RealizedGeometry] | None = None,
     *,
     overwrite: bool = True,
-    meta: dict[str, ParamMeta] | None = None,
+    meta: Mapping[str, ParamMeta | Mapping[str, object]] | None = None,
 ):
     """グローバル primitive レジストリ用デコレータ。
 
@@ -159,8 +160,9 @@ def primitive(
     def decorator(
         f: Callable[..., RealizedGeometry],
     ) -> Callable[..., RealizedGeometry]:
+        meta_norm = None if meta is None else meta_dict_from_user(meta)
         module = str(f.__module__)
-        if meta is None and (
+        if meta_norm is None and (
             module.startswith("grafix.core.primitives.")
             or module.startswith("core.primitives.")
         ):
@@ -172,11 +174,11 @@ def primitive(
             params: dict[str, Any] = dict(args)
             return f(**params)
 
-        defaults = None if meta is None else _defaults_from_signature(f, meta)
+        defaults = None if meta_norm is None else _defaults_from_signature(f, meta_norm)
         param_order = None
-        if meta is not None:
+        if meta_norm is not None:
             sig = inspect.signature(f)
-            meta_keys = set(meta.keys())
+            meta_keys = set(meta_norm.keys())
             sig_order = [name for name in sig.parameters if name in meta_keys]
             param_order = tuple(sig_order)
         primitive_registry._register(
@@ -184,7 +186,7 @@ def primitive(
             wrapper,
             overwrite=overwrite,
             param_order=param_order,
-            meta=meta,
+            meta=meta_norm,
             defaults=defaults,
         )
         return f

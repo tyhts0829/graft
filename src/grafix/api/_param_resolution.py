@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Any
 
 from grafix.core.parameters import current_frame_params, current_param_store, resolve_params
+from grafix.core.parameters.context import current_param_recording_enabled
 from grafix.core.parameters.labels_ops import set_label
 from grafix.core.parameters.meta import ParamMeta
 
@@ -26,7 +27,7 @@ def set_api_label(*, op: str, site_id: str, label: str | None) -> None:
         付与するラベル。None の場合は何もしない。
     """
 
-    if label is None:
+    if label is None or not current_param_recording_enabled():
         return
     store = current_param_store()
     if store is not None:
@@ -60,7 +61,7 @@ def resolve_api_params(
     explicit_args = set(user_params.keys())
     base_params = dict(defaults)
     base_params.update(user_params)
-    if current_frame_params() is not None and meta:
+    if current_param_recording_enabled() and current_frame_params() is not None and meta:
         return resolve_params(
             op=op,
             params=base_params,

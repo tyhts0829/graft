@@ -696,6 +696,7 @@ E: _E
 L: _L
 
 from grafix.api.export import Export as Export
+from grafix.api.component import component as component
 from grafix.core.effect_registry import effect as effect
 from grafix.core.primitive_registry import primitive as primitive
 
@@ -718,4 +719,4 @@ def run(
     """pyglet ウィンドウを生成し `draw(t)` のシーンをリアルタイム描画する。"""
     ...
 
-__all__ = ['E', 'Export', 'G', 'L', 'effect', 'primitive', 'run']
+__all__ = ['E', 'Export', 'G', 'L', 'component', 'effect', 'primitive', 'run']

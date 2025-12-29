@@ -35,7 +35,7 @@ def test_effect_defaults_recorded_when_no_kwargs():
 
     snapshot = store_snapshot(store)
     scale_args = {key.arg for key in snapshot.keys() if key.op == "scale"}
-    assert scale_args == {"bypass", "auto_center", "pivot", "scale"}
+    assert scale_args == {"bypass", "mode", "auto_center", "pivot", "scale"}
 
 
 def test_meta_default_none_is_rejected():
@@ -53,3 +53,28 @@ def test_meta_default_none_is_rejected():
         def _tmp_none_default_effect(inputs, *, x: float | None = None) -> RealizedGeometry:
             _ = inputs
             return _empty_geometry()
+
+
+def test_meta_dict_spec_is_accepted_for_user_defined_primitive_and_effect() -> None:
+    meta = {"x": {"kind": "float", "ui_min": 0.0, "ui_max": 1.0}}
+
+    @primitive(meta=meta)
+    def user_defined_meta_dict_primitive(*, x: float = 1.0) -> RealizedGeometry:
+        _ = x
+        return _empty_geometry()
+
+    @effect(meta=meta)
+    def user_defined_meta_dict_effect(inputs, *, x: float = 1.0) -> RealizedGeometry:
+        _ = x
+        return inputs[0] if inputs else _empty_geometry()
+
+    store = ParamStore()
+    with parameter_context(store=store, cc_snapshot=None):
+        g = G.user_defined_meta_dict_primitive(x=2.0)
+        E.user_defined_meta_dict_effect(x=3.0)(g)
+
+    snapshot = store_snapshot(store)
+    primitive_args = {k.arg for k in snapshot.keys() if k.op == "user_defined_meta_dict_primitive"}
+    effect_args = {k.arg for k in snapshot.keys() if k.op == "user_defined_meta_dict_effect"}
+    assert primitive_args == {"x"}
+    assert effect_args == {"bypass", "x"}

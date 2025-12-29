@@ -13,3 +13,4 @@ def test_api_exports_primitive_and_effect(monkeypatch) -> None:
     api = importlib.import_module("grafix.api")
     assert callable(getattr(api, "primitive", None))
     assert callable(getattr(api, "effect", None))
+    assert callable(getattr(api, "component", None))

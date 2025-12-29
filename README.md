@@ -36,6 +36,8 @@ if __name__ == "__main__":
 
 - `L` lets you define layers (stroke color, thickness, etc.).
 - `cc` lets you map MIDI CC messages to any parameter.
+- `@primitive` lets you register custom primitives (they become available under `G`).
+- `@effect` lets you register custom effects (they become available under `E`).
 - `Export` provides a headless export entrypoint (SVG implemented; PNG/MP4/G-code are stubs).
 - `Parameter GUI` lets you tweak parameters live while the sketch is running.
 - Keyboard shortcuts let you export output quickly:
@@ -43,29 +45,6 @@ if __name__ == "__main__":
   - `S` saves a `.svg` file
   - `V` records an `.mp4` video
   - `G` saves a `.gcode` file for pen plotters
-
-## Configuration
-
-A `config.yaml` lets you locate external fonts and choose where Grafix writes runtime outputs (`.svg`, `.png`, `.mp4`, `.gcode`).
-
-Grafix starts from the packaged defaults (`grafix/resource/default_config.yaml`) and then overlays user configs.
-
-Config overlay order (later wins):
-
-- packaged defaults: `grafix/resource/default_config.yaml`
-- `./.grafix/config.yaml` (project-local)
-- `~/.config/grafix/config.yaml` (per-user)
-- `run(..., config_path="path/to/config.yaml")`
-
-Paths support `~` and environment variables like `$HOME`.
-
-To create a project-local config (starting from the packaged defaults):
-
-```bash
-mkdir -p .grafix
-python -c "from importlib.resources import files; print(files('grafix').joinpath('resource','default_config.yaml').read_text())" > .grafix/config.yaml
-$EDITOR .grafix/config.yaml
-```
 
 ## Extending (custom primitives / effects)
 
@@ -90,10 +69,33 @@ Notes:
 - Built-in primitives/effects must provide `meta=...` (enforced).
 - For user-defined ops, `meta` is optional. If omitted, parameters are not shown in the Parameter GUI.
 
+## Configuration
+
+A `config.yaml` lets you locate external fonts and choose where Grafix writes runtime outputs (`.svg`, `.png`, `.mp4`, `.gcode`).
+
+Grafix starts from the packaged defaults (`grafix/resource/default_config.yaml`) and then overlays user configs.
+
+Config overlay order (later wins):
+
+- packaged defaults: `grafix/resource/default_config.yaml`
+- `./.grafix/config.yaml` (project-local)
+- `~/.config/grafix/config.yaml` (per-user)
+- `run(..., config_path="path/to/config.yaml")`
+
+Paths support `~` and environment variables like `$HOME`.
+
+To create a project-local config (starting from the packaged defaults):
+
+```bash
+mkdir -p .grafix
+python -c "from importlib.resources import files; print(files('grafix').joinpath('resource','default_config.yaml').read_text())" > .grafix/config.yaml
+$EDITOR .grafix/config.yaml
+```
+
 ## Not implemented yet
 
-- MIDI/CC input, LFOs, keyboard shortcuts, screenshot/video recording
-- PNG/G-code actual file generation (export stubs currently raise `NotImplementedError`)
+- LFOs to modulate any parameters with rhythm
+- G-code file generation
 
 ## Development
 

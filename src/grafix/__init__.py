@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from grafix.api import E, G, L, run
+from grafix.api import E, G, L, component, run
 from grafix.cc import cc
 
-__all__ = ["E", "G", "L", "cc", "run"]
+__all__ = ["E", "G", "L", "cc", "component", "run"]

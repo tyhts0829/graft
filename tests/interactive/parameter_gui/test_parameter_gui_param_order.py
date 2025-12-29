@@ -2,7 +2,9 @@ from grafix.interactive.parameter_gui.store_bridge import _order_rows_for_displa
 from grafix.core.parameters.view import ParameterRow
 
 # 登録（param_order 取得）に必要なので、対象モジュールを明示的に import する。
+from grafix.api import component as _component  # noqa: F401
 from grafix.core.effects import scale as _effect_scale  # noqa: F401
+from grafix.core.parameters.meta import ParamMeta
 from grafix.core.primitives import polygon as _primitive_polygon  # noqa: F401
 
 
@@ -21,6 +23,11 @@ def _row(*, op: str, site_id: str, ordinal: int, arg: str) -> ParameterRow:
         override=True,
         ordinal=int(ordinal),
     )
+
+
+@_component(meta={"scale": ParamMeta(kind="float"), "center": ParamMeta(kind="vec3")})
+def _logo_component(*, center=(0.0, 0.0, 0.0), scale=1.0, name=None, key=None):
+    return None
 
 
 def test_order_rows_for_display_primitive_uses_signature_arg_order():
@@ -78,3 +85,29 @@ def test_order_rows_for_display_places_unknown_arg_last_for_effect():
         display_order_by_group={("scale", "e:1"): 1},
     )
     assert [r.arg for r in out] == ["bypass", "__unknown__"]
+
+
+def test_order_rows_for_display_component_uses_signature_arg_order():
+    rows = [
+        _row(op="component._logo_component", site_id="c:1", ordinal=1, arg="scale"),
+        _row(op="component._logo_component", site_id="c:1", ordinal=1, arg="center"),
+    ]
+    out = _order_rows_for_display(
+        rows,
+        step_info_by_site={},
+        display_order_by_group={("component._logo_component", "c:1"): 1},
+    )
+    assert [r.arg for r in out] == ["center", "scale"]
+
+
+def test_order_rows_for_display_places_unknown_arg_last_for_component():
+    rows = [
+        _row(op="component._logo_component", site_id="c:1", ordinal=1, arg="center"),
+        _row(op="component._logo_component", site_id="c:1", ordinal=1, arg="__unknown__"),
+    ]
+    out = _order_rows_for_display(
+        rows,
+        step_info_by_site={},
+        display_order_by_group={("component._logo_component", "c:1"): 1},
+    )
+    assert [r.arg for r in out] == ["center", "__unknown__"]

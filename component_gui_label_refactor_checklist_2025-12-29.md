@@ -39,38 +39,38 @@
 
 ## チェックリスト
 
-- [ ] 1. `src/grafix/core/component_registry.py` を追加する
-  - [ ] `ComponentRegistry`（`__contains__`, `get_meta`, `get_param_order`, `get_display_op` など最小限）
-  - [ ] グローバル `component_registry` を提供する
-- [ ] 2. `src/grafix/api/component.py` で decorator 作成時に registry 登録する
-  - [ ] `op`（ストアキー）と `display_op`（表示用: 関数名）を登録
-  - [ ] `meta`（公開引数）を登録
-  - [ ] `param_order`（シグネチャ順）を登録
-  - [ ] `overwrite=True` 前提で再登録可能にする（リロード耐性）
-- [ ] 3. GUI 側の component 判定を registry ベースへ寄せる
-  - [ ] `src/grafix/interactive/parameter_gui/store_bridge.py` から `_COMPONENT_OP_PREFIX` / `_is_component_op` を削除
-  - [ ] `row.op in component_registry` で component_rows を分類
-  - [ ] `primitive_header_display_names_from_snapshot()` の `is_primitive_op` を「primitive + component」に変更（prefix 依存を撤去）
-  - [ ] component ブロック内の arg 並びを `component_registry.get_param_order()` ベースへ変更（fallback はアルファベット）
-  - [ ] `rows_before_raw` の未知引数フィルタに component 分岐を追加（known_args は registry.meta から）
-- [ ] 4. 行ラベルの `component.` 除去を registry 参照へ置換する
-  - [ ] `src/grafix/interactive/parameter_gui/labeling.py` の prefix strip を削除
-  - [ ] `display_op` を引ける経路を決める
-    - 案 A: labeling が `component_registry` を参照（最小変更）
-    - 案 B: grouping/store_bridge が “表示 op” を渡す（依存方向をより明確に）
-- [ ] 5. component を独自カテゴリとして扱い、ヘッダ色を分離する
-  - [ ] `src/grafix/interactive/parameter_gui/grouping.py` で component 行は `group_id=("component", (op, ordinal))` にする
-  - [ ] `src/grafix/interactive/parameter_gui/table.py` に `GROUP_HEADER_BASE_COLORS_RGBA["component"]` を追加する（暫定色）
-  - [ ] `src/grafix/interactive/parameter_gui/table.py` の `_header_kind_for_group_id()` に component を追加する
-  - [ ] 折りたたみキーの衝突を避ける（`primitive:` と `component:` を分ける等）
-- [ ] 6. テストを更新/追加する（差分が出る箇所だけ）
-  - [ ] `tests/interactive/parameter_gui/test_parameter_gui_labeling_phase1.py`（prefix strip 前提を修正）
-  - [ ] component の arg 並び順テストを追加（signature/meta 順が効くこと）
-  - [ ] component の未知引数フィルタ（旧永続化キーが GUI に出ない）テストを追加
-- [ ] 7. 検証
-  - [ ] `PYTHONPATH=src pytest -q tests/api/test_component.py`
-  - [ ] `PYTHONPATH=src pytest -q tests/interactive/parameter_gui`
-  - [ ] `PYTHONPATH=src pytest -q tests/stubs/test_api_stub_sync.py`
+- [x] 1. `src/grafix/core/component_registry.py` を追加する
+  - [x] `ComponentRegistry`（`__contains__`, `get_meta`, `get_param_order`, `get_display_op` など最小限）
+  - [x] グローバル `component_registry` を提供する
+- [x] 2. `src/grafix/api/component.py` で decorator 作成時に registry 登録する
+  - [x] `op`（ストアキー）と `display_op`（表示用: 関数名）を登録
+  - [x] `meta`（公開引数）を登録
+  - [x] `param_order`（シグネチャ順）を登録
+  - [x] `overwrite=True` 前提で再登録可能にする（リロード耐性）
+- [x] 3. GUI 側の component 判定を registry ベースへ寄せる
+  - [x] `src/grafix/interactive/parameter_gui/store_bridge.py` から `_COMPONENT_OP_PREFIX` / `_is_component_op` を削除
+  - [x] `row.op in component_registry` で component_rows を分類
+  - [x] `primitive_header_display_names_from_snapshot()` の `is_primitive_op` を「primitive + component」に変更（prefix 依存を撤去）
+  - [x] component ブロック内の arg 並びを `component_registry.get_param_order()` ベースへ変更（fallback はアルファベット）
+  - [x] `rows_before_raw` の未知引数フィルタに component 分岐を追加（known_args は registry.meta から）
+- [x] 4. 行ラベルの `component.` 除去を registry 参照へ置換する
+  - [x] `src/grafix/interactive/parameter_gui/labeling.py` の prefix strip を削除
+  - [x] `display_op` を引ける経路を決める
+    - [ ] 案 A: labeling が `component_registry` を参照（最小変更）
+    - [x] 案 B: grouping/table が “表示 op” を渡す（依存方向をより明確に）
+- [x] 5. component を独自カテゴリとして扱い、ヘッダ色を分離する
+  - [x] `src/grafix/interactive/parameter_gui/grouping.py` で component 行は `group_id=("component", (op, ordinal))` にする
+  - [x] `src/grafix/interactive/parameter_gui/table.py` に `GROUP_HEADER_BASE_COLORS_RGBA["component"]` を追加する（暫定色）
+  - [x] `src/grafix/interactive/parameter_gui/table.py` の `_header_kind_for_group_id()` に component を追加する
+  - [x] 折りたたみキーの衝突を避ける（`primitive:` と `component:` を分ける等）
+- [x] 6. テストを更新/追加する（差分が出る箇所だけ）
+  - [x] `tests/interactive/parameter_gui/test_parameter_gui_labeling_phase1.py`（prefix strip 前提を修正）
+  - [x] component の arg 並び順テストを追加（signature/meta 順が効くこと）
+  - [x] component の未知引数フィルタ（旧永続化キーが GUI に出ない）テストを追加
+- [x] 7. 検証
+  - [x] `PYTHONPATH=src pytest -q tests/api/test_component.py`
+  - [x] `PYTHONPATH=src pytest -q tests/interactive/parameter_gui`
+  - [x] `PYTHONPATH=src pytest -q tests/stubs/test_api_stub_sync.py`
 
 ## 事前確認（方針のすり合わせ）
 

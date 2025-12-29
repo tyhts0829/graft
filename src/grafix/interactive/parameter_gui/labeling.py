@@ -17,7 +17,7 @@ K = TypeVar("K", bound=Hashable)
 def format_param_row_label(op: str, ordinal: int, arg: str) -> str:
     """パラメータ行の表示ラベル `"{op}#{ordinal} {arg}"` を返す。"""
 
-    return f"{op}#{int(ordinal)} {arg}"
+    return f"{str(op)}#{int(ordinal)} {arg}"
 
 
 def format_layer_style_row_label(layer_name: str, ordinal: int, arg: str) -> str:
