@@ -27,7 +27,7 @@ sphere_meta = {
     "type_index": ParamMeta(kind="int", ui_min=0, ui_max=len(_STYLE_ORDER) - 1),
     # mode は latlon / rings スタイル専用（0: 横/緯度のみ, 1: 縦/経度のみ, 2: 両方）
     "mode": ParamMeta(kind="int", ui_min=0, ui_max=2),
-    "center": ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0),
+    "center": ParamMeta(kind="vec3", ui_min=0.0, ui_max=300.0),
     "scale": ParamMeta(kind="float", ui_min=0.0, ui_max=200.0),
 }
 

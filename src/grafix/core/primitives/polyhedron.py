@@ -22,7 +22,7 @@ _POLYHEDRON_CACHE: dict[str, tuple[np.ndarray, ...]] = {}
 
 polyhedron_meta = {
     "type_index": ParamMeta(kind="int", ui_min=0, ui_max=len(_TYPE_ORDER) - 1),
-    "center": ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0),
+    "center": ParamMeta(kind="vec3", ui_min=0.0, ui_max=300.0),
     "scale": ParamMeta(kind="float", ui_min=0.0, ui_max=200.0),
 }
 

@@ -105,8 +105,6 @@ class _LRU:
             self._od.popitem(last=False)
 
 
-
-
 class TextRenderer:
     """TTFont とグリフ平坦化コマンドを提供するキャッシュ。"""
 
@@ -345,10 +343,10 @@ text_meta = {
     "font": ParamMeta(kind="font"),
     "font_index": ParamMeta(kind="int", ui_min=0, ui_max=32),
     "text_align": ParamMeta(kind="choice", choices=("left", "center", "right")),
-    "letter_spacing_em": ParamMeta(kind="float", ui_min=0.0, ui_max=0.5),
+    "letter_spacing_em": ParamMeta(kind="float", ui_min=0.0, ui_max=2.0),
     "line_height": ParamMeta(kind="float", ui_min=0.8, ui_max=3.0),
     "quality": ParamMeta(kind="float", ui_min=0.0, ui_max=1.0),
-    "center": ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0),
+    "center": ParamMeta(kind="vec3", ui_min=0.0, ui_max=300.0),
     "scale": ParamMeta(kind="float", ui_min=0.0, ui_max=200.0),
 }
 

@@ -16,7 +16,7 @@ INCLUDE_BOUNDARY = True
 mirror3d_meta = {
     "mode": ParamMeta(kind="choice", choices=("azimuth", "polyhedral")),
     "n_azimuth": ParamMeta(kind="int", ui_min=1, ui_max=64),
-    "center": ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0),
+    "center": ParamMeta(kind="vec3", ui_min=0.0, ui_max=300.0),
     "axis": ParamMeta(kind="vec3", ui_min=-1.0, ui_max=1.0),
     "phi0": ParamMeta(kind="float", ui_min=-180.0, ui_max=180.0),
     "mirror_equator": ParamMeta(kind="bool"),

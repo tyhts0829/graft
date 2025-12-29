@@ -17,7 +17,7 @@ from grafix.core.realized_geometry import RealizedGeometry
 polygon_meta = {
     "n_sides": ParamMeta(kind="int", ui_min=3, ui_max=128),
     "phase": ParamMeta(kind="float", ui_min=0.0, ui_max=360.0),
-    "center": ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0),
+    "center": ParamMeta(kind="vec3", ui_min=0.0, ui_max=300.0),
     "scale": ParamMeta(kind="float", ui_min=0.0, ui_max=200.0),
 }
 

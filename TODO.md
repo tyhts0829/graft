@@ -10,3 +10,4 @@ shadow プリミティブ
 packing エフェクト
 polygon 途中まで書く
 partition z!=0 のとき外れる
+dash サイクル化

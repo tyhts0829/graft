@@ -19,7 +19,7 @@ torus_meta = {
     "minor_radius": ParamMeta(kind="float", ui_min=-100.0, ui_max=100.0),
     "major_segments": ParamMeta(kind="int", ui_min=3, ui_max=256),
     "minor_segments": ParamMeta(kind="int", ui_min=3, ui_max=256),
-    "center": ParamMeta(kind="vec3", ui_min=-100.0, ui_max=100.0),
+    "center": ParamMeta(kind="vec3", ui_min=0.0, ui_max=300.0),
     "scale": ParamMeta(kind="float", ui_min=0.0, ui_max=200.0),
 }
 
