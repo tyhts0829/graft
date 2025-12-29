@@ -8,6 +8,8 @@ Grafix is a python-based creative coding framework compatible with pen plotter.
 pip install grafix
 ```
 
+macOS-first. Tested on macOS (Apple Silicon). Other platforms are not officially supported yet.
+
 ## Quick start
 
 ```python
@@ -24,12 +26,16 @@ if __name__ == "__main__":
     run(draw, canvas_size=(800, 800), render_scale=2.0)
 ```
 
-## Basic Features
+## Core API
 
 - `G` lets you generate primitives such as `sphere`, `polyhedron`, `grid`, and more.
 - `E` lets you modulate primitives such as `affine`, `fill`, `repeat`, and more.
 - `run` lets you render a user-defined `draw(t)` function returns on each frame.
+
+## Optional Features
+
 - `L` lets you define layers. You can manage stroke colors, thickness per layer.
+- `cc` lets you connect midi controller and any parameters.
 - `Export` provides a headless export entrypoint (SVG implemented; image/G-code are stubs).
 - `Parameter GUI` lets you tweak parameters live while the sketch is running.
 
