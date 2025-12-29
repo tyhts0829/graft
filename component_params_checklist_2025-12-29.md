@@ -1,4 +1,4 @@
-# Component Params（公開引数だけGUI）+ Mute（内部を観測しない）+ Snippet 出力 チェックリスト（2025-12-29）
+# `@group`（公開引数だけGUI + 内部自動mute）+ GUIスニペット出力 チェックリスト（2025-12-29）
 
 ## ゴール
 
@@ -10,74 +10,67 @@
 ## 非ゴール
 
 - 既存の `@primitive`（RealizedGeometry を生成する低レベル primitive）へコンポーネントを統合する。
-- スケッチの `.py` を自動編集する（本件は「スニペット出力」まで）。
+- スケッチの `.py` を自動編集する（本件は「GUIでスニペット表示」まで）。
 - 内部パラメータ（G/E の細部）を将来 GUI で調整する用途をサポートする（必要なら別途）。
 
-## 仕様案（ユーザーAPI）
+## 方針（ユーザーAPI）
 
-### 1) Component の公開パラメータ解決
+### 1) `@group` デコレータ（公開引数だけGUI）
 
-- 新API: `grafix.P`（仮）または `grafix.params` を追加。
-  - `P.group(op_name, *, name=None, key=None, meta=..., defaults=..., user_params=...) -> dict`
-  - `key` は「同じ呼び出し行から複数回生成する」用途の衝突回避キー（React の key 的なもの）。
-  - `name` は GUI ヘッダ表示名（任意）。無ければ `op_name` を表示。
+- 新API: `grafix.group` デコレータを追加。
+- `@group(meta=..., op=...)` を付けた関数は「コンポーネント」として振る舞う:
+  - **公開パラメータ**: `meta` に含まれる引数だけ（= GUI に出るのはこれだけ）。
+  - **内部**: 関数本体内の `G.*` / `E.*` は自動的に mute され、GUI/永続化に出ない。
+- `meta` は明示指定（推奨）。GUI の ui_min/ui_max をここで決められる。
+- 複数回呼び出し（同一行/ループ）を分離するために `key=` を予約引数として用意する（GUI には出さない）。
+- GUI ヘッダ表示名として `name=` を予約引数として用意する（GUI には出さない）。
 
 （利用例）
 
 ```py
-from grafix import E, G, P
+from grafix import E, G, group
+from grafix.core.parameters.meta import ParamMeta
 
 logo_meta = {
-    "center": P.meta.vec3(ui_min=0, ui_max=100),
-    "scale":  P.meta.float(ui_min=0, ui_max=4),
+    "center": ParamMeta(kind="vec3", ui_min=0.0, ui_max=100.0),
+    "scale": ParamMeta(kind="float", ui_min=0.0, ui_max=4.0),
 }
 
+@group(meta=logo_meta)
 def logo(*, center=(0, 0, 0), scale=1.0, name=None, key=None):
-    p = P.group(
-        "logo",
-        name=name,
-        key=key,
-        meta=logo_meta,
-        defaults={"center": (0, 0, 0), "scale": 1.0},
-        user_params={"center": center, "scale": scale},
-    )
-    with P.mute():
-        ...  # 内部の G/E はここで組む（GUI に出ない）
-    return E.affine(delta=p["center"], scale=(p["scale"],) * 3)(...)
+    square = G.polygon(...)
+    ...
+    return E.affine(delta=center, scale=(scale, scale, scale))(square + ...)
 ```
 
-### 2) Mute（内部を観測しない）
+### 2) mute は `@group` に内包（内部を観測しない）
 
-- 新API: `P.mute()`（context manager）
-- `with P.mute():` の間は以下を抑止する:
+- `@group` が関数本体の実行を自動で mute する。
+- mute 中に抑止するもの:
   - `resolve_params()` の record 追加（= GUI/永続化に出ない）
-  - `G(name=...)` / `E(name=...)` の label 保存（= label だけが JSON に残る事故を防ぐ）
+  - `G(name=...)` / `E(name=...)` / `L(name=...)` の label 保存（= label だけが JSON に残る事故を防ぐ）
 
-### 3) Snippet 出力（困りごと2）
+### 3) Snippet 出力（困りごと2）は Parameter GUI のボタンで行う
 
-- 新API（最小）:
-  - `P.snippet_from_store(store_or_path, *, op=None, name=None, only_overrides=True) -> str`
-  - 既定は「override=True の項目だけ」を Python kwargs 形式で出力（安全に貼れる）。
-- 追加オプション（必要なら）:
-  - クリップボード連携（依存追加なしならやらない）
-  - `op` 指定なしの場合は “全グループ” をまとめて出力
+- スケッチ側のコードは「`@group` を付ける」以外に工夫を入れない。
+- Parameter GUI の group ヘッダに `Snippet` ボタンを置く。
+- 押すと “貼り付け用の Python 呼び出し形” を即表示する（必要ならコピー）。
 
 （出力例）
 
 ```py
-# from {output_root}/param_store/readme2.json
-logo__A = dict(center=(50.0, 50.0, 0.0), scale=1.25)
-logo__B = dict(center=(20.0, 50.0, 0.0), scale=0.8)
+logo(center=(50.0, 50.0, 0.0), scale=1.25)
 ```
 
 ## 実装チェックリスト
 
 ### A. 仕様確定（最初に決める）
 
-- [ ] component の `op` 命名規則を決める（例: `"component.logo"` / `"logo"`）
-- [ ] GUI 上の見え方を決める（Component を Primitive と同列に見せる or “Other” 扱い）
-- [ ] 複数呼び出しの識別子を決める（`key=` の型と string 化ルール）
-- [ ] Snippet の “グループ選択” 方法を決める（`name=` 優先 / `op+ordinal` / 全出力）
+- [ ] component の `op` 命名規則を決める（推奨: `component.<func_name>`）
+- [ ] `name=` と `key=` を予約引数として標準化する（GUI 非公開）
+- [ ] 複数呼び出しの識別子 `key=` の型と string 化ルールを決める
+- [ ] GUI 上の見え方を決める（Component 専用セクションを作るか）
+- [ ] Snippet の採用値を決める（`effective` で出す / `override=True` のみで出す）
 
 ### B. パラメータ観測の Mute（基盤）
 
@@ -88,38 +81,41 @@ logo__B = dict(center=(20.0, 50.0, 0.0), scale=0.8)
   - [ ] `resolve_api_params()`（resolve_params 呼び出し）
 - [ ] 既存挙動の互換性を確認（mute を使わない限り挙動は同じ）
 
-### C. Component の公開パラメータ解決 API（P.group）
+### C. `@group` デコレータ（コンポーネント化）
 
-- [ ] `src/grafix/api/params.py`（仮）を追加し、`P` を公開する
-- [ ] site_id を安定生成（`caller_site_id()` + `op` + `key` を合成）
-- [ ] `resolve_params(op=..., site_id=...)` を呼び、公開引数だけ record する
-- [ ] `name=` を ParamStore label として保存（mute 中は抑止）
-- [ ] `grafix/__init__.py` から `P` を export（公開 API）
+- [ ] `src/grafix/api/group.py`（仮）を追加し、`group` デコレータを実装する
+- [ ] `op` は既定で `component.<func_name>` とし、任意で上書きできるようにする
+- [ ] `site_id` を安定生成（`caller_site_id()` + `key` を合成）
+- [ ] `meta` に含まれる引数だけ `resolve_params(op=..., site_id=...)` で解決・record する
+- [ ] `name=` を ParamStore label として保存（このラベルは mute の外で設定する）
+- [ ] 関数本体は自動で mute して実行する（内部 G/E の record/label を抑止）
+- [ ] `grafix/__init__.py` から `group` を export（公開 API）
 
 ### D. GUI 表示（必要なら）
 
 - [ ] Component を GUI で “まとまり” として見せる（ヘッダ表示/折りたたみ）
-  - [ ] `primitive_header_display_names_from_snapshot()` の対象 op 判定を拡張（component を含める）
-  - [ ] `_order_rows_for_display()` の分類に component を追加（style→component→primitive→effect→other など）
+  - [ ] `component.*` を primitive 同等にヘッダ表示できるようにする（label をヘッダに使う）
+  - [ ] `_order_rows_for_display()` の分類に component を追加（style→component→primitive→effect→other）
   - [ ] 既存 primitive/effect の並び順が崩れないことを確認
 
-### E. Snippet 出力（困りごと2）
+### E. GUI Snippet ボタン（困りごと2）
 
-- [ ] `src/grafix/api/params_snippet.py`（仮）に純粋関数を実装
-  - [ ] ParamStore（または JSON path）から group（op, site_id）ごとに抽出
-  - [ ] `only_overrides=True` で `state.override==True` のみ対象
-  - [ ] ラベル（name）を持つ場合は出力名に反映（例: `logo__Title`）
-  - [ ] 値は `repr()` ベースで Python リテラル化（tuple/float/int/str/bool）
-- [ ] 入口を1つ追加（どれか）
-  - [ ] 方式1: `tools/emit_param_snippet.py`（JSON path を渡して出力）
-  - [ ] 方式2: `grafix.P.snippet(...)` としてユーザーが REPL/スケッチから呼べる
+- [ ] Parameter GUI の group ヘッダに `Snippet` ボタンを追加する（component グループのみでOK）
+- [ ] Snippet 文字列生成（純粋関数）を追加する
+  - [ ] 対象は「component グループ内の行（arg）」のみ
+  - [ ] 取得値は `store._runtime_ref().last_effective_by_key` を優先する（GUI/CC/base を反映した“今の値”）
+  - [ ] fallback として `state.ui_value` を使えるようにする
+  - [ ] 出力は `logo(center=..., scale=...)` の呼び出し形（`component.` プレフィックスは除去）
+- [ ] 出力UI（どれか）
+  - [ ] 方式1: `input_text_multiline` のポップアップで表示（ユーザーが手でコピー）
+  - [ ] 方式2: クリップボードへコピー（imgui のAPIが使える場合のみ）
 
 ### F. テスト
 
 - [ ] Mute 中は record/label が保存されないこと（ParamStore の states/meta/labels が増えない）
 - [ ] Component が公開引数だけを record すること（内部 G/E が出ない）
 - [ ] `key=` で同一行の複数インスタンスが分離できること
-- [ ] Snippet が override=True のみ出力すること（順序は安定）
+- [ ] Snippet が component の引数だけ出力すること（順序は安定）
 
 ### G. ドキュメント
 
@@ -129,10 +125,11 @@ logo__B = dict(center=(20.0, 50.0, 0.0), scale=0.8)
 
 ## 事前に確認したいこと（返答ください）
 
-- 1) Component の `op` 表示は `"logo"` のままが良い？ それとも `"component.logo"` のように明示したい？
-- 2) GUI の並びに Component 専用セクションが欲しい？（最初は “Other” 扱いでも良い？）
-- 3) Snippet の出力形はどれが好み？
-  - a) `dict(...)` 変数
-  - b) `logo(center=..., scale=...)` の呼び出し形
-  - c) 両方
-
+- 1) component の `op` は `component.<func_name>`（推奨）でOK？
+- 2) `name=` と `key=` は “group関数の予約引数” として統一してOK？（GUI には出さない）
+- 3) Snippet はどの値で出す？
+  - a) `effective`（CC/override/base を反映した“今の値”を丸ごと焼き込み）
+  - b) `override=True` の ui_value だけ（GUIで触った分だけ焼き込み）
+- 4) Snippet のUIはどれが好み？
+  - a) ポップアップ表示（手コピー）
+  - b) クリップボードに直接コピー（可能なら）
