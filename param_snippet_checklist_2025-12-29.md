@@ -14,6 +14,16 @@
 
 ## 仕様案（UX）
 
+### UI（トリガと出力先）
+
+- v1: 各グループヘッダに `Snippet` ボタンを置く（= そのグループ単体を出力）。
+- （任意）Parameter GUI 上部に `Snippet (All)` ボタンを置く（= 全グループを連結して出力）。
+- 出力は **ファイル保存ではなくポップアップ**（modal）に表示する。
+  - `input_text_multiline` の readonly に出し、**選択→コピー**で持ち帰れることを最優先。
+  - ポップアップ表示直後にテキスト欄へ **フォーカス**を当て、`Ctrl/Cmd+A → Ctrl/Cmd+C` が即できるようにする。
+  - 可能なら `Copy` ボタンも置く（clipboard API が使える場合はワンクリックでコピー）。
+  - clipboard API が無い場合は「`Ctrl/Cmd+A → Ctrl/Cmd+C`」のヒントを添える。
+
 ### 出力単位
 
 - v1: **グループ単位**（GUI のヘッダ単位）に `Snippet` を出せる。
@@ -39,7 +49,7 @@
 
 #### Style（global）
 
-- store は RGB255 を持つが、ユーザーAPI（`run`）は RGB01 を期待するため変換する。
+- store は RGB255 を持つが、ユーザー API（`run`）は RGB01 を期待するため変換する。
 - 出力例:
 
 ```py
@@ -86,7 +96,7 @@ E.affine(delta=(0.0, 0.0, 0.0)).dash(dash_length=(16.0, 4.0)).buffer().fill()
 ### A. 仕様確定（最初に決める）
 
 - [ ] デフォルトの値ソースを確定（推奨: `effective`）
-- [ ] `Snippet` のUI配置を確定（推奨: 各グループの開いた領域の先頭にボタン）
+- [ ] `Snippet` の UI 配置を確定（推奨: 各グループヘッダにボタン + 任意で `Snippet (All)`）
 - [ ] 出力形式を確定（v1: `dict(...)` を基本、primitive/effect は `G./E.` 併記）
 
 ### B. Snippet 生成（純粋関数）
@@ -108,7 +118,9 @@ E.affine(delta=(0.0, 0.0, 0.0)).dash(dash_length=(16.0, 4.0)).buffer().fill()
 - [ ] `store_bridge.render_store_parameter_table(...)` 側でイベントを受け取り、snippet 文字列を作って UI に渡す
 - [ ] ポップアップ（modal）で snippet を表示する
   - [ ] `input_text_multiline` で全文表示（readonly）
+  - [ ] 表示直後にテキスト欄へフォーカス（`Ctrl/Cmd+A → Ctrl/Cmd+C` を即実行できる）
   - [ ] （可能なら）`Copy` ボタンでクリップボードへ送る
+  - [ ] clipboard 不可の場合のコピー手順ヒントを表示する
 
 ### D. テスト
 
@@ -119,10 +131,9 @@ E.affine(delta=(0.0, 0.0, 0.0)).dash(dash_length=(16.0, 4.0)).buffer().fill()
 
 ## 事前に確認したいこと（返答ください）
 
-- 1) Snippet のデフォルト値は `effective` でOK？（CC 割当中でも “その瞬間の値” を焼く）
-- 2) 出力形式は v1 ではこれでOK？
+- 1. Snippet のデフォルト値は `effective` で OK？（CC 割当中でも “その瞬間の値” を焼く）；はい
+- 2. 出力形式は v1 ではこれで OK？；はい
   - Style/Layer: `dict(...)`
   - Primitive: `G.op(...)`
   - Effect: `E.op(...).op(...)`（ビルダ式）
-- 3) UI はポップアップ表示（手コピー）をまず作ってOK？（クリップボードは“あれば”対応）
-
+- 3. UI はポップアップ表示（手コピー）をまず作って OK？（クリップボードは“あれば”対応）；はい（readonly + フォーカス + Copy ボタンがあれば入れる）
