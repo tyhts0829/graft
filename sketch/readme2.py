@@ -1,14 +1,14 @@
 from grafix import E, G, L, cc, component, run
 
-# meta = {
-#     "center": {"kind": "vec3", "ui_min": 0.0, "ui_max": 100.0},
-#     "scale": {"kind": "float", "ui_min": 0.0, "ui_max": 4.0},
-# }
+meta = {
+    "center": {"kind": "vec3", "ui_min": 0.0, "ui_max": 100.0},
+    "scale": {"kind": "float", "ui_min": 0.0, "ui_max": 4.0},
+    "fill_density_coef": {"kind": "float", "ui_min": 0.0, "ui_max": 1.0},
+}
 
 
-# @component(meta=meta)
-def logo(center=(0, 0, 0), scale=1.0):
-    FONT = "Geist-black"
+@component(meta=meta)
+def logo(center=(0, 0, 0), scale=1.0, fill_density_coef=1.0):
     square = G.polygon(
         n_sides=4,
         phase=45.0,
@@ -28,7 +28,7 @@ def logo(center=(0, 0, 0), scale=1.0):
             bypass=False,
             angle_sets=1,
             angle=45.0,
-            density=300.0,
+            density=300.0 * fill_density_coef,
             spacing_gradient=0.0,
             remove_boundary=False,
         )
@@ -42,7 +42,7 @@ def logo(center=(0, 0, 0), scale=1.0):
         letter_spacing_em=0.5740000000000001,
         line_height=1.2,
         quality=0.5,
-        center=(50.0, 36.0, 0.0),
+        center=(50.0, 37.5, 0.0),
         scale=15.0,
     )
 
@@ -54,7 +54,7 @@ def logo(center=(0, 0, 0), scale=1.0):
         letter_spacing_em=0.8,
         line_height=1.2,
         quality=0.5,
-        center=(50.0, 56.0, 0.0),
+        center=(50.0, 57.065, 0.0),
         scale=15.0,
     )
 
@@ -62,7 +62,7 @@ def logo(center=(0, 0, 0), scale=1.0):
         bypass=False,
         angle_sets=1,
         angle=45.0,
-        density=135.0,
+        density=135.0 * fill_density_coef,
         spacing_gradient=0.0,
         remove_boundary=False,
     )
@@ -102,7 +102,7 @@ def logo(center=(0, 0, 0), scale=1.0):
             bypass=False,
             angle_sets=1,
             angle=45.0,
-            density=35.0,
+            density=35.0 * fill_density_coef,
             spacing_gradient=0.0,
             remove_boundary=False,
         )

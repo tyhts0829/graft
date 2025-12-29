@@ -92,7 +92,7 @@ def test_snippet_style_converts_rgb255_to_rgb01_and_maps_keys() -> None:
     assert "background_color=(1.0, 0.0, 0.0)" in out
     assert "line_thickness=0.001" in out
     assert "line_color=(0.0, 0.0, 0.0)" in out
-    assert "# Layer style: outline#1" in out
+    assert "color=(0.0, 0.5019607843137255, 1.0)" in out
     assert "thickness=0.002" in out
 
 
@@ -145,4 +145,3 @@ def test_snippet_component_uses_display_op_call_name() -> None:
 
     assert "logo(" in out
     assert "x=2.0" in out
-

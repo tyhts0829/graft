@@ -4,7 +4,7 @@
 
 - Parameter GUI で調整した値を **Python リテラルとしてコピペ**できる。
 - `@component` の有無に関わらず動く（Style / Primitive / Effect / Layer style / その他）。
-- 「どの呼び出しの値か」が分かるように、GUI のヘッダ/行情報（label, op#ordinal 等）を出力に含める。
+- 出力は **純粋な Python コードのみ**（`#` コメント無し）で、貼り付け先の文脈に乗せやすいこと。
 
 ## 非ゴール
 
@@ -53,7 +53,6 @@
 - 出力例:
 
 ```py
-# Style
 dict(
     background_color=(1.0, 1.0, 1.0),
     line_thickness=0.001,
@@ -68,7 +67,6 @@ dict(
 - 出力例:
 
 ```py
-# Layer style: layer#1 (label="outline")
 dict(color=(0.0, 0.0, 0.0), thickness=0.002)
 ```
 
@@ -77,7 +75,6 @@ dict(color=(0.0, 0.0, 0.0), thickness=0.002)
 - 出力例（call か kwargs のどちらか）:
 
 ```py
-# circle#3 (label="dot")
 G.circle(r=12.5, center=(50.0, 50.0, 0.0))
 ```
 
@@ -87,8 +84,11 @@ G.circle(r=12.5, center=(50.0, 50.0, 0.0))
 - 出力例:
 
 ```py
-# Effect chain: effect#1 (label="line_eff")
-E.affine(delta=(0.0, 0.0, 0.0)).dash(dash_length=(16.0, 4.0)).buffer().fill()
+E.affine(
+    delta=(0.0, 0.0, 0.0),
+).dash(
+    dash_length=(16.0, 4.0),
+).buffer().fill()
 ```
 
 ## 実装チェックリスト
@@ -108,7 +108,7 @@ E.affine(delta=(0.0, 0.0, 0.0)).dash(dash_length=(16.0, 4.0)).buffer().fill()
   - [x] `layer_style_name_by_site_id`（layer 名用、任意）
   - [x] `last_effective_by_key: dict[ParameterKey, object]`（任意）
 - [ ] 出力:
-  - [x] “グループ単位 snippet” を生成する API（`GroupBlock -> str`）を用意
+  - [x] “グループ単位 code” を生成する API（`GroupBlock -> str`）を用意
   - [x] RGB255 → RGB01 変換（Style / Layer style）
   - [x] Python リテラル化（`repr()` 基本、tuple/float/int/str/bool）
 
@@ -116,7 +116,7 @@ E.affine(delta=(0.0, 0.0, 0.0)).dash(dash_length=(16.0, 4.0)).buffer().fill()
 
 - [x] `render_parameter_table(...)` に `last_effective_by_key` を渡せるようにする
 - [x] 各グループヘッダに `Code` ボタンを追加する
-- [x] ポップアップ（modal）で snippet を表示する
+- [x] ポップアップ（modal）で code を表示する
   - [x] `input_text_multiline` で全文表示（readonly）
   - [x] 表示直後にテキスト欄へフォーカス（`Ctrl/Cmd+A → Ctrl/Cmd+C` を即実行できる）
   - [x] `Copy` ボタンでクリップボードへ送る（imgui の clipboard API を使用）

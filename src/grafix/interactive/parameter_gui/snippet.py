@@ -86,7 +86,7 @@ def snippet_for_block(
         style_rows = [r for r in rows if r.op == STYLE_OP]
         layer_rows = [r for r in rows if r.op == LAYER_STYLE_OP]
 
-        out_lines: list[str] = ["# Style"]
+        out_blocks: list[str] = []
 
         # --- global style ---
         global_items: list[tuple[str, str]] = []
@@ -106,7 +106,7 @@ def snippet_for_block(
             global_items.append(("line_color", _py_literal(rgb255_to_rgb01(line255))))
 
         if global_items:
-            out_lines.append(
+            out_blocks.append(
                 "dict(\n"
                 + "\n".join(f"    {k}={v}," for k, v in global_items)
                 + "\n)"
@@ -121,14 +121,6 @@ def snippet_for_block(
             # 行は (arg の並び) が欲しいので明示で揃える。
             by_arg2 = {str(r.arg): r for r in site_rows}
 
-            layer_name = (
-                "layer"
-                if layer_style_name_by_site_id is None
-                else str(layer_style_name_by_site_id.get(site_id, "layer"))
-            )
-            ordinal = int(site_rows[0].ordinal) if site_rows else 0
-            out_lines.append(f'# Layer style: {layer_name}#{ordinal} (site_id="{site_id}")')
-
             layer_items: list[tuple[str, str]] = []
             if LAYER_STYLE_LINE_COLOR in by_arg2:
                 rgb255 = coerce_rgb255(
@@ -140,13 +132,15 @@ def snippet_for_block(
                 layer_items.append(("thickness", _py_literal(th)))
 
             if layer_items:
-                out_lines.append(
+                out_blocks.append(
                     "dict(\n"
                     + "\n".join(f"    {k}={v}," for k, v in layer_items)
                     + "\n)"
                 )
 
-        return "\n\n".join(out_lines).rstrip() + "\n"
+        if not out_blocks:
+            return ""
+        return "\n\n".join(out_blocks).rstrip() + "\n"
 
     if group_type == "component":
         row0 = rows[0]
@@ -156,12 +150,7 @@ def snippet_for_block(
             (str(r.arg), _py_literal(_effective_or_ui_value(r, last_effective_by_key=last_effective_by_key)))
             for r in rows
         ]
-        header = str(block.header) if block.header else call_name
-        lines = [
-            f'# Component: {header} (op="{op}", site_id="{row0.site_id}")',
-            _format_kwargs_call("", op=call_name, kwargs=kwargs),
-        ]
-        return "\n".join(lines).rstrip() + "\n"
+        return _format_kwargs_call("", op=call_name, kwargs=kwargs).rstrip() + "\n"
 
     if group_type == "primitive":
         row0 = rows[0]
@@ -170,16 +159,9 @@ def snippet_for_block(
             (str(r.arg), _py_literal(_effective_or_ui_value(r, last_effective_by_key=last_effective_by_key)))
             for r in rows
         ]
-        header = str(block.header) if block.header else f"{op}#{int(row0.ordinal)}"
-        lines = [
-            f'# Primitive: {header} (op="{op}", site_id="{row0.site_id}")',
-            _format_kwargs_call("G.", op=op, kwargs=kwargs),
-        ]
-        return "\n".join(lines).rstrip() + "\n"
+        return _format_kwargs_call("G.", op=op, kwargs=kwargs).rstrip() + "\n"
 
     if group_type == "effect_chain":
-        chain_id = str(block.group_id[1])
-
         steps: dict[tuple[int, str, str], list[ParameterRow]] = {}
         for r in rows:
             step_index = 10**9
@@ -191,37 +173,47 @@ def snippet_for_block(
             key = (int(step_index), str(r.op), str(r.site_id))
             steps.setdefault(key, []).append(r)
 
-        header = str(block.header) if block.header else "effect"
-        out_lines: list[str] = [f'# Effect chain: {header} (chain_id="{chain_id}")', "("]
+        if not steps:
+            return ""
 
-        first = True
-        for (_step_index, op, _site_id), step_rows in sorted(steps.items(), key=lambda x: x[0]):
+        out_lines: list[str] = []
+        for i, ((_step_index, op, _site_id), step_rows) in enumerate(
+            sorted(steps.items(), key=lambda x: x[0])
+        ):
             kwargs = [
-                (str(r.arg), _py_literal(_effective_or_ui_value(r, last_effective_by_key=last_effective_by_key)))
+                (
+                    str(r.arg),
+                    _py_literal(
+                        _effective_or_ui_value(
+                            r, last_effective_by_key=last_effective_by_key
+                        )
+                    ),
+                )
                 for r in step_rows
             ]
-            call = _format_kwargs_call("E." if first else ".", op=op, kwargs=kwargs)
-            first = False
-            for ln in call.splitlines():
-                out_lines.append(f"    {ln}")
+            if i == 0:
+                call = _format_kwargs_call("E.", op=op, kwargs=kwargs)
+                out_lines.extend(call.splitlines())
+                continue
 
-        out_lines.append(")")
+            out_lines[-1] = out_lines[-1] + f".{op}("
+            call_lines = _format_kwargs_call("", op=op, kwargs=kwargs).splitlines()
+            if len(call_lines) == 1:
+                out_lines[-1] = out_lines[-1].rstrip("(") + "()"
+                continue
+            out_lines.extend(call_lines[1:])
+
         return "\n".join(out_lines).rstrip() + "\n"
 
     # fallback
     if rows:
         row0 = rows[0]
         op = str(row0.op)
-        header = str(block.header) if block.header else op
         kwargs = [
             (str(r.arg), _py_literal(_effective_or_ui_value(r, last_effective_by_key=last_effective_by_key)))
             for r in rows
         ]
-        lines = [
-            f'# Params: {header} (op="{op}", site_id="{row0.site_id}")',
-            "dict(\n" + "\n".join(f"    {k}={v}," for k, v in kwargs) + "\n)",
-        ]
-        return "\n".join(lines).rstrip() + "\n"
+        return ("dict(\n" + "\n".join(f"    {k}={v}," for k, v in kwargs) + "\n)").rstrip() + "\n"
     return ""
 
 
