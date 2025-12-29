@@ -25,13 +25,29 @@ def _empty_geometry() -> RealizedGeometry:
     return RealizedGeometry(coords=coords, offsets=offsets)
 
 
+def _as_float_cycle(value: float | Sequence[float]) -> tuple[float, ...]:
+    """float または float 列を「サイクル可能なタプル」に正規化する。"""
+    # `np.ndarray` は `collections.abc.Sequence` を満たさないため個別扱いする。
+    if isinstance(value, np.ndarray):
+        if value.ndim == 0:
+            return (float(value),)
+        if value.size <= 0:
+            raise ValueError("空のシーケンスは指定できません")
+        return tuple(float(v) for v in value.ravel())
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        if len(value) <= 0:
+            raise ValueError("空のシーケンスは指定できません")
+        return tuple(float(v) for v in value)
+    return (float(value),)
+
+
 @effect(meta=dash_meta)
 def dash(
     inputs: Sequence[RealizedGeometry],
     *,
-    dash_length: float = 6.0,
-    gap_length: float = 3.0,
-    offset: float = 0.0,
+    dash_length: float | Sequence[float] = 6.0,
+    gap_length: float | Sequence[float] = 3.0,
+    offset: float | Sequence[float] = 0.0,
     offset_jitter: float = 0.0,
 ) -> RealizedGeometry:
     """連続線を破線に変換する。
@@ -40,12 +56,15 @@ def dash(
     ----------
     inputs : Sequence[RealizedGeometry]
         入力実体ジオメトリ列。通常は 1 要素。
-    dash_length : float, default 6.0
+    dash_length : float | Sequence[float], default 6.0
         ダッシュ（描画区間）の長さ [mm]。
-    gap_length : float, default 3.0
+        シーケンス指定時は 1 本のポリライン内でダッシュごとにサイクル適用する。
+    gap_length : float | Sequence[float], default 3.0
         ギャップ（非描画区間）の長さ [mm]。
-    offset : float, default 0.0
+        シーケンス指定時は 1 本のポリライン内でダッシュごとにサイクル適用する。
+    offset : float | Sequence[float], default 0.0
         パターン位相オフセット [mm]。正の値で開始位相が前方へシフトする。
+        シーケンス指定時は入力ポリラインごとにサイクル適用する。
     offset_jitter : float, default 0.0
         ポリラインごとに offset に加えるジッター量 [mm]。
         `[-offset_jitter, +offset_jitter]` の一様乱数で、0 以下は無効。
@@ -62,6 +81,7 @@ def dash(
     - 全長が 0 または頂点数 < 2 の線は原線を保持する。
     - offset は「位相」として扱い、開始が部分ダッシュになり得る。
     - offset_jitter は決定的な RNG（seed=0）で生成し、再現性を優先する。
+    - シーケンス指定はコードからの指定を想定する（parameter_gui の編集対象にはしない）。
     """
     if not inputs:
         return _empty_geometry()
@@ -72,22 +92,24 @@ def dash(
     if coords.shape[0] == 0:
         return base
 
-    d = float(dash_length)
-    g = float(gap_length)
-    if d < 0.0 or g < 0.0:
+    dash_seq = _as_float_cycle(dash_length)
+    gap_seq = _as_float_cycle(gap_length)
+    dash_arr = np.asarray(dash_seq, dtype=np.float64)
+    gap_arr = np.asarray(gap_seq, dtype=np.float64)
+    if not np.all(np.isfinite(dash_arr)) or not np.all(np.isfinite(gap_arr)):
+        return base
+    if np.any(dash_arr < 0.0) or np.any(gap_arr < 0.0):
         return base
 
-    # dash_len が 0 でも pattern が正なら「ダッシュ無し → 原線維持」に落ちる（旧仕様）。
-    pattern = d + g
-    if not np.isfinite(pattern) or pattern <= 0.0:
-        return base
-
-    # offset は負値・非有限値を 0 にクランプ（旧仕様）。
-    off = float(offset)
-    if not np.isfinite(off) or off < 0.0:
-        off = 0.0
+    # 単一値指定は旧仕様の no-op 判定を維持する。
+    if dash_arr.size == 1 and gap_arr.size == 1:
+        # dash_len が 0 でも pattern が正なら「ダッシュ無し → 原線維持」に落ちる（旧仕様）。
+        pattern = float(dash_arr[0] + gap_arr[0])
+        if not np.isfinite(pattern) or pattern <= 0.0:
+            return base
 
     # 線ごとの offset にランダム量を加える（決定的な RNG を使用、旧仕様）。
+    offset_seq = _as_float_cycle(offset)
     jitter_scale = float(offset_jitter)
     if not np.isfinite(jitter_scale) or jitter_scale <= 0.0:
         jitter_scale = 0.0
@@ -97,19 +119,16 @@ def dash(
         return base
 
     line_offset_arr = np.empty(n_lines, dtype=np.float64)
-    if jitter_scale > 0.0:
-        rng = np.random.default_rng(0)
-        for li in range(n_lines):
-            jitter = float(rng.uniform(-jitter_scale, jitter_scale))
-            value = off + jitter
-            if value < 0.0:
-                value = 0.0
-            line_offset_arr[li] = value
-    else:
-        line_offset_arr.fill(off)
-
-    dash_arr = np.asarray([d], dtype=np.float64)
-    gap_arr = np.asarray([g], dtype=np.float64)
+    rng = np.random.default_rng(0) if jitter_scale > 0.0 else None
+    for li in range(n_lines):
+        base_off = float(offset_seq[li % len(offset_seq)])
+        if not np.isfinite(base_off) or base_off < 0.0:
+            base_off = 0.0
+        if rng is not None:
+            base_off += float(rng.uniform(-jitter_scale, jitter_scale))
+            if base_off < 0.0:
+                base_off = 0.0
+        line_offset_arr[li] = base_off
 
     # ---- 2 パス実装（count → fill） ---------------------------------------
     total_out_vertices = 0

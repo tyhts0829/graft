@@ -152,7 +152,7 @@ class _EffectBuilder(Protocol):
             subdivisions: 細分回数
         """
         ...
-    def dash(self, *, bypass: bool = ..., dash_length: float = ..., gap_length: float = ..., offset: float = ..., offset_jitter: float = ...) -> _EffectBuilder:
+    def dash(self, *, bypass: bool = ..., dash_length: float | Sequence[float] = ..., gap_length: float | Sequence[float] = ..., offset: float | Sequence[float] = ..., offset_jitter: float = ...) -> _EffectBuilder:
         """
         連続線を破線に変換する。
 
@@ -440,7 +440,7 @@ class _E(Protocol):
             subdivisions: 細分回数
         """
         ...
-    def dash(self, *, bypass: bool = ..., dash_length: float = ..., gap_length: float = ..., offset: float = ..., offset_jitter: float = ...) -> _EffectBuilder:
+    def dash(self, *, bypass: bool = ..., dash_length: float | Sequence[float] = ..., gap_length: float | Sequence[float] = ..., offset: float | Sequence[float] = ..., offset_jitter: float = ...) -> _EffectBuilder:
         """
         連続線を破線に変換する。
 

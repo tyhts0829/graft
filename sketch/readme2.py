@@ -1,9 +1,14 @@
 from grafix import E, G, L, run
 
 
-def draw(t):
-    FONT = "Geist-medium"
-    square = G.polygon()
+def logo(center=(0, 0, 0), scale=1.0):
+    FONT = "Geist-black"
+    square = G.polygon(
+        n_sides=4,
+        phase=45,
+        center=(50, 50, 0),
+        scale=100,
+    )
     square_eff = E(name="square_eff").buffer().fill()
     square = square_eff(square)
     text1 = G.text(
@@ -25,9 +30,18 @@ def draw(t):
     text_fill = E(name="text_fill").fill()
     text = text_fill(text1 + text2)
     line = G(name="line").line()
-    line_eff = E(name="line_eff").affine().dash().buffer().fill()
+    line_eff = E(name="line_eff").affine().dash(dash_length=(16, 4)).buffer().fill()
     line = line_eff(line)
-    return L((square, text, line))
+
+    total_affine = E(name="total_affine").affine(
+        delta=center, scale=(scale, scale, scale)
+    )
+    ret = total_affine(square + text + line)
+    return ret
+
+
+def draw(t):
+    return logo(center=(50, 50, 0), scale=1)
 
 
 if __name__ == "__main__":
