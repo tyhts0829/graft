@@ -1,6 +1,6 @@
 ![](docs/readme/readme.png)
 
-Grafix is a python-based creative coding framework compatible with pen plotter.
+Grafix is a Python-based creative coding framework compatible with pen plotter.
 
 ## Installation
 
@@ -30,34 +30,25 @@ if __name__ == "__main__":
 
 - `G` lets you generate primitives such as `sphere`, `polyhedron`, `grid`, and more.
 - `E` lets you modulate primitives such as `affine`, `fill`, `repeat`, and more.
-- `run` lets you render a user-defined `draw(t)` function returns on each frame.
+- `run` lets you render a user-defined `draw(t)` function on each frame.
 
-## Optional Features
+## Optional features
 
-- `L` lets you define layers. You can manage stroke colors, thickness per layer.
-- `cc` lets you connect midi controller and any parameters.
-- `Export` provides a headless export entrypoint (SVG implemented; image/G-code are stubs).
+- `L` lets you define layers (stroke color, thickness, etc.).
+- `cc` lets you map MIDI CC messages to any parameter.
+- `Export` provides a headless export entrypoint (SVG implemented; PNG/MP4/G-code are stubs).
 - `Parameter GUI` lets you tweak parameters live while the sketch is running.
-
-## Development
-
-Dev tools (optional):
-
-```bash
-pip install -e ".[dev]"
-```
-
-Run a sketch:
-
-```bash
-python sketch/readme.py
-```
+- Keyboard shortcuts let you export output quickly:
+  - `P` saves a `.png` image
+  - `S` saves a `.svg` file
+  - `V` records an `.mp4` video
+  - `G` saves a `.gcode` file for pen plotters
 
 ## Configuration
 
-Grafix can read a YAML config file to locate external assets (fonts) and to choose where it writes runtime outputs, .svg .png, .mp4, .gcode.
+A `config.yaml` lets you locate external fonts and choose where Grafix writes runtime outputs (`.svg`, `.png`, `.mp4`, `.gcode`).
 
-Grafix always starts from the packaged defaults (`grafix/resource/default_config.yaml`), then overlays user configs.
+Grafix starts from the packaged defaults (`grafix/resource/default_config.yaml`) and then overlays user configs.
 
 Config overlay order (later wins):
 
@@ -68,39 +59,13 @@ Config overlay order (later wins):
 
 Paths support `~` and environment variables like `$HOME`.
 
-Create a project-local config (starting from the packaged defaults):
+To create a project-local config (starting from the packaged defaults):
 
 ```bash
 mkdir -p .grafix
 python -c "from importlib.resources import files; print(files('grafix').joinpath('resource','default_config.yaml').read_text())" > .grafix/config.yaml
 $EDITOR .grafix/config.yaml
 ```
-
-### Example
-
-```yaml
-# ./.grafix/config.yaml
-paths:
-  font_dirs:
-    - "~/Fonts"
-  output_dir: "./out"
-```
-
-### Keys
-
-- `paths.font_dirs` (list of paths): searched for `G.text(font=...)` and the Parameter GUI font picker.
-- `paths.output_dir` (path): base directory for auto-saved outputs (default: `data/output`).
-  - Parameter GUI state: `{output_dir}/param_store/{script}.json`
-  - Interactive saves: `{output_dir}/svg`, `{output_dir}/png`, `{output_dir}/video`
-  - MIDI snapshots: `{output_dir}/midi`
-- `ui.window_positions.draw` (2 ints): draw window position `(x, y)` in pixels.
-- `ui.window_positions.parameter_gui` (2 ints): Parameter GUI window position `(x, y)` in pixels.
-- `ui.parameter_gui.window_size` (2 ints): Parameter GUI window size `(width, height)` in pixels.
-- `export.png.scale` (float): PNG output scale multiplier relative to `canvas_size`.
-
-All runtime outputs are written under `paths.output_dir`.
-
-Tip: Parameter persistence stores the selected `font` value. If you move a sketch to another machine and the font is not available, set `paths.font_dirs` (or reset state by deleting the corresponding `{output_dir}/param_store/*.json` file).
 
 ## Extending (custom primitives / effects)
 
@@ -129,6 +94,20 @@ Notes:
 
 - MIDI/CC input, LFOs, keyboard shortcuts, screenshot/video recording
 - PNG/G-code actual file generation (export stubs currently raise `NotImplementedError`)
+
+## Development
+
+Dev tools (optional):
+
+```bash
+pip install -e ".[dev]"
+```
+
+Run a sketch:
+
+```bash
+python sketch/readme.py
+```
 
 ## Dependencies
 
