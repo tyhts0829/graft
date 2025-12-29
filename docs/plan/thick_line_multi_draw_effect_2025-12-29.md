@@ -24,7 +24,7 @@
 
 ## 0) 事前に決める（あなたの確認が必要）
 
-- [ ] effect 名を `thicken` で確定してよい（候補: `thicken` / `multistroke` / `bold`）
+- [ ] effect 名を `thicken` で確定してよい（候補: `thicken` / `multistroke` / `bold`）；boldify
 - [ ] パラメータを以下で確定してよい
   - `count: int`（デフォルト例: 5、1 以下は no-op）
   - `radius: float`（デフォルト例: 0.5、0 以下は no-op、XY の最大オフセット量 [mm] 相当）
@@ -64,7 +64,7 @@
 ## 3) 手順（実装順）
 
 - [ ] 事前確認: `git status --porcelain` で依頼範囲外の差分/未追跡を把握（触らない）
-- [ ] 0) の仕様をあなたと合意（命名/パラメータ/分布/XY 固定）
+- [ ] 0. の仕様をあなたと合意（命名/パラメータ/分布/XY 固定）
 - [ ] `thicken.py` を追加して最小実装（no-op/空入力/複製+平行移動）
 - [ ] `src/grafix/api/effects.py` に import を追加して effect 登録
 - [ ] core テスト追加（`tests/core/test_effect_thicken.py`）
