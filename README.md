@@ -1,18 +1,24 @@
 ![](docs/readme/readme.png)
 
-Grafix is a lightweight toolkit for building line-based geometries, applying chained effects, and viewing the result in real time.
+Grafix is a python-based creative coding framework compatible with pen plotter.
 
-Shapes and effects are registered through the public API (`grafix.api`), allowing sketches to be composed by combining `G.<shape>()` calls with pipelines built from `E.<effect>()`.
+## Installation
 
-## Examples
+Install from PyPI:
+
+```bash
+pip install grafix
+```
+
+## Quick start
 
 ```python
-from grafix.api import E, G, run
+from grafix import E, G, run
 
 
 def draw(t: float):
-    poly = G.sphere()
-    effect = E.scale().rotate()
+    poly = G.polygon()
+    effect = E.fill().displace()
     return effect(poly)
 
 
@@ -20,13 +26,16 @@ if __name__ == "__main__":
     run(draw, fps=60.0, canvas_size=(800, 800), render_scale=2.0, parameter_gui=True)
 ```
 
+## Basic Features
+
+- `G` lets you generate primitives such as `sphere`, `polyhedron`, `grid`, and more.
+- `E` lets you modulate primitives such as `affine`, `fill`, `repeat`, and more.
+- `run` lets you render a user-defined `draw(t)` function returns on each frame.
+- `L` lets you define layers. You can manage stroke colors, thickness per layer.
+- `Export` provides a headless export entrypoint (SVG implemented; image/G-code are stubs).
+- `Parameter GUI` lets you tweak parameters live while the sketch is running.
+
 ## Development
-
-Editable install (recommended):
-
-```bash
-pip install -e .
-```
 
 Dev tools (optional):
 
@@ -37,12 +46,12 @@ pip install -e ".[dev]"
 Run a sketch:
 
 ```bash
-python sketch/perf_sketch.py
+python sketch/readme.py
 ```
 
-## Configuration (config.yaml) (optional)
+## Configuration
 
-Grafix can read a YAML config file to locate external assets (fonts) and to choose where it writes runtime outputs.
+Grafix can read a YAML config file to locate external assets (fonts) and to choose where it writes runtime outputs, .svg .png, .mp4, .gcode.
 
 Grafix always starts from the packaged defaults (`grafix/resource/default_config.yaml`), then overlays user configs.
 
@@ -112,15 +121,6 @@ Notes:
 - Built-in primitives/effects must provide `meta=...` (enforced).
 - For user-defined ops, `meta` is optional. If omitted, parameters are not shown in the Parameter GUI.
 
-## Features (current)
-
-- `grafix.api.G` lets you generate primitive shapes such as `sphere`, `polyhedron`, `grid`, and more.
-- `grafix.api.E` lets you modulate and transform shapes such as `affine`, `fill`, `repeat`, and more.
-- `grafix.api.L` lets you define layers so you can manage colors, stroke widths, and other styling attributes per layer.
-- `grafix.api.run()` lets you render any shapes, effects, and layers that a user-defined `draw(t)` function returns on each frame.
-- `Parameter GUI` lets you tweak parameters live while the sketch is running.
-- `grafix.api.Export` provides a headless export entrypoint (SVG implemented; image/G-code are stubs).
-
 ## Not implemented yet
 
 - MIDI/CC input, LFOs, keyboard shortcuts, screenshot/video recording
@@ -143,6 +143,11 @@ Core (default):
 - mido
 - python-rtmidi
 - psutil
+
+External:
+
+- resvg (svg to png)
+- ffmpeg (video encoding)
 
 Dev (optional):
 
