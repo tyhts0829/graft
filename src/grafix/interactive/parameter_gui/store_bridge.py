@@ -7,7 +7,6 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping
 
-from grafix.core.component_registry import component_registry
 from grafix.core.effect_registry import effect_registry
 from grafix.core.primitive_registry import primitive_registry
 from grafix.core.parameters.key import ParameterKey
@@ -19,6 +18,7 @@ from grafix.core.parameters.style import STYLE_OP
 from grafix.core.parameters.snapshot_ops import store_snapshot_for_gui
 from grafix.core.parameters.ui_ops import update_state_from_ui
 from grafix.core.parameters.view import ParameterRow, rows_from_snapshot
+from grafix.core.preset_registry import preset_registry
 
 from .labeling import primitive_header_display_names_from_snapshot
 from .labeling import (
@@ -54,7 +54,7 @@ def _order_rows_for_display(
 
     style_global_rows: list[ParameterRow] = []
     style_layer_rows: list[ParameterRow] = []
-    component_rows: list[ParameterRow] = []
+    preset_rows: list[ParameterRow] = []
     primitive_rows: list[ParameterRow] = []
     effect_rows: list[ParameterRow] = []
     other_rows: list[ParameterRow] = []
@@ -63,8 +63,8 @@ def _order_rows_for_display(
             style_global_rows.append(row)
         elif row.op == LAYER_STYLE_OP:
             style_layer_rows.append(row)
-        elif row.op in component_registry:
-            component_rows.append(row)
+        elif row.op in preset_registry:
+            preset_rows.append(row)
         elif row.op in primitive_registry:
             primitive_rows.append(row)
         elif row.op in effect_registry:
@@ -91,15 +91,15 @@ def _order_rows_for_display(
         # 見つからない場合は末尾へ回す（未知 group / 互換性のための保険）。
         return int(display_order_by_group.get((row.op, row.site_id), 10**9))
 
-    # --- Non-style: Component / Primitive / Effect chain / other を “ブロック” として並べる ---
+    # --- Non-style: Preset / Primitive / Effect chain / other を “ブロック” として並べる ---
     #
-    # - Component は (op, ordinal) 単位
+    # - Preset は (op, ordinal) 単位
     # - Primitive は (op, ordinal) 単位
     # - Effect は chain_id 単位（折りたたみ維持）
     # - other は (op, site_id) 単位（最小限）
 
     primitive_arg_index_by_op: dict[str, dict[str, int]] = {}
-    component_arg_index_by_op: dict[str, dict[str, int]] = {}
+    preset_arg_index_by_op: dict[str, dict[str, int]] = {}
     effect_arg_index_by_op: dict[str, dict[str, int]] = {}
 
     def _primitive_arg_index(op: str, arg: str) -> int:
@@ -116,11 +116,11 @@ def _order_rows_for_display(
         index_by_arg = effect_arg_index_by_op[op]
         return int(index_by_arg.get(arg, 10**9))
 
-    def _component_arg_index(op: str, arg: str) -> int:
-        if op not in component_arg_index_by_op:
-            order = component_registry.get_param_order(op)
-            component_arg_index_by_op[op] = {a: i for i, a in enumerate(order)}
-        index_by_arg = component_arg_index_by_op[op]
+    def _preset_arg_index(op: str, arg: str) -> int:
+        if op not in preset_arg_index_by_op:
+            order = preset_registry.get_param_order(op)
+            preset_arg_index_by_op[op] = {a: i for i, a in enumerate(order)}
+        index_by_arg = preset_arg_index_by_op[op]
         return int(index_by_arg.get(arg, 10**9))
 
     primitive_blocks: dict[tuple[str, int], list[ParameterRow]] = {}
@@ -130,9 +130,9 @@ def _order_rows_for_display(
         # ブロックキーも (op, ordinal) に寄せる。
         primitive_blocks.setdefault((row.op, int(row.ordinal)), []).append(row)
 
-    component_blocks: dict[tuple[str, int], list[ParameterRow]] = {}
-    for row in component_rows:
-        component_blocks.setdefault((row.op, int(row.ordinal)), []).append(row)
+    preset_blocks: dict[tuple[str, int], list[ParameterRow]] = {}
+    for row in preset_rows:
+        preset_blocks.setdefault((row.op, int(row.ordinal)), []).append(row)
 
     effect_blocks: dict[str, list[ParameterRow]] = {}
     effect_fallback_rows: list[ParameterRow] = []
@@ -164,15 +164,15 @@ def _order_rows_for_display(
 
     blocks: list[tuple[tuple[int, int, str], list[ParameterRow]]] = []
 
-    for component_key, block_rows in component_blocks.items():
-        op, ordinal = component_key
+    for preset_key, block_rows in preset_blocks.items():
+        op, ordinal = preset_key
         order = min(_display_order(r) for r in block_rows)
         blocks.append(
             (
                 (int(order), 0, f"{op}#{int(ordinal)}"),
                 sorted(
                     block_rows,
-                    key=lambda r: (_component_arg_index(op, str(r.arg)), str(r.arg)),
+                    key=lambda r: (_preset_arg_index(op, str(r.arg)), str(r.arg)),
                 ),
             )
         )
@@ -377,7 +377,7 @@ def render_store_parameter_table(
     # 同名衝突は表示専用に name#1/#2 を付与して区別する（永続化ラベルは変更しない）。
     primitive_header_by_group = primitive_header_display_names_from_snapshot(
         snapshot,
-        is_primitive_op=lambda op: op in primitive_registry or op in component_registry,
+        is_primitive_op=lambda op: op in primitive_registry or op in preset_registry,
         display_order_by_group=store._runtime_ref().display_order_by_group,
     )
 
@@ -409,7 +409,7 @@ def render_store_parameter_table(
     runtime = store._runtime_ref()
 
     primitive_known_args_by_op: dict[str, set[str]] = {}
-    component_known_args_by_op: dict[str, set[str]] = {}
+    preset_known_args_by_op: dict[str, set[str]] = {}
     effect_known_args_by_op: dict[str, set[str]] = {}
 
     unknown_args_new: set[tuple[str, str]] = set()
@@ -430,11 +430,11 @@ def render_store_parameter_table(
                     unknown_args_new.add(pair)
                 continue
 
-        elif op in component_registry:
-            known_args = component_known_args_by_op.get(op)
+        elif op in preset_registry:
+            known_args = preset_known_args_by_op.get(op)
             if known_args is None:
-                known_args = set(component_registry.get_meta(op).keys())
-                component_known_args_by_op[op] = known_args
+                known_args = set(preset_registry.get_meta(op).keys())
+                preset_known_args_by_op[op] = known_args
             if arg not in known_args:
                 pair = (op, arg)
                 if pair not in runtime.warned_unknown_args:
@@ -461,7 +461,7 @@ def render_store_parameter_table(
         _logger.warning("未登録引数を無視します（次回保存で削除）: %s", pairs)
     rows_before_raw = rows_before_raw_filtered
 
-    # 最終的な表示順: style → component → primitive → effect → other
+    # 最終的な表示順: style → preset → primitive → effect → other
     # ※ この rows_before の順番が、そのまま GUI の並び順になる。
     rows_before = _order_rows_for_display(
         rows_before_raw,

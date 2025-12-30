@@ -1,4 +1,4 @@
-from grafix.api import component
+from grafix.api import preset
 from grafix.core.parameters import ParamMeta, ParamStore, ParameterKey
 from grafix.core.parameters.frame_params import FrameParamRecord
 from grafix.core.parameters.merge_ops import merge_frame_params
@@ -8,7 +8,7 @@ from grafix.interactive.parameter_gui import store_bridge
 from grafix.core.primitives import line as _primitive_line  # noqa: F401
 
 
-@component(meta={"center": ParamMeta(kind="vec3")})
+@preset(meta={"center": ParamMeta(kind="vec3")})
 def _logo_component(*, center=(0.0, 0.0, 0.0), name=None, key=None):
     return None
 
@@ -51,8 +51,8 @@ def test_render_store_parameter_table_filters_unknown_arg(monkeypatch) -> None:
 
 def test_render_store_parameter_table_filters_unknown_arg_for_component(monkeypatch) -> None:
     store = ParamStore()
-    known = ParameterKey(op="component._logo_component", site_id="c:1", arg="center")
-    unknown = ParameterKey(op="component._logo_component", site_id="c:1", arg="__unknown__")
+    known = ParameterKey(op="preset._logo_component", site_id="c:1", arg="center")
+    unknown = ParameterKey(op="preset._logo_component", site_id="c:1", arg="__unknown__")
     merge_frame_params(
         store,
         [
@@ -84,6 +84,6 @@ def test_render_store_parameter_table_filters_unknown_arg_for_component(monkeypa
     args = [
         r.arg
         for r in captured_rows
-        if getattr(r, "op", None) == "component._logo_component"
+        if getattr(r, "op", None) == "preset._logo_component"
     ]
     assert args == ["center"]

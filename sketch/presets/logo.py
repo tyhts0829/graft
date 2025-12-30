@@ -1,4 +1,4 @@
-from grafix import E, G, L, cc, component, run
+from grafix import E, G, L, cc, preset, run
 
 meta = {
     "center": {"kind": "vec3", "ui_min": 0.0, "ui_max": 100.0},
@@ -7,7 +7,7 @@ meta = {
 }
 
 
-@component(meta=meta)
+@preset(meta=meta)
 def logo(center=(0, 0, 0), scale=1.0, fill_density_coef=1.0):
     square = G.polygon(
         n_sides=4,
@@ -69,7 +69,7 @@ def logo(center=(0, 0, 0), scale=1.0, fill_density_coef=1.0):
 
     text = text_fill(text1 + text2)
     line = G(name="line").line(
-        center=(47.283, 68.478, 0.0),
+        center=(47.283, 70, 0.0),
         length=49.153,
         angle=0.001,
     )

@@ -504,7 +504,7 @@ def generate_stubs_str() -> str:
 
     # 実行時 API と整合する再エクスポート
     lines.append("from grafix.api.export import Export as Export\n")
-    lines.append("from grafix.api.component import component as component\n")
+    lines.append("from grafix.api.preset import preset as preset\n")
     lines.append("from grafix.core.effect_registry import effect as effect\n")
     lines.append("from grafix.core.primitive_registry import primitive as primitive\n\n")
 
@@ -531,7 +531,7 @@ def generate_stubs_str() -> str:
     )
 
     lines.append(
-        "__all__ = ['E', 'Export', 'G', 'L', 'component', 'effect', 'primitive', 'run']\n"
+        "__all__ = ['E', 'Export', 'G', 'L', 'effect', 'preset', 'primitive', 'run']\n"
     )
     return "".join(lines)
 

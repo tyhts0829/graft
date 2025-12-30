@@ -1,4 +1,4 @@
-from grafix.api import component
+from grafix.api import preset
 from grafix.interactive.parameter_gui.grouping import group_info_for_row
 from grafix.core.parameters.layer_style import LAYER_STYLE_OP
 from grafix.core.parameters.meta import ParamMeta
@@ -6,7 +6,7 @@ from grafix.core.parameters.style import STYLE_OP
 from grafix.core.parameters.view import ParameterRow
 
 
-@component(meta={"center": ParamMeta(kind="vec3")})
+@preset(meta={"center": ParamMeta(kind="vec3")})
 def logo(*, center=(0.0, 0.0, 0.0), name=None, key=None):
     return None
 
@@ -74,13 +74,13 @@ def test_group_info_for_row_effect_chain_uses_step_ordinal():
     assert info.visible_label == "scale#1 auto_center"
 
 
-def test_group_info_for_row_component_shows_header_and_uses_display_op():
-    row = _row(op="component.logo", site_id="comp:1", ordinal=1, arg="center")
+def test_group_info_for_row_preset_shows_header_and_uses_display_op():
+    row = _row(op="preset.logo", site_id="comp:1", ordinal=1, arg="center")
     info = group_info_for_row(
         row,
-        primitive_header_by_group={("component.logo", 1): "Logo"},
+        primitive_header_by_group={("preset.logo", 1): "Logo"},
     )
-    assert info.group_id == ("component", ("component.logo", 1))
-    assert info.header_id == "component:component.logo#1"
+    assert info.group_id == ("preset", ("preset.logo", 1))
+    assert info.header_id == "preset:preset.logo#1"
     assert info.header == "Logo"
     assert info.visible_label == "logo#1 center"

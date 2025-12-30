@@ -1,6 +1,6 @@
-# どこで: `src/grafix/core/component_registry.py`。
-# 何を: component（@component）の op を登録し、GUI 側が “文字列規約” に依存しないためのレジストリを提供する。
-# なぜ: `op.startswith("component.")` のような推測ロジックを散らさず、分類/表示名/引数順を一元化するため。
+# どこで: `src/grafix/core/preset_registry.py`。
+# 何を: preset（@preset）の op を登録し、GUI 側が “文字列規約” に依存しないためのレジストリを提供する。
+# なぜ: `op.startswith("preset.")` のような推測ロジックを散らさず、分類/表示名/引数順を一元化するため。
 
 from __future__ import annotations
 
@@ -10,19 +10,19 @@ from grafix.core.parameters.meta import ParamMeta
 
 
 @dataclass(frozen=True, slots=True)
-class ComponentSpec:
-    """component 1 種類ぶんの静的情報。"""
+class PresetSpec:
+    """preset 1 種類ぶんの静的情報。"""
 
     display_op: str
     meta: dict[str, ParamMeta]
     param_order: tuple[str, ...]
 
 
-class ComponentRegistry:
-    """component（@component）の op -> spec を保持するレジストリ。"""
+class PresetRegistry:
+    """preset（@preset）の op -> spec を保持するレジストリ。"""
 
     def __init__(self) -> None:
-        self._items: dict[str, ComponentSpec] = {}
+        self._items: dict[str, PresetSpec] = {}
 
     def _register(
         self,
@@ -33,18 +33,18 @@ class ComponentRegistry:
         param_order: tuple[str, ...],
         overwrite: bool = True,
     ) -> None:
-        """component を登録する（内部用）。
+        """preset を登録する（内部用）。
 
         Notes
         -----
-        登録は `@component` デコレータ経由に統一する。
+        登録は `@preset` デコレータ経由に統一する。
         このメソッドはデコレータ実装の内部からのみ呼ぶ。
         """
 
         op_s = str(op)
         if not overwrite and op_s in self._items:
-            raise ValueError(f"component '{op_s}' は既に登録されている")
-        self._items[op_s] = ComponentSpec(
+            raise ValueError(f"preset '{op_s}' は既に登録されている")
+        self._items[op_s] = PresetSpec(
             display_op=str(display_op),
             meta=dict(meta),
             param_order=tuple(str(a) for a in param_order),
@@ -69,9 +69,8 @@ class ComponentRegistry:
         return str(self._items[str(op)].display_op)
 
 
-component_registry = ComponentRegistry()
-"""グローバルな component レジストリインスタンス。"""
+preset_registry = PresetRegistry()
+"""グローバルな preset レジストリインスタンス。"""
 
 
-__all__ = ["ComponentRegistry", "component_registry"]
-
+__all__ = ["PresetRegistry", "preset_registry"]

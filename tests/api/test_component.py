@@ -1,6 +1,6 @@
 import pytest
 
-from grafix import E, G, component
+from grafix import E, G, preset
 from grafix.core.parameters import ParamStore
 from grafix.core.parameters.context import parameter_context
 from grafix.core.parameters.snapshot_ops import store_snapshot
@@ -12,7 +12,7 @@ def test_component_records_only_public_params_and_mutes_internal() -> None:
 
     meta = {"x": {"kind": "float", "ui_min": 0.0, "ui_max": 10.0}}
 
-    @component(meta=meta)
+    @preset(meta=meta)
     def foo(*, x: float = 1.0, name=None, key=None) -> float:
         _g = G(name="internal").polygon(n_sides=6)
         _ = E(name="internal_eff").affine(delta=(0.0, 0.0, 0.0))(_g)
@@ -22,8 +22,8 @@ def test_component_records_only_public_params_and_mutes_internal() -> None:
         foo(x=2.0)
 
     snap = store_snapshot(store)
-    component_entries = [(k, v) for k, v in snap.items() if k.op == "component.foo"]
-    assert {k.arg for k, _v in component_entries} == {"x"}
+    preset_entries = [(k, v) for k, v in snap.items() if k.op == "preset.foo"]
+    assert {k.arg for k, _v in preset_entries} == {"x"}
 
     # 関数本体内の G/E は mute されるので、内部 primitive/effect は ParamStore に出ない。
     assert all(k.op != "polygon" for k in snap.keys())
@@ -37,7 +37,7 @@ def test_component_passes_resolved_params_to_function() -> None:
 
     meta = {"x": {"kind": "float", "ui_min": 0.0, "ui_max": 10.0}}
 
-    @component(meta=meta)
+    @preset(meta=meta)
     def foo(*, x: float = 1.0, name=None, key=None) -> float:
         return float(x)
 
@@ -48,7 +48,7 @@ def test_component_passes_resolved_params_to_function() -> None:
         assert _call() == 1.0
 
     snap = store_snapshot(store)
-    key = next(k for k in snap.keys() if k.op == "component.foo" and k.arg == "x")
+    key = next(k for k in snap.keys() if k.op == "preset.foo" and k.arg == "x")
     meta_x = snap[key][0]
 
     ok, err = update_state_from_ui(store, key, 3.0, meta=meta_x, override=True)
@@ -62,7 +62,7 @@ def test_component_key_splits_instances_from_same_callsite() -> None:
     store = ParamStore()
     meta = {"x": {"kind": "float", "ui_min": 0.0, "ui_max": 10.0}}
 
-    @component(meta=meta)
+    @preset(meta=meta)
     def foo(*, x: float = 1.0, name=None, key=None) -> float:
         return float(x)
 
@@ -71,7 +71,7 @@ def test_component_key_splits_instances_from_same_callsite() -> None:
             foo(key=i)
 
     snap = store_snapshot(store)
-    site_ids = {k.site_id for k in snap.keys() if k.op == "component.foo"}
+    site_ids = {k.site_id for k in snap.keys() if k.op == "preset.foo"}
     assert len(site_ids) == 2
 
 
@@ -80,6 +80,6 @@ def test_component_meta_dict_spec_rejects_unknown_key() -> None:
 
     with pytest.raises(ValueError, match="未知キー"):
 
-        @component(meta=meta)
+        @preset(meta=meta)
         def foo(*, x: float = 1.0, name=None, key=None) -> float:
             return float(x)

@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from grafix.core.component_registry import component_registry
 from grafix.core.parameters.key import ParameterKey
 from grafix.core.parameters.layer_style import (
     LAYER_STYLE_LINE_COLOR,
@@ -22,6 +21,7 @@ from grafix.core.parameters.style import (
     rgb255_to_rgb01,
 )
 from grafix.core.parameters.view import ParameterRow
+from grafix.core.preset_registry import preset_registry
 
 from .group_blocks import GroupBlock
 
@@ -156,10 +156,10 @@ def snippet_for_block(
             return ""
         return _indent_code("\n\n".join(out_blocks).rstrip() + "\n")
 
-    if group_type == "component":
+    if group_type == "preset":
         row0 = rows[0]
         op = str(row0.op)
-        call_name = component_registry.get_display_op(op)
+        call_name = preset_registry.get_display_op(op)
         kwargs = [
             (str(r.arg), _py_literal(_effective_or_ui_value(r, last_effective_by_key=last_effective_by_key)))
             for r in rows

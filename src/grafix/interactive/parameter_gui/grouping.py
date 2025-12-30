@@ -8,10 +8,10 @@ from dataclasses import dataclass
 from collections.abc import Mapping
 from typing import Any
 
-from grafix.core.component_registry import component_registry
 from grafix.core.parameters.layer_style import LAYER_STYLE_OP
 from grafix.core.parameters.style import STYLE_OP
 from grafix.core.parameters.view import ParameterRow
+from grafix.core.preset_registry import preset_registry
 
 from .labeling import format_layer_style_row_label, format_param_row_label
 
@@ -80,19 +80,19 @@ def group_info_for_row(
             visible_label=visible_label,
         )
 
-    # --- Primitive（(op, ordinal) でグループ化） ---
-    if row.op in component_registry:
+    # --- Preset（(op, ordinal) でグループ化） ---
+    if row.op in preset_registry:
         group_key = (row.op, int(row.ordinal))
         header = (
             None
             if primitive_header_by_group is None
             else primitive_header_by_group.get(group_key)
         )
-        display_op = component_registry.get_display_op(row.op)
+        display_op = preset_registry.get_display_op(row.op)
         visible_label = format_param_row_label(display_op, int(row.ordinal), row.arg)
         return GroupInfo(
-            group_id=("component", group_key),
-            header_id=f"component:{group_key[0]}#{group_key[1]}",
+            group_id=("preset", group_key),
+            header_id=f"preset:{group_key[0]}#{group_key[1]}",
             header=header,
             visible_label=visible_label,
         )

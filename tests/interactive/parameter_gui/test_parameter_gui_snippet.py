@@ -1,4 +1,4 @@
-from grafix.api import component
+from grafix.api import preset
 from grafix.core.parameters import ParameterKey, ParameterRow
 from grafix.core.parameters.layer_style import LAYER_STYLE_OP
 from grafix.core.parameters.style import STYLE_OP
@@ -128,21 +128,21 @@ def test_snippet_effect_chain_orders_steps_by_step_index() -> None:
 
 
 def test_snippet_component_uses_display_op_call_name() -> None:
-    @component(meta={"x": {"kind": "float"}})
+    @preset(meta={"x": {"kind": "float"}})
     def logo(*, x: float = 1.0, name=None, key=None):
         _ = (x, name, key)
         return None
 
-    row = _row(op="component.logo", site_id="c:1", ordinal=1, arg="x", ui_value=1.0)
+    row = _row(op="preset.logo", site_id="c:1", ordinal=1, arg="x", ui_value=1.0)
     block = GroupBlock(
-        group_id=("component", ("component.logo", 1)),
-        header_id="component:component.logo#1",
+        group_id=("preset", ("preset.logo", 1)),
+        header_id="preset:preset.logo#1",
         header="Logo",
         items=[GroupBlockItem(row=row, visible_label="")],
     )
     out = snippet_for_block(
         block,
-        last_effective_by_key={ParameterKey("component.logo", "c:1", "x"): 2.0},
+        last_effective_by_key={ParameterKey("preset.logo", "c:1", "x"): 2.0},
     )
 
     assert out.startswith("    ")
