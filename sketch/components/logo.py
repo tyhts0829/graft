@@ -1,13 +1,13 @@
 from grafix import E, G, L, cc, component, run
 
-# meta = {
-#     "center": {"kind": "vec3", "ui_min": 0.0, "ui_max": 100.0},
-#     "scale": {"kind": "float", "ui_min": 0.0, "ui_max": 4.0},
-#     "fill_density_coef": {"kind": "float", "ui_min": 0.0, "ui_max": 1.0},
-# }
+meta = {
+    "center": {"kind": "vec3", "ui_min": 0.0, "ui_max": 100.0},
+    "scale": {"kind": "float", "ui_min": 0.0, "ui_max": 4.0},
+    "fill_density_coef": {"kind": "float", "ui_min": 0.0, "ui_max": 1.0},
+}
 
 
-# @component(meta=meta)
+@component(meta=meta)
 def logo(center=(0, 0, 0), scale=1.0, fill_density_coef=1.0):
     square = G.polygon(
         n_sides=4,
