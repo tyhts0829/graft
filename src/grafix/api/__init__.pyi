@@ -120,6 +120,17 @@ class _EffectBuilder(Protocol):
             delta: 最後に適用する平行移動量 [mm]（dx, dy, dz）
         """
         ...
+    def bold(self, *, bypass: bool = ..., count: int = ..., radius: float = ..., seed: int = ...) -> _EffectBuilder:
+        """
+        入力を複製して太線風にする。
+
+        引数:
+            bypass: bool
+            count: 出力ストローク数（元の線を 1 本含む）
+            radius: ずらし量の最大半径 [mm] 相当（XY のみ）
+            seed: ずらし量生成の乱数シード（決定性のため）
+        """
+        ...
     def buffer(self, *, bypass: bool = ..., join: str = ..., distance: float = ..., quad_segs: int = ..., keep_original: bool = ...) -> _EffectBuilder:
         """
         Shapely の buffer を用いて輪郭を生成する。
@@ -406,6 +417,17 @@ class _E(Protocol):
             rotation: 各軸の回転角 [deg]（rx, ry, rz）
             scale: 各軸の倍率（sx, sy, sz）
             delta: 最後に適用する平行移動量 [mm]（dx, dy, dz）
+        """
+        ...
+    def bold(self, *, bypass: bool = ..., count: int = ..., radius: float = ..., seed: int = ...) -> _EffectBuilder:
+        """
+        入力を複製して太線風にする。
+
+        引数:
+            bypass: bool
+            count: 出力ストローク数（元の線を 1 本含む）
+            radius: ずらし量の最大半径 [mm] 相当（XY のみ）
+            seed: ずらし量生成の乱数シード（決定性のため）
         """
         ...
     def buffer(self, *, bypass: bool = ..., join: str = ..., distance: float = ..., quad_segs: int = ..., keep_original: bool = ...) -> _EffectBuilder:

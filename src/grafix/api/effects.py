@@ -29,6 +29,7 @@ from grafix.core.effects import translate as _effect_translate  # noqa: F401
 from grafix.core.effects import extrude as _effect_extrude  # noqa: F401
 from grafix.core.effects import repeat as _effect_repeat  # noqa: F401
 from grafix.core.effects import buffer as _effect_buffer  # noqa: F401
+from grafix.core.effects import bold as _effect_bold  # noqa: F401
 from grafix.core.effects import drop as _effect_drop  # noqa: F401
 from grafix.core.effects import trim as _effect_trim  # noqa: F401
 from grafix.core.effects import clip as _effect_clip  # noqa: F401
