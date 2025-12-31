@@ -68,4 +68,10 @@ def draw(t):
 
 
 if __name__ == "__main__":
-    run(draw, canvas_size=A5, render_scale=4, midi_port_name="OXI E16 „Éù„Éº„Éà1")
+    run(
+        draw,
+        canvas_size=A5,
+        render_scale=4,
+        midi_port_name="Grid",
+        midi_mode="14bit",
+    )
