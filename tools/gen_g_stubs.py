@@ -514,6 +514,7 @@ def generate_stubs_str() -> str:
         "    draw: Callable[[float], SceneItem],\n"
         "    *,\n"
         "    config_path: str | Path | None = ...,\n"
+        "    run_id: str | None = ...,\n"
         "    background_color: Vec3 = ...,\n"
         "    line_thickness: float = ...,\n"
         "    line_color: Vec3 = ...,\n"

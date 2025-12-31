@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import types
+from pathlib import Path
 
 import pytest
 
@@ -12,11 +13,17 @@ import grafix.interactive.midi.factory as factory
 
 class DummyMidiController:
     def __init__(
-        self, port_name: str, *, mode: str = "7bit", profile_name: str | None = None
+        self,
+        port_name: str,
+        *,
+        mode: str = "7bit",
+        profile_name: str | None = None,
+        save_dir: Path | None = None,
     ) -> None:
         self.port_name = port_name
         self.mode = mode
         self.profile_name = profile_name
+        self.save_dir = save_dir
 
 
 def test_none_port_disables_midi() -> None:
@@ -68,4 +75,3 @@ def test_explicit_port_creates_controller(monkeypatch: pytest.MonkeyPatch) -> No
     assert ctrl.port_name == "My Port"
     assert ctrl.mode == "7bit"
     assert ctrl.profile_name == "main"
-

@@ -24,7 +24,7 @@ def test_output_root_dir_uses_packaged_defaults(tmp_path: Path, monkeypatch: pyt
     cfg = runtime_config()
     assert cfg.config_path is None
     assert cfg.output_dir == Path("data") / "output"
-    assert cfg.sketch_dir is None
+    assert cfg.sketch_dir == Path("sketch")
     assert cfg.font_dirs == (Path("data") / "input" / "font",)
     assert cfg.window_pos_draw == (25, 25)
     assert cfg.window_pos_parameter_gui == (950, 25)
@@ -98,7 +98,7 @@ def test_environment_variables_are_ignored(tmp_path: Path, monkeypatch: pytest.M
     assert output_root_dir() == Path("data") / "output"
     cfg = runtime_config()
     assert cfg.output_dir == Path("data") / "output"
-    assert cfg.sketch_dir is None
+    assert cfg.sketch_dir == Path("sketch")
     assert cfg.font_dirs == (Path("data") / "input" / "font",)
 
 
