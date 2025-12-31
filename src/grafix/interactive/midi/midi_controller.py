@@ -13,6 +13,33 @@ from pathlib import Path
 from grafix.core.runtime_config import output_root_dir
 
 
+def _contains_japanese(text: str) -> bool:
+    """text が日本語文字（ひらがな/カタカナ/漢字）を含むなら True を返す。"""
+
+    for ch in text:
+        code = ord(ch)
+        if 0x3040 <= code <= 0x30FF:  # Hiragana/Katakana
+            return True
+        if 0x4E00 <= code <= 0x9FFF:  # CJK Unified Ideographs
+            return True
+    return False
+
+
+def _restore_macos_mojibake(text: str) -> str:
+    """MacRoman として誤解釈された UTF-8 の文字化けを復元して返す。"""
+
+    try:
+        restored = text.encode("mac_roman").decode("utf-8")
+    except Exception:
+        return text
+
+    if restored == text:
+        return text
+    if _contains_japanese(restored) and not _contains_japanese(text):
+        return restored
+    return text
+
+
 def _sanitize_filename_fragment(text: str) -> str:
     """ファイル名に埋め込めるように text を正規化して返す。"""
 
@@ -300,9 +327,13 @@ class MidiController:
         import mido  # type: ignore
 
         logger = logging.getLogger(__name__)
+        input_names = mido.get_input_names()  # type: ignore
+        output_names = mido.get_output_names()  # type: ignore
+        input_names_display = [_restore_macos_mojibake(name) for name in input_names]
+        output_names_display = [_restore_macos_mojibake(name) for name in output_names]
         logger.info("Available ports:")
-        logger.info("  input: %s", mido.get_input_names())  # type: ignore
-        logger.info("  output: %s", mido.get_output_names())  # type: ignore
+        logger.info("  input: %s", input_names_display)
+        logger.info("  output: %s", output_names_display)
 
 
 if __name__ == "__main__":
