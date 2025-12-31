@@ -19,6 +19,7 @@ from grafix.core.parameters.persistence import (
     load_param_store,
     save_param_store,
 )
+from grafix.core.output_paths import output_path_for_draw
 from grafix.core.scene import SceneItem
 from grafix.interactive.midi.factory import create_midi_controller
 from grafix.interactive.midi.midi_controller import maybe_load_frozen_cc_snapshot
@@ -31,6 +32,7 @@ def run(
     draw: Callable[[float], SceneItem],
     *,
     config_path: str | Path | None = None,
+    run_id: str | None = None,
     background_color: tuple[float, float, float] = (1.0, 1.0, 1.0),
     line_thickness: float = 0.001,
     line_color: tuple[float, float, float] = (0.0, 0.0, 0.0),
@@ -51,6 +53,9 @@ def run(
         フレーム経過秒 t を受け取り Geometry / Layer / それらの列を返すコールバック。
     config_path : str | Path | None
         設定ファイル（config.yaml）のパス。指定した場合は探索より優先する。
+    run_id : str | None
+        作品スクリプトの同一性を表す識別子。出力ファイル名の接尾辞として使う。
+        同一 run_id の場合は同一パスへ上書き保存する。
     background_color : tuple[float, float, float]
         背景色 RGB。alpha は 1.0 固定。既定は白。
     line_thickness : float
@@ -64,8 +69,8 @@ def run(
     parameter_gui : bool
         True の場合、別ウィンドウで Parameter GUI を起動し、ParamStore を編集できるようにする。
     parameter_persistence : bool
-        True の場合、ParamStore を `{output_root}/param_store/` に JSON 保存し、次回起動時に復元する。
-        保存ファイル名には draw の定義元ファイル名（stem）を含める。
+        True の場合、ParamStore を JSON 保存し、次回起動時に復元する。
+        保存先は `output/param_store/` 配下で sketch_dir の構造をミラーし、run_id があればファイル名に付く。
     midi_port_name : str | None
         MIDI 入力ポート名。
         - `"auto"`: 利用可能な入力ポートがあれば 1 つ目へ自動接続する（既定）。
@@ -109,8 +114,7 @@ def run(
 
     # パラメータは「描画」と「GUI」で共有する。
     # GUI で値を変えると、次フレーム以降の parameter_context 参照に反映される。
-    default_store_path = default_param_store_path(draw)
-    script_stem = default_store_path.stem
+    default_store_path = default_param_store_path(draw, run_id=run_id)
 
     param_store_path = default_store_path if parameter_persistence else None
     param_store = (
@@ -119,15 +123,20 @@ def run(
         else ParamStore()
     )
 
+    midi_path = output_path_for_draw(kind="midi", ext="json", draw=draw, run_id=run_id)
+    midi_profile_name = midi_path.stem
+    midi_save_dir = midi_path.parent
     midi_controller = create_midi_controller(
         port_name=midi_port_name,
         mode=str(midi_mode),
-        profile_name=script_stem,
+        profile_name=midi_profile_name,
+        save_dir=midi_save_dir,
     )
     frozen_cc_snapshot = maybe_load_frozen_cc_snapshot(
         port_name=midi_port_name,
         controller=midi_controller,
-        profile_name=script_stem,
+        profile_name=midi_profile_name,
+        save_dir=midi_save_dir,
     )
 
     monitor = None
@@ -148,6 +157,7 @@ def run(
         monitor=monitor,
         fps=float(fps),
         n_worker=int(n_worker),
+        run_id=run_id,
     )
     draw_window.window.set_location(*cfg.window_pos_draw)
 

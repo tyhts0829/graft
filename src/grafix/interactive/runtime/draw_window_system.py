@@ -12,9 +12,9 @@ from typing import TYPE_CHECKING, Callable
 from pyglet.window import key
 
 from grafix.core.parameters import ParamStore
-from grafix.core.parameters.persistence import default_param_store_path
 from grafix.core.layer import LayerStyleDefaults
 from grafix.core.pipeline import RealizedLayer
+from grafix.core.output_paths import output_path_for_draw
 from grafix.export.svg import export_svg
 from grafix.export.image import (
     default_png_output_path,
@@ -33,7 +33,6 @@ from grafix.interactive.runtime.recording_system import VideoRecordingSystem
 from grafix.interactive.runtime.scene_runner import SceneRunner
 from grafix.interactive.runtime.style_resolver import StyleResolver
 from grafix.interactive.runtime.video_recorder import default_video_output_path
-from grafix.core.runtime_config import output_root_dir
 
 _logger = logging.getLogger(__name__)
 
@@ -56,6 +55,7 @@ class DrawWindowSystem:
         monitor: RuntimeMonitor | None = None,
         fps: float = 60.0,
         n_worker: int = 0,
+        run_id: str | None = None,
     ) -> None:
         """描画用の window/renderer を初期化する。"""
 
@@ -79,10 +79,11 @@ class DrawWindowSystem:
         self.window = create_draw_window(settings)
         self._renderer = DrawRenderer(self.window, settings)
 
-        script_stem = default_param_store_path(draw).stem
-        self._svg_output_path = output_root_dir() / "svg" / f"{script_stem}.svg"
-        self._png_output_path = default_png_output_path(draw)
-        video_output_path = default_video_output_path(draw, ext="mp4")
+        self._svg_output_path = output_path_for_draw(
+            kind="svg", ext="svg", draw=draw, run_id=run_id
+        )
+        self._png_output_path = default_png_output_path(draw, run_id=run_id)
+        video_output_path = default_video_output_path(draw, run_id=run_id, ext="mp4")
         self._recording = VideoRecordingSystem(output_path=video_output_path, fps=float(fps))
         self._last_realized_layers: list[RealizedLayer] = []
         self._pending_png_save = False

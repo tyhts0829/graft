@@ -4,9 +4,7 @@
 
 from __future__ import annotations
 
-import inspect
 import logging
-import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -15,45 +13,22 @@ from .codec import dumps_param_store, loads_param_store
 from .prune_ops import prune_stale_loaded_groups, prune_unknown_args_in_known_ops
 from .store import ParamStore
 
-from grafix.core.runtime_config import output_root_dir
+from grafix.core.output_paths import output_path_for_draw
 
 _logger = logging.getLogger(__name__)
 
 
-def _sanitize_filename_fragment(text: str) -> str:
-    """ファイル名に埋め込めるように text を正規化して返す。"""
-
-    normalized = re.sub(r"[^A-Za-z0-9._-]+", "_", str(text))
-    normalized = normalized.strip("._-")
-    return normalized or "unknown"
-
-
-def _draw_script_stem(draw: Callable[[float], Any]) -> str:
-    """draw 関数の定義元ファイルから stem を推定して返す。"""
-
-    code = getattr(draw, "__code__", None)
-    filename = getattr(code, "co_filename", None) if code is not None else None
-    if not filename:
-        try:
-            filename = inspect.getsourcefile(draw) or inspect.getfile(draw)
-        except Exception:
-            filename = None
-    if not filename:
-        return "unknown"
-    return Path(str(filename)).stem or "unknown"
-
-
-def default_param_store_path(draw: Callable[[float], Any]) -> Path:
-    """draw の定義元に基づく ParamStore の既定保存パスを返す。
+def default_param_store_path(draw: Callable[[float], Any], *, run_id: str | None = None) -> Path:
+    """draw の定義元（sketch_dir）に基づく ParamStore の既定保存パスを返す。
 
     Notes
     -----
-    パスは `{output_root}/param_store/{script_stem}.json`。
+    パスは `output/{kind}/` 配下で sketch_dir のサブディレクトリ構造をミラーする。
+    - sketch_dir 配下なら: `{output_root}/param_store/<sketch 相対 dir>/<stem>[_run_id].json`
+    - それ以外なら: `{output_root}/param_store/misc/<stem>[_run_id].json`
     """
 
-    script_stem = _sanitize_filename_fragment(_draw_script_stem(draw))
-    filename = f"{script_stem}.json"
-    return output_root_dir() / "param_store" / filename
+    return output_path_for_draw(kind="param_store", ext="json", draw=draw, run_id=run_id)
 
 
 def load_param_store(path: Path) -> ParamStore:

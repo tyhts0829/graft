@@ -8,6 +8,10 @@ paths:
   # 出力ファイルの保存先（ParamStore / SVG / PNG / video / MIDI スナップショット等）。
   output_dir: "data/output"
 
+  # ユーザースクリプト（例: sketch/）のルートディレクトリ。
+  # 指定した場合、出力ディレクトリ内で同様のサブディレクトリ構造にミラーする。
+  sketch_dir: "sketch"
+
   # 外部フォント探索ディレクトリ（存在しない場合は無視される）。
   font_dirs:
     - "data/input/font"

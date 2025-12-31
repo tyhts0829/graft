@@ -4,13 +4,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from .midi_controller import MidiController
 
 _AUTO_MIDI_PORT = "auto"
 
 
 def create_midi_controller(
-    *, port_name: str | None, mode: str, profile_name: str
+    *, port_name: str | None, mode: str, profile_name: str, save_dir: Path | None = None
 ) -> MidiController | None:
     """port_name/mode に従い MidiController を作る。
 
@@ -34,7 +36,9 @@ def create_midi_controller(
         names = list(mido.get_input_names())  # type: ignore
         if not names:
             return None
-        return MidiController(names[0], mode=mode, profile_name=profile_name)
+        return MidiController(
+            names[0], mode=mode, profile_name=profile_name, save_dir=save_dir
+        )
 
     # 明示指定のときは mido が必要（port 有無の検証にも使う）
     try:
@@ -43,4 +47,4 @@ def create_midi_controller(
         raise RuntimeError(
             "midi_port_name を指定するには mido が必要です（pip で導入してください）。"
         ) from exc
-    return MidiController(port_name, mode=mode, profile_name=profile_name)
+    return MidiController(port_name, mode=mode, profile_name=profile_name, save_dir=save_dir)

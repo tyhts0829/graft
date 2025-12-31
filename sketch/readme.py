@@ -97,5 +97,5 @@ if __name__ == "__main__":
         render_scale=3.5,
         canvas_size=(CANVAS_WIDTH, CANVAS_HEIGHT),
         parameter_gui=True,
-        # midi_port_name="TX-6 Bluetooth",
+        run_id="test_run",
     )

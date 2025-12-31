@@ -10,8 +10,8 @@ import subprocess
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from grafix.core.parameters.persistence import default_param_store_path
-from grafix.core.runtime_config import output_root_dir, runtime_config
+from grafix.core.output_paths import output_path_for_draw
+from grafix.core.runtime_config import runtime_config
 from grafix.core.pipeline import RealizedLayer
 from grafix.core.parameters.style import rgb01_to_rgb255
 from grafix.export.svg import export_svg
@@ -53,17 +53,17 @@ def export_image(
     raise ValueError(f"未対応の画像フォーマット: {suffix!r}")
 
 
-def default_png_output_path(draw: Callable[[float], object]) -> Path:
+def default_png_output_path(
+    draw: Callable[[float], object], *, run_id: str | None = None
+) -> Path:
     """draw の定義元に基づく PNG の既定保存パスを返す。
 
     Notes
     -----
-    パスは `{output_root}/png/{script_stem}.png`。
-    `script_stem` は ParamStore 永続化と同一の算出規則。
+    パスは `output/{kind}/` 配下で sketch_dir のサブディレクトリ構造をミラーする。
     """
 
-    script_stem = default_param_store_path(draw).stem
-    return output_root_dir() / "png" / f"{script_stem}.png"
+    return output_path_for_draw(kind="png", ext="png", draw=draw, run_id=run_id)
 
 
 def png_output_size(canvas_size: tuple[int, int]) -> tuple[int, int]:

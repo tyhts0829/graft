@@ -726,6 +726,7 @@ def run(
     draw: Callable[[float], SceneItem],
     *,
     config_path: str | Path | None = ...,
+    run_id: str | None = ...,
     background_color: Vec3 = ...,
     line_thickness: float = ...,
     line_color: Vec3 = ...,

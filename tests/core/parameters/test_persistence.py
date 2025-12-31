@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from grafix.core.parameters import ParamMeta, ParamStore, ParameterKey
 from grafix.core.parameters.frame_params import FrameParamRecord
 from grafix.core.parameters.invariants import assert_invariants
@@ -11,6 +13,26 @@ from grafix.core.parameters.persistence import (
     save_param_store,
 )
 from grafix.core.parameters.snapshot_ops import store_snapshot
+from grafix.core.runtime_config import set_config_path
+
+
+@pytest.fixture(autouse=True)
+def _reset_runtime_config() -> None:
+    set_config_path(None)
+    yield
+    set_config_path(None)
+
+
+def _isolate_config_discovery(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+
+def _make_draw_with_filename(filename: Path):
+    code = compile("def draw(t: float):\n    return None\n", str(filename), "exec")
+    ns: dict[str, object] = {}
+    exec(code, ns)
+    return ns["draw"]
 
 
 def test_default_param_store_path_uses_data_dir_and_script_stem():
@@ -21,8 +43,36 @@ def test_default_param_store_path_uses_data_dir_and_script_stem():
     assert path.parts[0] == "data"
     assert path.parts[1] == "output"
     assert path.parts[2] == "param_store"
+    assert path.parts[3] == "misc"
     assert path.name == f"{Path(__file__).stem}.json"
     assert path.suffix == ".json"
+
+
+def test_default_param_store_path_mirrors_sketch_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    _isolate_config_discovery(tmp_path, monkeypatch)
+
+    discovered = tmp_path / ".grafix" / "config.yaml"
+    discovered.parent.mkdir(parents=True, exist_ok=True)
+    discovered.write_text('paths:\n  output_dir: "./out"\n  sketch_dir: "./sketch"\n', encoding="utf-8")
+
+    draw_in_root = _make_draw_with_filename(tmp_path / "sketch" / "readme.py")
+    assert default_param_store_path(draw_in_root) == Path("out") / "param_store" / "readme.json"
+    assert default_param_store_path(draw_in_root, run_id="v1") == (
+        Path("out") / "param_store" / "readme_v1.json"
+    )
+
+    draw_in_subdir = _make_draw_with_filename(tmp_path / "sketch" / "folder1" / "readme.py")
+    assert default_param_store_path(draw_in_subdir) == (
+        Path("out") / "param_store" / "folder1" / "readme.json"
+    )
+    assert default_param_store_path(draw_in_subdir, run_id="v1") == (
+        Path("out") / "param_store" / "folder1" / "readme_v1.json"
+    )
+
+    draw_outside = _make_draw_with_filename(tmp_path / "outside.py")
+    assert default_param_store_path(draw_outside) == (
+        Path("out") / "param_store" / "misc" / "outside.json"
+    )
 
 
 def test_param_store_file_roundtrip(tmp_path: Path):

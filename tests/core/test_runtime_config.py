@@ -24,6 +24,7 @@ def test_output_root_dir_uses_packaged_defaults(tmp_path: Path, monkeypatch: pyt
     cfg = runtime_config()
     assert cfg.config_path is None
     assert cfg.output_dir == Path("data") / "output"
+    assert cfg.sketch_dir is None
     assert cfg.font_dirs == (Path("data") / "input" / "font",)
     assert cfg.window_pos_draw == (25, 25)
     assert cfg.window_pos_parameter_gui == (950, 25)
@@ -45,7 +46,22 @@ def test_discovered_config_overrides_packaged_defaults(tmp_path: Path, monkeypat
     cfg = runtime_config()
     assert cfg.config_path == discovered
     assert cfg.output_dir == Path("out_discovered")
+    assert cfg.sketch_dir is None
     assert cfg.font_dirs == (Path("fonts_discovered"),)
+
+
+def test_discovered_sketch_dir_is_loaded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    _isolate_config_discovery(tmp_path, monkeypatch)
+
+    discovered = tmp_path / ".grafix" / "config.yaml"
+    discovered.parent.mkdir(parents=True, exist_ok=True)
+    discovered.write_text(
+        'paths:\n  output_dir: "./out_discovered"\n  sketch_dir: "./sketch"\n  font_dirs:\n    - "./fonts_discovered"\n',
+        encoding="utf-8",
+    )
+
+    cfg = runtime_config()
+    assert cfg.sketch_dir == Path("sketch")
 
 
 def test_explicit_config_overrides_discovered_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -69,6 +85,7 @@ def test_explicit_config_overrides_discovered_config(tmp_path: Path, monkeypatch
     cfg = runtime_config()
     assert cfg.config_path == explicit
     assert cfg.output_dir == Path("out_explicit")
+    assert cfg.sketch_dir is None
     assert cfg.font_dirs == (Path("fonts_discovered"),)
 
 
@@ -81,6 +98,7 @@ def test_environment_variables_are_ignored(tmp_path: Path, monkeypatch: pytest.M
     assert output_root_dir() == Path("data") / "output"
     cfg = runtime_config()
     assert cfg.output_dir == Path("data") / "output"
+    assert cfg.sketch_dir is None
     assert cfg.font_dirs == (Path("data") / "input" / "font",)
 
 

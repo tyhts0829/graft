@@ -8,22 +8,21 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
-from grafix.core.parameters.persistence import default_param_store_path
-from grafix.core.runtime_config import output_root_dir
+from grafix.core.output_paths import output_path_for_draw
 
 
-def default_video_output_path(draw: Callable[[float], object], *, ext: str = "mp4") -> Path:
+def default_video_output_path(
+    draw: Callable[[float], object], *, run_id: str | None = None, ext: str = "mp4"
+) -> Path:
     """draw の定義元に基づく動画の既定保存パスを返す。
 
     Notes
     -----
-    パスは `{output_root}/video/{script_stem}.{ext}`。
-    `script_stem` は ParamStore 永続化と同一の算出規則。
+    パスは `output/{kind}/` 配下で sketch_dir のサブディレクトリ構造をミラーする。
     """
 
-    script_stem = default_param_store_path(draw).stem
     suffix = str(ext).lstrip(".") or "mp4"
-    return output_root_dir() / "video" / f"{script_stem}.{suffix}"
+    return output_path_for_draw(kind="video", ext=suffix, draw=draw, run_id=run_id)
 
 
 def _ffmpeg_command(
