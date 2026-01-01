@@ -11,3 +11,4 @@ packing エフェクト
 polygon 途中まで書く
 partition z!=0 のとき外れる
 dash サイクル化
+print(G), print(E)で登録されている primitive, effect 一覧表示
