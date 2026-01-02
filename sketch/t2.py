@@ -19,6 +19,7 @@ if __name__ == "__main__":
         draw,
         canvas_size=(100, 100),
         render_scale=10,
-        midi_port_name="Grid",
+        midi_port_name="OXI E16 „Éù„Éº„Éà3",
+        # midi_port_name="Grid",
         midi_mode="14bit",
     )

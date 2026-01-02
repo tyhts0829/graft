@@ -312,8 +312,8 @@ sequenceDiagram
 
     loop every frame
         par Draw Window
-            WinLoop->>Draw: on_draw -> draw_frame()
-            Draw->>Midi: poll_pending(); snapshot()
+            WinLoop->>Draw: on_draw calls draw_frame()
+            Draw->>Midi: poll_pending() + snapshot()
             Draw->>StyleR: resolve()
             StyleR->>Store: get_state(style keys)
             Draw->>SR: run(t, store, cc_snapshot, defaults, recording)
@@ -341,7 +341,7 @@ sequenceDiagram
             SR-->>Draw: RealizedLayer[]
             Draw->>GL: render_layer(...) [per Layer]
         and Parameter GUI (optional)
-            WinLoop->>GUI: on_draw -> draw_frame()
+            WinLoop->>GUI: on_draw calls draw_frame()
             GUI->>Store: store_snapshot_for_gui()
             GUI->>Store: update_state_from_ui(...)
         end
