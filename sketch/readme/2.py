@@ -9,7 +9,7 @@ def draw(t):
     char = G.text(text="G")
     circle = G.polygon()
     g = circle + char
-    e = E.partition().scale().subdivide().relax().fill()
+    e = E.partition().scale().subdivide().buffer().relax().fill()
     return e(g)
 
 
