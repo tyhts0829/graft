@@ -15,6 +15,7 @@ buffer_meta = {
     "join": ParamMeta(kind="choice", choices=("mitre", "round", "bevel")),
     "distance": ParamMeta(kind="float", ui_min=-25.0, ui_max=25.0),
     "quad_segs": ParamMeta(kind="int", ui_min=1, ui_max=100),
+    "union": ParamMeta(kind="bool"),
     "keep_original": ParamMeta(kind="bool"),
 }
 
@@ -103,7 +104,35 @@ def _fit_plane_basis(points: np.ndarray) -> _PlaneBasis:
         return _PlaneBasis(origin=np.asarray(origin, dtype=np.float64), u=u_axis, v=v_axis)
 
     centered = p - origin
-    _u, _s, vh = np.linalg.svd(centered, full_matrices=False)
+    _u, s, vh = np.linalg.svd(centered, full_matrices=False)
+
+    # 3 点以上でも、実質的に 1 次元（ほぼ一直線）の場合は平面が一意に決まらない。
+    # 2 点ケースと同様に、主平面（XY/XZ/YZ）へ寄せた安定な補助平面を作る。
+    if s.shape[0] >= 2:
+        s0 = float(s[0])
+        s1 = float(s[1])
+        if np.isfinite(s0) and s0 > 0.0 and (not np.isfinite(s1) or s1 <= 1e-8 * s0):
+            d = vh[0]
+            abs_d = np.abs(d)
+            if float(abs_d[2]) <= float(abs_d[0]) and float(abs_d[2]) <= float(abs_d[1]):
+                normal = np.array([0.0, 0.0, 1.0], dtype=np.float64)
+            elif float(abs_d[1]) <= float(abs_d[0]) and float(abs_d[1]) <= float(abs_d[2]):
+                normal = np.array([0.0, 1.0, 0.0], dtype=np.float64)
+            else:
+                normal = np.array([1.0, 0.0, 0.0], dtype=np.float64)
+
+            d_in_plane = d - float(np.dot(d, normal)) * normal
+            u_norm = float(np.linalg.norm(d_in_plane))
+            if not np.isfinite(u_norm) or u_norm <= 0.0:
+                return _PlaneBasis(
+                    origin=np.asarray(origin, dtype=np.float64),
+                    u=np.array([1.0, 0.0, 0.0], dtype=np.float64),
+                    v=np.array([0.0, 1.0, 0.0], dtype=np.float64),
+                )
+            u_axis = d_in_plane / u_norm
+            v_axis = np.cross(normal, u_axis)
+            return _PlaneBasis(origin=origin, u=u_axis, v=v_axis)
+
     normal = vh[-1]
     n_norm = float(np.linalg.norm(normal))
     if not np.isfinite(n_norm) or n_norm <= 0.0:
@@ -198,6 +227,7 @@ def buffer(
     join: str = "round",  # "mitre" | "round" | "bevel"
     quad_segs: int = 12,  # Shapely の quad_segs（1/4 円あたりの分割）
     distance: float = 5.0,
+    union: bool = False,
     keep_original: bool = False,
 ) -> RealizedGeometry:
     """Shapely の buffer を用いて輪郭を生成する。
@@ -216,6 +246,9 @@ def buffer(
         - `distance > 0`: 外側輪郭（buffer 結果の exterior）
         - `distance < 0`: 内側輪郭（buffer 結果の holes / interiors）
         - `distance == 0`: no-op
+    union : bool, default False
+        True のとき、入力内の複数ポリラインを同一平面へ射影して統合し、
+        1回の buffer で重なりをまとめた輪郭を返す。
     keep_original : bool, default False
         True のとき buffer 結果に加えて元のポリラインも出力に含める。
 
@@ -253,34 +286,60 @@ def buffer(
         quad_segs_i = _QUAD_SEGS_MAX
 
     # ローカル import（effect 未使用時に shapely import を避ける）
-    from shapely.geometry import LineString  # type: ignore[import-not-found]
+    from shapely.geometry import LineString, MultiLineString  # type: ignore[import-not-found]
 
     coords = base.coords
     offsets = base.offsets
 
     out_lines: list[np.ndarray] = []
-    for i in range(int(offsets.size) - 1):
-        s = int(offsets[i])
-        e = int(offsets[i + 1])
-        line3 = coords[s:e]
-        if line3.shape[0] < 2:
-            continue
+    if bool(union):
+        basis = _fit_plane_basis(coords)
 
-        line3 = _close_curve(line3, _AUTO_CLOSE_THRESHOLD)
-        basis = _fit_plane_basis(line3)
-        line2 = _project_to_2d(line3, basis)
-
-        buffered = LineString(line2).buffer(  # type: ignore[arg-type]
-            abs_d,
-            quad_segs=quad_segs_i,
-            join_style=join_style,
-        )
-        which = "exterior" if d > 0.0 else "interior"
-        for v2 in _extract_vertices_2d(buffered, which=which):
-            if v2.shape[0] < 2:
+        lines2: list[np.ndarray] = []
+        for i in range(int(offsets.size) - 1):
+            s = int(offsets[i])
+            e = int(offsets[i + 1])
+            line3 = coords[s:e]
+            if line3.shape[0] < 2:
                 continue
-            v3 = _lift_to_3d(v2[:, :2], basis).astype(np.float32, copy=False)
-            out_lines.append(v3)
+            line3 = _close_curve(line3, _AUTO_CLOSE_THRESHOLD)
+            lines2.append(_project_to_2d(line3, basis))
+
+        if lines2:
+            buffered = MultiLineString(lines2).buffer(  # type: ignore[arg-type]
+                abs_d,
+                quad_segs=quad_segs_i,
+                join_style=join_style,
+            )
+            which = "exterior" if d > 0.0 else "interior"
+            for v2 in _extract_vertices_2d(buffered, which=which):
+                if v2.shape[0] < 2:
+                    continue
+                v3 = _lift_to_3d(v2[:, :2], basis).astype(np.float32, copy=False)
+                out_lines.append(v3)
+    else:
+        for i in range(int(offsets.size) - 1):
+            s = int(offsets[i])
+            e = int(offsets[i + 1])
+            line3 = coords[s:e]
+            if line3.shape[0] < 2:
+                continue
+
+            line3 = _close_curve(line3, _AUTO_CLOSE_THRESHOLD)
+            basis = _fit_plane_basis(line3)
+            line2 = _project_to_2d(line3, basis)
+
+            buffered = LineString(line2).buffer(  # type: ignore[arg-type]
+                abs_d,
+                quad_segs=quad_segs_i,
+                join_style=join_style,
+            )
+            which = "exterior" if d > 0.0 else "interior"
+            for v2 in _extract_vertices_2d(buffered, which=which):
+                if v2.shape[0] < 2:
+                    continue
+                v3 = _lift_to_3d(v2[:, :2], basis).astype(np.float32, copy=False)
+                out_lines.append(v3)
 
     if keep_original:
         for i in range(int(offsets.size) - 1):

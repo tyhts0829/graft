@@ -131,7 +131,7 @@ class _EffectBuilder(Protocol):
             seed: ずらし量生成の乱数シード（決定性のため）
         """
         ...
-    def buffer(self, *, bypass: bool = ..., join: str = ..., distance: float = ..., quad_segs: int = ..., keep_original: bool = ...) -> _EffectBuilder:
+    def buffer(self, *, bypass: bool = ..., join: str = ..., distance: float = ..., quad_segs: int = ..., union: bool = ..., keep_original: bool = ...) -> _EffectBuilder:
         """
         Shapely の buffer を用いて輪郭を生成する。
 
@@ -140,6 +140,7 @@ class _EffectBuilder(Protocol):
             join: 角の処理
             distance: buffer 距離 [mm]
             quad_segs: 円弧近似分割数（Shapely の `quad_segs` 相当）
+            union: True のとき、入力内の複数ポリラインを同一平面へ射影して統合し、 1回の buffer で重なりをまとめた輪郭を返す
             keep_original: True のとき buffer 結果に加えて元のポリラインも出力に含める
         """
         ...
@@ -430,7 +431,7 @@ class _E(Protocol):
             seed: ずらし量生成の乱数シード（決定性のため）
         """
         ...
-    def buffer(self, *, bypass: bool = ..., join: str = ..., distance: float = ..., quad_segs: int = ..., keep_original: bool = ...) -> _EffectBuilder:
+    def buffer(self, *, bypass: bool = ..., join: str = ..., distance: float = ..., quad_segs: int = ..., union: bool = ..., keep_original: bool = ...) -> _EffectBuilder:
         """
         Shapely の buffer を用いて輪郭を生成する。
 
@@ -439,6 +440,7 @@ class _E(Protocol):
             join: 角の処理
             distance: buffer 距離 [mm]
             quad_segs: 円弧近似分割数（Shapely の `quad_segs` 相当）
+            union: True のとき、入力内の複数ポリラインを同一平面へ射影して統合し、 1回の buffer で重なりをまとめた輪郭を返す
             keep_original: True のとき buffer 結果に加えて元のポリラインも出力に含める
         """
         ...
