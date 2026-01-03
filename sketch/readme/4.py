@@ -6,15 +6,9 @@ CANVAS_HEIGHT = 297
 
 
 def draw(t):
-    char = G.text(text="G")
-    e = E.buffer().scale().partition().scale()
-    char = e(char)
     poly = G.polygon(phase=45)
-    e_poly = E.fill()
-    poly = e_poly(poly)
-    e_clip = E.clip()
-
-    return e_clip(poly, char)
+    e = E.relax()
+    return e(poly)
 
 
 if __name__ == "__main__":

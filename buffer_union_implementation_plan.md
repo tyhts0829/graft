@@ -40,35 +40,33 @@
   6. 同一 basis で 3D に戻し、`RealizedGeometry` を構築
 - 注意: `union=True` は「全体を 1 平面に潰す」ので、非共平面入力では結果が歪む。
 
-## 仕様で先に決めたい点（要確認）
+## 仕様（決定）
 
-- 非共平面入力の扱い:
-  - A: 判定せず best-fit 平面で実行（最小・単純）；これで
-  - B: “ほぼ共平面” 判定を入れ、NG なら `union=False` 相当へフォールバック（挙動は安定、実装は増える）
-- `distance<0` の意味:
-  - 現行通り「buffer(abs) の holes を返す」で良い？（union 後も同じ）；はい
-- `keep_original=True` かつ `union=True` の出力順:
-  - (union 結果 → original) のままで OK？；はい
-- 既存 `join`/`quad_segs` は、そのまま union buffer に適用で OK？；はい
+- 非共平面入力の扱い: 判定せず best-fit 平面で実行（A）
+- `distance<0` の意味: 現行通り「buffer(abs) の holes を返す」
+- `keep_original=True` かつ `union=True` の出力順: (union 結果 → original)
+- 既存 `join`/`quad_segs`: そのまま union buffer に適用
 
-## 実装チェックリスト
+## 実装チェックリスト（進捗）
 
-- [ ] `src/grafix/core/effects/buffer.py` に `union: bool = False` を追加
-  - [ ] `buffer_meta` に `union` を追加（`kind="bool"`）
-  - [ ] docstring の Parameters に `union` を追記
-  - [ ] `union` 分岐を追加（`MultiLineString(...).buffer(...)` を 1 回）
-- [ ] テスト追加
-  - [ ] `tests/core/effects/test_buffer_union.py`（新規）
-    - [ ] 2 本の近接/重なりセグメントで `union=False` は出力 2 本、`union=True` は出力 1 本になること
-    - [ ] `keep_original=True` でも original が末尾に残ること
-- [ ] 型スタブ同期
-  - [ ] `tools/gen_g_stubs.py` の生成結果で `src/grafix/api/__init__.pyi` を更新（`E.buffer` の `union: bool` が反映されること）
-  - [ ] `PYTHONPATH=src pytest -q tests/stubs/test_api_stub_sync.py`
+- [x] `src/grafix/core/effects/buffer.py` に `union: bool = False` を追加
+  - [x] `buffer_meta` に `union` を追加（`kind="bool"`）
+  - [x] docstring の Parameters に `union` を追記
+  - [x] `union` 分岐を追加（`MultiLineString(...).buffer(...)` を 1 回）
+  - [x] collinear（実質 1 次元）入力でも basis が安定するように `_fit_plane_basis()` を補強
+- [x] テスト追加
+  - [x] `tests/core/effects/test_buffer_union.py`（新規）
+    - [x] 2 本の近接/重なりセグメントで `union=False` は出力 2 本、`union=True` は出力 1 本になること
+    - [x] `keep_original=True` でも original が末尾に残ること
+- [x] 型スタブ同期
+  - [x] `tools/gen_g_stubs.py` の生成結果で `src/grafix/api/__init__.pyi` を更新（`E.buffer` の `union: bool` が反映されること）
+  - [x] `PYTHONPATH=src pytest -q tests/stubs/test_api_stub_sync.py`
 - [ ] Lint/型
-  - [ ] `ruff check src/grafix/core/effects/buffer.py tests/core/effects/test_buffer_union.py`
-  - [ ] `mypy src/grafix`（必要なら対象限定）
+  - [ ] `ruff check src/grafix/core/effects/buffer.py tests/core/effects/test_buffer_union.py`（この環境では `ruff` が未インストール）
+  - [x] `mypy src/grafix`
 
 ## 追加で気づいた点（提案）
 
 - `union=True` は基底推定が “全点で 1 回” になるため、現状の「線ごと basis」より結果が揃う一方、非共平面入力の許容度は下がる。
 - union 実装は `MultiLineString(...).buffer(...)` を使うと “統合込みの buffer” になり、`unary_union` の追加呼び出しを避けられる可能性が高い（コードが短くなる）。
+- 全点がほぼ一直線（例: 線分群）だと best-fit 平面が不安定になりやすいので、主平面へ寄せるフォールバックを入れている（`union` の有無に関わらず効く）。
