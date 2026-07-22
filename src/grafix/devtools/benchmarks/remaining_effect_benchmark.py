@@ -221,7 +221,7 @@ _EXPECTED_DIAGNOSTICS: dict[str, list[list[object]]] = {
             "GridSpec.from_bbox",
             0.75,
             2.6376173738046162,
-            "grid pitch was coarsened to satisfy the cell limit",
+            "grid pitch was coarsened to satisfy the point limit",
             "warning",
         ],
         [
@@ -237,7 +237,7 @@ _EXPECTED_DIAGNOSTICS: dict[str, list[list[object]]] = {
             "GridSpec.from_bbox",
             0.8,
             2.0077973938621607,
-            "grid pitch was coarsened to satisfy the cell limit",
+            "grid pitch was coarsened to satisfy the point limit",
             "warning",
         ],
         [
@@ -245,7 +245,7 @@ _EXPECTED_DIAGNOSTICS: dict[str, list[list[object]]] = {
             0.8,
             2.0077973938621607,
             (
-                "draft preview coarsened the simulation grid to keep cells × "
+                "draft preview coarsened the simulation grid to keep points × "
                 "steps within budget; final capture keeps the requested pitch"
             ),
             "info",
@@ -254,7 +254,7 @@ _EXPECTED_DIAGNOSTICS: dict[str, list[list[object]]] = {
             "reaction_diffusion.steps",
             800,
             600,
-            ("draft preview capped cells × steps work; final capture keeps the requested value"),
+            ("draft preview capped points × steps work; final capture keeps the requested value"),
             "info",
         ],
     ],

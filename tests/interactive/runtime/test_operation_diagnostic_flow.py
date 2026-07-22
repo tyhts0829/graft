@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import time
-from typing import Any, cast
 
 import pytest
 
@@ -12,11 +11,12 @@ from grafix.core.operation_diagnostics import (
     emit_operation_diagnostic,
 )
 from grafix.core.parameters import ParamStore
-from grafix.core.runtime_config import runtime_config
+from grafix.runtime_config_loader import runtime_config
 from grafix.interactive.diagnostics import DiagnosticCenter
 from grafix.interactive.runtime.mp_draw import DrawResult, MpDraw
 from grafix.interactive.runtime.perf import PerfCollector
 from grafix.interactive.runtime.scene_runner import SceneRunner
+from tests.interactive.runtime.scene_runner_fixture import MpDrawFactoryFixture
 
 
 def _diagnostic_draw(_t: float) -> Geometry:
@@ -114,8 +114,8 @@ class _WorkerResult:
     def latest_successful_result(self) -> DrawResult:
         return self._result
 
-    def begin_epoch(self, _epoch: int) -> None:
-        return None
+    def begin_epoch(self, epoch: int | None = None) -> int:
+        return 0 if epoch is None else int(epoch)
 
     def close(self) -> None:
         return None
@@ -144,11 +144,11 @@ def test_scene_runner_merges_worker_payload_before_center_publish() -> None:
     runner = SceneRunner(
         lambda _t: Geometry.create(op="concat"),
         perf=PerfCollector(enabled=False),
-        n_worker=0,
+        n_worker=1,
         diagnostic_center=center,
         effective_config=runtime_config(),
+        mp_draw_factory=MpDrawFactoryFixture(_WorkerResult(worker_result)),
     )
-    runner._mp_draw = cast(Any, _WorkerResult(worker_result))
     try:
         assert (
             runner.run(

@@ -18,39 +18,114 @@ from grafix.core.value_validation import (
     finite_real,
 )
 
-from .memento import (
-    ParamStorePatch,
-    ParamStorePatchCapture,
-    ParamStoreMemento,
-    capture_param_store_memento,
-    coalesce_param_store_patches,
-    param_store_memento_matches,
-    restore_param_store_memento,
-    restore_param_store_patch,
-    update_param_store_memento_from_patch,
+from .adjustment_snapshot import (
+    ParameterAdjustmentPatch,
+    ParameterAdjustmentSnapshot,
+    _ParameterAdjustmentSlot,
 )
+from .collapsed_header import CollapsedHeaderKey
+from .key import ParameterKey
 from .store import ParamStore
 
 SnapshotSlot = Literal["A", "B"]
 _SNAPSHOT_SLOTS: tuple[SnapshotSlot, SnapshotSlot] = ("A", "B")
 
 
-@dataclass(frozen=True, slots=True)
-class _MementoTarget:
-    """Undo または Redo で復元する full memento。"""
+def _slots_match(
+    left: _ParameterAdjustmentSlot,
+    right: _ParameterAdjustmentSlot,
+) -> bool:
+    left_state = left.state
+    right_state = right.state
+    left_meta = left.meta
+    right_meta = right.meta
+    if left_state is None or right_state is None or left_meta is None or right_meta is None:
+        return left_state == right_state and left_meta == right_meta
+    return (
+        left_meta.kind == right_meta.kind
+        and left_state.override == right_state.override
+        and left_state.ui_value == right_state.ui_value
+        and left_state.cc_key == right_state.cc_key
+        and left_meta.ui_min == right_meta.ui_min
+        and left_meta.ui_max == right_meta.ui_max
+    )
 
-    memento: ParamStoreMemento
+
+class _ParameterAdjustmentPatchCapture:
+    """GUI transaction 中に、触れた key の変更前値だけを遅延 capture する。"""
+
+    __slots__ = ("_store", "_before_by_key", "_collapsed_before")
+
+    def __init__(self, store: ParamStore) -> None:
+        self._store = store
+        self._before_by_key: dict[ParameterKey, _ParameterAdjustmentSlot] = {}
+        self._collapsed_before: frozenset[CollapsedHeaderKey] | None = None
+
+    def observe_key(self, key: ParameterKey) -> None:
+        """key を最初に変更する直前の値だけ保存する。"""
+
+        if key not in self._before_by_key:
+            self._before_by_key[key] = self._store._capture_adjustment_slot(key)
+
+    def observe_headers(
+        self,
+        headers: frozenset[CollapsedHeaderKey] | None = None,
+    ) -> None:
+        """Collapse set を最初に変更する直前だけ保存する。"""
+
+        if self._collapsed_before is None:
+            self._collapsed_before = (
+                self._store.collapsed_headers()
+                if headers is None
+                else frozenset(headers)
+            )
+
+    def finish(self) -> ParameterAdjustmentPatch | None:
+        """実差分だけを immutable history entry として返す。"""
+
+        before_by_key: dict[ParameterKey, _ParameterAdjustmentSlot] = {}
+        after_by_key: dict[ParameterKey, _ParameterAdjustmentSlot] = {}
+        for key, before in self._before_by_key.items():
+            after = self._store._capture_adjustment_slot(key)
+            if _slots_match(before, after):
+                continue
+            before_by_key[key] = before
+            after_by_key[key] = after
+
+        collapsed_before: dict[CollapsedHeaderKey, bool] = {}
+        collapsed_after: dict[CollapsedHeaderKey, bool] = {}
+        if self._collapsed_before is not None:
+            after_headers = self._store.collapsed_headers()
+            for header in self._collapsed_before ^ after_headers:
+                collapsed_before[header] = header in self._collapsed_before
+                collapsed_after[header] = header in after_headers
+
+        if not before_by_key and not collapsed_before:
+            return None
+        return ParameterAdjustmentPatch(
+            before_by_key=before_by_key,
+            after_by_key=after_by_key,
+            collapsed_before=collapsed_before,
+            collapsed_after=collapsed_after,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _SnapshotTarget:
+    """Undo または Redo で復元する full adjustment snapshot。"""
+
+    snapshot: ParameterAdjustmentSnapshot
 
 
 @dataclass(frozen=True, slots=True)
 class _PatchTarget:
     """Undo または Redo で適用する patch と方向。"""
 
-    patch: ParamStorePatch
+    patch: ParameterAdjustmentPatch
     after: bool
 
 
-_HistoryEntry = _MementoTarget | _PatchTarget
+_HistoryEntry = _SnapshotTarget | _PatchTarget
 
 
 class ParamStoreHistory:
@@ -90,7 +165,7 @@ class ParamStoreHistory:
         self._clock = clock
         self._undo: deque[_HistoryEntry] = deque(maxlen=self._capacity)
         self._redo: deque[_HistoryEntry] = deque(maxlen=self._capacity)
-        self._current = capture_param_store_memento(store)
+        self._current = store.capture_adjustment_snapshot()
         self._seen_revision = store.revision
         self._last_source: Hashable | None = None
         self._last_change_at: float | None = None
@@ -121,7 +196,7 @@ class ParamStoreHistory:
         clear = exact_bool(clear_history, name="clear_history")
         if self._store.revision == self._seen_revision and not clear:
             return False
-        self._current = capture_param_store_memento(self._store)
+        self._current = self._store.capture_adjustment_snapshot()
         self._seen_revision = self._store.revision
         self._redo.clear()
         if clear:
@@ -149,7 +224,7 @@ class ParamStoreHistory:
         if self._store.revision == self._seen_revision:
             return False
         before = self._current
-        after = capture_param_store_memento(self._store)
+        after = self._store.capture_adjustment_snapshot()
         return self._record_transition(
             before=before,
             after=after,
@@ -176,7 +251,7 @@ class ParamStoreHistory:
 
         ``patch=True`` では、実際に変更した既存 parameter だけを遅延
         capture する。slider のような単一 key 操作向けであり、variation
-        や reconcile などの bulk 操作は既定の full memento を使う。
+        や reconcile などの bulk 操作は既定の full snapshot を使う。
         """
 
         try:
@@ -195,7 +270,7 @@ class ParamStoreHistory:
                 self.synchronize()
             before_revision = self._store.revision
             if use_patch:
-                capture = ParamStorePatchCapture(self._store)
+                capture = _ParameterAdjustmentPatchCapture(self._store)
                 self._store._begin_history_patch_capture(
                     observe_key=capture.observe_key,
                     observe_headers=capture.observe_headers,
@@ -212,7 +287,7 @@ class ParamStoreHistory:
                             else explicit_now
                         )
                         if operation is None:
-                            # favorite や code-owned metadata など、memento の対象外だけが
+                            # favorite や code-owned metadata など、snapshot の対象外だけが
                             # 変わった場合は Undo を増やさず基準 revision だけ進める。
                             self._seen_revision = self._store.revision
                         else:
@@ -224,8 +299,7 @@ class ParamStoreHistory:
                                 source=source,
                                 now=change_at,
                             )
-                            update_param_store_memento_from_patch(
-                                self._current,
+                            self._current = self._current.with_patch(
                                 operation,
                                 after=True,
                             )
@@ -236,7 +310,7 @@ class ParamStoreHistory:
                 yield
             finally:
                 if self._store.revision != before_revision:
-                    after = capture_param_store_memento(self._store)
+                    after = self._store.capture_adjustment_snapshot()
                     self._record_transition(
                         before=before,
                         after=after,
@@ -262,7 +336,7 @@ class ParamStoreHistory:
         # merge restore 後の store には、target 作成後に発見された
         # parameter も残る。次の履歴基準は target そのものではなく、
         # 実際に復元された現在状態から再 capture する。
-        self._current = capture_param_store_memento(self._store)
+        self._current = self._store.capture_adjustment_snapshot()
         self._seen_revision = self._store.revision
         self.break_coalescing()
         return changed
@@ -276,7 +350,7 @@ class ParamStoreHistory:
         target = self._redo.pop()
         self._undo.append(self._inverse_target(target))
         changed = self._restore_target(target)
-        self._current = capture_param_store_memento(self._store)
+        self._current = self._store.capture_adjustment_snapshot()
         self._seen_revision = self._store.revision
         self.break_coalescing()
         return changed
@@ -295,19 +369,19 @@ class ParamStoreHistory:
     def _record_transition(
         self,
         *,
-        before: ParamStoreMemento,
-        after: ParamStoreMemento,
+        before: ParameterAdjustmentSnapshot,
+        after: ParameterAdjustmentSnapshot,
         source: Hashable,
         now: float,
     ) -> bool:
         # revision は label/ordinal など code-owned 構造でも進む。
         # GUI-owned 状態に実差分が無い場合は Undo を増やさない。
-        if param_store_memento_matches(self._store, before):
+        if self._store.adjustment_snapshot_matches(before):
             self._current = after
             self._seen_revision = self._store.revision
             return False
 
-        operation = _MementoTarget(memento=before)
+        operation = _SnapshotTarget(snapshot=before)
         self._record_operation(
             operation=operation,
             source=source,
@@ -338,18 +412,15 @@ class ParamStoreHistory:
             if isinstance(previous, _PatchTarget) and isinstance(
                 operation, _PatchTarget
             ):
-                coalesced = coalesce_param_store_patches(
-                    previous.patch,
-                    operation.patch,
-                )
+                coalesced = previous.patch.coalesced_with(operation.patch)
                 if coalesced is not None:
                     self._undo[-1] = _PatchTarget(
                         patch=coalesced,
                         after=False,
                     )
                     did_coalesce = True
-            elif isinstance(previous, _MementoTarget) and isinstance(
-                operation, _MementoTarget
+            elif isinstance(previous, _SnapshotTarget) and isinstance(
+                operation, _SnapshotTarget
             ):
                 # 最初の変更前値を Undo target として維持する。
                 did_coalesce = True
@@ -366,23 +437,22 @@ class ParamStoreHistory:
 
         if isinstance(target, _PatchTarget):
             return _PatchTarget(patch=target.patch, after=not target.after)
-        return _MementoTarget(memento=self._current)
+        return _SnapshotTarget(snapshot=self._current)
 
     def _restore_target(self, target: _HistoryEntry) -> bool:
         if isinstance(target, _PatchTarget):
-            return restore_param_store_patch(
-                self._store,
+            return self._store._apply_adjustment_patch(
                 target.patch,
                 after=target.after,
             )
-        return restore_param_store_memento(self._store, target.memento)
+        return self._store.apply_adjustment_snapshot(target.snapshot)
 
     def _adopt_untracked_state(self) -> None:
         if self._store.revision == self._seen_revision:
             return
         # 履歴外の分岐後に古い redo を適用すると、新規に発見した
         # metadata まで消し得る。現在を基準にし、redo は捨てる。
-        self._current = capture_param_store_memento(self._store)
+        self._current = self._store.capture_adjustment_snapshot()
         self._seen_revision = self._store.revision
         self._redo.clear()
         self.break_coalescing()
@@ -395,7 +465,7 @@ class ParamSnapshotSlots:
         if not isinstance(store, ParamStore):
             raise TypeError("store は ParamStore である必要があります")
         self._store = store
-        self._slots: dict[SnapshotSlot, ParamStoreMemento] = {}
+        self._slots: dict[SnapshotSlot, ParameterAdjustmentSnapshot] = {}
 
     @property
     def available_slots(self) -> tuple[SnapshotSlot, ...]:
@@ -405,16 +475,16 @@ class ParamSnapshotSlots:
         """現在状態を slot へ保存する（既存値は上書き）。"""
 
         self._validate_slot(slot)
-        self._slots[slot] = capture_param_store_memento(self._store)
+        self._slots[slot] = self._store.capture_adjustment_snapshot()
 
     def restore(self, slot: SnapshotSlot) -> bool:
         """slot を store へ merge 適用する。未保存/同一状態なら False。"""
 
         self._validate_slot(slot)
-        memento = self._slots.get(slot)
-        if memento is None:
+        snapshot = self._slots.get(slot)
+        if snapshot is None:
             return False
-        return restore_param_store_memento(self._store, memento)
+        return self._store.apply_adjustment_snapshot(snapshot)
 
     def clear(self, slot: SnapshotSlot | None = None) -> None:
         """1 スロット、または A/B 両方を消去する。"""

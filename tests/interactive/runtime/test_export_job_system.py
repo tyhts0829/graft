@@ -28,7 +28,7 @@ from grafix.core.parameters import ParamStore
 from grafix.core.pipeline import RealizedLayer
 from grafix.core.realize import GeometryCacheKey
 from grafix.core.realized_geometry import RealizedGeometry
-from grafix.core.runtime_config import runtime_config
+from grafix.runtime_config_loader import runtime_config
 from grafix.core.runtime_limits import RuntimeLimits
 from grafix.export import capture as capture_module
 from grafix.interactive.runtime import export_job_system
@@ -42,6 +42,8 @@ from grafix.interactive.runtime.export_job_system import (
     FrameExportSnapshot,
     estimate_snapshot_retained_bytes,
 )
+
+pytestmark = pytest.mark.integration
 
 _WAIT_TIMEOUT_S = 8.0
 

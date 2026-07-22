@@ -417,7 +417,7 @@ def test_variation_snapshot_uses_v4_tagged_collapsed_header_records() -> None:
     assert all(type(entry["collapsed"]) is bool for entry in collapsed)
 
     variation = list_variations(decode_param_store_result(payload).store)[0]
-    assert variation.parameter_snapshot._collapsed_by_header[header] is True
+    assert variation.parameter_snapshot.collapsed_state(header) is True
 
 
 def test_variation_snapshot_uses_json_arrays_in_direct_codec_roundtrip() -> None:
@@ -442,9 +442,10 @@ def test_variation_snapshot_uses_json_arrays_in_direct_codec_roundtrip() -> None
     assert snapshot_state["cc_key"] == [1, None, 3]
 
     variation = list_variations(decode_param_store_result(payload).store)[0]
-    restored_state = variation.parameter_snapshot._states[key]
-    assert restored_state.ui_value == (4.0, 5.0, 6.0)
-    assert restored_state.cc_key == (1, None, 3)
+    restored = variation.parameter_snapshot.get(key)
+    assert restored is not None
+    assert restored.state.ui_value == (4.0, 5.0, 6.0)
+    assert restored.state.cc_key == (1, None, 3)
 
 
 @pytest.mark.parametrize(
@@ -534,7 +535,7 @@ def test_variation_state_does_not_coerce_wrong_field_types(
     result = loads_param_store_result(json.dumps(payload))
 
     variation = list_variations(result.store)[0]
-    assert variation.parameter_snapshot._states == {}
+    assert variation.parameter_snapshot.items() == ()
     assert any(
         issue.section
         == "variations[0].parameter_snapshot.states"
@@ -555,7 +556,7 @@ def test_variation_nested_state_with_unknown_field_is_dropped() -> None:
     result = loads_param_store_result(json.dumps(payload))
 
     variation = list_variations(result.store)[0]
-    assert variation.parameter_snapshot._states == {}
+    assert variation.parameter_snapshot.items() == ()
     assert any(
         issue.section
         == "variations[0].parameter_snapshot.states"

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from grafix.core.parameters.favorites import favorite_parameter_key_set
 from grafix.core.parameters.key import ParameterKey
@@ -15,7 +16,9 @@ from grafix.core.parameters.view import ParameterRow
 from .midi_learn import MidiLearnState
 from .parameter_filter import ParameterFilterState
 from .reconcile_panel import ReconcileOrphanPanelModel, reconcile_orphan_panel_model
-from .store_bridge import ParameterTableView
+
+if TYPE_CHECKING:
+    from .store_bridge import ParameterTableView
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,6 +27,24 @@ class MidiClearNotice:
 
     message: str
     history_token: tuple[int, int] | None
+
+
+@dataclass(slots=True)
+class WidgetSessionState:
+    """widget と snippet popup の GUI instance 固有状態。"""
+
+    font_filter_by_key: dict[tuple[str, str, str], str] = field(default_factory=dict)
+    choice_filter_by_key: dict[tuple[str, str, str], str] = field(default_factory=dict)
+    snippet_popup_text: str = ""
+    snippet_popup_focus_next: bool = False
+
+    def clear(self) -> None:
+        """GUI close 時に widget 固有の一時状態をまとめて解放する。"""
+
+        self.font_filter_by_key.clear()
+        self.choice_filter_by_key.clear()
+        self.snippet_popup_text = ""
+        self.snippet_popup_focus_next = False
 
 
 @dataclass(slots=True)
@@ -43,6 +64,7 @@ class ParameterGuiSessionState:
     reconcile_error: str | None = None
     midi_clear_notice: MidiClearNotice | None = None
     midi_learn: MidiLearnState = field(default_factory=MidiLearnState)
+    widgets: WidgetSessionState = field(default_factory=WidgetSessionState)
 
     @classmethod
     def for_store(cls, store: ParamStore) -> ParameterGuiSessionState:
@@ -61,4 +83,4 @@ class ParameterGuiSessionState:
         self.table_view = None
 
 
-__all__ = ["MidiClearNotice", "ParameterGuiSessionState"]
+__all__ = ["MidiClearNotice", "ParameterGuiSessionState", "WidgetSessionState"]

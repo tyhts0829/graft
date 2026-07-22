@@ -159,7 +159,8 @@ def main() -> int:
     # `P.grn_a5_frame` のような preset を確実に使えるよう、プロジェクトの config を優先する。
     candidate_config = root / ".grafix/config.yaml"
     config_path = candidate_config if candidate_config.exists() else None
-    from grafix.core.runtime_config import bind_runtime_config, load_runtime_config
+    from grafix.core.runtime_config import bind_runtime_config
+    from grafix.runtime_config_loader import load_runtime_config
 
     config = load_runtime_config(config_path)
 

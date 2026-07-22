@@ -78,7 +78,7 @@ _RESOLVABLE_TYPE_IDENTS = {
     "Callable",
     "Geometry",
     "Layer",
-    "OperationCatalogEntry",
+    "OperationInfo",
     "Path",
     "Literal",
     "Mapping",
@@ -604,10 +604,10 @@ def _render_g_protocol(
     lines.append("    def __call__(self, name: str | None = None) -> _G:\n")
     lines.append('        """ラベル付き primitive 名前空間を返す。"""\n')
     lines.append("        ...\n")
-    lines.append("    def catalog(self) -> tuple[OperationCatalogEntry, ...]:\n")
+    lines.append("    def catalog(self) -> tuple[OperationInfo, ...]:\n")
     lines.append('        """登録済み primitive の catalog を名前順で返す。"""\n')
     lines.append("        ...\n")
-    lines.append("    def describe(self, name: str) -> OperationCatalogEntry:\n")
+    lines.append("    def describe(self, name: str) -> OperationInfo:\n")
     lines.append('        """primitive の catalog entry を名前で取得する。"""\n')
     lines.append("        ...\n")
     lines.append(
@@ -778,10 +778,10 @@ def _render_e_protocol(
     lines.append("    def __call__(self, name: str | None = None) -> _E:\n")
     lines.append('        """ラベル付き effect 名前空間を返す。"""\n')
     lines.append("        ...\n")
-    lines.append("    def catalog(self) -> tuple[OperationCatalogEntry, ...]:\n")
+    lines.append("    def catalog(self) -> tuple[OperationInfo, ...]:\n")
     lines.append('        """登録済み effect の catalog を名前順で返す。"""\n')
     lines.append("        ...\n")
-    lines.append("    def describe(self, name: str) -> OperationCatalogEntry:\n")
+    lines.append("    def describe(self, name: str) -> OperationInfo:\n")
     lines.append('        """effect の catalog entry を名前で取得する。"""\n')
     lines.append("        ...\n")
     lines.append(
@@ -965,10 +965,8 @@ def generate_stubs_str(
     - presets は config preset directory または source_roots 配下だけを採用する。
     """
     from grafix.core.authoring_loader import load_config_authoring_definitions
-    from grafix.core.runtime_config import (  # type: ignore[import]
-        RuntimeConfig,
-        runtime_config,
-    )
+    from grafix.core.runtime_config import RuntimeConfig
+    from grafix.runtime_config_loader import runtime_config
 
     if config is not None and not isinstance(config, RuntimeConfig):
         raise TypeError("config は RuntimeConfig または None である必要があります")
@@ -1058,7 +1056,7 @@ def generate_stubs_str(
 
     lines.append("from grafix.core.geometry import Geometry\n")
     lines.append("from grafix.core.layer import Layer\n")
-    lines.append("from grafix.core.operation_catalog import OperationCatalogEntry\n")
+    lines.append("from grafix.api.operation_info import OperationInfo as OperationInfo\n")
     lines.append("from grafix.core.scene import SceneItem\n\n")
 
     lines.append("Vec3: TypeAlias = tuple[float, float, float]\n\n")
@@ -1134,7 +1132,8 @@ def generate_stubs_str(
 
     lines.append(
         "__all__ = ['Color', 'E', 'ExportFormat', 'ExportResult', 'Frame', "
-        "'G', 'L', 'P', 'RenderOptions', 'RenderSession', 'RenderSessionMetadata', "
+        "'G', 'L', 'OperationInfo', 'P', 'RenderOptions', 'RenderSession', "
+        "'RenderSessionMetadata', "
         "'ResourceBudget', 'ResourceLimitError', 'RuntimeLimitProfiles', "
         "'RuntimeLimits', 'VariationBatchResult', 'VariationRenderResult', "
         "'effect', 'export', 'preset', 'primitive', 'render', "
@@ -1194,6 +1193,7 @@ _ROOT_STUB = """from grafix.api import (
     Frame as Frame,
     G as G,
     L as L,
+    OperationInfo as OperationInfo,
     P as P,
     RenderOptions as RenderOptions,
     RenderSession as RenderSession,
@@ -1222,6 +1222,7 @@ __all__ = [
     "Frame",
     "G",
     "L",
+    "OperationInfo",
     "P",
     "RenderOptions",
     "RenderSession",
@@ -1305,7 +1306,8 @@ def main(argv: list[str] | None = None) -> int:
     elif not config_path.is_absolute():
         config_path = project_root / config_path
 
-    from grafix.core.runtime_config import bind_runtime_config, load_runtime_config
+    from grafix.core.runtime_config import bind_runtime_config
+    from grafix.runtime_config_loader import load_runtime_config
 
     targets = list(args.imports)
     if not args.no_default_import and (project_root / "sketch" / "main.py").is_file():

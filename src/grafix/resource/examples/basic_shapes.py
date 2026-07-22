@@ -1,11 +1,14 @@
 """基本図形を組み合わせる最小 example。"""
 
+from __future__ import annotations
+
 from grafix import G, run
+from grafix.core.scene import SceneItem
 
 CANVAS_SIZE = (300, 300)
 
 
-def draw(t: float):
+def draw(t: float) -> SceneItem:
     """時刻 ``t`` の scene を返す。"""
 
     _ = t

@@ -5,13 +5,24 @@
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Callable, Iterable, Iterator, MutableSet
+from collections.abc import Callable, Iterable, Iterator, Mapping, MutableSet
 from copy import deepcopy
-from dataclasses import dataclass, field
-from types import MappingProxyType
+from dataclasses import dataclass, field, replace
+from types import MappingProxyType, TracebackType
 from typing import TYPE_CHECKING, Any
 
-from .collapsed_header import CollapsedHeaderKey
+from .adjustment_snapshot import (
+    ParameterAdjustment,
+    ParameterAdjustmentPatch,
+    ParameterAdjustmentSnapshot,
+    _ParameterAdjustmentSlot,
+)
+from .collapsed_header import (
+    CollapsedHeaderKey,
+    STYLE_COLLAPSED_HEADER_KEY,
+    effect_chain_collapsed_header_key,
+    group_collapsed_header_keys,
+)
 from .effects import EffectChainIndex, EffectOrder, EffectStepTopology
 from .key import ParameterKey
 from .labels import ParamLabels
@@ -23,7 +34,7 @@ from .runtime import (
     ParamStoreLoadDiagnostic,
     ParamStoreRuntime,
 )
-from .state import ParamState
+from .state import ParamState, ParamStateSnapshot
 
 if TYPE_CHECKING:
     from .variations import Variation
@@ -63,6 +74,30 @@ class _PendingStoreMutation:
     favorites: bool = False
 
 
+def _known_adjustment_headers(
+    states: Mapping[ParameterKey, ParamState],
+    effects: EffectChainIndex,
+) -> set[CollapsedHeaderKey]:
+    """現在の store 構造から存在し得る GUI header ID を返す。"""
+
+    groups = {(key.op, key.site_id) for key in states}
+    known: set[CollapsedHeaderKey] = set()
+    style_ops = {"__style__", "__layer_style__"}
+    if any(op in style_ops for op, _site_id in groups):
+        known.add(STYLE_COLLAPSED_HEADER_KEY)
+    for op, site_id in groups:
+        if op in style_ops:
+            continue
+        # core は preset registry に依存しないため、同じ group が取り得る
+        # primitive/preset の両 identity を保存する。
+        known.update(group_collapsed_header_keys((op, site_id)))
+
+    for group, (chain_id, _step_index) in effects.step_info_by_site().items():
+        if group in groups:
+            known.add(effect_chain_collapsed_header_key(chain_id))
+    return known
+
+
 class ParamStoreRollback:
     """一つの ParamStore に属する one-shot transient rollback scope。"""
 
@@ -90,7 +125,12 @@ class ParamStoreRollback:
         self._active = True
         return self
 
-    def __exit__(self, exc_type, exc, traceback) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         """終了理由にかかわらず開始時の論理状態へ戻す。"""
 
         if not self._active:
@@ -494,6 +534,126 @@ class ParamStore:
 
         return self._meta.get(key)
 
+    def capture_adjustment_snapshot(self) -> ParameterAdjustmentSnapshot:
+        """現在の GUI-owned adjustment を immutable snapshot で返す。"""
+
+        known_headers = _known_adjustment_headers(self._states, self._effects)
+        return ParameterAdjustmentSnapshot(
+            adjustments={
+                key: ParameterAdjustment(
+                    state=ParamStateSnapshot.from_state(state),
+                    meta=self._meta[key],
+                )
+                for key, state in self._states.items()
+                if key in self._meta
+            },
+            collapsed_by_header={
+                header: header in self._collapsed_headers
+                for header in known_headers
+            },
+            effect_order_state=self._effects.order_state_by_chain(),
+            effect_topology_signatures=self._effects.topology_signatures(),
+        )
+
+    def adjustment_snapshot_matches(
+        self,
+        snapshot: ParameterAdjustmentSnapshot,
+    ) -> bool:
+        """``snapshot`` の merge 適用で adjustment が変わらなければ True。"""
+
+        if type(snapshot) is not ParameterAdjustmentSnapshot:
+            raise TypeError("snapshot must be a ParameterAdjustmentSnapshot")
+
+        for _key, saved, current_state, current_meta in self._applicable_adjustments(
+            snapshot
+        ):
+            if (
+                current_state.override != saved.state.override
+                or current_state.ui_value != saved.state.ui_value
+                or current_state.cc_key != saved.state.cc_key
+                or current_meta.ui_min != saved.meta.ui_min
+                or current_meta.ui_max != saved.meta.ui_max
+            ):
+                return False
+
+        known_headers = _known_adjustment_headers(self._states, self._effects)
+        for header, saved_collapsed in snapshot.collapsed_items():
+            if header not in known_headers:
+                continue
+            if (header in self._collapsed_headers) != saved_collapsed:
+                return False
+
+        candidate_effects = deepcopy(self._effects)
+        if candidate_effects.restore_order_state(
+            dict(snapshot.effect_order_items()),
+            topology_signatures=dict(snapshot.effect_topology_items()),
+        ):
+            return False
+        return True
+
+    def apply_adjustment_snapshot(
+        self,
+        snapshot: ParameterAdjustmentSnapshot,
+    ) -> bool:
+        """Snapshot を現在の code-owned 構造へ原子的に merge 適用する。"""
+
+        if type(snapshot) is not ParameterAdjustmentSnapshot:
+            raise TypeError("snapshot must be a ParameterAdjustmentSnapshot")
+        if self.adjustment_snapshot_matches(snapshot):
+            return False
+
+        changed_value_keys: list[ParameterKey] = []
+        structure_changed = False
+        for key, saved, current_state, current_meta in self._applicable_adjustments(
+            snapshot
+        ):
+            if (
+                current_state.override != saved.state.override
+                or current_state.ui_value != saved.state.ui_value
+                or current_state.cc_key != saved.state.cc_key
+            ):
+                current_state.override = saved.state.override
+                current_state.ui_value = saved.state.ui_value
+                current_state.cc_key = saved.state.cc_key
+                changed_value_keys.append(key)
+
+            if (
+                current_meta.ui_min != saved.meta.ui_min
+                or current_meta.ui_max != saved.meta.ui_max
+            ):
+                self._meta[key] = replace(
+                    current_meta,
+                    ui_min=saved.meta.ui_min,
+                    ui_max=saved.meta.ui_max,
+                )
+                structure_changed = True
+
+        known_headers = _known_adjustment_headers(self._states, self._effects)
+        for header, saved_collapsed in snapshot.collapsed_items():
+            if header not in known_headers:
+                continue
+            if saved_collapsed and header not in self._collapsed_headers:
+                self._collapsed_headers.add(header)
+                structure_changed = True
+            elif not saved_collapsed and header in self._collapsed_headers:
+                self._collapsed_headers.discard(header)
+                structure_changed = True
+
+        if self._effects.restore_order_state(
+            dict(snapshot.effect_order_items()),
+            topology_signatures=dict(snapshot.effect_topology_items()),
+        ):
+            structure_changed = True
+
+        changed = structure_changed or bool(changed_value_keys)
+        if changed:
+            # Revision は過去値へ戻さず、restore 全体で一度だけ進める。
+            self._touch(
+                structure=structure_changed,
+                value_keys=changed_value_keys,
+            )
+        return changed
+
     def get_label(self, op: str, site_id: str) -> str | None:
         """(op, site_id) のラベルを返す。未登録なら None。"""
 
@@ -532,6 +692,183 @@ class ParamStore:
         return self._effects.chain_ordinals()
 
     # --- 内部 API（ops/codec からのみ利用する想定）---
+    def _applicable_adjustments(
+        self,
+        snapshot: ParameterAdjustmentSnapshot,
+    ) -> list[
+        tuple[ParameterKey, ParameterAdjustment, ParamState, ParamMeta]
+    ]:
+        """現在の code-owned 構造へ安全に適用できる entry を返す。"""
+
+        applicable: list[
+            tuple[ParameterKey, ParameterAdjustment, ParamState, ParamMeta]
+        ] = []
+        for key, saved in snapshot.items():
+            current_state = self._states.get(key)
+            current_meta = self._meta.get(key)
+            if current_state is None or current_meta is None:
+                continue
+            if saved.meta.kind != current_meta.kind:
+                continue
+            applicable.append((key, saved, current_state, current_meta))
+        return applicable
+
+    def _capture_adjustment_slot(
+        self,
+        key: ParameterKey,
+    ) -> _ParameterAdjustmentSlot:
+        """History patch 用に一 key の現在値を immutable 化する。"""
+
+        state = self._states.get(key)
+        return _ParameterAdjustmentSlot(
+            state=None if state is None else ParamStateSnapshot.from_state(state),
+            meta=self._meta.get(key),
+        )
+
+    def _apply_adjustment_patch(
+        self,
+        patch: ParameterAdjustmentPatch,
+        *,
+        after: bool,
+    ) -> bool:
+        """History patch の変更前または変更後を merge 適用する。"""
+
+        if type(patch) is not ParameterAdjustmentPatch:
+            raise TypeError("patch must be a ParameterAdjustmentPatch")
+
+        changed_value_keys: list[ParameterKey] = []
+        meta_changed = False
+        for key, saved in patch.parameter_items(after=after):
+            saved_state = saved.state
+            saved_meta = saved.meta
+            current_state = self._states.get(key)
+            current_meta = self._meta.get(key)
+            if (
+                saved_state is None
+                or saved_meta is None
+                or current_state is None
+                or current_meta is None
+                or saved_meta.kind != current_meta.kind
+            ):
+                continue
+
+            state_changed = (
+                current_state.override != saved_state.override
+                or current_state.ui_value != saved_state.ui_value
+                or current_state.cc_key != saved_state.cc_key
+            )
+            if state_changed:
+                current_state.override = saved_state.override
+                current_state.ui_value = saved_state.ui_value
+                current_state.cc_key = saved_state.cc_key
+                changed_value_keys.append(key)
+
+            if (
+                current_meta.ui_min != saved_meta.ui_min
+                or current_meta.ui_max != saved_meta.ui_max
+            ):
+                self._meta[key] = replace(
+                    current_meta,
+                    ui_min=saved_meta.ui_min,
+                    ui_max=saved_meta.ui_max,
+                )
+                meta_changed = True
+
+        headers_changed = False
+        header_states = patch.collapsed_items(after=after)
+        if header_states:
+            known_headers = _known_adjustment_headers(self._states, self._effects)
+            for header, should_collapse in header_states:
+                if header not in known_headers:
+                    continue
+                if should_collapse and header not in self._collapsed_headers:
+                    self._collapsed_headers.add(header)
+                    headers_changed = True
+                elif not should_collapse and header in self._collapsed_headers:
+                    self._collapsed_headers.discard(header)
+                    headers_changed = True
+
+        if not changed_value_keys and not meta_changed and not headers_changed:
+            return False
+        self._touch(
+            structure=bool(meta_changed or headers_changed),
+            value_keys=changed_value_keys,
+        )
+        return True
+
+    def _apply_adjustment_values(
+        self,
+        adjustments: Iterable[tuple[ParameterKey, ParameterAdjustment]],
+    ) -> tuple[ParameterKey, ...]:
+        """GUI value/ownership/MIDI だけを一 revision で適用する。"""
+
+        entries = tuple(adjustments)
+        if any(type(key) is not ParameterKey for key, _adjustment in entries):
+            raise TypeError("adjustment keys must be ParameterKey values")
+        if any(
+            type(adjustment) is not ParameterAdjustment
+            for _key, adjustment in entries
+        ):
+            raise TypeError("adjustments must be ParameterAdjustment values")
+
+        changed: list[ParameterKey] = []
+        for key, adjustment in entries:
+            current_state = self._states.get(key)
+            current_meta = self._meta.get(key)
+            if (
+                current_state is None
+                or current_meta is None
+                or current_meta.kind != adjustment.meta.kind
+            ):
+                continue
+            saved_state = adjustment.state
+            if (
+                current_state.override == saved_state.override
+                and current_state.ui_value == saved_state.ui_value
+                and current_state.cc_key == saved_state.cc_key
+            ):
+                continue
+            self._observe_history_key_before(key)
+            current_state.override = saved_state.override
+            current_state.ui_value = saved_state.ui_value
+            current_state.cc_key = saved_state.cc_key
+            changed.append(key)
+        if changed:
+            self._touch(structure=False, value_keys=changed)
+        return tuple(changed)
+
+    def _load_persisted_parameters(
+        self,
+        *,
+        states: Mapping[ParameterKey, ParamStateSnapshot],
+        meta: Mapping[ParameterKey, ParamMeta],
+        explicit_by_key: Mapping[ParameterKey, bool],
+        preserve_explicit_overrides: bool,
+    ) -> None:
+        """Codec parser の canonical parameter records を新しい store へ格納する。"""
+
+        self._meta.update(meta)
+        self._states.update(
+            {
+                key: ParamState(
+                    override=(
+                        state.override
+                        if preserve_explicit_overrides
+                        or not explicit_by_key[key]
+                        else False
+                    ),
+                    ui_value=state.ui_value,
+                    cc_key=state.cc_key,
+                )
+                for key, state in states.items()
+                if key in meta
+            }
+        )
+        self._explicit_by_key.update(explicit_by_key)
+        self._runtime.loaded_groups = {
+            (key.op, key.site_id) for key in self._states
+        }
+
     def _get_state_ref(self, key: ParameterKey) -> ParamState | None:
         return self._states.get(key)
 

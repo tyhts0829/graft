@@ -16,7 +16,8 @@ from grafix.core.parameters import ParamStore
 from grafix.core.parameters.context import parameter_context
 from grafix.core.parameters.snapshot_ops import store_snapshot
 from grafix.core.preset_catalog import bind_preset_catalog, preset_declaration
-from grafix.core.runtime_config import bind_runtime_config, load_runtime_config
+from grafix.core.runtime_config import bind_runtime_config
+from grafix.runtime_config_loader import load_runtime_config
 
 
 def _write_config(*, path: Path, preset_module_dir: Path) -> None:

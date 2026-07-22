@@ -17,9 +17,8 @@ from .codec_parser import (
     parse_param_store_payload,
 )
 from .meta_spec import meta_to_spec
-from .state import ParamState
 from .store import ParamStore
-from .variations import _encode_variation
+from .variations import Variation
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,7 +38,8 @@ def encode_param_store(
 
     labels = store._labels_ref().as_dict()
     effects = store._effects_ref()
-    persisted_keys = tuple(key for key in store._states if key in store._meta)
+    adjustments = store.capture_adjustment_snapshot()
+    persisted_items = adjustments.items()
     return {
         "schema_version": PARAM_STORE_SCHEMA_VERSION,
         "states": [
@@ -48,23 +48,27 @@ def encode_param_store(
                 "site_id": key.site_id,
                 "arg": key.arg,
                 "override": (
-                    store._states[key].override
+                    adjustment.state.override
                     if preserve_explicit_overrides
-                    else (False if store._explicit_by_key[key] else store._states[key].override)
+                    else (
+                        False
+                        if store._get_explicit_ref(key)
+                        else adjustment.state.override
+                    )
                 ),
-                "ui_value": _json_array(store._states[key].ui_value),
-                "cc_key": _json_array(store._states[key].cc_key),
+                "ui_value": _json_array(adjustment.state.ui_value),
+                "cc_key": _json_array(adjustment.state.cc_key),
             }
-            for key in persisted_keys
+            for key, adjustment in persisted_items
         ],
         "meta": [
             {
                 "op": key.op,
                 "site_id": key.site_id,
                 "arg": key.arg,
-                **meta_to_spec(store._meta[key]),
+                **meta_to_spec(adjustment.meta),
             }
-            for key in persisted_keys
+            for key, adjustment in persisted_items
         ],
         "labels": [
             {"op": op, "site_id": site_id, "label": label}
@@ -88,15 +92,15 @@ def encode_param_store(
                 "op": key.op,
                 "site_id": key.site_id,
                 "arg": key.arg,
-                "explicit": store._explicit_by_key[key],
+                "explicit": bool(store._get_explicit_ref(key)),
             }
-            for key in persisted_keys
+            for key, _adjustment in persisted_items
         ],
         "ui": {
             "collapsed_headers": [
                 encode_collapsed_header_key(key)
                 for key in sorted(
-                    store._collapsed_headers_ref(),
+                    store.collapsed_headers(),
                     key=lambda item: item.sort_key(),
                 )
             ],
@@ -137,6 +141,75 @@ def _json_array(value: Any) -> Any:
     return list(value) if isinstance(value, tuple) else value
 
 
+def _encode_variation(variation: Variation) -> dict[str, Any]:
+    """Variation を schema v4 の JSON-native record へ射影する。"""
+
+    snapshot = variation.parameter_snapshot
+    topology_by_chain = dict(snapshot.effect_topology_items())
+    return {
+        "name": variation.name,
+        "created_at": variation.created_at,
+        "note": variation.note,
+        "seed": variation.seed,
+        "t": variation.t,
+        "thumbnail_path": variation.thumbnail_path,
+        "parameter_snapshot": {
+            "states": [
+                {
+                    "op": key.op,
+                    "site_id": key.site_id,
+                    "arg": key.arg,
+                    "override": adjustment.state.override,
+                    "ui_value": _json_array(adjustment.state.ui_value),
+                    "cc_key": _json_array(adjustment.state.cc_key),
+                }
+                for key, adjustment in snapshot.items()
+            ],
+            "meta": [
+                {
+                    "op": key.op,
+                    "site_id": key.site_id,
+                    "arg": key.arg,
+                    **meta_to_spec(adjustment.meta),
+                }
+                for key, adjustment in snapshot.items()
+            ],
+            "collapsed_headers": [
+                {
+                    **encode_collapsed_header_key(key),
+                    "collapsed": collapsed,
+                }
+                for key, collapsed in snapshot.collapsed_items()
+            ],
+            "effect_order_state": [
+                {
+                    "chain_id": chain_id,
+                    "topology": [
+                        {
+                            "op": op,
+                            "site_id": site_id,
+                            "n_inputs": n_inputs,
+                        }
+                        for op, site_id, n_inputs in topology_by_chain.get(
+                            chain_id,
+                            (),
+                        )
+                    ],
+                    "steps": (
+                        None
+                        if step_keys is None
+                        else [
+                            {"op": op, "site_id": site_id}
+                            for op, site_id in step_keys
+                        ]
+                    ),
+                }
+                for chain_id, step_keys in snapshot.effect_order_items()
+            ],
+        },
+    }
+
+
 def dumps_param_store(
     store: ParamStore,
     *,
@@ -160,18 +233,12 @@ def _store_from_parsed(
     """typed intermediate を追加検証せず ParamStore へ一度だけ適用する。"""
 
     store = ParamStore()
-    store._meta.update(parsed.meta)
-    store._states.update(
-        {
-            key: ParamState(
-                override=entry.value.override,
-                ui_value=entry.value.ui_value,
-                cc_key=entry.value.cc_key,
-            )
-            for key, entry in parsed.states.items()
-        }
+    store._load_persisted_parameters(
+        states={key: entry.value for key, entry in parsed.states.items()},
+        meta=parsed.meta,
+        explicit_by_key=parsed.explicit_by_key,
+        preserve_explicit_overrides=preserve_explicit_overrides,
     )
-    store._explicit_by_key.update(parsed.explicit_by_key)
     store._labels_ref().replace(dict(parsed.labels))
     store._ordinals_ref().replace({op: dict(by_site) for op, by_site in parsed.ordinals.items()})
     store._effects_ref().replace_persisted_state(
@@ -184,12 +251,6 @@ def _store_from_parsed(
     store._replace_favorite_keys(parsed.favorite_parameters)
     store._variations_ref().update({variation.name: variation for variation in parsed.variations})
 
-    if not preserve_explicit_overrides:
-        for key, is_explicit in store._explicit_by_key.items():
-            if is_explicit:
-                store._states[key].override = False
-
-    store._runtime_ref().loaded_groups = {(key.op, key.site_id) for key in store._states}
     store._touch()
     return store
 

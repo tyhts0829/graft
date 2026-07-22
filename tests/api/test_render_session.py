@@ -9,17 +9,16 @@ from typing import Literal
 import pytest
 
 from grafix import G, P, Frame, RenderOptions, RenderSession, RuntimeLimits, render
+from grafix.core.evaluation_config import EvaluationConfig
 from grafix.core.font_resources import FontResources
 from grafix.core.parameters import ParamStore
 from grafix.core.resource_budget import ResourceBudget, ResourceLimitError
 from grafix.core.parameters.style import style_key
 from grafix.core.parameters.ui_ops import update_state_from_ui
-from grafix.core.runtime_config import (
-    current_runtime_config,
-    load_runtime_config,
-    runtime_config,
-)
+from grafix.core.runtime_config import current_runtime_config
+from grafix.runtime_config_loader import load_runtime_config, runtime_config
 from grafix.core.preview_quality import current_preview_quality, preview_quality_context
+from grafix.parameter_storage import ParamStoreReadResult
 
 
 def _constant_draw():
@@ -36,18 +35,88 @@ def _constant_draw():
     return draw
 
 
-def test_render_session_reuses_store_config_style_and_realize_cache() -> None:
+def _install_render_dependency_fakes(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    events: list[str],
+    close_errors: dict[str, BaseException] | None = None,
+    construction_error: tuple[str, BaseException] | None = None,
+) -> None:
+    """RenderSession の owned dependency の構築・close 順を観測する。"""
+
+    render_module = importlib.import_module("grafix.api.render")
+    selected_close_errors = {} if close_errors is None else close_errors
+    fail_stage = None if construction_error is None else construction_error[0]
+    root_error = None if construction_error is None else construction_error[1]
+
+    def fail_construction(stage: str) -> None:
+        if fail_stage == stage:
+            assert root_error is not None
+            raise root_error
+
+    def close(label: str) -> None:
+        events.append(f"close {label}")
+        error = selected_close_errors.get(label)
+        if error is not None:
+            raise error
+
+    class FakeEvaluationResources:
+        def __init__(self) -> None:
+            events.append("create resources")
+
+        def close(self) -> None:
+            close("resources")
+
+    class FakeCacheStore:
+        @classmethod
+        def from_runtime_limits(cls, _runtime_limits: RuntimeLimits) -> FakeCacheStore:
+            events.append("create cache")
+            fail_construction("cache")
+            return cls()
+
+        def close(self) -> None:
+            close("cache")
+
+    class FakeRealizeSession:
+        def __init__(self, **_kwargs: object) -> None:
+            events.append("create realize")
+            fail_construction("realize")
+
+        def close(self) -> None:
+            close("realize")
+
+    class FakeDefinitions:
+        operations = object()
+        presets = object()
+
+    original_metadata = render_module.RenderSessionMetadata
+
+    def build_metadata(**kwargs: object):
+        events.append("create metadata")
+        fail_construction("metadata")
+        return original_metadata(**kwargs)
+
+    monkeypatch.setattr(render_module, "EvaluationResources", FakeEvaluationResources)
+    monkeypatch.setattr(render_module, "EvaluationContext", lambda **_kwargs: object())
+    monkeypatch.setattr(render_module, "RealizeCacheStore", FakeCacheStore)
+    monkeypatch.setattr(render_module, "RealizeSession", FakeRealizeSession)
+    monkeypatch.setattr(render_module, "RenderSessionMetadata", build_metadata)
+    monkeypatch.setattr(
+        render_module,
+        "authoring_definitions_for_draw",
+        lambda *_args, **_kwargs: FakeDefinitions(),
+    )
+
+
+def test_render_session_reuses_store_config_style_and_internal_realize_cache() -> None:
     session = RenderSession(
         _constant_draw(),
         options=RenderOptions(background_color="white"),
     )
     store = session.param_store
     config = session.config
-    resolver = session.style_resolver
-    realize_session = session.realize_session
 
     first = session.render(0.0)
-    stats_after_first = realize_session.stats()
 
     background_key = style_key("background_color")
     background_meta = store.get_meta(background_key)
@@ -61,18 +130,14 @@ def test_render_session_reuses_store_config_style_and_realize_cache() -> None:
     assert ok, error
 
     second = session.render(1.0)
-    stats_after_second = realize_session.stats()
 
     assert session.param_store is store
     assert session.config is config
-    assert session.style_resolver is resolver
-    assert session.realize_session is realize_session
     assert first.metadata is session.metadata
     assert second.metadata is session.metadata
     assert first.metadata.effective_config is config
     assert first.background_color.rgb01 == (1.0, 1.0, 1.0)
     assert second.background_color.rgb01 == (1.0, 0.0, 0.0)
-    assert stats_after_second.hits > stats_after_first.hits
     assert first.layers[0].realized is second.layers[0].realized
 
     session.close()
@@ -83,14 +148,184 @@ def test_render_session_is_context_managed_and_close_is_idempotent() -> None:
         frame = session.render(2.5)
         assert frame.t == pytest.approx(2.5)
         assert isinstance(frame.layers, tuple)
-        assert session.closed is False
 
-    assert session.closed is True
     session.close()
     with pytest.raises(RuntimeError, match="close 済み"):
         session.render(3.0)
     with pytest.raises(RuntimeError, match="close 済み"):
         session.__enter__()
+
+
+@pytest.mark.parametrize(
+    ("failure_stage", "expected_events"),
+    [
+        (
+            "cache",
+            ["create resources", "create cache", "close resources"],
+        ),
+        (
+            "realize",
+            [
+                "create resources",
+                "create cache",
+                "create realize",
+                "close cache",
+                "close resources",
+            ],
+        ),
+        (
+            "metadata",
+            [
+                "create resources",
+                "create cache",
+                "create realize",
+                "create metadata",
+                "close realize",
+                "close cache",
+                "close resources",
+            ],
+        ),
+    ],
+)
+def test_render_session_constructor_failure_closes_created_dependencies_in_reverse_order(
+    failure_stage: str,
+    expected_events: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    root_error = RuntimeError(f"{failure_stage} construction failed")
+    _install_render_dependency_fakes(
+        monkeypatch,
+        events=events,
+        construction_error=(failure_stage, root_error),
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        RenderSession(lambda _t: ())
+
+    assert exc_info.value is root_error
+    assert events == expected_events
+
+
+def test_render_session_constructor_keeps_root_and_notes_all_cleanup_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    root_error = RuntimeError("metadata construction failed")
+    close_errors = {
+        "realize": RuntimeError("realize close failed"),
+        "cache": OSError("cache close failed"),
+        "resources": KeyboardInterrupt("resources close failed"),
+    }
+    _install_render_dependency_fakes(
+        monkeypatch,
+        events=events,
+        close_errors=close_errors,
+        construction_error=("metadata", root_error),
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        RenderSession(lambda _t: ())
+
+    assert exc_info.value is root_error
+    assert events[-3:] == ["close realize", "close cache", "close resources"]
+    assert root_error.__notes__ == [
+        "Secondary cleanup failure (close render realize session): "
+        "RuntimeError: realize close failed",
+        "Secondary cleanup failure (close render realize cache store): "
+        "OSError: cache close failed",
+        "Secondary cleanup failure (close render evaluation resources): "
+        "KeyboardInterrupt: resources close failed",
+    ]
+
+
+@pytest.mark.parametrize("close_mode", ["direct", "context"])
+def test_render_session_close_raises_first_cleanup_error_and_is_idempotent(
+    close_mode: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    first_error = RuntimeError("realize close failed")
+    close_errors = {
+        "realize": first_error,
+        "cache": OSError("cache close failed"),
+        "resources": KeyboardInterrupt("resources close failed"),
+    }
+    _install_render_dependency_fakes(
+        monkeypatch,
+        events=events,
+        close_errors=close_errors,
+    )
+    session = RenderSession(lambda _t: ())
+    events.clear()
+
+    with pytest.raises(RuntimeError) as exc_info:
+        if close_mode == "direct":
+            session.close()
+        else:
+            with session:
+                pass
+
+    assert exc_info.value is first_error
+    assert events == ["close realize", "close cache", "close resources"]
+    assert first_error.__notes__ == [
+        "Secondary cleanup failure (close render realize cache store): "
+        "OSError: cache close failed",
+        "Secondary cleanup failure (close render evaluation resources): "
+        "KeyboardInterrupt: resources close failed",
+    ]
+    events.clear()
+    session.close()
+    assert events == []
+
+
+def test_render_session_exit_keeps_body_error_and_notes_cleanup_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    body_error = ValueError("draw body failed")
+    _install_render_dependency_fakes(
+        monkeypatch,
+        events=events,
+        close_errors={
+            "realize": RuntimeError("realize close failed"),
+            "cache": OSError("cache close failed"),
+            "resources": KeyboardInterrupt("resources close failed"),
+        },
+    )
+    session = RenderSession(lambda _t: ())
+    events.clear()
+
+    with pytest.raises(ValueError) as exc_info:
+        with session:
+            raise body_error
+
+    assert exc_info.value is body_error
+    assert events == ["close realize", "close cache", "close resources"]
+    assert body_error.__notes__ == [
+        "Secondary cleanup failure (close render realize session): "
+        "RuntimeError: realize close failed",
+        "Secondary cleanup failure (close render realize cache store): "
+        "OSError: cache close failed",
+        "Secondary cleanup failure (close render evaluation resources): "
+        "KeyboardInterrupt: resources close failed",
+    ]
+
+
+def test_render_session_exposes_only_non_owner_properties() -> None:
+    public_properties = {
+        name
+        for name, value in vars(RenderSession).items()
+        if isinstance(value, property) and not name.startswith("_")
+    }
+
+    assert public_properties == {
+        "config",
+        "metadata",
+        "options",
+        "param_store",
+        "runtime_limits",
+    }
 
 
 def test_public_render_returns_one_final_headless_frame() -> None:
@@ -151,8 +386,8 @@ def test_code_parameter_source_does_not_read_implicit_files(
         raise AssertionError("code mode must not inspect or load parameter files")
 
     monkeypatch.setattr(render_module, "default_param_store_path", unexpected)
-    monkeypatch.setattr(render_module, "load_param_store", unexpected)
-    monkeypatch.setattr(render_module, "load_param_store_with_recovery", unexpected)
+    monkeypatch.setattr(render_module, "read_param_store", unexpected)
+    monkeypatch.setattr(render_module, "recover_param_store_session", unexpected)
 
     with RenderSession(_constant_draw()) as session:
         frame = session.render(0.0)
@@ -187,16 +422,16 @@ def test_parameter_source_selects_one_explicit_load_path(
         lambda *_args, **_kwargs: default_path,
     )
 
-    def load_saved(path: Path) -> ParamStore:
+    def read_saved(path: Path) -> ParamStoreReadResult:
         calls.append(("saved", Path(path)))
-        return ParamStore()
+        return ParamStoreReadResult(ParamStore(), "loaded")
 
     def load_recovery(path: Path) -> ParamStore:
         calls.append(("recovery", Path(path)))
         return ParamStore()
 
-    monkeypatch.setattr(render_module, "load_param_store", load_saved)
-    monkeypatch.setattr(render_module, "load_param_store_with_recovery", load_recovery)
+    monkeypatch.setattr(render_module, "read_param_store", read_saved)
+    monkeypatch.setattr(render_module, "recover_param_store_session", load_recovery)
 
     source: str | Path
     if isinstance(parameter_source, Path):
@@ -215,6 +450,31 @@ def test_parameter_source_selects_one_explicit_load_path(
     assert metadata.parameter_source == (
         (tmp_path / "specific.json").resolve() if expected_source == "path" else expected_source
     )
+
+
+@pytest.mark.parametrize("parameter_source", ["saved", "path"])
+def test_saved_and_path_parameter_sources_do_not_mutate_broken_file(
+    parameter_source: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    render_module = importlib.import_module("grafix.api.render")
+    path = tmp_path / "broken.json"
+    original_payload = "{broken-json"
+    path.write_text(original_payload, encoding="utf-8")
+    monkeypatch.setattr(
+        render_module,
+        "default_param_store_path",
+        lambda *_args, **_kwargs: path,
+    )
+    source: str | Path = "saved" if parameter_source == "saved" else path
+
+    with RenderSession(lambda _t: (), parameter_source=source) as session:
+        assert session.param_store.load_diagnostics[0].code == "load_error"
+
+    assert path.read_text(encoding="utf-8") == original_payload
+    assert list(tmp_path.glob("broken.json.corrupt-*")) == []
+    assert not (tmp_path / "broken.session.json").exists()
 
 
 def test_render_session_rejects_unknown_parameter_source() -> None:
@@ -472,5 +732,5 @@ def test_render_session_text_resolution_uses_session_config(
         session.render(0.0)
 
     assert observed_font_dirs == [((font_dir).resolve(),)]
-    assert observed_configs == [fixed_config]
-    assert observed_configs[0] is fixed_config
+    assert observed_configs == [EvaluationConfig(font_dirs=fixed_config.font_dirs)]
+    assert type(observed_configs[0]) is EvaluationConfig

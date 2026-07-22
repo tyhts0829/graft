@@ -183,7 +183,9 @@ def test_core_does_not_depend_on_api_export_or_interactive() -> None:
         forbidden_prefixes=(
             "grafix.api",
             "grafix.export",
+            "grafix.file_io",
             "grafix.interactive",
+            "grafix.parameter_storage",
             "subprocess",
             "tempfile",
             "pyglet",
@@ -195,15 +197,40 @@ def test_core_does_not_depend_on_api_export_or_interactive() -> None:
 
 
 def test_core_does_not_implement_publish_or_path_allocation_policy() -> None:
-    """domain layer から fsync/link と capture path policy を排除する。"""
+    """domain layer から filesystem mutation と capture path policy を排除する。"""
 
     root = _repo_root()
     violations: list[str] = []
     core_root = root / "src" / "grafix" / "core"
     forbidden_names = {
         "VersionedPathAllocator",
+        "atomic_write_text",
         "publish_capture_generation",
         "capture_manifest_path_for",
+    }
+    forbidden_os_calls = {
+        "fsync",
+        "link",
+        "makedirs",
+        "mkdir",
+        "remove",
+        "removedirs",
+        "rename",
+        "replace",
+        "rmdir",
+        "symlink",
+        "unlink",
+    }
+    forbidden_mutating_methods = {
+        "chmod",
+        "hardlink_to",
+        "mkdir",
+        "rename",
+        "rmdir",
+        "symlink_to",
+        "unlink",
+        "write_bytes",
+        "write_text",
     }
     for path in _iter_py_files(core_root):
         tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -220,15 +247,120 @@ def test_core_does_not_implement_publish_or_path_allocation_policy() -> None:
             if (
                 isinstance(owner, ast.Name)
                 and owner.id == "os"
-                and node.func.attr in {"fsync", "link"}
+                and node.func.attr in forbidden_os_calls
             ):
                 violations.append(
                     f"{path.relative_to(root)}:{node.lineno}: os.{node.func.attr}"
+                )
+            if node.func.attr in forbidden_mutating_methods:
+                violations.append(
+                    f"{path.relative_to(root)}:{node.lineno}: .{node.func.attr}()"
                 )
 
     assert not violations, "core filesystem policy を検出:\n" + "\n".join(
         violations
     )
+
+
+def test_legacy_core_parameter_persistence_module_is_deleted() -> None:
+    root = _repo_root()
+    assert not (
+        root / "src" / "grafix" / "core" / "parameters" / "persistence.py"
+    ).exists()
+
+
+def test_runtime_config_core_is_pure_and_loader_imports_are_one_way() -> None:
+    """core value/parser へ YAML・探索・loader convenience を戻さない。"""
+
+    root = _repo_root()
+    core_path = root / "src" / "grafix" / "core" / "runtime_config.py"
+    loader_path = root / "src" / "grafix" / "runtime_config_loader.py"
+    assert loader_path.is_file()
+
+    tree = ast.parse(core_path.read_text(encoding="utf-8"))
+    forbidden_modules = {"yaml", "traceback", "importlib.resources"}
+    forbidden_calls = {
+        "cwd",
+        "home",
+        "is_file",
+        "read_bytes",
+        "read_text",
+    }
+    violations: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name in forbidden_modules or alias.name == "os":
+                    violations.append(f"{node.lineno}: import {alias.name}")
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if module in forbidden_modules or module == "importlib":
+                violations.append(f"{node.lineno}: from {module} import")
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in forbidden_calls
+        ):
+            violations.append(f"{node.lineno}: .{node.func.attr}()")
+    assert not violations, "runtime_config core I/O を検出:\n" + "\n".join(violations)
+
+    loader_names = {
+        "load_runtime_config",
+        "load_runtime_config_report",
+        "output_root_dir",
+        "runtime_config",
+        "runtime_config_report",
+        "runtime_config_with_fallback",
+    }
+    import_violations: list[str] = []
+    for path in _iter_py_files(root / "src" / "grafix"):
+        if path == loader_path:
+            continue
+        source_tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(source_tree):
+            if not (
+                isinstance(node, ast.ImportFrom)
+                and node.level == 0
+                and node.module == "grafix.core.runtime_config"
+            ):
+                continue
+            bad = sorted(alias.name for alias in node.names if alias.name in loader_names)
+            if bad:
+                import_violations.append(
+                    f"{path.relative_to(root)}:{node.lineno}: {', '.join(bad)}"
+                )
+    assert not import_violations, "旧 loader import を検出:\n" + "\n".join(
+        import_violations
+    )
+
+
+def test_low_level_evaluation_does_not_observe_full_runtime_config() -> None:
+    """DAG/font slice は RuntimeConfig value や ambient accessor を参照しない。"""
+
+    root = _repo_root()
+    paths = (
+        root / "src" / "grafix" / "core" / "evaluation_config.py",
+        root / "src" / "grafix" / "core" / "evaluation_context.py",
+        root / "src" / "grafix" / "core" / "font_resolver.py",
+        root / "src" / "grafix" / "core" / "font_resources.py",
+        root / "src" / "grafix" / "core" / "primitives" / "text.py",
+    )
+    forbidden = {"RuntimeConfig", "current_runtime_config"}
+    violations: list[str] = []
+    for path in paths:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Name) and node.id in forbidden:
+                violations.append(
+                    f"{path.relative_to(root)}:{node.lineno}: {node.id}"
+                )
+            elif isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    if alias.name in forbidden:
+                        violations.append(
+                            f"{path.relative_to(root)}:{node.lineno}: {alias.name}"
+                        )
+    assert not violations, "full RuntimeConfig 参照を検出:\n" + "\n".join(violations)
 
 
 def test_parameters_do_not_depend_on_operation_registries() -> None:

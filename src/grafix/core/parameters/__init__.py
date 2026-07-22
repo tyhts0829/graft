@@ -33,10 +33,9 @@ from .runtime import LoadProvenance, ParamRuntimeView, ParamStoreLoadDiagnostic
 from .reconcile import ReconcileOrphan, ReconcileOrphanReason
 from .reconcile_ops import list_reconcile_orphans, manual_migrate_orphan
 from .source import MidiFrameSnapshot, MidiValueSource, ValueSource
-from .memento import (
-    ParamStoreMemento,
-    capture_param_store_memento,
-    restore_param_store_memento,
+from .adjustment_snapshot import (
+    ParameterAdjustment,
+    ParameterAdjustmentSnapshot,
 )
 from .history import ParamStoreHistory, ParamSnapshotSlots, SnapshotSlot
 from .favorites import (
@@ -106,9 +105,8 @@ __all__ = [
     "list_reconcile_orphans",
     "manual_migrate_orphan",
     "ValueSource",
-    "ParamStoreMemento",
-    "capture_param_store_memento",
-    "restore_param_store_memento",
+    "ParameterAdjustment",
+    "ParameterAdjustmentSnapshot",
     "ParamStoreHistory",
     "ParamSnapshotSlots",
     "SnapshotSlot",

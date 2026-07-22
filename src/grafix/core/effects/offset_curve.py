@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import math
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from shapely.geometry.base import BaseGeometry  # type: ignore[import-not-found, import-untyped]
 
 from grafix.core.operation_authoring import effect
 from grafix.core.parameters.meta import ParamMeta
@@ -111,7 +115,7 @@ def _prepare_source_line(
     return np.concatenate((midpoint[None, :], core, midpoint[None, :]), axis=0)
 
 
-def _extract_line_arrays(geometry) -> list[np.ndarray]:
+def _extract_line_arrays(geometry: BaseGeometry) -> list[np.ndarray]:
     if bool(geometry.is_empty):
         return []
     geometry_type = str(geometry.geom_type)
@@ -219,7 +223,7 @@ def _fragment_key(points: np.ndarray, *, start_position: float) -> tuple[object,
 
 
 def _normalized_fragments(
-    geometry,
+    geometry: BaseGeometry,
     *,
     source: np.ndarray,
     closed: bool,

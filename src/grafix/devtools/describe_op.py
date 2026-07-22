@@ -5,9 +5,10 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Mapping
+
 from grafix.api.effects import E
+from grafix.api.operation_info import OperationInfo
 from grafix.api.primitives import G
-from grafix.core.operation_catalog import OperationCatalogEntry
 from grafix.core.parameters.meta import ParamMeta
 
 
@@ -40,7 +41,7 @@ def _print_mapping(title: str, values: Mapping[str, object]) -> None:
         print(f"  {name}: {value!r}")
 
 
-def _print_entry(entry: OperationCatalogEntry) -> None:
+def _print_entry(entry: OperationInfo) -> None:
     print(f"name: {entry.name}")
     print(f"kind: {entry.kind}")
     print(f"n_inputs: {entry.n_inputs}")
@@ -72,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
 
     try:
-        entry: OperationCatalogEntry
+        entry: OperationInfo
         if args.kind == "primitive":
             entry = G.describe(args.name)
         else:

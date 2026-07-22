@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import builtins
 import os
 import sys
 import time
@@ -12,12 +13,13 @@ import pytest
 
 from grafix.core.authoring_definitions import default_authoring_definitions
 from grafix.core.evaluation_context import EvaluationContext
+from grafix.core.evaluation_config import EvaluationConfig
 from grafix.core.geometry import Geometry
 from grafix.core.parameters import ParamStore, parameter_context
 from grafix.core.parameters.snapshot_ops import store_snapshot
 from grafix.core.parameters.ui_ops import update_state_from_ui
 from grafix.core.realize import realize
-from grafix.core.runtime_config import runtime_config
+from grafix.runtime_config_loader import runtime_config
 from grafix.interactive.runtime.mp_draw import DrawResult, MpDraw
 from grafix.interactive.runtime.source_reload import (
     ReloadedDraw,
@@ -157,7 +159,7 @@ def _realize_for_controller(
         context=EvaluationContext(
             catalog=controller.operation_catalog,
             quality="final",
-            config=runtime_config(),
+            config=EvaluationConfig(font_dirs=runtime_config().font_dirs),
         ),
     )
 
@@ -619,6 +621,124 @@ def test_failed_relative_helper_generation_rolls_back_and_cleans_modules(
         np.testing.assert_allclose(
             _realize_for_controller(controller, controller.draw(0.0)).coords[:, 0],
             [4.0, 5.0],
+        )
+        assert not any(
+            name == failed_package or name.startswith(f"{failed_package}.")
+            for name in sys.modules
+        )
+
+
+@pytest.mark.parametrize(
+    ("exception_name", "exception_type"),
+    [
+        ("KeyboardInterrupt", KeyboardInterrupt),
+        ("SystemExit", SystemExit),
+    ],
+)
+def test_initial_load_propagates_process_control_after_candidate_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    exception_name: str,
+    exception_type: type[BaseException],
+) -> None:
+    source_path = tmp_path / "sketch.py"
+    process_control = exception_type("stop")
+    monkeypatch.setattr(
+        builtins,
+        "_grafix_test_process_control",
+        process_control,
+        raising=False,
+    )
+    _write_source(
+        source_path,
+        "import builtins\n\n"
+        "raise builtins._grafix_test_process_control\n\n"
+        "def draw(t):\n"
+        "    return ()\n",
+    )
+    source_modules_before = {
+        name for name in sys.modules if name.startswith("_grafix_watch_")
+    }
+    meta_path_before = tuple(sys.meta_path)
+
+    with pytest.raises(exception_type, match="stop") as caught:
+        SourceReloadController(source_path)
+
+    assert type(caught.value).__name__ == exception_name
+    assert caught.value is process_control
+    assert tuple(sys.meta_path) == meta_path_before
+    assert {
+        name for name in sys.modules if name.startswith("_grafix_watch_")
+    } == source_modules_before
+
+
+def test_initial_load_preserves_ordinary_error_as_runtime_error_cause(
+    tmp_path: Path,
+) -> None:
+    source_path = tmp_path / "sketch.py"
+    _write_source(
+        source_path,
+        "raise ValueError('broken source')\n\ndef draw(t):\n    return ()\n",
+    )
+
+    with pytest.raises(RuntimeError, match="ValueError: broken source") as caught:
+        SourceReloadController(source_path)
+
+    cause = caught.value.__cause__
+    assert type(cause) is ValueError
+    assert str(cause) == "broken source"
+
+
+@pytest.mark.parametrize(
+    ("exception_name", "exception_type"),
+    [
+        ("KeyboardInterrupt", KeyboardInterrupt),
+        ("SystemExit", SystemExit),
+    ],
+)
+def test_subsequent_reload_propagates_process_control_and_keeps_last_good_generation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    exception_name: str,
+    exception_type: type[BaseException],
+) -> None:
+    source_path = tmp_path / "sketch.py"
+    _write_source(source_path, _primitive_source(x=4.0))
+
+    with SourceReloadController(source_path) as controller:
+        original_draw = controller.draw
+        original_definitions = controller.definitions
+        failed_package = f"_grafix_watch_{controller._namespace_token}_2"
+        meta_path_before = tuple(sys.meta_path)
+        process_control = exception_type("stop")
+        monkeypatch.setattr(
+            builtins,
+            "_grafix_test_process_control",
+            process_control,
+            raising=False,
+        )
+        _write_source(
+            source_path,
+            "import builtins\n\n"
+            "raise builtins._grafix_test_process_control\n\n"
+            "def draw(t):\n"
+            "    return ()\n",
+        )
+
+        with pytest.raises(exception_type, match="stop") as caught:
+            controller.poll(force=True)
+
+        assert type(caught.value).__name__ == exception_name
+        assert caught.value is process_control
+        assert tuple(sys.meta_path) == meta_path_before
+        assert controller.generation == 0
+        assert controller.draw is original_draw
+        assert controller.definitions is original_definitions
+        geometry = controller.draw(0.0)
+        assert isinstance(geometry, Geometry)
+        np.testing.assert_allclose(
+            _realize_for_controller(controller, geometry).coords[:, 0],
+            np.asarray([4.0, 5.0]),
         )
         assert not any(
             name == failed_package or name.startswith(f"{failed_package}.")

@@ -4,7 +4,6 @@ from typing import Any
 
 import pytest
 
-from grafix.core.parameters import history as history_module
 from grafix.core.parameters.collapsed_header import primitive_collapsed_header_key
 from grafix.core.parameters.effects import EffectStepTopology
 from grafix.core.parameters.frame_params import FrameParamRecord
@@ -102,12 +101,12 @@ def test_patch_transaction_avoids_full_capture_and_coalesces_one_key(
     key = _add_parameter(store)
     history = ParamStoreHistory(store, coalesce_seconds=0.5, clock=lambda: now[0])
 
-    def fail_full_capture(_store):
+    def fail_full_capture():
         raise AssertionError("single-key patch must not capture the full store")
 
     monkeypatch.setattr(
-        history_module,
-        "capture_param_store_memento",
+        store,
+        "capture_adjustment_snapshot",
         fail_full_capture,
     )
     with history.transaction(source="parameter_gui", patch=True):

@@ -8,7 +8,7 @@ from typing import Any, cast
 import pytest
 
 from grafix.export.output_paths import VersionedPathAllocator, gcode_layer_output_path
-from grafix.core.runtime_config import load_runtime_config
+from grafix.runtime_config_loader import load_runtime_config
 
 output_paths = importlib.import_module("grafix.export.output_paths")
 

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-import grafix.core.parameters.persistence as persistence_module
+import grafix.parameter_storage as storage_module
 from grafix.core.parameters import (
     KnownOperationSchemaSnapshot,
     ParamMeta,
@@ -25,13 +25,13 @@ from grafix.core.parameters.effects import EffectStepTopology
 from grafix.core.parameters.frame_params import FrameParamRecord
 from grafix.core.parameters.invariants import assert_invariants
 from grafix.core.parameters.merge_ops import merge_frame_params
-from grafix.core.parameters.persistence import (
-    finalize_param_store_session,
-    load_param_store,
-    load_param_store_with_recovery,
+from grafix.parameter_storage import (
+    finalize_parameter_session,
     param_store_recovery_path,
-    save_param_store,
-    save_param_store_recovery,
+    read_param_store,
+    recover_param_store_session,
+    write_param_store,
+    write_param_store_recovery,
 )
 from grafix.export.output_paths import default_param_store_path
 from grafix.core.parameters.snapshot_ops import store_snapshot
@@ -48,6 +48,10 @@ from grafix.core.parameters.variations import (
 def _isolate_config_discovery(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("HOME", str(tmp_path))
+
+
+def _read_store(path: Path) -> ParamStore:
+    return read_param_store(path).store
 
 
 def _make_draw_with_filename(filename: Path):
@@ -224,8 +228,12 @@ def test_param_store_file_roundtrip(tmp_path: Path):
     )
 
     path = tmp_path / "dummy.json"
-    save_param_store(store, path)
-    loaded = load_param_store(path)
+    write_param_store(store, path)
+    bytes_before = path.read_bytes()
+    mtime_before = path.stat().st_mtime_ns
+    entries_before = tuple(sorted(item.name for item in tmp_path.iterdir()))
+    read_result = read_param_store(path)
+    loaded = read_result.store
 
     snap = store_snapshot(loaded)
     meta, state, ordinal, _label = snap[key]
@@ -235,8 +243,23 @@ def test_param_store_file_roundtrip(tmp_path: Path):
     assert state.override is True
     assert state.ui_value == 0.5
     assert ordinal == 1
+    assert read_result.status == "loaded"
     assert loaded.load_provenance == "primary"
     assert_invariants(loaded)
+    assert path.read_bytes() == bytes_before
+    assert path.stat().st_mtime_ns == mtime_before
+    assert tuple(sorted(item.name for item in tmp_path.iterdir())) == entries_before
+
+
+def test_read_missing_param_store_is_non_mutating(tmp_path: Path) -> None:
+    path = tmp_path / "missing.json"
+    entries_before = tuple(tmp_path.iterdir())
+
+    result = read_param_store(path)
+
+    assert result.status == "missing"
+    assert store_snapshot(result.store) == {}
+    assert tuple(tmp_path.iterdir()) == entries_before
 
 
 def test_explicit_bool_uses_code_after_normal_load_and_ui_after_recovery() -> None:
@@ -533,8 +556,8 @@ def test_current_schema_roundtrip_preserves_effect_topology_and_gui_order(
     primary = tmp_path / "effect-order.json"
     recovery = param_store_recovery_path(primary)
 
-    save_param_store(store, primary)
-    save_param_store_recovery(store, recovery)
+    write_param_store(store, primary)
+    write_param_store_recovery(store, recovery)
 
     payload = json.loads(primary.read_text(encoding="utf-8"))
     assert payload["schema_version"] == PARAM_STORE_SCHEMA_VERSION
@@ -553,7 +576,7 @@ def test_current_schema_roundtrip_preserves_effect_topology_and_gui_order(
     ]
     assert [item["n_inputs"] for item in payload["effect_steps"]] == [1, 1]
 
-    for loaded in (load_param_store(primary), load_param_store(recovery)):
+    for loaded in (_read_store(primary), _read_store(recovery)):
         assert loaded._effects_ref().code_order("chain-order") == (
             ("scale", "scale-site"),
             ("rotate", "rotate-site"),
@@ -584,7 +607,7 @@ def test_non_current_schema_is_rejected_without_mutating_or_quarantining_file(
     path = tmp_path / "unsupported.json"
     path.write_text(original_payload, encoding="utf-8")
     with pytest.raises(UnsupportedParamStoreSchemaError):
-        load_param_store(path)
+        _read_store(path)
 
     assert path.read_text(encoding="utf-8") == original_payload
     assert list(tmp_path.glob("unsupported.json.corrupt-*")) == []
@@ -688,14 +711,14 @@ def test_future_schema_is_rejected_without_quarantine_or_empty_fallback(
     path.write_text(json.dumps(payload), encoding="utf-8")
 
     with pytest.raises(UnsupportedParamStoreSchemaError) as exc_info:
-        load_param_store(path)
+        _read_store(path)
 
     assert exc_info.value.found_version == PARAM_STORE_SCHEMA_VERSION + 1
     assert path.read_text(encoding="utf-8") == json.dumps(payload)
     assert list(tmp_path.glob("future.json.corrupt-*")) == []
 
 
-def test_partial_corruption_is_quarantined_before_invalid_entry_is_dropped(
+def test_partial_corruption_read_is_non_mutating_and_reports_dropped_entry(
     tmp_path: Path,
 ) -> None:
     store, key = _store_with_float_value(0.6)
@@ -710,21 +733,24 @@ def test_partial_corruption_is_quarantined_before_invalid_entry_is_dropped(
     original_payload = json.dumps(payload_obj)
     path = tmp_path / "partial.json"
     path.write_text(original_payload, encoding="utf-8")
+    mtime_before = path.stat().st_mtime_ns
+    entries_before = tuple(sorted(item.name for item in tmp_path.iterdir()))
 
-    loaded = load_param_store(path)
+    result = read_param_store(path)
+    loaded = result.store
 
     state = loaded.get_state(key)
     assert state is not None
     assert state.ui_value == pytest.approx(0.6)
-    assert loaded.load_provenance == "quarantined"
-    assert not path.exists()
-    backups = list(tmp_path.glob("partial.json.corrupt-*"))
-    assert len(backups) == 1
-    assert backups[0].read_text(encoding="utf-8") == original_payload
+    assert result.status == "partial"
+    assert loaded.load_provenance == "primary"
+    assert path.read_text(encoding="utf-8") == original_payload
+    assert path.stat().st_mtime_ns == mtime_before
+    assert tuple(sorted(item.name for item in tmp_path.iterdir())) == entries_before
     assert len(loaded.load_diagnostics) == 1
     diagnostic = loaded.load_diagnostics[0]
-    assert diagnostic.code == "partial_quarantine"
-    assert diagnostic.backup_path == backups[0]
+    assert diagnostic.code == "partial_read"
+    assert diagnostic.backup_path is None
     assert "states[1]" in diagnostic.details
 
 
@@ -744,7 +770,7 @@ def test_repaired_partial_primary_survives_restart_before_any_user_change(
     primary.write_text(json.dumps(payload_obj), encoding="utf-8")
     recovery = param_store_recovery_path(primary)
 
-    first_launch = load_param_store_with_recovery(primary)
+    first_launch = recover_param_store_session(primary)
 
     first_state = first_launch.get_state(key)
     assert first_state is not None
@@ -754,7 +780,7 @@ def test_repaired_partial_primary_survives_restart_before_any_user_change(
     assert recovery.is_file()
 
     # user operation/finalize を一度も行わず異常終了し、同じ path から再起動する。
-    restarted = load_param_store_with_recovery(primary)
+    restarted = recover_param_store_session(primary)
 
     restarted_state = restarted.get_state(key)
     assert restarted_state is not None
@@ -775,7 +801,7 @@ def test_missing_writer_ordinals_are_quarantined_and_recovered(
     primary.write_text(original_payload, encoding="utf-8")
     recovery = param_store_recovery_path(primary)
 
-    first_launch = load_param_store_with_recovery(primary)
+    first_launch = recover_param_store_session(primary)
 
     assert first_launch.get_state(key) is not None
     assert first_launch.get_ordinal(key.op, key.site_id) == 1
@@ -792,7 +818,7 @@ def test_missing_writer_ordinals_are_quarantined_and_recovered(
     assert f"{key.op}/{key.site_id}" in diagnostic.details
     assert "strict-chain" in diagnostic.details
 
-    restarted = load_param_store_with_recovery(primary)
+    restarted = recover_param_store_session(primary)
 
     assert restarted.get_state(key) is not None
     assert restarted.get_ordinal(key.op, key.site_id) == 1
@@ -823,16 +849,37 @@ def test_repaired_recovery_save_failure_rolls_quarantine_back_to_primary(
         raise OSError("recovery save failed")
 
     monkeypatch.setattr(
-        persistence_module,
-        "save_param_store_recovery",
+        storage_module,
+        "write_param_store_recovery",
         fail_recovery_save,
     )
 
     with pytest.raises(OSError, match="recovery save failed"):
-        load_param_store_with_recovery(primary)
+        recover_param_store_session(primary)
 
     assert primary.read_text(encoding="utf-8") == original_payload
     assert list(tmp_path.glob("partial.json.corrupt-*")) == []
+    assert not param_store_recovery_path(primary).exists()
+
+
+def test_quarantine_rename_failure_keeps_primary_unchanged(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    primary = tmp_path / "broken.json"
+    original_payload = "{broken-json"
+    primary.write_text(original_payload, encoding="utf-8")
+
+    def fail_replace(_source: Path, _target: Path) -> None:
+        raise OSError("quarantine unavailable")
+
+    monkeypatch.setattr(storage_module.os, "replace", fail_replace)
+
+    with pytest.raises(OSError, match="quarantine unavailable"):
+        recover_param_store_session(primary)
+
+    assert primary.read_text(encoding="utf-8") == original_payload
+    assert list(tmp_path.glob("broken.json.corrupt-*")) == []
     assert not param_store_recovery_path(primary).exists()
 
 
@@ -856,8 +903,8 @@ def test_param_store_file_roundtrip_includes_named_variations(tmp_path: Path) ->
     assert ok and error is None
 
     path = tmp_path / "store.json"
-    save_param_store(store, path)
-    loaded = load_param_store(path)
+    write_param_store(store, path)
+    loaded = _read_store(path)
 
     assert [variation.name for variation in list_variations(loaded)] == ["print candidate"]
     assert restore_variation(loaded, "print candidate") is True
@@ -896,21 +943,21 @@ def test_session_recovery_preserves_live_explicit_override_until_clean_exit(
 
     primary = tmp_path / "store.json"
     recovery = param_store_recovery_path(primary)
-    save_param_store_recovery(store, recovery)
+    write_param_store_recovery(store, recovery)
 
-    recovered = load_param_store_with_recovery(primary)
+    recovered = recover_param_store_session(primary)
     recovered_state = recovered.get_state(key)
     assert recovered_state is not None
     assert recovered_state.ui_value == pytest.approx(0.9)
     assert recovered_state.override is True
 
-    finalize_param_store_session(
+    finalize_parameter_session(
         recovered,
         primary,
         known_operations=KnownOperationSchemaSnapshot.empty(),
     )
     assert not recovery.exists()
-    clean_state = load_param_store(primary).get_state(key)
+    clean_state = _read_store(primary).get_state(key)
     assert clean_state is not None
     assert clean_state.ui_value == pytest.approx(0.9)
     assert clean_state.override is False
@@ -921,12 +968,12 @@ def test_newer_session_recovery_wins_over_primary(tmp_path: Path) -> None:
     recovery = param_store_recovery_path(primary)
     primary_store, key = _store_with_float_value(0.2)
     recovery_store, _ = _store_with_float_value(0.8)
-    save_param_store(primary_store, primary)
-    save_param_store_recovery(recovery_store, recovery)
+    write_param_store(primary_store, primary)
+    write_param_store_recovery(recovery_store, recovery)
     _set_mtime(primary, 1_700_000_000_000_000_000)
     _set_mtime(recovery, 1_700_000_001_000_000_000)
 
-    loaded = load_param_store_with_recovery(primary)
+    loaded = recover_param_store_session(primary)
 
     state = loaded.get_state(key)
     assert state is not None
@@ -953,12 +1000,12 @@ def test_session_recovery_includes_named_variations(tmp_path: Path) -> None:
         override=True,
     )
     assert ok and error is None
-    save_param_store(primary_store, primary)
-    save_param_store_recovery(recovery_store, recovery)
+    write_param_store(primary_store, primary)
+    write_param_store_recovery(recovery_store, recovery)
     _set_mtime(primary, 1_700_000_000_000_000_000)
     _set_mtime(recovery, 1_700_000_001_000_000_000)
 
-    loaded = load_param_store_with_recovery(primary)
+    loaded = recover_param_store_session(primary)
 
     assert [variation.name for variation in list_variations(loaded)] == ["live candidate"]
     assert restore_variation(loaded, "live candidate") is True
@@ -973,12 +1020,12 @@ def test_session_recovery_roundtrip_preserves_parameter_locks(tmp_path: Path) ->
     primary_store, _ = _store_with_float_value(0.2)
     recovery_store, key = _store_with_float_value(0.4)
     assert set_parameters_locked(recovery_store, [key], locked=True) == (key,)
-    save_param_store(primary_store, primary)
-    save_param_store_recovery(recovery_store, recovery)
+    write_param_store(primary_store, primary)
+    write_param_store_recovery(recovery_store, recovery)
     _set_mtime(primary, 1_700_000_000_000_000_000)
     _set_mtime(recovery, 1_700_000_001_000_000_000)
 
-    loaded = load_param_store_with_recovery(primary)
+    loaded = recover_param_store_session(primary)
 
     assert loaded.load_provenance == "session_recovery"
     assert is_parameter_locked(loaded, key) is True
@@ -992,12 +1039,12 @@ def test_primary_wins_when_it_is_newer_than_session_recovery(tmp_path: Path) -> 
     recovery = param_store_recovery_path(primary)
     primary_store, key = _store_with_float_value(0.2)
     recovery_store, _ = _store_with_float_value(0.8)
-    save_param_store(primary_store, primary)
-    save_param_store_recovery(recovery_store, recovery)
+    write_param_store(primary_store, primary)
+    write_param_store_recovery(recovery_store, recovery)
     _set_mtime(recovery, 1_700_000_000_000_000_000)
     _set_mtime(primary, 1_700_000_001_000_000_000)
 
-    loaded = load_param_store_with_recovery(primary)
+    loaded = recover_param_store_session(primary)
 
     state = loaded.get_state(key)
     assert state is not None
@@ -1012,14 +1059,14 @@ def test_future_schema_recovery_is_rejected_without_fallback(
     primary = tmp_path / "store.json"
     recovery = param_store_recovery_path(primary)
     primary_store, _key = _store_with_float_value(0.2)
-    save_param_store(primary_store, primary)
+    write_param_store(primary_store, primary)
     recovery_payload = {"schema_version": PARAM_STORE_SCHEMA_VERSION + 1}
     recovery.write_text(json.dumps(recovery_payload), encoding="utf-8")
     _set_mtime(primary, 1_700_000_000_000_000_000)
     _set_mtime(recovery, 1_700_000_001_000_000_000)
 
     with pytest.raises(UnsupportedParamStoreSchemaError):
-        load_param_store_with_recovery(primary)
+        recover_param_store_session(primary)
 
     assert primary.exists()
     assert recovery.read_text(encoding="utf-8") == json.dumps(recovery_payload)
@@ -1034,12 +1081,12 @@ def test_future_primary_is_not_overwritten_by_newer_compatible_recovery(
     future_payload = {"schema_version": PARAM_STORE_SCHEMA_VERSION + 1}
     primary.write_text(json.dumps(future_payload), encoding="utf-8")
     recovery_store, _key = _store_with_float_value(0.8)
-    save_param_store_recovery(recovery_store, recovery)
+    write_param_store_recovery(recovery_store, recovery)
     _set_mtime(primary, 1_700_000_000_000_000_000)
     _set_mtime(recovery, 1_700_000_001_000_000_000)
 
     with pytest.raises(UnsupportedParamStoreSchemaError):
-        load_param_store_with_recovery(primary)
+        recover_param_store_session(primary)
 
     assert primary.read_text(encoding="utf-8") == json.dumps(future_payload)
     assert recovery.exists()
@@ -1052,13 +1099,13 @@ def test_corrupt_newer_recovery_is_quarantined_and_primary_is_loaded(
     primary = tmp_path / "store.json"
     recovery = param_store_recovery_path(primary)
     primary_store, key = _store_with_float_value(0.3)
-    save_param_store(primary_store, primary)
+    write_param_store(primary_store, primary)
     recovery.write_text("{broken recovery", encoding="utf-8")
     _set_mtime(primary, 1_700_000_000_000_000_000)
     _set_mtime(recovery, 1_700_000_001_000_000_000)
 
     with caplog.at_level(logging.WARNING):
-        loaded = load_param_store_with_recovery(primary)
+        loaded = recover_param_store_session(primary)
 
     state = loaded.get_state(key)
     assert state is not None
@@ -1080,8 +1127,8 @@ def test_recovery_read_errors_are_not_misclassified_as_corruption(
     recovery = param_store_recovery_path(primary)
     primary_store, _key = _store_with_float_value(0.3)
     recovery_store, _ = _store_with_float_value(0.8)
-    save_param_store(primary_store, primary)
-    save_param_store_recovery(recovery_store, recovery)
+    write_param_store(primary_store, primary)
+    write_param_store_recovery(recovery_store, recovery)
     _set_mtime(primary, 1_700_000_000_000_000_000)
     _set_mtime(recovery, 1_700_000_001_000_000_000)
     original_read_text = Path.read_text
@@ -1094,7 +1141,7 @@ def test_recovery_read_errors_are_not_misclassified_as_corruption(
     monkeypatch.setattr(Path, "read_text", fail_recovery_read)
 
     with pytest.raises(PermissionError):
-        load_param_store_with_recovery(primary)
+        recover_param_store_session(primary)
     assert recovery.exists()
     assert list(tmp_path.glob("store.session.json.corrupt-*")) == []
 
@@ -1107,8 +1154,8 @@ def test_unexpected_recovery_decoder_error_propagates_without_quarantine(
     recovery = param_store_recovery_path(primary)
     primary_store, _key = _store_with_float_value(0.3)
     recovery_store, _ = _store_with_float_value(0.8)
-    save_param_store(primary_store, primary)
-    save_param_store_recovery(recovery_store, recovery)
+    write_param_store(primary_store, primary)
+    write_param_store_recovery(recovery_store, recovery)
     primary_before = primary.read_bytes()
     recovery_before = recovery.read_bytes()
     _set_mtime(primary, 1_700_000_000_000_000_000)
@@ -1118,13 +1165,13 @@ def test_unexpected_recovery_decoder_error_propagates_without_quarantine(
         raise RuntimeError("unexpected decoder failure")
 
     monkeypatch.setattr(
-        persistence_module,
+        storage_module,
         "loads_param_store_result",
         fail_decode,
     )
 
     with pytest.raises(RuntimeError, match="unexpected decoder failure"):
-        load_param_store_with_recovery(primary)
+        recover_param_store_session(primary)
 
     assert primary.read_bytes() == primary_before
     assert recovery.read_bytes() == recovery_before
@@ -1138,16 +1185,16 @@ def test_finalize_keeps_recovery_when_primary_save_fails(
     primary = tmp_path / "store.json"
     recovery = param_store_recovery_path(primary)
     store, _key = _store_with_float_value(0.8, explicit=True)
-    save_param_store_recovery(store, recovery)
+    write_param_store_recovery(store, recovery)
     recovery_before = recovery.read_bytes()
 
     def fail_primary_save(_store: ParamStore, _path: Path) -> None:
         raise OSError("primary unavailable")
 
-    monkeypatch.setattr(persistence_module, "save_param_store", fail_primary_save)
+    monkeypatch.setattr(storage_module, "write_param_store", fail_primary_save)
 
     with pytest.raises(OSError, match="primary unavailable"):
-        finalize_param_store_session(
+        finalize_parameter_session(
             store,
             primary,
             known_operations=KnownOperationSchemaSnapshot.empty(),
@@ -1156,47 +1203,84 @@ def test_finalize_keeps_recovery_when_primary_save_fails(
     assert not primary.exists()
 
 
-def test_save_param_store_keeps_loaded_group_before_first_frame(tmp_path: Path):
+def test_finalize_unlink_failure_keeps_both_files_and_retry_converges(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    primary = tmp_path / "store.json"
+    recovery = param_store_recovery_path(primary)
+    store, key = _store_with_float_value(0.8, explicit=True)
+    write_param_store_recovery(store, recovery)
+    recovery_before = recovery.read_bytes()
+    original_unlink = Path.unlink
+
+    def fail_recovery_unlink(self: Path, *, missing_ok: bool = False) -> None:
+        if self == recovery:
+            raise OSError("recovery unlink failed")
+        original_unlink(self, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", fail_recovery_unlink)
+    with pytest.raises(OSError, match="recovery unlink failed"):
+        finalize_parameter_session(
+            store,
+            primary,
+            known_operations=KnownOperationSchemaSnapshot.empty(),
+        )
+
+    assert read_param_store(primary).store.get_state(key) is not None
+    assert recovery.read_bytes() == recovery_before
+
+    monkeypatch.setattr(Path, "unlink", original_unlink)
+    finalize_parameter_session(
+        store,
+        primary,
+        known_operations=KnownOperationSchemaSnapshot.empty(),
+    )
+    assert primary.is_file()
+    assert not recovery.exists()
+
+
+def test_write_param_store_keeps_loaded_group_before_first_frame(tmp_path: Path):
     path = tmp_path / "store.json"
     original = ParamStore()
     key = _merge_float_group(original, op="custom", site_id="loaded")
-    save_param_store(original, path)
+    write_param_store(original, path)
 
-    loaded = load_param_store(path)
+    loaded = _read_store(path)
     assert key in store_snapshot(loaded)
 
     # run 開始後、1 frame も成功しないまま終了した場合を再現する。
-    save_param_store(loaded, path)
+    write_param_store(loaded, path)
 
-    assert key in store_snapshot(load_param_store(path))
+    assert key in store_snapshot(_read_store(path))
 
 
-def test_save_param_store_keeps_loaded_group_hidden_by_condition(tmp_path: Path):
+def test_write_param_store_keeps_loaded_group_hidden_by_condition(tmp_path: Path):
     path = tmp_path / "store.json"
     original = ParamStore()
     visible_key = _merge_float_group(original, op="branch", site_id="visible")
     hidden_key = _merge_float_group(original, op="branch", site_id="hidden")
-    save_param_store(original, path)
+    write_param_store(original, path)
 
-    loaded = load_param_store(path)
+    loaded = _read_store(path)
     # この run では条件分岐の片側だけが実行された状態。
     _merge_float_group(loaded, op="branch", site_id="visible")
-    save_param_store(loaded, path)
+    write_param_store(loaded, path)
 
-    reloaded = load_param_store(path)
+    reloaded = _read_store(path)
     snapshot = store_snapshot(reloaded)
     assert visible_key in snapshot
     assert hidden_key in snapshot
 
 
-def test_save_param_store_keeps_loaded_groups_after_failed_frame(tmp_path: Path):
+def test_write_param_store_keeps_loaded_groups_after_failed_frame(tmp_path: Path):
     path = tmp_path / "store.json"
     original = ParamStore()
     reached_key = _merge_float_group(original, op="failed", site_id="reached")
     later_key = _merge_float_group(original, op="failed", site_id="later")
-    save_param_store(original, path)
+    write_param_store(original, path)
 
-    loaded = load_param_store(path)
+    loaded = _read_store(path)
     with pytest.raises(RuntimeError, match="draw failed"):
         with parameter_context(loaded):
             frame_params = current_frame_params()
@@ -1211,36 +1295,58 @@ def test_save_param_store_keeps_loaded_groups_after_failed_frame(tmp_path: Path)
             )
             # `later_key` を評価する前に draw が失敗した状態。
             raise RuntimeError("draw failed")
-    save_param_store(loaded, path)
+    write_param_store(loaded, path)
 
-    snapshot = store_snapshot(load_param_store(path))
+    snapshot = store_snapshot(_read_store(path))
     assert reached_key in snapshot
     assert later_key in snapshot
 
 
-def test_load_param_store_backs_up_broken_json(
+def test_broken_json_read_is_non_mutating(
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,
 ):
     path = tmp_path / "broken.json"
     broken_payload = "{broken-json"
     path.write_text(broken_payload, encoding="utf-8")
+    mtime_before = path.stat().st_mtime_ns
+    entries_before = tuple(sorted(item.name for item in tmp_path.iterdir()))
 
     with caplog.at_level(logging.WARNING):
-        loaded = load_param_store(path)
+        result = read_param_store(path)
+    loaded = result.store
 
     assert store_snapshot(loaded) == {}
     assert_invariants(loaded)
+    assert result.status == "invalid"
+    assert isinstance(result.error, json.JSONDecodeError)
+    assert loaded.load_provenance == "primary"
+    assert loaded.load_diagnostics[0].code == "load_error"
+    assert path.read_text(encoding="utf-8") == broken_payload
+    assert path.stat().st_mtime_ns == mtime_before
+    assert tuple(sorted(item.name for item in tmp_path.iterdir())) == entries_before
+    assert "非変更で読み込みました" in caplog.text
+
+
+def test_explicit_recovery_quarantines_broken_primary(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "broken.json"
+    broken_payload = "{broken-json"
+    path.write_text(broken_payload, encoding="utf-8")
+
+    loaded = recover_param_store_session(path)
+
+    assert store_snapshot(loaded) == {}
     assert loaded.load_provenance == "quarantined"
     assert loaded.load_diagnostics[0].code == "load_quarantine"
     assert not path.exists()
     backups = list(tmp_path.glob("broken.json.corrupt-*"))
     assert len(backups) == 1
     assert backups[0].read_text(encoding="utf-8") == broken_payload
-    assert "壊れた ParamStore を退避しました" in caplog.text
 
 
-def test_load_param_store_does_not_hide_read_errors(
+def test_read_param_store_does_not_hide_read_errors(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1252,7 +1358,7 @@ def test_load_param_store_does_not_hide_read_errors(
 
     monkeypatch.setattr(Path, "read_text", fail_read_text)
     with pytest.raises(PermissionError):
-        load_param_store(path)
+        _read_store(path)
 
 
 def test_unexpected_primary_decoder_error_propagates_without_quarantine(
@@ -1261,26 +1367,26 @@ def test_unexpected_primary_decoder_error_propagates_without_quarantine(
 ) -> None:
     path = tmp_path / "store.json"
     store, _key = _store_with_float_value(0.3)
-    save_param_store(store, path)
+    write_param_store(store, path)
     original = path.read_bytes()
 
     def fail_decode(*_args: object, **_kwargs: object) -> None:
         raise RuntimeError("unexpected decoder failure")
 
     monkeypatch.setattr(
-        persistence_module,
+        storage_module,
         "loads_param_store_result",
         fail_decode,
     )
 
     with pytest.raises(RuntimeError, match="unexpected decoder failure"):
-        load_param_store(path)
+        _read_store(path)
 
     assert path.read_bytes() == original
     assert list(tmp_path.glob("store.json.corrupt-*")) == []
 
 
-def test_save_param_store_keeps_existing_file_when_replace_fails(
+def test_write_param_store_keeps_existing_file_when_replace_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1295,7 +1401,7 @@ def test_save_param_store_keeps_existing_file_when_replace_fails(
 
     monkeypatch.setattr("grafix.file_io.os.replace", fail_replace)
     with pytest.raises(OSError, match="replace failed"):
-        save_param_store(ParamStore(), path)
+        write_param_store(ParamStore(), path)
 
     assert path.read_text(encoding="utf-8") == "original\n"
     assert list(tmp_path.glob(".store.json.*.tmp")) == []
@@ -1328,7 +1434,7 @@ def test_direct_save_does_not_prune_unknown_argument(tmp_path: Path) -> None:
     )
 
     path = tmp_path / "store.json"
-    save_param_store(store, path)
+    write_param_store(store, path)
 
     payload = json.loads(path.read_text(encoding="utf-8"))
     for section in ["states", "meta", "explicit"]:
@@ -1365,7 +1471,7 @@ def test_session_finalize_prunes_with_injected_schema_snapshot(tmp_path: Path) -
     )
 
     path = tmp_path / "store.json"
-    finalize_param_store_session(
+    finalize_parameter_session(
         store,
         path,
         known_operations=KnownOperationSchemaSnapshot({"line": frozenset({"length"})}),

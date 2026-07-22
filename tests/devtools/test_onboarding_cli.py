@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from grafix.__main__ import main as grafix_main
-from grafix.core.runtime_config import load_runtime_config
+from grafix.runtime_config_loader import load_runtime_config
 from grafix.devtools.onboarding import init_project, list_examples
 
 
@@ -73,7 +73,7 @@ def test_init_config_paths_resolve_and_build_explicit_authoring_catalog(
             "from grafix.core.authoring_loader import load_config_authoring_definitions",
             "from grafix.core.operation_catalog import bind_operation_catalog",
             "from grafix.core.preset_catalog import bind_preset_catalog",
-            "from grafix.core.runtime_config import load_runtime_config",
+            "from grafix.runtime_config_loader import load_runtime_config",
             f"config = load_runtime_config({str(config_path)!r})",
             "definitions = load_config_authoring_definitions(config)",
             "with bind_operation_catalog(definitions.operations), bind_preset_catalog(definitions.presets):",

@@ -28,7 +28,7 @@ from grafix.core.parameters import ParamStore
 from grafix.core.pipeline import RealizedLayer
 from grafix.core.realize import GeometryCacheKey
 from grafix.core.realized_geometry import RealizedGeometry
-from grafix.core.runtime_config import runtime_config
+from grafix.runtime_config_loader import runtime_config
 from grafix.interactive.runtime import export_job_system as export_module
 from grafix.interactive.runtime.export_job_system import (
     CaptureExportSnapshot,

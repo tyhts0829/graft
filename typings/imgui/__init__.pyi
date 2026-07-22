@@ -1,6 +1,6 @@
 """Grafix が利用する pyimgui 2 API の型定義。"""
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from types import TracebackType
 from typing import Any, Self
 
@@ -9,7 +9,7 @@ class Vec2:
     y: float
 
     def __getitem__(self, index: int) -> float: ...
-    def __iter__(self): ...
+    def __iter__(self) -> Iterator[float]: ...
 
 
 Vec2Value = Vec2 | tuple[float, float]

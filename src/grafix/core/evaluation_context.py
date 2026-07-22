@@ -16,10 +16,10 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, TypeVar, cast
 
+from grafix.core.evaluation_config import EvaluationConfig
 from grafix.core.operation_catalog import OperationCatalog
 from grafix.core.operation_declaration import EvaluationOpRef
 from grafix.core.preview_quality import PreviewQuality
-from grafix.core.runtime_config import RuntimeConfig
 from grafix.core.value_validation import canonical_immutable_value
 
 if TYPE_CHECKING:
@@ -58,7 +58,7 @@ def _frame(tag: bytes, *parts: bytes) -> bytes:
 
 
 def _canonical_context_value(value: object) -> bytes:
-    """RuntimeConfig の閉じた値集合を型付き bytes にする。"""
+    """EvaluationConfig の閉じた値集合を型付き bytes にする。"""
 
     value_type = type(value)
     if value is None:
@@ -84,9 +84,6 @@ def _canonical_context_value(value: object) -> bytes:
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         parts = [type(value).__qualname__.encode("utf-8")]
         for item in dataclasses.fields(value):
-            # config_path は effective value の出典であり評価値ではない。
-            if type(value) is RuntimeConfig and item.name == "config_path":
-                continue
             parts.append(
                 _frame(
                     b"field",
@@ -143,14 +140,14 @@ EMPTY_EXTERNAL_DEPENDENCIES_FINGERPRINT = ExternalDependenciesFingerprint(
 def evaluation_fingerprint(
     *,
     quality: PreviewQuality,
-    config: RuntimeConfig,
+    config: EvaluationConfig,
 ) -> EvaluationFingerprint:
     """quality と effective config から決定的 fingerprint を作る。"""
 
     if quality not in {"draft", "final"}:
         raise ValueError(f"unknown preview quality: {quality!r}")
-    if type(config) is not RuntimeConfig:
-        raise TypeError("config は exact RuntimeConfig である必要があります")
+    if type(config) is not EvaluationConfig:
+        raise TypeError("config は exact EvaluationConfig である必要があります")
     payload = _frame(
         b"grafix.evaluation-context.v1",
         quality.encode("ascii"),
@@ -165,7 +162,7 @@ class EvaluationContext:
 
     catalog: OperationCatalog
     quality: PreviewQuality
-    config: RuntimeConfig
+    config: EvaluationConfig
     fingerprint: EvaluationFingerprint = field(init=False)
 
     def __post_init__(self) -> None:
@@ -173,8 +170,8 @@ class EvaluationContext:
             raise TypeError("catalog は exact OperationCatalog である必要があります")
         if self.quality not in {"draft", "final"}:
             raise ValueError(f"unknown preview quality: {self.quality!r}")
-        if type(self.config) is not RuntimeConfig:
-            raise TypeError("config は exact RuntimeConfig である必要があります")
+        if type(self.config) is not EvaluationConfig:
+            raise TypeError("config は exact EvaluationConfig である必要があります")
         object.__setattr__(
             self,
             "fingerprint",
@@ -470,6 +467,7 @@ __all__ = [
     "EMPTY_EXTERNAL_DEPENDENCIES_FINGERPRINT",
     "ExternalDependencyLease",
     "ExternalDependencySnapshot",
+    "EvaluationConfig",
     "EvaluationContext",
     "EvaluationFingerprint",
     "EvaluationResources",

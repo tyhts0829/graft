@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from shapely.geometry.base import BaseGeometry  # type: ignore[import-not-found, import-untyped]
 
 from grafix.core.operation_authoring import effect
 from grafix.core.realized_geometry import GeomTuple
@@ -47,7 +50,11 @@ _AUTO_CLOSE_THRESHOLD = 1e-3
 _QUAD_SEGS_MAX = 256
 
 
-def _extract_vertices_2d(buffered, *, which: str) -> list[np.ndarray]:
+def _extract_vertices_2d(
+    buffered: BaseGeometry,
+    *,
+    which: str,
+) -> list[np.ndarray]:
     """Shapely geometry から輪郭頂点列（Nx2）を抽出して返す。"""
     if buffered.is_empty:
         return []

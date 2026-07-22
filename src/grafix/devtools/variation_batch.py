@@ -8,7 +8,8 @@ from pathlib import Path
 
 from grafix.api.render import ExportFormat, RenderOptions, RenderSession
 from grafix.api.variation_batch import render_variation_batch
-from grafix.core.runtime_config import bind_runtime_config, load_runtime_config
+from grafix.core.runtime_config import bind_runtime_config
+from grafix.runtime_config_loader import load_runtime_config
 from grafix.devtools.export_frame import _parameter_source, _resolve_callable
 
 

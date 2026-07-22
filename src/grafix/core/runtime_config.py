@@ -1,46 +1,19 @@
-# どこで: `src/grafix/core/runtime_config.py`。
-# 何を: config.yaml による実行時設定（探索・ロード・検証）を提供する。
-# なぜ: PyPI 環境でも、外部リソースや出力先をユーザーが指定できるようにするため。
-
-"""実行時設定（`config.yaml`）の探索・ロードを担当する。
-
-このモジュールは、以下を提供する:
-
-- `config.yaml` を「同梱デフォルト → ユーザー設定（任意）」の順に適用して `RuntimeConfig` を構築
-- 探索パス（CWD / HOME）と、loader への明示指定の両方に対応
-- merge 前の unknown key 検証と、値・range・MIDI mode の strict validation
-- ユーザー config 内の相対 path を config file の親基準に解決
-
-入出力 / 副作用
-----------------
-- 入力: 同梱 `grafix/resource/default_config.yaml`、任意でユーザーの `config.yaml`
-- 出力: `RuntimeConfig`（不変データ）
-- 副作用: ファイル読み取り、YAML パース
-
-実装メモ
---------
-- ユーザー設定は mapping を再帰的にマージし、指定された leaf だけを上書きする。
-"""
+"""実行時設定の immutable value、binding、pure mapping validation。"""
 
 from __future__ import annotations
 
 import difflib
 import math
-import os
-import traceback
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
-from importlib import resources
 from numbers import Real
 from pathlib import Path
 from typing import Any
 
 from grafix.core.gcode_params import GCodeParams
 
-
-# parameter_gui の設定が省略された場合のフォールバック値。
 _PARAMETER_GUI_FONT_SIZE_BASE_PX_DEFAULT = 14.0
 _PARAMETER_GUI_SHORTCUT_ACTIONS = (
     "play_pause",
@@ -56,24 +29,16 @@ _PARAMETER_GUI_SHORTCUT_ACTIONS = (
     "undo",
     "redo",
 )
-_PACKAGED_CONFIG_SOURCE = "grafix/resource/default_config.yaml"
 _MIDI_MODES = ("7bit", "14bit")
-_PATH_KEYS = frozenset(
-    {
-        "paths.output_dir",
-        "paths.sketch_dir",
-        "paths.preset_module_dirs",
-        "paths.font_dirs",
-    }
-)
-_PATH_LIST_KEYS = frozenset({"paths.preset_module_dirs", "paths.font_dirs"})
 
 
 @dataclass(frozen=True, slots=True)
 class RuntimeConfig:
     """grafix の実行時設定。
 
-    `runtime_config()` が `config.yaml` を解釈して構築する不変オブジェクト。
+    `runtime_config_from_mapping()` が検証済み mapping から構築する不変オブジェクト。
+    YAML の読み込みと探索は application layer の
+    `grafix.runtime_config_loader` が担当する。
     実行時に参照される「ファイルパス」「UI の配置」「書き出し設定」などを集約する。
 
     Attributes
@@ -183,32 +148,12 @@ _CURRENT_RUNTIME_CONFIG: ContextVar[RuntimeConfig | None] = ContextVar(
 )
 
 
-def _explicit_config_path(path: str | Path | None) -> Path | None:
-    """loader の明示 config path を検証・絶対化する。"""
-
-    if path is None:
-        return None
-    if type(path) is str:
-        candidate = Path(path)
-    elif isinstance(path, Path):
-        candidate = path
-    else:
-        raise TypeError("config path は str、Path、None のいずれかである必要があります")
-    return candidate.expanduser().resolve(strict=False)
-
-
 @contextmanager
 def bind_runtime_config(config: RuntimeConfig) -> Iterator[None]:
-    """評価中の内部 consumer に確定済み config を束縛する。
+    """authoring scope に確定済みの実行時設定を束縛する。"""
 
-    ``runtime_config()`` の探索規則は変更しない。font/preset のように評価処理から
-    呼ばれる内部 consumer だけが :func:`current_runtime_config` を通じてこの値を参照する。
-    ``ContextVar`` の token は評価呼び出しの終了時に必ず復元されるため、session の
-    close 順や thread 間で config が干渉しない。
-    """
-
-    if not isinstance(config, RuntimeConfig):
-        raise TypeError("config は RuntimeConfig である必要があります")
+    if type(config) is not RuntimeConfig:
+        raise TypeError("config は exact RuntimeConfig である必要があります")
     token = _CURRENT_RUNTIME_CONFIG.set(config)
     try:
         yield
@@ -217,34 +162,23 @@ def bind_runtime_config(config: RuntimeConfig) -> Iterator[None]:
 
 
 def current_runtime_config() -> RuntimeConfig:
-    """現在の評価 config、未束縛なら default discovery の config を返す。"""
+    """現在の authoring scope に束縛された設定を返す。"""
 
     config = _CURRENT_RUNTIME_CONFIG.get()
-    return runtime_config() if config is None else config
+    if config is None:
+        raise RuntimeError("RuntimeConfig が現在の authoring scope に束縛されていません")
+    return config
 
 
-def _default_config_candidates() -> tuple[Path, ...]:
-    """既定の `config.yaml` 探索候補を返す。
+@contextmanager
+def without_runtime_config() -> Iterator[None]:
+    """内側の scope から outer authoring config を観測できなくする。"""
 
-    探索順（先勝ち）:
-    - `./.grafix/config.yaml`
-    - `~/.config/grafix/config.yaml`
-    """
-
-    cwd = Path.cwd()
-    home = Path.home()
-    return (
-        cwd / ".grafix" / "config.yaml",
-        home / ".config" / "grafix" / "config.yaml",
-    )
-
-
-def _expand_path_text(text: str) -> str:
-    """パス文字列内の `~` と環境変数を展開して返す。"""
-
-    if type(text) is not str:
-        raise TypeError("path text は str である必要があります")
-    return os.path.expandvars(os.path.expanduser(text))
+    token = _CURRENT_RUNTIME_CONFIG.set(None)
+    try:
+        yield
+    finally:
+        _CURRENT_RUNTIME_CONFIG.reset(token)
 
 
 def _as_optional_path(value: Any) -> Path | None:
@@ -257,7 +191,7 @@ def _as_optional_path(value: Any) -> Path | None:
     s = value.strip()
     if not s:
         return None
-    return Path(_expand_path_text(s))
+    return Path(s)
 
 
 def _as_optional_str(value: Any) -> str | None:
@@ -383,19 +317,13 @@ def _as_midi_inputs(value: Any) -> list[tuple[str, str]]:
         port_name = item.get("port_name")
         mode = item.get("mode")
         if port_name is None or mode is None:
-            raise RuntimeError(
-                f"midi.inputs[{index}] に port_name と mode が必要です"
-            )
+            raise RuntimeError(f"midi.inputs[{index}] に port_name と mode が必要です")
         if not isinstance(port_name, str) or not isinstance(mode, str):
-            raise RuntimeError(
-                f"midi.inputs[{index}].port_name/mode は文字列である必要があります"
-            )
+            raise RuntimeError(f"midi.inputs[{index}].port_name/mode は文字列である必要があります")
         port_s = port_name.strip()
         mode_s = mode.strip()
         if not port_s or not mode_s:
-            raise RuntimeError(
-                f"midi.inputs[{index}].port_name/mode に空文字は使えません"
-            )
+            raise RuntimeError(f"midi.inputs[{index}].port_name/mode に空文字は使えません")
         if mode_s not in _MIDI_MODES:
             raise ValueError(
                 f"midi.inputs[{index}].mode は {_MIDI_MODES} のいずれかである必要があります"
@@ -403,70 +331,6 @@ def _as_midi_inputs(value: Any) -> list[tuple[str, str]]:
             )
         out.append((port_s, mode_s))
     return out
-
-
-def _load_yaml_text(text: str, *, source: str) -> dict[str, Any]:
-    """YAML テキストを読み、トップレベル mapping を dict として返す。
-
-    Parameters
-    ----------
-    text:
-        YAML 本文。
-    source:
-        エラーメッセージ用の識別子（パス等）。
-
-    Returns
-    -------
-    dict[str, Any]
-        YAML のトップレベル mapping。空（`null`）なら `{}`。
-    """
-
-    try:
-        import yaml  # type: ignore[import-untyped]
-    except Exception as exc:  # pragma: no cover
-        raise RuntimeError(f"PyYAML を import できません: {exc}") from exc
-
-    try:
-        data = yaml.safe_load(text)
-    except Exception as exc:
-        raise RuntimeError(f"config.yaml の読み込みに失敗しました: source={source}") from exc
-
-    if data is None:
-        return {}
-    if not isinstance(data, dict):
-        raise RuntimeError(f"config.yaml は mapping である必要があります: source={source}")
-
-    return dict(data)
-
-
-def _load_yaml_config(path: Path) -> dict[str, Any]:
-    """UTF-8 の YAML ファイルを読み、dict を返す。"""
-
-    text = path.read_text(encoding="utf-8")
-    return _load_yaml_text(text, source=str(path))
-
-
-def _load_packaged_default_config() -> dict[str, Any]:
-    """同梱デフォルト config をロードして dict を返す。
-
-    パッケージ配布（wheel/sdist）でも動作するように、`importlib.resources` を使って
-    `grafix/resource/default_config.yaml` を読み込む。
-    """
-
-    try:
-        blob = (
-            resources.files("grafix")
-            .joinpath("resource")
-            .joinpath("default_config.yaml")
-            .read_text(encoding="utf-8")
-        )
-    except Exception as exc:  # pragma: no cover
-        raise RuntimeError(
-            "同梱 default_config.yaml の読み込みに失敗しました"
-            "（パッケージ配布物の package-data を確認してください）"
-        ) from exc
-
-    return _load_yaml_text(blob, source="grafix/resource/default_config.yaml")
 
 
 def _unknown_key_message(
@@ -544,117 +408,6 @@ def _validate_known_key_tree(
             _validate_midi_item_keys(value, source=source)
 
 
-def _resolve_path_text(value: Any, *, base_dir: Path, key: str) -> str | None:
-    """config path 文字列を ``base_dir`` 基準の絶対 path にする。"""
-
-    if value is None:
-        return None
-    if type(value) is not str:
-        raise RuntimeError(f"{key} は path 文字列である必要があります: got={value!r}")
-    text = value.strip()
-    if not text:
-        return ""
-    path = Path(_expand_path_text(text))
-    if not path.is_absolute():
-        path = base_dir / path
-    return str(path.resolve(strict=False))
-
-
-def _resolve_path_list(value: Any, *, base_dir: Path, key: str) -> list[str]:
-    """config path 配列を ``base_dir`` 基準の絶対 path 配列にする。"""
-
-    if not isinstance(value, list):
-        raise RuntimeError(f"{key} は path 文字列の配列である必要があります: got={value!r}")
-
-    resolved: list[str] = []
-    for index, item in enumerate(value):
-        path = _resolve_path_text(item, base_dir=base_dir, key=f"{key}[{index}]")
-        if not path:
-            raise RuntimeError(f"{key}[{index}] は空でない path 文字列である必要があります")
-        resolved.append(path)
-    return resolved
-
-
-def _resolve_layer_paths(
-    payload: dict[str, Any],
-    *,
-    base_dir: Path,
-    parent: tuple[str, ...] = (),
-) -> dict[str, Any]:
-    """1 config file に含まれる path leaf だけを絶対化する。"""
-
-    resolved: dict[str, Any] = {}
-    for key, value in payload.items():
-        path = (*parent, str(key))
-        dotted = ".".join(path)
-        if dotted in _PATH_LIST_KEYS:
-            resolved[key] = _resolve_path_list(value, base_dir=base_dir, key=dotted)
-        elif dotted in _PATH_KEYS:
-            resolved[key] = _resolve_path_text(value, base_dir=base_dir, key=dotted)
-        elif isinstance(value, dict):
-            resolved[key] = _resolve_layer_paths(value, base_dir=base_dir, parent=path)
-        else:
-            resolved[key] = value
-    return resolved
-
-
-def _flatten_config_leaves(
-    payload: dict[str, Any],
-    *,
-    parent: tuple[str, ...] = (),
-) -> dict[str, Any]:
-    """nested config mapping を dotted leaf mapping にする。"""
-
-    leaves: dict[str, Any] = {}
-    for key, value in payload.items():
-        path = (*parent, str(key))
-        if isinstance(value, dict):
-            leaves.update(_flatten_config_leaves(value, parent=path))
-        else:
-            leaves[".".join(path)] = value
-    return leaves
-
-
-def _freeze_report_value(value: Any) -> object:
-    """report が mutable YAML 値を保持しないようにする。"""
-
-    if isinstance(value, dict):
-        return tuple((str(key), _freeze_report_value(item)) for key, item in value.items())
-    if isinstance(value, list):
-        return tuple(_freeze_report_value(item) for item in value)
-    return value
-
-
-def _resolved_report_path(
-    *,
-    key: str,
-    value: Any,
-    base_dir: Path,
-) -> Path | tuple[Path, ...] | None:
-    """raw effective path を show 用に絶対化する。"""
-
-    if key in _PATH_LIST_KEYS:
-        return tuple(Path(path) for path in _resolve_path_list(value, base_dir=base_dir, key=key))
-    resolved = _resolve_path_text(value, base_dir=base_dir, key=key)
-    return None if not resolved else Path(resolved)
-
-
-def _merge_mappings(
-    base: dict[str, Any],
-    override: dict[str, Any],
-) -> dict[str, Any]:
-    """``override`` で指定された leaf だけを再帰的に上書きする。"""
-
-    merged = dict(base)
-    for key, value in override.items():
-        current = merged.get(key)
-        if isinstance(current, dict) and isinstance(value, dict):
-            merged[key] = _merge_mappings(current, value)
-        else:
-            merged[key] = value
-    return merged
-
-
 def _validate_version(payload: dict[str, Any]) -> None:
     """設定 schema version を検証する。"""
 
@@ -723,8 +476,7 @@ def _parse_ui_section(payload: dict[str, Any]) -> _UiSection:
         )
     if window_size[0] <= 0 or window_size[1] <= 0:
         raise ValueError(
-            "ui.parameter_gui.window_size は正の整数ペアである必要があります"
-            f": got={window_size}"
+            f"ui.parameter_gui.window_size は正の整数ペアである必要があります: got={window_size}"
         )
 
     font_size = _as_float(
@@ -735,8 +487,7 @@ def _parse_ui_section(payload: dict[str, Any]) -> _UiSection:
         font_size = float(_PARAMETER_GUI_FONT_SIZE_BASE_PX_DEFAULT)
     if font_size <= 0.0:
         raise ValueError(
-            "ui.parameter_gui.font_size_base_px は正の値である必要があります"
-            f": got={font_size}"
+            f"ui.parameter_gui.font_size_base_px は正の値である必要があります: got={font_size}"
         )
 
     shortcut_values = _as_mapping(
@@ -799,25 +550,19 @@ def _parse_gcode_section(gcode: dict[str, Any]) -> GCodeParams:
     travel_feed = _as_float(gcode.get("travel_feed"), key="export.gcode.travel_feed")
     if travel_feed is None:
         raise RuntimeError(
-            "export.gcode.travel_feed が未設定です"
-            "（同梱 default_config.yaml を確認してください）"
+            "export.gcode.travel_feed が未設定です（同梱 default_config.yaml を確認してください）"
         )
     draw_feed = _as_float(gcode.get("draw_feed"), key="export.gcode.draw_feed")
     if draw_feed is None:
         raise RuntimeError(
-            "export.gcode.draw_feed が未設定です"
-            "（同梱 default_config.yaml を確認してください）"
+            "export.gcode.draw_feed が未設定です（同梱 default_config.yaml を確認してください）"
         )
     if travel_feed <= 0.0:
         raise ValueError(
-            "export.gcode.travel_feed は正の値である必要があります"
-            f": got={travel_feed}"
+            f"export.gcode.travel_feed は正の値である必要があります: got={travel_feed}"
         )
     if draw_feed <= 0.0:
-        raise ValueError(
-            "export.gcode.draw_feed は正の値である必要があります"
-            f": got={draw_feed}"
-        )
+        raise ValueError(f"export.gcode.draw_feed は正の値である必要があります: got={draw_feed}")
     z_up = _as_float(gcode.get("z_up"), key="export.gcode.z_up")
     if z_up is None:
         raise RuntimeError(
@@ -857,8 +602,7 @@ def _parse_gcode_section(gcode: dict[str, Any]) -> GCodeParams:
         )
     if paper_margin_mm < 0.0:
         raise ValueError(
-            "export.gcode.paper_margin_mm は 0 以上である必要があります"
-            f": got={paper_margin_mm}"
+            f"export.gcode.paper_margin_mm は 0 以上である必要があります: got={paper_margin_mm}"
         )
 
     bridge_draw_distance = _as_float(
@@ -877,8 +621,7 @@ def _parse_gcode_section(gcode: dict[str, Any]) -> GCodeParams:
     )
     if bed_x_range is not None and bed_x_range[0] >= bed_x_range[1]:
         raise ValueError(
-            "export.gcode.bed_x_range は [min, max] の昇順である必要があります"
-            f": got={bed_x_range}"
+            f"export.gcode.bed_x_range は [min, max] の昇順である必要があります: got={bed_x_range}"
         )
     bed_y_range = _as_float_pair(
         gcode.get("bed_y_range"),
@@ -886,8 +629,7 @@ def _parse_gcode_section(gcode: dict[str, Any]) -> GCodeParams:
     )
     if bed_y_range is not None and bed_y_range[0] >= bed_y_range[1]:
         raise ValueError(
-            "export.gcode.bed_y_range は [min, max] の昇順である必要があります"
-            f": got={bed_y_range}"
+            f"export.gcode.bed_y_range は [min, max] の昇順である必要があります: got={bed_y_range}"
         )
 
     canvas_height_mm = _as_float(
@@ -896,8 +638,7 @@ def _parse_gcode_section(gcode: dict[str, Any]) -> GCodeParams:
     )
     if canvas_height_mm is not None and canvas_height_mm <= 0.0:
         raise ValueError(
-            "export.gcode.canvas_height_mm は正の値である必要があります"
-            f": got={canvas_height_mm}"
+            f"export.gcode.canvas_height_mm は正の値である必要があります: got={canvas_height_mm}"
         )
 
     optimize_travel = _as_bool(
@@ -915,8 +656,7 @@ def _parse_gcode_section(gcode: dict[str, Any]) -> GCodeParams:
     )
     if allow_reverse is None:
         raise RuntimeError(
-            "export.gcode.allow_reverse が未設定です"
-            "（同梱 default_config.yaml を確認してください）"
+            "export.gcode.allow_reverse が未設定です（同梱 default_config.yaml を確認してください）"
         )
 
     return GCodeParams(
@@ -964,102 +704,42 @@ def _parse_midi_section(payload: dict[str, Any]) -> tuple[tuple[str, str], ...]:
     return tuple(_as_midi_inputs(midi.get("inputs")))
 
 
-def load_runtime_config_report(
-    config_path: str | Path | None = None,
-) -> RuntimeConfigReport:
-    """実行時設定をロードし、値ごとの出典とともに返す。
+def validate_runtime_config_override(
+    payload: Mapping[str, Any],
+    *,
+    schema: Mapping[str, Any],
+    source: str,
+) -> None:
+    """override mapping の key tree を I/O 無しで検証する。"""
 
-    読み込み元の優先順位（後勝ち）:
-    1) 同梱 `grafix/resource/default_config.yaml`
-    2) 探索で見つかった `config.yaml`（任意）
-    3) ``config_path`` で明示指定された `config.yaml`（任意）
+    if not isinstance(payload, Mapping):
+        raise TypeError("payload は Mapping である必要があります")
+    if not isinstance(schema, Mapping):
+        raise TypeError("schema は Mapping である必要があります")
+    if type(source) is not str or not source:
+        raise TypeError("source は空でない str である必要があります")
+    _validate_known_key_tree(dict(payload), schema=dict(schema), source=source)
 
-    Notes
-    -----
-    - loader は process-global state を読み書きせず、呼び出しごとに設定を構築する。
-    - ユーザー設定は mapping を再帰的にマージし、未指定の同梱既定値を維持する。
-    - ユーザー設定の key tree は merge 前に検証され、unknown key は近似候補とともに拒否される。
-    """
 
-    explicit_path = _explicit_config_path(config_path)
-    if explicit_path is not None and not explicit_path.is_file():
-        raise FileNotFoundError(f"config.yaml が見つかりません: {explicit_path}")
+def runtime_config_from_mapping(
+    payload: Mapping[str, Any],
+    *,
+    config_path: Path | None = None,
+) -> RuntimeConfig:
+    """解決済み mapping を I/O 無しで厳密検証し、設定値へ変換する。"""
 
-    discovered_path: Path | None = None
-    # 既定の探索は「CWD → HOME」の順。最初に見つかった 1 つのみを採用する。
-    for p in _default_config_candidates():
-        if p.is_file():
-            discovered_path = p
-            break
-
-    # 各 layer を merge する前に key tree を検証し、user config 内の path は
-    # その config file の親、packaged default 内の path は project CWD を
-    # 基準に絶対化する。
-    packaged_payload = _load_packaged_default_config()
-    layers: list[tuple[dict[str, Any], str, Path, bool]] = [
-        (packaged_payload, _PACKAGED_CONFIG_SOURCE, Path.cwd().resolve(), False)
-    ]
-    if discovered_path is not None:
-        discovered_payload = _load_yaml_config(discovered_path)
-        discovered_source = str(discovered_path.resolve(strict=False))
-        _validate_known_key_tree(
-            discovered_payload,
-            schema=packaged_payload,
-            source=discovered_source,
-        )
-        layers.append(
-            (
-                discovered_payload,
-                discovered_source,
-                discovered_path.resolve(strict=False).parent,
-                True,
-            )
-        )
-    # CWD/HOME 探索と明示 path が同じ file を指す場合は一度だけ読む。
-    # 同一 loader 内で二度読むと、その間の更新を混ぜた snapshot になり得る。
-    if explicit_path is not None and (
-        discovered_path is None
-        or explicit_path != discovered_path.resolve(strict=False)
-    ):
-        explicit_payload = _load_yaml_config(explicit_path)
-        explicit_source = str(explicit_path.resolve(strict=False))
-        _validate_known_key_tree(
-            explicit_payload,
-            schema=packaged_payload,
-            source=explicit_source,
-        )
-        layers.append(
-            (
-                explicit_payload,
-                explicit_source,
-                explicit_path.resolve(strict=False).parent,
-                True,
-            )
-        )
-
-    raw_effective: dict[str, Any] = {}
-    payload: dict[str, Any] = {}
-    source_by_key: dict[str, str] = {}
-    base_dir_by_key: dict[str, Path] = {}
-    for layer, source, base_dir, resolve_paths in layers:
-        raw_effective = _merge_mappings(raw_effective, layer)
-        runtime_layer = (
-            _resolve_layer_paths(layer, base_dir=base_dir) if resolve_paths else layer
-        )
-        payload = _merge_mappings(payload, runtime_layer)
-        for key in _flatten_config_leaves(layer):
-            source_by_key[key] = source
-            base_dir_by_key[key] = base_dir
-
-    _validate_version(payload)
-    paths = _parse_paths_section(payload)
-    ui = _parse_ui_section(payload)
-    export = _parse_export_section(payload)
-    midi_inputs = _parse_midi_section(payload)
-
-    cfg = RuntimeConfig(
-        # config_path は「ユーザー設定の出典」を記録する用途（同梱デフォルトにはパスが無い）。
-        config_path=explicit_path or discovered_path,
+    if not isinstance(payload, Mapping):
+        raise TypeError("payload は Mapping である必要があります")
+    if config_path is not None and not isinstance(config_path, Path):
+        raise TypeError("config_path は Path または None です")
+    normalized = dict(payload)
+    _validate_version(normalized)
+    paths = _parse_paths_section(normalized)
+    ui = _parse_ui_section(normalized)
+    export = _parse_export_section(normalized)
+    midi_inputs = _parse_midi_section(normalized)
+    return RuntimeConfig(
+        config_path=config_path,
         output_dir=paths.output_dir,
         sketch_dir=paths.sketch_dir,
         preset_module_dirs=paths.preset_module_dirs,
@@ -1067,164 +747,23 @@ def load_runtime_config_report(
         window_pos_draw=ui.window_pos_draw,
         window_pos_parameter_gui=ui.window_pos_parameter_gui,
         parameter_gui_window_size=ui.parameter_gui_window_size,
-        parameter_gui_fallback_font_japanese=ui.parameter_gui_fallback_font_japanese,
+        parameter_gui_fallback_font_japanese=(ui.parameter_gui_fallback_font_japanese),
         parameter_gui_font_size_base_px=ui.parameter_gui_font_size_base_px,
         parameter_gui_shortcuts=ui.parameter_gui_shortcuts,
         png_scale=export.png_scale,
         gcode=export.gcode,
         midi_inputs=midi_inputs,
     )
-    raw_leaves = _flatten_config_leaves(raw_effective)
-    report_values: list[RuntimeConfigValue] = []
-    for key in sorted(raw_leaves):
-        is_path = key in _PATH_KEYS
-        resolved_path = None
-        if is_path:
-            resolved_path = _resolved_report_path(
-                key=key,
-                value=raw_leaves[key],
-                base_dir=base_dir_by_key[key],
-            )
-        report_values.append(
-            RuntimeConfigValue(
-                key=key,
-                source=source_by_key[key],
-                effective_value=_freeze_report_value(raw_leaves[key]),
-                is_path=is_path,
-                resolved_path=resolved_path,
-            )
-        )
-
-    return RuntimeConfigReport(
-        config=cfg,
-        active_source=str(cfg.config_path) if cfg.config_path is not None else _PACKAGED_CONFIG_SOURCE,
-        values=tuple(report_values),
-    )
-
-
-def load_runtime_config(config_path: str | Path | None = None) -> RuntimeConfig:
-    """明示 path または既定探索から不変な実行時設定を構築する。
-
-    ``config_path`` を指定した場合も、従来どおり同梱 default と探索 config の後に
-    明示 config を merge する。この関数は process-global path/cache を持たない。
-    """
-
-    return load_runtime_config_report(config_path).config
-
-
-def runtime_config() -> RuntimeConfig:
-    """既定の CWD/HOME 探索で実行時設定を構築する pure convenience。"""
-
-    return load_runtime_config()
-
-
-def runtime_config_report() -> RuntimeConfigReport:
-    """既定探索の strict config と leaf ごとの出典を返す convenience。"""
-
-    return load_runtime_config_report()
-
-
-def _packaged_runtime_config_report() -> RuntimeConfigReport:
-    """user layerを読まず、同梱defaultだけからstrict configを構築する。"""
-
-    payload = _load_packaged_default_config()
-    _validate_version(payload)
-    paths = _parse_paths_section(payload)
-    ui = _parse_ui_section(payload)
-    export = _parse_export_section(payload)
-    midi_inputs = _parse_midi_section(payload)
-    cfg = RuntimeConfig(
-        config_path=None,
-        output_dir=paths.output_dir,
-        sketch_dir=paths.sketch_dir,
-        preset_module_dirs=paths.preset_module_dirs,
-        font_dirs=paths.font_dirs,
-        window_pos_draw=ui.window_pos_draw,
-        window_pos_parameter_gui=ui.window_pos_parameter_gui,
-        parameter_gui_window_size=ui.parameter_gui_window_size,
-        parameter_gui_fallback_font_japanese=ui.parameter_gui_fallback_font_japanese,
-        parameter_gui_font_size_base_px=ui.parameter_gui_font_size_base_px,
-        parameter_gui_shortcuts=ui.parameter_gui_shortcuts,
-        png_scale=export.png_scale,
-        gcode=export.gcode,
-        midi_inputs=midi_inputs,
-    )
-    values: list[RuntimeConfigValue] = []
-    base_dir = Path.cwd().resolve()
-    for key, value in sorted(_flatten_config_leaves(payload).items()):
-        is_path = key in _PATH_KEYS
-        values.append(
-            RuntimeConfigValue(
-                key=key,
-                source=_PACKAGED_CONFIG_SOURCE,
-                effective_value=_freeze_report_value(value),
-                is_path=is_path,
-                resolved_path=(
-                    _resolved_report_path(key=key, value=value, base_dir=base_dir)
-                    if is_path
-                    else None
-                ),
-            )
-        )
-    return RuntimeConfigReport(
-        config=cfg,
-        active_source=_PACKAGED_CONFIG_SOURCE,
-        values=tuple(values),
-    )
-
-
-def runtime_config_with_fallback(
-    config_path: str | Path | None = None,
-) -> tuple[RuntimeConfig, RuntimeConfigFallback | None]:
-    """strict user configを試し、失敗時だけ通知情報付きでdefaultへ退避する。
-
-    CLI validationは :func:`runtime_config_report` を直接呼び、失敗を exit codeへ
-    変換する。interactive runnerだけがこの明示fallbackを使用する。
-    fallback 結果も process-global state へ保存せず、呼び出し元が明示的に所有する。
-    """
-
-    try:
-        return load_runtime_config(config_path), None
-    except (OSError, RuntimeError, ValueError) as exc:
-        source = _explicit_config_path(config_path)
-        if source is None:
-            source = next(
-                (path for path in _default_config_candidates() if path.is_file()),
-                None,
-            )
-        report = _packaged_runtime_config_report()
-        return report.config, RuntimeConfigFallback(
-            summary=f"{type(exc).__name__}: {exc}",
-            details="".join(
-                traceback.format_exception(type(exc), exc, exc.__traceback__)
-            ),
-            source=None if source is None else source.resolve(strict=False),
-        )
-
-
-def output_root_dir(config: RuntimeConfig | None = None) -> Path:
-    """出力ファイルを保存する既定ルートディレクトリを返す。
-
-    ``config`` が無い場合だけ ``runtime_config()`` で既定探索する。
-    """
-
-    if config is not None and not isinstance(config, RuntimeConfig):
-        raise TypeError("config は RuntimeConfig または None である必要があります")
-    cfg = runtime_config() if config is None else config
-    return Path(cfg.output_dir)
 
 
 __all__ = [
     "RuntimeConfig",
-    "RuntimeConfigReport",
     "RuntimeConfigFallback",
+    "RuntimeConfigReport",
     "RuntimeConfigValue",
     "bind_runtime_config",
     "current_runtime_config",
-    "load_runtime_config",
-    "load_runtime_config_report",
-    "output_root_dir",
-    "runtime_config",
-    "runtime_config_report",
-    "runtime_config_with_fallback",
+    "runtime_config_from_mapping",
+    "validate_runtime_config_override",
+    "without_runtime_config",
 ]

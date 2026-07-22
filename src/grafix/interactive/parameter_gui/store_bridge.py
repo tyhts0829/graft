@@ -55,6 +55,7 @@ from .parameter_filter import (
     parameter_search_tokens,
     parameter_static_search_corpus,
 )
+from .session_state import WidgetSessionState
 from .table import (
     EffectOrderCommand,
     TableEdits,
@@ -1394,6 +1395,7 @@ def render_store_parameter_table(
     store: ParamStore,
     *,
     table_view: ParameterTableView,
+    widget_state: WidgetSessionState,
     metric_scale: float | None = None,
     midi_learn_state: MidiLearnState | None = None,
     midi_last_cc_change: tuple[int, int] | None = None,
@@ -1421,6 +1423,7 @@ def render_store_parameter_table(
             midi_last_cc_change=midi_last_cc_change,
             collapsed_headers=store.collapsed_headers(),
         ),
+        widget_state=widget_state,
         on_help_row=on_help_row,
     )
     changed = commit_table_edits(

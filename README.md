@@ -291,6 +291,9 @@ Notes:
 - Importing a normal user module records immutable declarations. `run()` and
   `RenderSession` take one operation/preset snapshot at construction, so import custom
   modules before creating the session that should use them.
+- `G.catalog()` / `E.catalog()` and `describe(name)` return immutable `OperationInfo`
+  values for inspection. They do not expose evaluator implementations or session-owned
+  resources.
 - `overwrite=True` replaces only the named declaration for future snapshots. Existing
   sessions and Geometry DAGs keep their exact operation version; Grafix never silently
   redirects an old DAG to a newer evaluator.
@@ -340,8 +343,8 @@ P.grid_system_frame()
 P(name="Main grid", key="main").grid_system_frame(n_rows=6)
 ```
 
-A preset is a scene component: it must return a `Geometry`, a `Layer`, or a nested
-sequence of those values (`SceneItem`). Every preset also accepts the automatically
+A preset is a scene component: it must return a `Geometry`, a `Layer`, or nested
+`list` / `tuple` containers of those values (`SceneItem`). Every preset also accepts the automatically
 added `activate` argument. When `activate=False`, Grafix skips the function body and
 returns an empty `Geometry` that can be passed through the normal scene pipeline.
 Labels and parameter identity use only the namespace form
@@ -399,12 +402,14 @@ remain recoverable: an invalid user config falls back to the packaged defaults a
 an explicit Inspector diagnostic with the source and traceback. The validation CLI stays
 strict and exits non-zero instead of applying that fallback.
 
-Config loading is pure: each call parses, merges, and validates a new immutable
-`RuntimeConfig`; there is no process-wide mutable config path or config cache. `run()` and
-`RenderSession` resolve one effective config at construction and pass that same value to
-font lookup, preset loading, evaluation, output paths, workers, and capture. Two sessions
-with different configs can coexist in one process, and closing either session does not
-change the other. Pass either `config_path=` or an already loaded `config=`, never both.
+`grafix.runtime_config_loader` owns YAML/package-resource I/O and CWD/HOME discovery.
+Each application entry point resolves a new immutable `RuntimeConfig`; there is no
+process-wide mutable config path or config cache. `run()` and `RenderSession` resolve it
+once at construction and pass the same value to application subsystems. Geometry
+evaluators receive only `EvaluationConfig` (currently `font_dirs`), so changing window,
+output, GUI, or MIDI settings does not invalidate geometry caches. Two sessions with
+different configs can coexist, and closing either session does not change the other.
+Pass either `config_path=` or an already loaded `config=`, never both.
 
 Paths support `~` and environment variables like `$HOME`. Relative paths in a user
 config are resolved from that config file's directory. Therefore paths in
@@ -560,6 +565,8 @@ manifest. The same immutable `Frame` may therefore be exported to multiple forma
 `RenderSession` owns its evaluation resources and cache store and injects them into a borrowing
 `RealizeSession`. At the lower-level API, each omitted `resources` or `cache_store` dependency is
 owned and closed by `RealizeSession`; explicitly supplied dependencies remain caller-owned.
+`RenderSession` does not expose those closeable child owners; its public properties are
+limited to `options`, `param_store`, `config`, `runtime_limits`, and `metadata`.
 
 ## Troubleshooting
 

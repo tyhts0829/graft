@@ -11,10 +11,8 @@ from grafix.core.runtime_limits import (  # noqa: E402
     DEFAULT_RUNTIME_LIMIT_PROFILES,
     RuntimeLimitProfiles,
 )
-from grafix.core.runtime_config import (  # noqa: E402
-    RuntimeConfigFallback,
-    runtime_config,
-)
+from grafix.core.runtime_config import RuntimeConfigFallback  # noqa: E402
+from grafix.runtime_config_loader import runtime_config  # noqa: E402
 
 
 def _draw(_t: float) -> None:

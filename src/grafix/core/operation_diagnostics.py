@@ -6,10 +6,17 @@ import contextlib
 import contextvars
 import math
 from collections import OrderedDict
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from typing import Literal, TypeAlias, cast
 
+import numpy as np
+
+from grafix.core.geometry_kernels.grid import (
+    GridOverflowPolicy,
+    GridSpec,
+    plan_grid_from_bbox,
+)
 from grafix.core.value_validation import exact_string, exact_string_choice
 
 OperationDiagnosticSeverity = Literal["info", "warning", "error"]
@@ -147,6 +154,37 @@ def emit_operation_diagnostic(
     return diagnostic
 
 
+def grid_spec_from_bbox_with_diagnostic(
+    mins: Sequence[float] | np.ndarray,
+    maxs: Sequence[float] | np.ndarray,
+    *,
+    pitch: float,
+    padding: float,
+    max_points: int,
+    overflow: GridOverflowPolicy,
+) -> GridSpec | None:
+    """bbox の grid 計画を実行し、必要な診断を evaluation へ記録する。"""
+
+    plan = plan_grid_from_bbox(
+        mins,
+        maxs,
+        pitch=pitch,
+        padding=padding,
+        max_points=max_points,
+        overflow=overflow,
+    )
+    diagnostic = plan.diagnostic
+    if diagnostic is not None:
+        emit_operation_diagnostic(
+            op="GridSpec.from_bbox",
+            original_value=diagnostic.original_value,
+            effective_value=diagnostic.effective_value,
+            reason=diagnostic.reason,
+            severity=diagnostic.severity,
+        )
+    return plan.spec
+
+
 def extend_operation_diagnostics(
     diagnostics: Iterable[OperationDiagnostic],
 ) -> None:
@@ -184,5 +222,6 @@ __all__ = [
     "current_operation_diagnostics",
     "emit_operation_diagnostic",
     "extend_operation_diagnostics",
+    "grid_spec_from_bbox_with_diagnostic",
     "operation_diagnostic_context",
 ]

@@ -15,7 +15,7 @@ pyglet.options["shadow_window"] = False
 from grafix.core.capture_manifest import RecordingManifest
 from grafix.core.capture_provenance import CaptureProvenance
 from grafix.core.parameters import ParamStore
-from grafix.core.runtime_config import runtime_config
+from grafix.runtime_config_loader import runtime_config
 from grafix.export.capture import CaptureService
 from grafix.export.capture_provenance import CaptureProvenanceBuilder
 from grafix.export.capture_publish import (

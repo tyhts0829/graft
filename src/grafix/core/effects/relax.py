@@ -244,7 +244,13 @@ def _compute_fixed(nodes: np.ndarray, edges: np.ndarray) -> np.ndarray:
 
 
 @njit(fastmath=True, cache=True)
-def _elastic_relaxation_nb(positions, edges, fixed, iterations, step):
+def _elastic_relaxation_nb(
+    positions: np.ndarray,
+    edges: np.ndarray,
+    fixed: np.ndarray,
+    iterations: int,
+    step: float,
+) -> np.ndarray:
     n = positions.shape[0]
     for _it in range(iterations):
         forces = np.zeros((n, 3), dtype=positions.dtype)

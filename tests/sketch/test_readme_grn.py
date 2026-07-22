@@ -34,7 +34,7 @@ def test_grn_6_draw_evaluates_with_repository_preset_path(tmp_path: Path) -> Non
             "from grafix.core.authoring_loader import load_config_authoring_definitions",
             "from grafix.core.operation_catalog import bind_operation_catalog",
             "from grafix.core.preset_catalog import bind_preset_catalog",
-            "from grafix.core.runtime_config import load_runtime_config",
+            "from grafix.runtime_config_loader import load_runtime_config",
             "from grafix.core.scene import normalize_scene",
             f"config = load_runtime_config({str(config_path)!r})",
             "definitions = load_config_authoring_definitions(config)",

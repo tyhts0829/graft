@@ -7,6 +7,8 @@ import pytest
 
 from grafix.interactive import pyglet_window_lifecycle as lifecycle
 
+pytestmark = pytest.mark.integration
+
 
 class _Resource:
     def __init__(

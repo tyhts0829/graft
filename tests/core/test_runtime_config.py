@@ -3,10 +3,13 @@ from typing import Any
 
 import pytest
 
-import grafix.core.runtime_config as runtime_config_module
+import grafix.runtime_config_loader as runtime_config_module
 from grafix.core.runtime_config import (
     bind_runtime_config,
     current_runtime_config,
+    runtime_config_from_mapping,
+)
+from grafix.runtime_config_loader import (
     load_runtime_config,
     load_runtime_config_report,
     output_root_dir,
@@ -19,6 +22,23 @@ from grafix.core.runtime_config import (
 def _isolate_config_discovery(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("HOME", str(tmp_path))
+
+
+def test_mapping_parser_performs_no_filesystem_io(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = runtime_config_module._load_packaged_default_config()
+
+    def unexpected_io(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("pure mapping parser performed filesystem I/O")
+
+    monkeypatch.setattr(Path, "read_text", unexpected_io)
+    monkeypatch.setattr(Path, "is_file", unexpected_io)
+
+    config = runtime_config_from_mapping(payload)
+
+    assert config.config_path is None
+    assert config.output_dir == Path("data/output")
 
 
 @pytest.mark.parametrize("value", (0, 1.0, object()))
@@ -34,7 +54,8 @@ def test_nested_runtime_config_binding_restores_after_exception(tmp_path: Path) 
     path_b.write_text("paths:\n  output_dir: b\n", encoding="utf-8")
     config_a = load_runtime_config(path_a)
     config_b = load_runtime_config(path_b)
-    default = current_runtime_config()
+    with pytest.raises(RuntimeError, match="束縛されていません"):
+        current_runtime_config()
 
     with bind_runtime_config(config_a):
         assert current_runtime_config() is config_a
@@ -44,7 +65,8 @@ def test_nested_runtime_config_binding_restores_after_exception(tmp_path: Path) 
                 raise RuntimeError("stop")
         assert current_runtime_config() is config_a
 
-    assert current_runtime_config() == default
+    with pytest.raises(RuntimeError, match="束縛されていません"):
+        current_runtime_config()
 
 
 def test_loader_reloads_same_path_without_retaining_failed_state(tmp_path: Path) -> None:

@@ -46,6 +46,7 @@ from grafix.interactive.parameter_gui.store_bridge import (
 )
 from grafix.interactive.parameter_gui.table import _effect_step_heading_by_rows
 from grafix.interactive.parameter_gui.widgets import widget_choice_radio
+from grafix.interactive.parameter_gui.session_state import WidgetSessionState
 
 SelectorKind = Literal["primitive", "effect"]
 _SOURCE = Geometry.create(op="selector_test_source")
@@ -719,8 +720,9 @@ def test_removed_selector_target_is_not_silently_coerced(
     )
     idle_imgui = _SelectorComboImgui()
     monkeypatch.setitem(sys.modules, "imgui", idle_imgui)
+    widget_state = WidgetSessionState()
 
-    changed, value = widget_choice_radio(stale_target_row)
+    changed, value = widget_choice_radio(stale_target_row, state=widget_state)
 
     assert changed is False
     assert value == "removed_target"
@@ -730,7 +732,7 @@ def test_removed_selector_target_is_not_silently_coerced(
 
     selecting_imgui = _SelectorComboImgui(click="circle")
     monkeypatch.setitem(sys.modules, "imgui", selecting_imgui)
-    changed, value = widget_choice_radio(stale_target_row)
+    changed, value = widget_choice_radio(stale_target_row, state=widget_state)
     assert changed is True
     assert value == "circle"
     assert selecting_imgui.end_combo_calls == 1

@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Literal
 
 from grafix.api.render import ExportFormat, RenderSession
-from grafix.core.parameters.memento import restore_param_store_memento
 from grafix.core.parameters.store import ParamStore
 from grafix.core.parameters.variations import Variation, list_variations
 from grafix.core.preview_quality import preview_quality_context
@@ -250,7 +249,7 @@ def render_variation_batch(
     Notes
     -----
     各 variation の前に batch 呼び出し時の exact store snapshot へ戻して
-    variation memento を merge する。そのため、前の render で新たに発見した
+    variation snapshot を merge する。そのため、前の render で新たに発見した
     parameter も次の variation へ引き継がない。成否にかかわらず終了時は
     revision/runtime/UI state/named variations を含む呼び出し前の状態へ戻す。
     """
@@ -304,7 +303,7 @@ def render_variation_batch(
 
                 item_t = render_t if variation.t is None else variation.t
                 try:
-                    restore_param_store_memento(store, variation.parameter_snapshot)
+                    store.apply_adjustment_snapshot(variation.parameter_snapshot)
                     with preview_quality_context("final"):
                         frame = session.render(
                             item_t,

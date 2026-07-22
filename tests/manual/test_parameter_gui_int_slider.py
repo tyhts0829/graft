@@ -12,6 +12,7 @@ from grafix.core.parameters.view import ParameterRow
 from grafix.interactive.parameter_gui import TableRenderInput, render_parameter_table
 from grafix.interactive.parameter_gui.catalog import current_parameter_gui_catalog
 from grafix.interactive.parameter_gui.group_blocks import group_layout_from_rows
+from grafix.interactive.parameter_gui.session_state import WidgetSessionState
 
 
 def main() -> None:
@@ -32,6 +33,7 @@ def main() -> None:
         ordinal=1,
     )
     group_layout = group_layout_from_rows([row], catalog=catalog)
+    widget_state = WidgetSessionState()
 
     def draw_ui(ctx: PygletImGuiContext) -> None:
         nonlocal row
@@ -51,7 +53,8 @@ def main() -> None:
                 model_rows=tuple(model_rows),
                 catalog=catalog,
                 collapsed_headers=frozenset(),
-            )
+            ),
+            widget_state=widget_state,
         )
         row = edits.rows[0]
         imgui_mod.end()

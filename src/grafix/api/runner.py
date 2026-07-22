@@ -8,23 +8,19 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Callable
 
 import pyglet
 
+from grafix.api.render import RenderOptions
 from grafix.core.authoring_definitions import AuthoringDefinitionsSnapshot
 from grafix.core.authoring_loader import authoring_definitions_for_draw
 from grafix.core.lifecycle import CleanupErrors
-from grafix.core.runtime_config import (
-    RuntimeConfig,
-    RuntimeConfigFallback,
-    runtime_config_with_fallback,
-)
-from grafix.export.output_paths import default_param_store_path, output_path_for_draw
 from grafix.core.runtime_limits import (
     DEFAULT_RUNTIME_LIMIT_PROFILES,
     RuntimeLimitProfiles,
 )
+from grafix.core.runtime_config import RuntimeConfig, RuntimeConfigFallback
 from grafix.core.scene import SceneItem
 from grafix.core.value_validation import (
     exact_bool,
@@ -32,11 +28,11 @@ from grafix.core.value_validation import (
     exact_string_choice,
     finite_real,
 )
-from grafix.interactive.midi.factory import create_midi_session
-from grafix.interactive.midi import MidiSession
-from grafix.api.render import RenderOptions
-from grafix.interactive.runtime.draw_window_system import DrawWindowSystem
+from grafix.export.output_paths import default_param_store_path, output_path_for_draw
 from grafix.interactive.diagnostics import DiagnosticAction, DiagnosticEvent
+from grafix.interactive.midi import MidiSession
+from grafix.interactive.midi.factory import create_midi_session
+from grafix.interactive.runtime.draw_window_system import DrawWindowSystem
 from grafix.interactive.runtime.parameter_session import (
     ParameterSession,
     known_operation_schema_snapshot,
@@ -45,6 +41,14 @@ from grafix.interactive.runtime.window_loop import MultiWindowLoop, WindowTask
 from grafix.interactive.runtime.workspace_window_controller import (
     WorkspaceWindowController,
 )
+from grafix.runtime_config_loader import runtime_config_with_fallback
+
+if TYPE_CHECKING:
+    from grafix.interactive.parameter_gui.catalog import ParameterGuiCatalog
+    from grafix.interactive.runtime.monitor import RuntimeMonitor
+    from grafix.interactive.runtime.parameter_gui_system import (
+        ParameterGUIWindowSystem,
+    )
 
 _logger = logging.getLogger(__name__)
 
@@ -72,7 +76,7 @@ def _run_cleanup_steps(
 
 
 def _publish_runtime_config_fallback(
-    monitor: Any,
+    monitor: RuntimeMonitor,
     fallback: RuntimeConfigFallback,
 ) -> DiagnosticEvent:
     """interactive config fallbackを共通DiagnosticCenterへ常設する。"""
@@ -91,6 +95,466 @@ def _publish_runtime_config_fallback(
             dedupe_key=f"config-fallback:{fallback.summary}",
         )
     )
+
+
+class _InteractiveApplication:
+    """1 interactive run の application owner と逆順 teardown を束ねる。"""
+
+    def __init__(
+        self,
+        draw: Callable[[float], SceneItem],
+        *,
+        config: RuntimeConfig,
+        config_fallback: RuntimeConfigFallback | None,
+        options: RenderOptions,
+        preview_scale: float,
+        gui_enabled: bool,
+        persistence_enabled: bool,
+        midi_port_name: str | None,
+        midi_mode: str,
+        worker_count: int,
+        evaluation_timeout: float | None,
+        frame_rate: float,
+        capture_seed: int | None,
+        run_id: str | None,
+        runtime_limit_profiles: RuntimeLimitProfiles,
+    ) -> None:
+        self._draw = draw
+        self._config = config
+        self._config_fallback = config_fallback
+        self._options = options
+        self._preview_scale = preview_scale
+        self._gui_enabled = gui_enabled
+        self._persistence_enabled = persistence_enabled
+        self._midi_port_name = midi_port_name
+        self._midi_mode = midi_mode
+        self._worker_count = worker_count
+        self._evaluation_timeout = evaluation_timeout
+        self._frame_rate = frame_rate
+        self._capture_seed = capture_seed
+        self._run_id = run_id
+        self._runtime_limit_profiles = runtime_limit_profiles
+
+        self._definitions: AuthoringDefinitionsSnapshot | None = None
+        self._schema_definitions: AuthoringDefinitionsSnapshot | None = None
+        self._gui_catalog_definitions: AuthoringDefinitionsSnapshot | None = None
+        self._gui_catalog: ParameterGuiCatalog | None = None
+        self._workspace: WorkspaceWindowController | None = None
+        self._parameter_session: ParameterSession | None = None
+        self._midi_session: MidiSession | None = None
+        self._unowned_midi: MidiSession | None = None
+        self._draw_window: DrawWindowSystem | None = None
+        self._gui: ParameterGUIWindowSystem | None = None
+        self._monitor: RuntimeMonitor | None = None
+        self._loop: MultiWindowLoop | None = None
+        self._session_completed_cleanly = False
+        self._activation_callback = self._activate_windows
+        self._activation_scheduled = False
+
+    def run(self) -> None:
+        """resource を構成して loop を実行し、成功・失敗とも全 cleanup を試す。"""
+
+        session_error: BaseException | None = None
+        try:
+            self._compose()
+            assert self._loop is not None
+            self._loop.run()
+            self._session_completed_cleanly = True
+        except BaseException as error:  # root error を cleanup 後まで保持する
+            session_error = error
+        self._cleanup(initial_error=session_error)
+
+    def _compose(self) -> None:
+        """application owner を acquisition 順に一度だけ構成する。"""
+
+        from grafix.interactive.runtime.source_reload import current_source_reload
+
+        definitions = authoring_definitions_for_draw(
+            self._draw,
+            config=self._config,
+        )
+        self._definitions = definitions
+        self._schema_definitions = definitions
+
+        fallback = self._config_fallback
+        if fallback is not None and not self._gui_enabled:
+            _logger.error(
+                "Runtime config invalid; using packaged defaults: %s\n%s",
+                fallback.summary,
+                fallback.details,
+            )
+
+        # Window 作成前に固定する必要がある process option。
+        pyglet.options["vsync"] = False
+
+        default_store_path = default_param_store_path(
+            self._draw,
+            run_id=self._run_id,
+            config=self._config,
+        )
+        workspace_path = output_path_for_draw(
+            kind="workspace",
+            ext="json",
+            draw=self._draw,
+            run_id=self._run_id,
+            config=self._config,
+        )
+        preview_width = max(
+            1,
+            int(round(self._options.canvas_size[0] * self._preview_scale)),
+        )
+        preview_height = max(
+            1,
+            int(round(self._options.canvas_size[1] * self._preview_scale)),
+        )
+        workspace = WorkspaceWindowController.load(
+            path=workspace_path,
+            preview_size=(preview_width, preview_height),
+            inspector_size=self._config.parameter_gui_window_size,
+            preferred_preview_position=self._config.window_pos_draw,
+            preferred_inspector_position=self._config.window_pos_parameter_gui,
+        )
+        self._workspace = workspace
+
+        param_store_path = (
+            default_store_path if self._persistence_enabled else None
+        )
+        parameter_session = ParameterSession(
+            primary_path=param_store_path,
+            gui_enabled=self._gui_enabled,
+            known_operations=known_operation_schema_snapshot(
+                definitions.operations,
+                definitions.presets,
+            ),
+        )
+        self._parameter_session = parameter_session
+
+        if self._gui_enabled:
+            from grafix.interactive.runtime.monitor import RuntimeMonitor
+
+            self._monitor = RuntimeMonitor()
+
+        midi_path = output_path_for_draw(
+            kind="midi",
+            ext="json",
+            draw=self._draw,
+            run_id=self._run_id,
+            config=self._config,
+        )
+        midi_session = create_midi_session(
+            port_name=self._midi_port_name,
+            mode=self._midi_mode,
+            profile_name=midi_path.stem,
+            save_dir=midi_path.parent,
+            snapshot_path=midi_path,
+            priority_inputs=self._config.midi_inputs,
+            diagnostics=(
+                None
+                if self._monitor is None
+                else self._monitor.diagnostic_center
+            ),
+        )
+        self._midi_session = midi_session
+        # DrawWindowSystem constructor が成功するまでは application が所有する。
+        self._unowned_midi = midi_session
+
+        self._publish_startup_diagnostics()
+
+        draw_window = DrawWindowSystem(
+            self._draw,
+            options=self._options,
+            render_scale=self._preview_scale,
+            store=parameter_session.store,
+            midi_session=midi_session,
+            monitor=self._monitor,
+            fps=self._frame_rate,
+            n_worker=self._worker_count,
+            evaluation_timeout=self._evaluation_timeout,
+            run_id=self._run_id,
+            runtime_limit_profiles=self._runtime_limit_profiles,
+            source_reload=current_source_reload(),
+            definitions=definitions,
+            effective_config=self._config,
+            parameter_source=parameter_session.source,
+            parameter_store_path=param_store_path,
+            seed=self._capture_seed,
+        )
+        self._draw_window = draw_window
+        # 以後は DrawWindowSystem が MIDI の save/close を所有する。
+        self._unowned_midi = None
+        workspace.attach_preview(draw_window.window)
+
+        tasks = [
+            WindowTask(
+                window=draw_window.window,
+                draw_frame=draw_window.draw_frame,
+                on_close=pyglet.app.exit,
+                on_presented=self._record_preview_presented,
+            )
+        ]
+        if self._gui_enabled:
+            self._compose_gui(tasks)
+        elif workspace.restored:
+            workspace.apply_layout()
+
+        pyglet.clock.schedule_once(self._activation_callback, 0.0)
+        self._activation_scheduled = True
+        self._loop = MultiWindowLoop(
+            tuple(tasks),
+            fps=self._frame_rate,
+            on_frame_start=(
+                None if self._monitor is None else self._monitor.tick_frame
+            ),
+            on_frame_finished=draw_window.record_full_loop,
+            on_scheduler_jitter=draw_window.record_scheduler_jitter,
+        )
+
+    def _publish_startup_diagnostics(self) -> None:
+        workspace = self._workspace
+        parameter_session = self._parameter_session
+        assert workspace is not None
+        assert parameter_session is not None
+
+        diagnostic = workspace.diagnostic
+        if diagnostic is not None:
+            if self._monitor is None:
+                _logger.warning(
+                    "%s: %s",
+                    diagnostic.summary,
+                    diagnostic.details,
+                )
+            else:
+                self._monitor.publish_diagnostic(diagnostic)
+
+        if self._monitor is None:
+            return
+        parameter_session.install_diagnostic_actions(self._monitor)
+        center = self._monitor.diagnostic_center
+        if self._config_fallback is not None:
+            _publish_runtime_config_fallback(
+                self._monitor,
+                self._config_fallback,
+            )
+        center.register_action(
+            "retry",
+            self._retry_midi,
+            category="midi",
+        )
+        center.register_action(
+            "discard",
+            self._discard_midi,
+            category="midi",
+        )
+
+    def _retry_midi(self, event: DiagnosticEvent) -> None:
+        """登録時には MIDI 実装へ触れず、action 実行時だけ委譲する。"""
+
+        midi_session = self._midi_session
+        if midi_session is None:
+            raise RuntimeError("MIDI session is not available")
+        midi_session.retry_for_diagnostic(event)
+
+    def _discard_midi(self, event: DiagnosticEvent) -> None:
+        """登録時には MIDI 実装へ触れず、action 実行時だけ委譲する。"""
+
+        midi_session = self._midi_session
+        if midi_session is None:
+            raise RuntimeError("MIDI session is not available")
+        midi_session.discard_for_diagnostic(event)
+
+    def _compose_gui(self, tasks: list[WindowTask]) -> None:
+        """重い GUI dependency を遅延 import し、inspector task を追加する。"""
+
+        from grafix.interactive.parameter_gui.catalog import ParameterGuiCatalog
+        from grafix.interactive.parameter_gui.variation_thumbnail import (
+            variation_thumbnail_callbacks,
+        )
+        from grafix.interactive.runtime.parameter_gui_system import (
+            ParameterGUIWindowSystem,
+        )
+
+        definitions = self._definitions
+        parameter_session = self._parameter_session
+        draw_window = self._draw_window
+        workspace = self._workspace
+        assert definitions is not None
+        assert parameter_session is not None
+        assert draw_window is not None
+        assert workspace is not None
+        assert self._midi_session is not None
+
+        thumbnail_base = output_path_for_draw(
+            kind="variation_thumbnail",
+            ext="png",
+            draw=self._draw,
+            run_id=self._run_id,
+            canvas_size=self._options.canvas_size,
+            config=self._config,
+        )
+        thumbnail_capture, thumbnail_preview = variation_thumbnail_callbacks(
+            draw_window.capture_service,
+            frame_provider=draw_window.final_capture_frame,
+            base_path=thumbnail_base,
+            canvas_size=self._options.canvas_size,
+        )
+        gui_catalog = ParameterGuiCatalog.capture(
+            definitions.operations,
+            definitions.presets,
+        )
+        self._gui_catalog_definitions = definitions
+        self._gui_catalog = gui_catalog
+
+        gui = ParameterGUIWindowSystem(
+            effective_config=self._config,
+            store=parameter_session.store,
+            midi_session=self._midi_session,
+            monitor=self._monitor,
+            transport=draw_window.transport,
+            transport_fps=self._frame_rate,
+            history=parameter_session.history,
+            snapshot_slots=parameter_session.snapshot_slots,
+            autosave=parameter_session.autosave,
+            is_recording=self._is_recording,
+            variation_thumbnail_capture=thumbnail_capture,
+            variation_thumbnail_preview=thumbnail_preview,
+            ui_scale=workspace.ui_scale,
+            catalog=gui_catalog,
+            catalog_provider=self._current_parameter_gui_catalog,
+            on_parameter_revision_created=(
+                draw_window.record_parameter_revision_created
+            ),
+        )
+        self._gui = gui
+        workspace.attach_inspector(gui.window)
+        workspace.apply_layout()
+        tasks.insert(
+            0,
+            WindowTask(
+                window=gui.window,
+                draw_frame=gui.draw_frame,
+                on_close=workspace.hide_inspector,
+                on_presented=self._record_inspector_presented,
+            ),
+        )
+        workspace.install_visibility_shortcut()
+
+    def _current_parameter_gui_catalog(self) -> ParameterGuiCatalog:
+        """最後に採用された authoring generation の GUI projection を返す。"""
+
+        from grafix.interactive.parameter_gui.catalog import ParameterGuiCatalog
+
+        draw_window = self._draw_window
+        assert draw_window is not None
+        active = draw_window.authoring_definitions
+        if active is not self._gui_catalog_definitions:
+            projected = ParameterGuiCatalog.capture(
+                active.operations,
+                active.presets,
+            )
+            self._adopt_parameter_schema(active)
+            self._gui_catalog = projected
+            self._gui_catalog_definitions = active
+        assert self._gui_catalog is not None
+        return self._gui_catalog
+
+    def _adopt_parameter_schema(
+        self,
+        definitions: AuthoringDefinitionsSnapshot,
+    ) -> None:
+        """最後に採用された generation だけを終了時 schema に反映する。"""
+
+        if definitions is self._schema_definitions:
+            return
+        parameter_session = self._parameter_session
+        assert parameter_session is not None
+        parameter_session.replace_known_operations(
+            known_operation_schema_snapshot(
+                definitions.operations,
+                definitions.presets,
+            )
+        )
+        self._schema_definitions = definitions
+
+    def _is_recording(self) -> bool:
+        draw_window = self._draw_window
+        return False if draw_window is None else bool(draw_window.is_recording)
+
+    def _record_preview_presented(self, elapsed_ns: int) -> None:
+        draw_window = self._draw_window
+        if draw_window is not None:
+            draw_window.record_window_present("preview_draw_flip", elapsed_ns)
+
+    def _record_inspector_presented(self, elapsed_ns: int) -> None:
+        draw_window = self._draw_window
+        if draw_window is not None:
+            draw_window.record_window_present(
+                "parameter_gui_draw_flip",
+                elapsed_ns,
+            )
+
+    def _activate_windows(self, _dt: float) -> None:
+        workspace = self._workspace
+        if workspace is not None:
+            workspace.activate()
+
+    def _persist_parameter_session(self) -> None:
+        parameter_session = self._parameter_session
+        if parameter_session is None:
+            return
+        draw_window = self._draw_window
+        if draw_window is not None:
+            self._adopt_parameter_schema(draw_window.authoring_definitions)
+        parameter_session.persist(
+            session_completed_cleanly=self._session_completed_cleanly,
+            monitor=self._monitor,
+        )
+
+    def _persist_workspace(self) -> None:
+        workspace = self._workspace
+        if workspace is not None:
+            workspace.persist()
+
+    def _unschedule_activation(self) -> None:
+        if not self._activation_scheduled:
+            return
+        self._activation_scheduled = False
+        pyglet.clock.unschedule(self._activation_callback)
+
+    def _close_gui(self) -> None:
+        gui = self._gui
+        self._gui = None
+        if gui is not None:
+            gui.close()
+
+    def _close_draw_window(self) -> None:
+        draw_window = self._draw_window
+        self._draw_window = None
+        if draw_window is not None:
+            draw_window.close()
+
+    def _close_unowned_midi(self) -> None:
+        midi = self._unowned_midi
+        self._unowned_midi = None
+        if midi is not None:
+            midi.close()
+
+    def _cleanup(self, *, initial_error: BaseException | None) -> None:
+        """persist 後、取得済み resource だけを acquisition の逆順に閉じる。"""
+
+        steps: list[tuple[str, Callable[[], None]]] = []
+        if self._parameter_session is not None:
+            steps.append(("persist ParameterStore", self._persist_parameter_session))
+        if self._workspace is not None:
+            steps.append(("persist WorkspaceState", self._persist_workspace))
+        if self._activation_scheduled:
+            steps.append(("unschedule window activation", self._unschedule_activation))
+        if self._gui is not None:
+            steps.append(("close parameter GUI", self._close_gui))
+        if self._draw_window is not None:
+            steps.append(("close draw window", self._close_draw_window))
+        if self._unowned_midi is not None:
+            steps.append(("close unowned MIDI", self._close_unowned_midi))
+        _run_cleanup_steps(steps, initial_error=initial_error)
 
 
 def run(
@@ -213,347 +677,49 @@ def run(
     )
     capture_seed = None if seed is None else exact_integer(seed, name="seed")
     if type(runtime_limit_profiles) is not RuntimeLimitProfiles:
-        raise TypeError("runtime_limit_profiles は RuntimeLimitProfiles である必要があります")
-    profiles = runtime_limit_profiles
+        raise TypeError(
+            "runtime_limit_profiles は RuntimeLimitProfiles である必要があります"
+        )
 
-    from grafix.interactive.runtime.source_reload import current_source_reload
-
-    source_reload = current_source_reload()
     if config is not None and not isinstance(config, RuntimeConfig):
         raise TypeError("config は RuntimeConfig または None である必要があります")
     if config_fallback is not None and not isinstance(
         config_fallback,
         RuntimeConfigFallback,
     ):
-        raise TypeError("config_fallback は RuntimeConfigFallback または None である必要があります")
+        raise TypeError(
+            "config_fallback は RuntimeConfigFallback または None である必要があります"
+        )
     if config is not None and config_path is not None:
         raise ValueError("config と config_path は同時に指定できません")
     if config is None and config_fallback is not None:
         raise ValueError("config_fallback は config と同時に指定する必要があります")
     if config is None:
-        cfg, config_fallback = runtime_config_with_fallback(config_path)
+        effective_config, effective_fallback = runtime_config_with_fallback(config_path)
     else:
-        cfg = config
-    session_definitions = authoring_definitions_for_draw(
-        draw,
-        config=cfg,
-    )
-    if config_fallback is not None and not gui_enabled:
-        _logger.error(
-            "Runtime config invalid; using packaged defaults: %s\n%s",
-            config_fallback.summary,
-            config_fallback.details,
-        )
+        effective_config = config
+        effective_fallback = config_fallback
 
-    # pyglet の Window 作成前にオプションを設定する。
-    # （vsync はウィンドウ作成時に参照される想定のため、ここで固定しておく）
-    # True にすると Parameter GUI のクリックやドラッグが抜ける事がある。
-    pyglet.options["vsync"] = False
-
-    # headless/export と同じ検証済み描画契約を interactive preview でも使う。
     options = RenderOptions(
         background_color=background_color,
         line_thickness=line_thickness,
         line_color=line_color,
         canvas_size=canvas_size,
     )
-    # パラメータは「描画」と「GUI」で共有する。
-    # GUI で値を変えると、次フレーム以降の parameter_context 参照に反映される。
-    default_store_path = default_param_store_path(draw, run_id=run_id, config=cfg)
-
-    workspace_path = output_path_for_draw(
-        kind="workspace",
-        ext="json",
-        draw=draw,
-        run_id=run_id,
-        config=cfg,
-    )
-    preview_width = max(1, int(round(options.canvas_size[0] * preview_scale)))
-    preview_height = max(1, int(round(options.canvas_size[1] * preview_scale)))
-    workspace_windows = WorkspaceWindowController.load(
-        path=workspace_path,
-        preview_size=(preview_width, preview_height),
-        inspector_size=cfg.parameter_gui_window_size,
-        preferred_preview_position=cfg.window_pos_draw,
-        preferred_inspector_position=cfg.window_pos_parameter_gui,
-    )
-
-    param_store_path = default_store_path if persistence_enabled else None
-    parameter_session = ParameterSession(
-        primary_path=param_store_path,
+    _InteractiveApplication(
+        draw,
+        config=effective_config,
+        config_fallback=effective_fallback,
+        options=options,
+        preview_scale=preview_scale,
         gui_enabled=gui_enabled,
-        known_operations=known_operation_schema_snapshot(
-            session_definitions.operations,
-            session_definitions.presets,
-        ),
-    )
-    param_store = parameter_session.store
-    param_history = parameter_session.history
-    param_snapshot_slots = parameter_session.snapshot_slots
-    param_autosave = parameter_session.autosave
-    parameter_schema_definitions = session_definitions
-
-    def adopt_parameter_schema(
-        definitions: AuthoringDefinitionsSnapshot,
-    ) -> None:
-        """採用 generation が変わったときだけ終了時 schema を射影し直す。"""
-
-        nonlocal parameter_schema_definitions
-        if definitions is parameter_schema_definitions:
-            return
-        projected = known_operation_schema_snapshot(
-            definitions.operations,
-            definitions.presets,
-        )
-        parameter_session.replace_known_operations(projected)
-        parameter_schema_definitions = definitions
-
-    # resource acquisition も loop と同じ保護範囲に入れる。GUI constructor や
-    # window 配置で失敗しても、それまでに取得した MIDI/window/worker を解放する。
-    closers: list[Callable[[], None]] = []
-    unowned_midi_session: MidiSession | None = None
-    draw_window: DrawWindowSystem | None = None
-    monitor: Any | None = None
-    session_completed_cleanly = False
-    session_error: BaseException | None = None
-    try:
-        midi_path = output_path_for_draw(
-            kind="midi",
-            ext="json",
-            draw=draw,
-            run_id=run_id,
-            config=cfg,
-        )
-        midi_profile_name = midi_path.stem
-        midi_save_dir = midi_path.parent
-
-        if gui_enabled:
-            from grafix.interactive.runtime.monitor import RuntimeMonitor
-
-            monitor = RuntimeMonitor()
-
-        midi_session = create_midi_session(
-            port_name=midi_port_name,
-            mode=midi_mode_value,
-            profile_name=midi_profile_name,
-            save_dir=midi_save_dir,
-            snapshot_path=midi_path,
-            priority_inputs=cfg.midi_inputs,
-            diagnostics=None if monitor is None else monitor.diagnostic_center,
-        )
-        unowned_midi_session = midi_session
-
-        def close_unowned_midi() -> None:
-            nonlocal unowned_midi_session
-            session = unowned_midi_session
-            unowned_midi_session = None
-            if session is not None:
-                session.close()
-
-        # DrawWindowSystem が完成するまでは runner が MIDI を所有する。
-        closers.append(close_unowned_midi)
-
-        workspace_diagnostic = workspace_windows.diagnostic
-        if workspace_diagnostic is not None:
-            if monitor is not None:
-                monitor.publish_diagnostic(workspace_diagnostic)
-            else:
-                _logger.warning(
-                    "%s: %s",
-                    workspace_diagnostic.summary,
-                    workspace_diagnostic.details,
-                )
-
-        if monitor is not None:
-            parameter_session.install_diagnostic_actions(monitor)
-            center = monitor.diagnostic_center
-
-            if config_fallback is not None:
-                _publish_runtime_config_fallback(monitor, config_fallback)
-
-            def retry_midi(event: DiagnosticEvent) -> None:
-                midi_session.retry_for_diagnostic(event)
-
-            def clear_frozen_midi(event: DiagnosticEvent) -> None:
-                midi_session.discard_for_diagnostic(event)
-
-            center.register_action("retry", retry_midi, category="midi")
-            center.register_action("discard", clear_frozen_midi, category="midi")
-
-        # --- サブシステムの組み立て ---
-        # 描画ウィンドウは常に有効（メイン描画）。constructor が戻った直後に
-        # closer を登録し、後続の set_location/GUI 構築失敗も回収する。
-        draw_window = DrawWindowSystem(
-            draw,
-            options=options,
-            render_scale=preview_scale,
-            store=param_store,
-            midi_session=midi_session,
-            monitor=monitor,
-            fps=frame_rate,
-            n_worker=worker_count,
-            evaluation_timeout=timeout,
-            run_id=run_id,
-            runtime_limit_profiles=profiles,
-            source_reload=source_reload,
-            definitions=session_definitions,
-            effective_config=cfg,
-            parameter_source=parameter_session.source,
-            parameter_store_path=param_store_path,
-            seed=capture_seed,
-        )
-        # 正常構築後は DrawWindowSystem が MIDI の save/close を所有する。
-        unowned_midi_session = None
-        closers.append(draw_window.close)
-        workspace_windows.attach_preview(draw_window.window)
-
-        # `tasks` はループ駆動用（イベント処理→描画→flip の対象）。
-        tasks = [
-            WindowTask(
-                window=draw_window.window,
-                draw_frame=draw_window.draw_frame,
-                on_close=pyglet.app.exit,
-                on_presented=lambda elapsed_ns: draw_window.record_window_present(
-                    "preview_draw_flip",
-                    elapsed_ns,
-                ),
-            )
-        ]
-
-        if gui_enabled:
-            # Parameter GUI は依存が重い（pyimgui）なので、使うときだけ遅延 import する。
-            from grafix.interactive.parameter_gui.variation_thumbnail import (
-                variation_thumbnail_callbacks,
-            )
-            from grafix.interactive.parameter_gui.catalog import ParameterGuiCatalog
-            from grafix.interactive.runtime.parameter_gui_system import (
-                ParameterGUIWindowSystem,
-            )
-
-            variation_thumbnail_base = output_path_for_draw(
-                kind="variation_thumbnail",
-                ext="png",
-                draw=draw,
-                run_id=run_id,
-                canvas_size=canvas_size,
-                config=cfg,
-            )
-            (
-                variation_thumbnail_capture,
-                variation_thumbnail_preview,
-            ) = variation_thumbnail_callbacks(
-                draw_window.capture_service,
-                frame_provider=draw_window.final_capture_frame,
-                base_path=variation_thumbnail_base,
-                canvas_size=canvas_size,
-            )
-
-            catalog_definitions = session_definitions
-            parameter_gui_catalog = ParameterGuiCatalog.capture(
-                catalog_definitions.operations,
-                catalog_definitions.presets,
-            )
-
-            def current_parameter_gui_catalog() -> ParameterGuiCatalog:
-                nonlocal catalog_definitions, parameter_gui_catalog
-                active = draw_window.authoring_definitions
-                if active is not catalog_definitions:
-                    projected_catalog = ParameterGuiCatalog.capture(
-                        active.operations,
-                        active.presets,
-                    )
-                    adopt_parameter_schema(active)
-                    parameter_gui_catalog = projected_catalog
-                    catalog_definitions = active
-                return parameter_gui_catalog
-
-            gui = ParameterGUIWindowSystem(
-                effective_config=cfg,
-                store=param_store,
-                midi_session=midi_session,
-                monitor=monitor,
-                transport=draw_window.transport,
-                transport_fps=frame_rate,
-                history=param_history,
-                snapshot_slots=param_snapshot_slots,
-                autosave=param_autosave,
-                is_recording=lambda: draw_window.is_recording,
-                variation_thumbnail_capture=variation_thumbnail_capture,
-                variation_thumbnail_preview=variation_thumbnail_preview,
-                ui_scale=workspace_windows.ui_scale,
-                catalog=parameter_gui_catalog,
-                catalog_provider=current_parameter_gui_catalog,
-                on_parameter_revision_created=(draw_window.record_parameter_revision_created),
-            )
-            closers.append(gui.close)
-            workspace_windows.attach_inspector(gui.window)
-            workspace_windows.apply_layout()
-            # Inspector を preview より先に描く。pyglet が配送済みの slider edit を
-            # 同じ tick の preview evaluation へ渡し、固定 1-frame 遅延を生じさせない。
-            # GUI hot path は値変更時も全 table rebuild を行わないため、先行描画が
-            # preview の critical path を不必要に伸ばさない。
-            tasks.insert(
-                0,
-                WindowTask(
-                    window=gui.window,
-                    draw_frame=gui.draw_frame,
-                    on_close=workspace_windows.hide_inspector,
-                    on_presented=lambda elapsed_ns: draw_window.record_window_present(
-                        "parameter_gui_draw_flip",
-                        elapsed_ns,
-                    ),
-                ),
-            )
-            workspace_windows.install_visibility_shortcut()
-        elif workspace_windows.restored:
-            workspace_windows.apply_layout()
-
-        # macOS + unbundled CLI 起動では、起動直後にウィンドウが他アプリの背面に残る事がある。
-        # event loop 開始直後に 1 回だけ明示 activate して前面化する。
-        def _activate_windows(_dt: float) -> None:
-            # 最後に GUI を activate し、preview が操作面を覆わない状態で開始する。
-            workspace_windows.activate()
-
-        pyglet.clock.schedule_once(_activate_windows, 0.0)
-        closers.append(lambda: pyglet.clock.unschedule(_activate_windows))
-
-        # --- ループの実行 ---
-        # ここで複数ウィンドウを 1 つの pyglet.app.run() で回す。
-        loop = MultiWindowLoop(
-            tuple(tasks),
-            fps=frame_rate,
-            on_frame_start=None if monitor is None else monitor.tick_frame,
-            on_frame_finished=draw_window.record_full_loop,
-            on_scheduler_jitter=draw_window.record_scheduler_jitter,
-        )
-        loop.run()
-        session_completed_cleanly = True
-    except BaseException as exc:
-        session_error = exc
-
-    def persist_parameter_session() -> None:
-        """最後に採用された catalog schema で prune/finalize する。"""
-
-        if draw_window is not None:
-            active = draw_window.authoring_definitions
-            adopt_parameter_schema(active)
-        parameter_session.persist(
-            session_completed_cleanly=session_completed_cleanly,
-            monitor=monitor,
-        )
-
-    cleanup_steps: list[tuple[str, Callable[[], None]]] = [
-        (
-            "persist ParameterStore",
-            persist_parameter_session,
-        ),
-        (
-            "persist WorkspaceState",
-            workspace_windows.persist,
-        ),
-    ]
-    cleanup_steps.extend(
-        (f"close subsystem {index}", close)
-        for index, close in enumerate(reversed(closers), start=1)
-    )
-    _run_cleanup_steps(cleanup_steps, initial_error=session_error)
+        persistence_enabled=persistence_enabled,
+        midi_port_name=midi_port_name,
+        midi_mode=midi_mode_value,
+        worker_count=worker_count,
+        evaluation_timeout=timeout,
+        frame_rate=frame_rate,
+        capture_seed=capture_seed,
+        run_id=run_id,
+        runtime_limit_profiles=runtime_limit_profiles,
+    ).run()

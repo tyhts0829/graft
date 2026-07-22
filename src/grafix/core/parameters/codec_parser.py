@@ -8,6 +8,10 @@ from math import isfinite
 from types import MappingProxyType
 from typing import Generic, TypeVar
 
+from .adjustment_snapshot import (
+    ParameterAdjustment,
+    ParameterAdjustmentSnapshot,
+)
 from .collapsed_header import (
     CollapsedHeaderKey,
     decode_collapsed_header_key,
@@ -20,7 +24,6 @@ from .effects import (
 )
 from .key import ParameterKey
 from .labels import MAX_LABEL_LENGTH
-from .memento import ParamStoreMemento
 from .meta import ParamMeta
 from .meta_spec import PARAM_META_SPEC_KEYS, meta_from_record
 from .state import ParamState, ParamStateSnapshot
@@ -1230,16 +1233,14 @@ def _parse_variation(
             note=note,
             seed=seed,
             t=t,
-            parameter_snapshot=ParamStoreMemento(
-                states={
-                    key: ParamState(
-                        override=parsed.value.override,
-                        ui_value=parsed.value.ui_value,
-                        cc_key=parsed.value.cc_key,
+            parameter_snapshot=ParameterAdjustmentSnapshot(
+                adjustments={
+                    key: ParameterAdjustment(
+                        state=parsed.value,
+                        meta=canonical_meta[key],
                     )
                     for key, parsed in states.value.items()
                 },
-                meta=canonical_meta,
                 collapsed_by_header=collapsed.value,
                 effect_order_state=order_state,
                 effect_topology_signatures=topology_signatures,

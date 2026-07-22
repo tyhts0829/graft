@@ -12,6 +12,7 @@ from typing import Any, cast
 
 import numpy as np
 
+from grafix.core.evaluation_config import EvaluationConfig
 from grafix.core.evaluation_context import (
     EMPTY_EXTERNAL_DEPENDENCIES_FINGERPRINT,
     ExternalDependencySnapshot,
@@ -20,7 +21,7 @@ from grafix.core.evaluation_context import (
 from grafix.core.font_resources import FontResources, ResolvedFontLease
 from grafix.core.geometry import normalize_args
 from grafix.core.realized_geometry import GeomTuple, RealizedGeometry
-from grafix.core.runtime_config import runtime_config
+from grafix.runtime_config_loader import runtime_config
 from grafix.devtools.benchmarks.definition import CaseDefinition, define_case
 from grafix.devtools.benchmarks.schema import (
     BenchmarkOutput,
@@ -645,10 +646,11 @@ def setup_primitive_benchmark(
             raise TypeError("text benchmark font/font_index must be canonical values")
         font_resources = FontResources()
         try:
+            config = runtime_config()
             font_lease = font_resources.resolve(
                 font,
                 font_index,
-                config=runtime_config(),
+                config=EvaluationConfig(font_dirs=config.font_dirs),
             )
         except BaseException:
             font_resources.close()

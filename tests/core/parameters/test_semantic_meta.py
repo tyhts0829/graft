@@ -16,10 +16,6 @@ from grafix.core.parameters.context import (
 )
 from grafix.core.parameters.frame_params import FrameParamRecord
 from grafix.core.parameters.key import ParameterKey
-from grafix.core.parameters.memento import (
-    capture_param_store_memento,
-    restore_param_store_memento,
-)
 from grafix.core.parameters.merge_ops import merge_frame_params
 from grafix.core.parameters.meta import ParamMeta
 from grafix.core.parameters.meta_spec import meta_from_spec, meta_to_spec
@@ -191,12 +187,14 @@ def test_codec_and_variation_roundtrip_preserve_semantic_meta() -> None:
     assert loaded.get_meta(key) == SEMANTIC_META
     variations = list_variations(loaded)
     assert len(variations) == 1
-    assert variations[0].parameter_snapshot._meta[key] == SEMANTIC_META
+    adjustment = variations[0].parameter_snapshot.get(key)
+    assert adjustment is not None
+    assert adjustment.meta == SEMANTIC_META
 
 
-def test_memento_restores_only_gui_range_and_keeps_current_semantic_meta() -> None:
+def test_adjustment_snapshot_restores_only_gui_range_and_keeps_current_semantic_meta() -> None:
     store, key = _store_with_semantic_meta()
-    memento = capture_param_store_memento(store)
+    snapshot = store.capture_adjustment_snapshot()
     current_meta = ParamMeta(
         kind="float",
         ui_min=1.0,
@@ -213,7 +211,7 @@ def test_memento_restores_only_gui_range_and_keeps_current_semantic_meta() -> No
     )
     store._set_meta(key, current_meta)
 
-    assert restore_param_store_memento(store, memento) is True
+    assert store.apply_adjustment_snapshot(snapshot) is True
     assert store.get_meta(key) == ParamMeta(
         kind="float",
         ui_min=SEMANTIC_META.ui_min,

@@ -266,10 +266,10 @@ def test_metaball_draft_bounds_cells_times_segments_for_many_dense_rings(
             )
 
     assert seen_work
-    assert seen_work[0] <= module.DRAFT_MAX_CELL_SEGMENTS
+    assert seen_work[0] <= module.DRAFT_MAX_POINT_SEGMENTS
     assert any(
-        item.op == "metaball.cell_segments"
-        and int(item.effective_value) <= module.DRAFT_MAX_CELL_SEGMENTS
+        item.op == "metaball.point_segments"
+        and int(item.effective_value) <= module.DRAFT_MAX_POINT_SEGMENTS
         and int(item.original_value) > int(item.effective_value)
         for item in diagnostics.snapshot()
     )

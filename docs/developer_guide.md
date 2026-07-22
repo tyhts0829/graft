@@ -22,6 +22,7 @@
 - `src/grafix/api/__init__.py`（公開 API パッケージ）
 - `src/grafix/api/primitives.py`（`G.*`）
 - `src/grafix/api/effects.py`（`E.*`）
+- `src/grafix/api/operation_info.py`（evaluator-free な公開 catalog inspection value）
 - `src/grafix/api/layers.py`（`L.*`）
 - `src/grafix/api/presets.py` / `src/grafix/api/preset.py`（`P.*` / `@preset`）
 - `src/grafix/api/runner.py`（`run(draw)` の interactive 実装）
@@ -34,7 +35,7 @@
 - `src/grafix/core/operation_authoring.py` / `src/grafix/core/operation_declaration.py`（decorator / immutable declaration）
 - `src/grafix/core/authoring_definitions.py` / `src/grafix/core/authoring_loader.py`（registration target / session snapshot）
 - `src/grafix/core/operation_catalog.py` / `src/grafix/core/preset_catalog.py`（immutable catalog）
-- `src/grafix/core/evaluation_context.py`（quality/config/external dependency/resource contract）
+- `src/grafix/core/evaluation_config.py` / `evaluation_context.py`（評価専用 config、quality、external dependency contract）
 - `src/grafix/core/realize.py`（`RealizeSession` / omitted-owned・explicit-borrowed dependency / inflight）
 - `src/grafix/core/realized_geometry.py`（配列表現と不変条件）
 - `src/grafix/core/scene.py`（Scene 正規化）
@@ -42,7 +43,9 @@
 - `src/grafix/core/builtins.py`（組み込み op manifest / bootstrap の単一入口）
 - `src/grafix/core/font_resources.py`（font asset fingerprint / bounded resource owner）
 - `src/grafix/core/geometry_kernels/`（effect 共通の pure numeric kernel）
-- `src/grafix/core/parameters/`（GUI/CC での param 解決と永続化。流れは `src/grafix/core/parameters/README.md`）
+- `src/grafix/core/parameters/`（GUI/CC の param domain、codec、immutable snapshot）
+- `src/grafix/parameter_storage.py`（parameter file read/recovery/atomic commit）
+- `src/grafix/runtime_config_loader.py`（YAML/package resource、CWD/HOME discovery、fallback）
 
 ## 変更パターン別 “触る場所”
 
@@ -69,7 +72,8 @@
 
 ### Parameter GUI（param 解決/表示/永続）を触りたい
 
-- コア（値解決・永続の核）: `src/grafix/core/parameters/`
+- コア（値解決・履歴・snapshot）: `src/grafix/core/parameters/`
+- storage（read/recovery/commit）: `src/grafix/parameter_storage.py`
 - GUI 実装: `src/grafix/interactive/parameter_gui/`
 - GUI 起動と連携: `src/grafix/interactive/runtime/parameter_gui_system.py` / `src/grafix/api/runner.py`
 - schema snapshot: `src/grafix/interactive/parameter_gui/catalog.py`
@@ -88,6 +92,7 @@
 ### Interactive runtime / reload / diagnostics を触りたい
 
 - frame評価とworker世代: `src/grafix/interactive/runtime/scene_runner.py` / `mp_draw.py`
+- presented frame/capture binding: `src/grafix/interactive/runtime/presented_frame.py`
 - transactional source watch: `src/grafix/interactive/runtime/source_reload.py`
 - frame順序と配線: `src/grafix/interactive/runtime/draw_window_system.py`
 - capture admission: `src/grafix/interactive/runtime/capture_queue.py`
@@ -112,12 +117,13 @@ definitions を変更したり、last-good worker/catalog を閉じたりしな�
 - font external dependency: `src/grafix/core/font_resources.py` / `src/grafix/core/primitives/text.py`
 
 全 catalog revision や object identity を新しい cache key に入れない。Geometry が実際に参照した
-operation ref、quality/config、lookup 時点の external dependency だけを使う。
+operation ref、quality/`EvaluationConfig`、lookup 時点の external dependency だけを使う。
 
 `RenderSession` / `SceneRunner` は `EvaluationResources` と `RealizeCacheStore` を所有して明示注入し、
 子 `RealizeSession` は借用する。低水準で `RealizeSession` の `resources` / `cache_store` を省略した場合は、
 省略した dependency だけを session が所有して `close()` する。二つの引数は独立に判定されるため、
 明示注入した dependency を session 側から閉じない。
+公開 `RenderSession` は close 可能な子 owner を property として返さない。
 
 ### Benchmark harness を追加/修正したい
 

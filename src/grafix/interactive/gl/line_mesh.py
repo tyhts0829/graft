@@ -25,7 +25,7 @@ class LineMesh:
         program: Any,
         # 初期GPUメモリ確保量を抑制（既定: 8MB）。必要に応じて自動拡張。
         initial_reserve: int = 8 * 1024 * 1024,
-    ):
+    ) -> None:
         """
         ctx: GPUへの描画処理を行うためのモダンOpenGL（moderngl）コンテキスト
         program: GPU側で使うシェーダープログラム。

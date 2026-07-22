@@ -8,6 +8,7 @@ import tempfile
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from types import TracebackType
 from typing import Generic, TypeVar
 
 from grafix.core.value_validation import exact_integer, exact_string
@@ -54,7 +55,12 @@ class CaptureStaging:
     def __enter__(self) -> CaptureStaging:
         return self
 
-    def __exit__(self, exc_type, exc, traceback) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self.close()
 
 

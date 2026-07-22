@@ -7,7 +7,7 @@ from grafix.core.layer import LayerStyleDefaults
 from grafix.core.parameters import ParamStore
 from grafix.core.resource_budget import ResourceBudget
 from grafix.core.runtime_limits import RuntimeLimitProfiles, RuntimeLimits
-from grafix.core.runtime_config import runtime_config
+from grafix.runtime_config_loader import runtime_config
 from grafix.interactive.diagnostics import DiagnosticCenter
 from grafix.interactive.runtime.export_job_system import ExportJobSystem
 from grafix.interactive.runtime.perf import PerfCollector

@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from grafix.core.evaluation_config import EvaluationConfig, bind_evaluation_config
 from grafix.core.font_resolver import (
     DEFAULT_FONT_FILENAME,
     default_font_path,
     list_font_choices,
     resolve_font_path,
 )
-from grafix.core.runtime_config import bind_runtime_config, load_runtime_config
+from grafix.runtime_config_loader import load_runtime_config
 
 
 def _config_with_font_dirs(tmp_path: Path, *font_dirs: Path):
@@ -16,7 +17,8 @@ def _config_with_font_dirs(tmp_path: Path, *font_dirs: Path):
     rows = ["version: 1", "paths:", '  output_dir: "data/output"', "  font_dirs:"]
     rows.extend(f'    - "{directory}"' for directory in font_dirs)
     cfg_path.write_text("\n".join((*rows, "")), encoding="utf-8")
-    return load_runtime_config(cfg_path)
+    config = load_runtime_config(cfg_path)
+    return EvaluationConfig(font_dirs=config.font_dirs)
 
 
 def test_default_font_path_exists() -> None:
@@ -55,7 +57,10 @@ def test_resolve_font_path_respects_priority_explicit_path_over_config(tmp_path)
         encoding="utf-8",
     )
 
-    with bind_runtime_config(load_runtime_config(cfg_path)):
+    runtime_config = load_runtime_config(cfg_path)
+    with bind_evaluation_config(
+        EvaluationConfig(font_dirs=runtime_config.font_dirs)
+    ):
         # 1) name 指定は config の font_dirs が優先される
         assert resolve_font_path(DEFAULT_FONT_FILENAME) == copied.resolve()
 

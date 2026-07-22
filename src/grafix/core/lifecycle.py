@@ -6,7 +6,7 @@ from collections.abc import Callable
 
 
 class CleanupErrors:
-    """cleanup 例外を最初の一件に集約し、後続 step の実行を継続する。"""
+    """cleanup 例外を最初の一件に集約し、後続例外を note に残す。"""
 
     def __init__(
         self,
@@ -20,7 +20,13 @@ class CleanupErrors:
     def record(self, error: BaseException, label: str = "cleanup") -> None:
         if self._first_error is None:
             self._first_error = error
-        elif self._report_secondary is not None:
+            return
+
+        self._first_error.add_note(
+            f"Secondary cleanup failure ({label}): "
+            f"{type(error).__name__}: {error}"
+        )
+        if self._report_secondary is not None:
             self._report_secondary(label)
 
     def attempt(

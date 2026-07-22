@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Callable
-from typing import Any, cast
+from dataclasses import replace
 
 import pytest
 
@@ -13,10 +13,14 @@ from grafix.core.parameters import ParamStore
 from grafix.core.pipeline import realize_scene
 from grafix.core.realize import RealizeSession
 from grafix.core.runtime_limits import RuntimeLimits
-from grafix.core.runtime_config import runtime_config
+from grafix.runtime_config_loader import runtime_config
 from grafix.interactive.runtime.mp_draw import DrawResult
 from grafix.interactive.runtime.perf import PerfCollector
 from grafix.interactive.runtime.scene_runner import SceneRunner
+from tests.interactive.runtime.scene_runner_fixture import MpDrawFactoryFixture
+
+
+_TEST_RUNTIME_CONFIG = replace(runtime_config(), font_dirs=())
 
 
 @pytest.mark.parametrize(
@@ -315,6 +319,7 @@ def test_profiler_collects_bounded_operation_layer_and_cache_snapshot() -> None:
                 lambda _t: Layer(geometry, site_id="ink", name="Ink"),
                 0.0,
                 defaults,
+                config=_TEST_RUNTIME_CONFIG,
                 session=session,
             )
         with perf.frame():
@@ -322,6 +327,7 @@ def test_profiler_collects_bounded_operation_layer_and_cache_snapshot() -> None:
                 lambda _t: Layer(geometry, site_id="ink", name="Ink"),
                 1.0,
                 defaults,
+                config=_TEST_RUNTIME_CONFIG,
                 session=session,
             )
 
@@ -367,9 +373,21 @@ def test_realize_cache_eviction_is_forwarded_to_profiler() -> None:
         profiler=perf,
     ) as session:
         with perf.frame():
-            realize_scene(lambda _t: first, 0.0, defaults, session=session)
+            realize_scene(
+                lambda _t: first,
+                0.0,
+                defaults,
+                config=_TEST_RUNTIME_CONFIG,
+                session=session,
+            )
         with perf.frame():
-            realize_scene(lambda _t: second, 1.0, defaults, session=session)
+            realize_scene(
+                lambda _t: second,
+                1.0,
+                defaults,
+                config=_TEST_RUNTIME_CONFIG,
+                session=session,
+            )
 
     assert perf.snapshot().cache_evictions >= 1
 
@@ -415,13 +433,15 @@ def test_scene_runner_records_worker_submit_to_result_lag() -> None:
         effect_chains=(),
         worker_lag_ms=24.5,
     )
+    factory = MpDrawFactoryFixture(_LaggedMpDraw(result))
     runner = SceneRunner(
         lambda _t: geometry,
         perf=perf,
-        n_worker=0,
+        n_worker=1,
         effective_config=runtime_config(),
+        mp_draw_factory=factory,
     )
-    runner._mp_draw = cast(Any, _LaggedMpDraw(result))
+    assert factory.calls[0].event_callback is not None
     try:
         with perf.frame():
             runner.run(

@@ -26,7 +26,8 @@ from grafix.core.authoring_loader import (
 from grafix.core.preset_catalog import bind_preset_catalog
 from grafix.core.geometry import Geometry
 from grafix.core.operation_catalog import bind_operation_catalog
-from grafix.core.runtime_config import RuntimeConfig, load_runtime_config
+from grafix.core.runtime_config import RuntimeConfig
+from grafix.runtime_config_loader import load_runtime_config
 
 
 def _config(tmp_path: Path, name: str, source: str) -> RuntimeConfig:

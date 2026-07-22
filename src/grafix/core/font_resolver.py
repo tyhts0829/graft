@@ -1,4 +1,4 @@
-"""RuntimeConfig に基づく stateless なフォント探索を提供する。"""
+"""EvaluationConfig に基づく stateless なフォント探索を提供する。"""
 
 from __future__ import annotations
 
@@ -6,7 +6,10 @@ from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
 
-from grafix.core.runtime_config import RuntimeConfig, current_runtime_config
+from grafix.core.evaluation_config import (
+    EvaluationConfig,
+    current_evaluation_config,
+)
 
 DEFAULT_FONT_FILENAME = "GoogleSans-Regular.ttf"
 _FONT_EXTENSIONS = (".ttf", ".otf", ".ttc")
@@ -22,13 +25,13 @@ class FontChoice:
     search_key: str
 
 
-def _effective_config(config: RuntimeConfig | None) -> RuntimeConfig:
-    """明示 config、または非評価 convenience 用の現在 config を返す。"""
+def _effective_config(config: EvaluationConfig | None) -> EvaluationConfig:
+    """明示 config、または現在の評価設定を返す。"""
 
     if config is None:
-        return current_runtime_config()
-    if type(config) is not RuntimeConfig:
-        raise TypeError("config は exact RuntimeConfig または None です")
+        return current_evaluation_config()
+    if type(config) is not EvaluationConfig:
+        raise TypeError("config は exact EvaluationConfig または None です")
     return config
 
 
@@ -55,7 +58,7 @@ def _packaged_font_dirs() -> tuple[Path, ...]:
     return tuple(directories)
 
 
-def _search_dirs(config: RuntimeConfig) -> tuple[Path, ...]:
+def _search_dirs(config: EvaluationConfig) -> tuple[Path, ...]:
     """config 優先順を保った探索ディレクトリ列を返す。"""
 
     return (*config.font_dirs, *_packaged_font_dirs())
@@ -85,7 +88,7 @@ def _list_font_files(*, dirs: tuple[Path, ...]) -> tuple[Path, ...]:
     return tuple(files)
 
 
-def default_font_path(*, config: RuntimeConfig | None = None) -> Path:
+def default_font_path(*, config: EvaluationConfig | None = None) -> Path:
     """既定フォントの実体パスを返す。"""
 
     effective_config = _effective_config(config)
@@ -110,7 +113,7 @@ def default_font_path(*, config: RuntimeConfig | None = None) -> Path:
 def resolve_font_path(
     font: str,
     *,
-    config: RuntimeConfig | None = None,
+    config: EvaluationConfig | None = None,
 ) -> Path:
     """``font`` 指定を固定済み config で実体ファイルへ解決する。
 
@@ -146,15 +149,14 @@ def resolve_font_path(
         "フォントが見つかりません。"
         " `font` に実在パスを渡すか、config.yaml の `font_dirs` を設定してください"
         "（例: ./.grafix/config.yaml または ~/.config/grafix/config.yaml）。"
-        f"\n\n{example_yaml}\nsearched_dirs={searched}, "
-        f"config_path={effective_config.config_path}"
+        f"\n\n{example_yaml}\nsearched_dirs={searched}"
     )
     raise FileNotFoundError(hint)
 
 
 def list_font_choices(
     *,
-    config: RuntimeConfig | None = None,
+    config: EvaluationConfig | None = None,
 ) -> tuple[tuple[str, str, bool, str], ...]:
     """呼び出し時点の filesystem を反映した GUI 用フォント候補を返す。"""
 

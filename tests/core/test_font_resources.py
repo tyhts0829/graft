@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from grafix.core.evaluation_config import EvaluationConfig
 from grafix.core.font_resolver import default_font_path
 from grafix.core.font_resources import (
     FontAssetFingerprint,
@@ -13,7 +14,7 @@ from grafix.core.font_resources import (
     ResolvedFontLease,
     TextRenderer,
 )
-from grafix.core.runtime_config import load_runtime_config
+from grafix.runtime_config_loader import load_runtime_config
 
 
 def _config_with_font_dirs(tmp_path: Path, *font_dirs: Path):
@@ -21,7 +22,8 @@ def _config_with_font_dirs(tmp_path: Path, *font_dirs: Path):
     rows = ["version: 1", "paths:", '  output_dir: "data/output"', "  font_dirs:"]
     rows.extend(f'    - "{directory}"' for directory in font_dirs)
     cfg_path.write_text("\n".join((*rows, "")), encoding="utf-8")
-    return load_runtime_config(cfg_path)
+    config = load_runtime_config(cfg_path)
+    return EvaluationConfig(font_dirs=config.font_dirs)
 
 
 def test_font_asset_fingerprint_contains_path_face_stat_and_content_digest(

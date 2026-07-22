@@ -5,14 +5,13 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from copy import deepcopy
 from hashlib import sha256
 import time
 from dataclasses import dataclass, replace
 from math import ceil, floor
 from pathlib import Path
 from random import Random
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from unicodedata import category
 
 from grafix.core.value_validation import (
@@ -22,15 +21,12 @@ from grafix.core.value_validation import (
     finite_real,
 )
 
-from .collapsed_header import encode_collapsed_header_key
-from .key import ParameterKey
-from .memento import (
-    ParamStoreMemento,
-    capture_param_store_memento,
-    restore_param_store_memento,
+from .adjustment_snapshot import (
+    ParameterAdjustment,
+    ParameterAdjustmentSnapshot,
 )
+from .key import ParameterKey
 from .meta import ParamMeta
-from .meta_spec import meta_to_spec
 from .view import canonicalize_ui_value
 
 if TYPE_CHECKING:
@@ -45,7 +41,7 @@ _MAX_VARIATION_NAME_LENGTH = 80
 class Variation:
     """名前付きで保存した parameter 調整状態。
 
-    ``parameter_snapshot`` は GUI-owned 値の memento であり、復元時に
+    ``parameter_snapshot`` は GUI-owned adjustment の snapshot であり、復元時に
     現在の code-owned 構造へ merge される。parameter lock は variation ごとの
     値ではなく現在の探索を守る store-level UI state のため、この snapshot には含めない。
     """
@@ -55,7 +51,7 @@ class Variation:
     note: str
     seed: int | None
     t: float | None
-    parameter_snapshot: ParamStoreMemento
+    parameter_snapshot: ParameterAdjustmentSnapshot
     thumbnail_path: str | None
 
     def __post_init__(self) -> None:
@@ -68,8 +64,10 @@ class Variation:
             else exact_integer(self.seed, name="seed")
         )
         t = None if self.t is None else finite_real(self.t, name="t")
-        if not isinstance(self.parameter_snapshot, ParamStoreMemento):
-            raise TypeError("parameter_snapshot must be a ParamStoreMemento")
+        if type(self.parameter_snapshot) is not ParameterAdjustmentSnapshot:
+            raise TypeError(
+                "parameter_snapshot must be a ParameterAdjustmentSnapshot"
+            )
         thumbnail_path = (
             None
             if self.thumbnail_path is None
@@ -118,7 +116,7 @@ def create_variation(
         note=note,
         seed=seed,
         t=t,
-        parameter_snapshot=capture_param_store_memento(store),
+        parameter_snapshot=store.capture_adjustment_snapshot(),
         thumbnail_path=_thumbnail_path_text(thumbnail_path),
     )
     variations[variation.name] = variation
@@ -146,7 +144,7 @@ def duplicate_variation(
         source,
         name=duplicate_name,
         created_at=time.time() if created_at is None else created_at,
-        parameter_snapshot=deepcopy(source.parameter_snapshot),
+        parameter_snapshot=source.parameter_snapshot,
     )
     variations[duplicate.name] = duplicate
     store._touch()
@@ -201,39 +199,12 @@ def diff_variation(
     """現在の parameter 状態と variation の差分を返す。"""
 
     variation = _require_variation(store._variations_ref(), _validated_name(name))
-    saved_states = variation.parameter_snapshot._states
-    saved_meta = variation.parameter_snapshot._meta
-    current_states = store._states
-    current_meta = store._meta
-
-    differences: list[VariationDifference] = []
-    keys = set(saved_states) | set(current_states)
-    for key in sorted(keys, key=lambda item: (item.op, item.site_id, item.arg)):
-        saved_state = saved_states.get(key)
-        saved_parameter_meta = saved_meta.get(key)
-        current_state = current_states.get(key)
-        current_parameter_meta = current_meta.get(key)
-        fields: list[str] = []
-        if saved_state is None or saved_parameter_meta is None:
-            fields.append("added")
-        elif current_state is None or current_parameter_meta is None:
-            fields.append("missing")
-        elif saved_parameter_meta.kind != current_parameter_meta.kind:
-            fields.append("kind")
-        else:
-            if saved_state.override != current_state.override:
-                fields.append("override")
-            if saved_state.ui_value != current_state.ui_value:
-                fields.append("ui_value")
-            if saved_state.cc_key != current_state.cc_key:
-                fields.append("cc_key")
-            if saved_parameter_meta.ui_min != current_parameter_meta.ui_min:
-                fields.append("ui_min")
-            if saved_parameter_meta.ui_max != current_parameter_meta.ui_max:
-                fields.append("ui_max")
-        if fields:
-            differences.append(VariationDifference(key=key, fields=tuple(fields)))
-    return tuple(differences)
+    return tuple(
+        VariationDifference(key=key, fields=fields)
+        for key, fields in variation.parameter_snapshot.difference_fields(
+            store.capture_adjustment_snapshot()
+        )
+    )
 
 
 def restore_variation(
@@ -251,13 +222,13 @@ def restore_variation(
     validated_name = _validated_name(name)
     variation = _require_variation(store._variations_ref(), validated_name)
     if history is None:
-        return restore_param_store_memento(store, variation.parameter_snapshot)
+        return store.apply_adjustment_snapshot(variation.parameter_snapshot)
     if history._store is not store:
         raise ValueError("history must belong to the same ParamStore")
 
     changed = False
     with history.transaction(source=("variation", validated_name)):
-        changed = restore_param_store_memento(store, variation.parameter_snapshot)
+        changed = store.apply_adjustment_snapshot(variation.parameter_snapshot)
     return changed
 
 
@@ -296,10 +267,11 @@ def set_parameters_locked(
     locked = exact_bool(locked, name="locked")
     ordered_keys = _ordered_scope(keys)
     locked_keys = store._locked_keys_ref()
+    available_keys = frozenset(store.capture_adjustment_snapshot().keys())
     changed: list[ParameterKey] = []
     for key in ordered_keys:
         if locked:
-            if key not in store._states or key not in store._meta or key in locked_keys:
+            if key not in available_keys or key in locked_keys:
                 continue
             locked_keys.add(key)
             changed.append(key)
@@ -336,26 +308,39 @@ def randomize_parameters(
     ordered_keys = _ordered_scope(keys)
 
     def apply() -> tuple[ParameterKey, ...]:
-        changed: list[ParameterKey] = []
+        current = store.capture_adjustment_snapshot()
+        current_by_key = dict(current.items())
+        adjustments: list[tuple[ParameterKey, ParameterAdjustment]] = []
         locked = store._locked_keys_ref()
         for key in ordered_keys:
             if key in locked:
                 continue
-            state = store._states.get(key)
-            meta = store._meta.get(key)
-            if state is None or meta is None:
+            adjustment = current_by_key.get(key)
+            if adjustment is None:
                 continue
-            randomized = _randomized_value(meta, seed=normalized_seed, key=key)
+            randomized = _randomized_value(
+                adjustment.meta,
+                seed=normalized_seed,
+                key=key,
+            )
             if randomized is _UNSUPPORTED:
                 continue
-            if state.ui_value == randomized and state.override:
+            if adjustment.state.ui_value == randomized and adjustment.state.override:
                 continue
-            state.ui_value = randomized
-            state.override = True
-            changed.append(key)
-        if changed:
-            store._touch(structure=False, value_keys=changed)
-        return tuple(changed)
+            adjustments.append(
+                (
+                    key,
+                    ParameterAdjustment(
+                        state=replace(
+                            adjustment.state,
+                            ui_value=randomized,
+                            override=True,
+                        ),
+                        meta=adjustment.meta,
+                    ),
+                )
+            )
+        return store._apply_adjustment_values(adjustments)
 
     if history is None:
         return apply()
@@ -398,69 +383,63 @@ def morph_variations(
     variation_a = _require_variation(store._variations_ref(), _validated_name(a_name))
     variation_b = _require_variation(store._variations_ref(), _validated_name(b_name))
     ordered_keys = _ordered_scope(keys)
-    states_a = variation_a.parameter_snapshot._states
-    states_b = variation_b.parameter_snapshot._states
-    meta_a = variation_a.parameter_snapshot._meta
-    meta_b = variation_b.parameter_snapshot._meta
+    adjustments_a = dict(variation_a.parameter_snapshot.items())
+    adjustments_b = dict(variation_b.parameter_snapshot.items())
 
     def apply() -> tuple[ParameterKey, ...]:
-        changed: list[ParameterKey] = []
+        current = store.capture_adjustment_snapshot()
+        current_by_key = dict(current.items())
+        adjustments: list[tuple[ParameterKey, ParameterAdjustment]] = []
         locked = store._locked_keys_ref()
         use_b = normalized_amount >= 0.5
         for key in ordered_keys:
             if key in locked:
                 continue
-            current_state = store._states.get(key)
-            current_meta = store._meta.get(key)
-            state_a = states_a.get(key)
-            state_b = states_b.get(key)
-            saved_meta_a = meta_a.get(key)
-            saved_meta_b = meta_b.get(key)
-            if any(
-                item is None
-                for item in (
-                    current_state,
-                    current_meta,
-                    state_a,
-                    state_b,
-                    saved_meta_a,
-                    saved_meta_b,
-                )
+            current_adjustment = current_by_key.get(key)
+            adjustment_a = adjustments_a.get(key)
+            adjustment_b = adjustments_b.get(key)
+            if (
+                current_adjustment is None
+                or adjustment_a is None
+                or adjustment_b is None
             ):
                 continue
-            assert current_state is not None
-            assert current_meta is not None
-            assert state_a is not None
-            assert state_b is not None
-            assert saved_meta_a is not None
-            assert saved_meta_b is not None
             if not (
-                current_meta.kind == saved_meta_a.kind == saved_meta_b.kind
+                current_adjustment.meta.kind
+                == adjustment_a.meta.kind
+                == adjustment_b.meta.kind
             ):
                 continue
             value = _morphed_value(
-                current_meta,
-                state_a.ui_value,
-                state_b.ui_value,
+                current_adjustment.meta,
+                adjustment_a.state.ui_value,
+                adjustment_b.state.ui_value,
                 normalized_amount,
             )
             if value is _UNSUPPORTED:
                 continue
-            selected_state = state_b if use_b else state_a
-            selected_cc = selected_state.cc_key
+            selected_state = adjustment_b.state if use_b else adjustment_a.state
             if (
-                current_state.ui_value == value
-                and current_state.override == selected_state.override
-                and current_state.cc_key == selected_cc
+                current_adjustment.state.ui_value == value
+                and current_adjustment.state.override == selected_state.override
+                and current_adjustment.state.cc_key == selected_state.cc_key
             ):
                 continue
-            current_state.ui_value = value
-            current_state.override = selected_state.override
-            current_state.cc_key = selected_cc
-            changed.append(key)
-        if changed:
-            store._touch(structure=False, value_keys=changed)
-        return tuple(changed)
+            adjustments.append(
+                (
+                    key,
+                    ParameterAdjustment(
+                        state=replace(
+                            current_adjustment.state,
+                            ui_value=value,
+                            override=selected_state.override,
+                            cc_key=selected_state.cc_key,
+                        ),
+                        meta=current_adjustment.meta,
+                    ),
+                )
+            )
+        return store._apply_adjustment_values(adjustments)
 
     if history is None:
         return apply()
@@ -675,89 +654,6 @@ def _require_variation(
         return variations[name]
     except KeyError:
         raise KeyError(f"unknown variation: {name!r}") from None
-
-
-def _encode_variation(variation: Variation) -> dict[str, Any]:
-    """codec 向けに variation を JSON 化可能な dict へ射影する。"""
-
-    snapshot = variation.parameter_snapshot
-    return {
-        "name": variation.name,
-        "created_at": variation.created_at,
-        "note": variation.note,
-        "seed": variation.seed,
-        "t": variation.t,
-        "thumbnail_path": variation.thumbnail_path,
-        "parameter_snapshot": {
-            "states": [
-                {
-                    "op": key.op,
-                    "site_id": key.site_id,
-                    "arg": key.arg,
-                    "override": state.override,
-                    "ui_value": (
-                        list(state.ui_value)
-                        if isinstance(state.ui_value, tuple)
-                        else state.ui_value
-                    ),
-                    "cc_key": (
-                        list(state.cc_key)
-                        if isinstance(state.cc_key, tuple)
-                        else state.cc_key
-                    ),
-                }
-                for key, state in snapshot._states.items()
-                if key in snapshot._meta
-            ],
-            "meta": [
-                {
-                    "op": key.op,
-                    "site_id": key.site_id,
-                    "arg": key.arg,
-                    **meta_to_spec(meta),
-                }
-                for key, meta in snapshot._meta.items()
-            ],
-            "collapsed_headers": [
-                {
-                    **encode_collapsed_header_key(key),
-                    "collapsed": collapsed,
-                }
-                for key, collapsed in sorted(
-                    snapshot._collapsed_by_header.items(),
-                    key=lambda item: item[0].sort_key(),
-                )
-            ],
-            "effect_order_state": [
-                {
-                    "chain_id": chain_id,
-                    "topology": [
-                        {
-                            "op": op,
-                            "site_id": site_id,
-                            "n_inputs": n_inputs,
-                        }
-                        for op, site_id, n_inputs in snapshot._effect_topology_signatures.get(
-                            chain_id,
-                            (),
-                        )
-                    ],
-                    "steps": (
-                        None
-                        if step_keys is None
-                        else [
-                            {"op": op, "site_id": site_id}
-                            for op, site_id in step_keys
-                        ]
-                    ),
-                }
-                for chain_id, step_keys in sorted(
-                    snapshot._effect_order_state.items(),
-                    key=lambda item: item[0],
-                )
-            ],
-        },
-    }
 
 
 __all__ = [

@@ -16,12 +16,14 @@ from grafix.core.evaluation_context import (
     EvaluationContext,
     EvaluationFingerprint,
 )
+from grafix.core.evaluation_config import EvaluationConfig
 from grafix.core.geometry import Geometry
 from grafix.core.layer import LayerStyleDefaults
 from grafix.core.pipeline import realize_scene
 from grafix.core.realize import GeometryCacheKey, RealizeSession
 from grafix.core.realized_geometry import RealizedGeometry
 from grafix.core.runtime_limits import RuntimeLimits
+from grafix.core.runtime_config import RuntimeConfig
 from grafix.devtools.benchmarks.definition import CaseDefinition, define_case
 from grafix.devtools.benchmarks.metrics import (
     cache_metrics,
@@ -32,7 +34,10 @@ from grafix.devtools.benchmarks.metrics import (
 from grafix.devtools.benchmarks.schema import BenchmarkOutput, evaluate_contract
 from grafix.interactive.gl import draw_renderer as renderer_module
 from grafix.interactive.gl.draw_renderer import DrawRenderer
-from grafix.interactive.gl.index_buffer import build_line_indices_and_stats
+from grafix.interactive.gl.index_buffer import (
+    LineIndexStats,
+    build_line_indices_and_stats,
+)
 
 _RENDERER_SOURCE_FILE = Path(__file__)
 
@@ -536,6 +541,7 @@ class _DrawRealizeIndicesState:
     """measurement 外で固定した pipeline evaluation generation。"""
 
     grid_size: int
+    config: RuntimeConfig
     context: EvaluationContext
 
 
@@ -546,14 +552,16 @@ def setup_draw_realize_indices(
     """pure config discovery と immutable context 構築を setup で一度だけ行う。"""
 
     from grafix.core.operation_catalog import current_operation_catalog
-    from grafix.core.runtime_config import runtime_config
+    from grafix.runtime_config_loader import runtime_config
 
+    config = runtime_config()
     return _DrawRealizeIndicesState(
         grid_size=int(parameters["grid_size"]),
+        config=config,
         context=EvaluationContext(
             catalog=current_operation_catalog(),
             quality="final",
-            config=runtime_config(),
+            config=EvaluationConfig(font_dirs=config.font_dirs),
         ),
     )
 
@@ -581,7 +589,13 @@ def workload_draw_realize_indices(state: object) -> BenchmarkOutput:
 
     defaults = LayerStyleDefaults(color=(0.0, 0.0, 0.0), thickness=0.01)
     with RealizeSession(context=state.context) as session:
-        layers = realize_scene(draw, 0.0, defaults, session=session)
+        layers = realize_scene(
+            draw,
+            0.0,
+            defaults,
+            config=state.config,
+            session=session,
+        )
         cache = session.stats()
     realized = layers[0].realized
     indices, draw_stats = build_line_indices_and_stats(realized.offsets)
@@ -760,6 +774,9 @@ def animated_soak(*, frames: int, sides: int) -> dict[str, Any]:
 
 
 def draw_realize_indices(*, grid_size: int) -> dict[str, Any]:
+    from grafix.core.operation_catalog import current_operation_catalog
+    from grafix.runtime_config_loader import runtime_config
+
     size = max(1, int(grid_size))
 
     def draw(_t: float) -> Geometry:
@@ -774,8 +791,20 @@ def draw_realize_indices(*, grid_size: int) -> dict[str, Any]:
         )
 
     defaults = LayerStyleDefaults(color=(0.0, 0.0, 0.0), thickness=0.01)
-    with RealizeSession() as session:
-        layers = realize_scene(draw, 0.0, defaults, session=session)
+    config = runtime_config()
+    context = EvaluationContext(
+        catalog=current_operation_catalog(),
+        quality="final",
+        config=EvaluationConfig(font_dirs=config.font_dirs),
+    )
+    with RealizeSession(context=context) as session:
+        layers = realize_scene(
+            draw,
+            0.0,
+            defaults,
+            config=config,
+            session=session,
+        )
         cache = session.stats()
     realized = layers[0].realized
     indices, draw_stats = build_line_indices_and_stats(realized.offsets)
@@ -872,7 +901,9 @@ def renderer_cache_workload(
     cache_hits = 0
     cache_misses = 0
 
-    def counted_build(offsets: np.ndarray):
+    def counted_build(
+        offsets: np.ndarray,
+    ) -> tuple[np.ndarray, LineIndexStats]:
         nonlocal index_builds
         index_builds += 1
         return original_build(offsets)
@@ -975,7 +1006,9 @@ def renderer_multilayer_dynamic_workload(
     index_builds = 0
     semantic_frames: list[tuple[np.ndarray, np.ndarray]] = []
 
-    def counted_build(offsets: np.ndarray):
+    def counted_build(
+        offsets: np.ndarray,
+    ) -> tuple[np.ndarray, LineIndexStats]:
         nonlocal index_builds
         index_builds += 1
         return original_build(offsets)

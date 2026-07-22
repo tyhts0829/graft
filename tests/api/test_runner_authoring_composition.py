@@ -19,7 +19,8 @@ from grafix.core.authoring_definitions import AuthoringDefinitionsSnapshot
 from grafix.core.operation_catalog import OperationCatalog
 from grafix.core.parameters import KnownOperationSchemaSnapshot, ParamStore
 from grafix.core.preset_catalog import PresetCatalog
-from grafix.core.runtime_config import RuntimeConfig, runtime_config
+from grafix.core.runtime_config import RuntimeConfig
+from grafix.runtime_config_loader import runtime_config
 from grafix.core.scene import SceneItem
 from grafix.interactive.parameter_gui.catalog import ParameterGuiCatalog
 

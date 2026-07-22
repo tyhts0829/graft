@@ -17,19 +17,19 @@ from grafix.core.parameters import (
 )
 from grafix.core.parameters.codec import dumps_param_store
 from grafix.core.parameters.merge_ops import merge_frame_params
-from grafix.core.parameters.persistence import (
-    load_param_store,
-    load_param_store_with_recovery,
-    param_store_recovery_path,
-    save_param_store,
-    save_param_store_recovery,
-)
 from grafix.core.parameters.runtime import ParamStoreLoadDiagnostic
 from grafix.core.parameters.ui_ops import update_state_from_ui
 from grafix.interactive.runtime.parameter_recovery import (
     ParamStoreRecoverySession,
     param_store_load_diagnostic_events,
     recovered_session_diagnostic,
+)
+from grafix.parameter_storage import (
+    param_store_recovery_path,
+    read_param_store,
+    recover_param_store_session,
+    write_param_store,
+    write_param_store_recovery,
 )
 
 _KNOWN_OPERATIONS = KnownOperationSchemaSnapshot({"circle": frozenset({"radius"})})
@@ -70,9 +70,9 @@ def _recovered_session(
     recovery_path = param_store_recovery_path(primary_path)
     primary, key = _store(0.2)
     recovered, _ = _store(0.8)
-    save_param_store(primary, primary_path)
-    save_param_store_recovery(recovered, recovery_path)
-    loaded = load_param_store_with_recovery(primary_path)
+    write_param_store(primary, primary_path)
+    write_param_store_recovery(recovered, recovery_path)
+    loaded = recover_param_store_session(primary_path)
     assert loaded.load_provenance == "session_recovery"
     return primary_path, recovery_path, loaded, key
 
@@ -105,7 +105,7 @@ def test_keep_promotes_recovered_state_and_removes_journal(tmp_path: Path) -> No
 
     assert not recovery_path.exists()
     assert store.load_provenance == "primary"
-    state = load_param_store(primary_path).get_state(key)
+    state = read_param_store(primary_path).store.get_state(key)
     assert state is not None
     assert state.ui_value == pytest.approx(0.8)
 
@@ -144,10 +144,10 @@ def test_discard_exactly_restores_primary_lock_and_favorite_state(
     set_parameters_favorite(primary, (key,), favorite=primary_marked)
     set_parameters_locked(recovered, (key,), locked=recovery_marked)
     set_parameters_favorite(recovered, (key,), favorite=recovery_marked)
-    save_param_store(primary, primary_path)
-    expected_primary = dumps_param_store(load_param_store(primary_path))
-    save_param_store_recovery(recovered, recovery_path)
-    loaded = load_param_store_with_recovery(primary_path)
+    write_param_store(primary, primary_path)
+    expected_primary = dumps_param_store(read_param_store(primary_path).store)
+    write_param_store_recovery(recovered, recovery_path)
+    loaded = recover_param_store_session(primary_path)
     assert bool(locked_parameter_keys(loaded)) is recovery_marked
     assert bool(favorite_parameter_keys(loaded)) is recovery_marked
 

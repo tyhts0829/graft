@@ -318,7 +318,7 @@ class EffectChainIndex:
         *,
         topology_signatures: Mapping[str, EffectTopologySignature],
     ) -> bool:
-        """memento由来のGUI順を同一topologyのchainへmergeする。"""
+        """Snapshot 由来の GUI 順を同一 topology の chain へ merge する。"""
 
         changed = False
         for raw_chain_id, saved_order in state_by_chain.items():

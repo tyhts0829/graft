@@ -11,7 +11,6 @@ from typing import Literal
 
 from grafix.core.value_validation import exact_bool, finite_real
 
-from .persistence import save_param_store
 from .store import ParamStore
 
 SaveParamStore = Callable[[ParamStore, Path], None]
@@ -26,10 +25,10 @@ class ParamStoreAutosave:
         store: ParamStore,
         path: Path,
         *,
+        save: SaveParamStore,
         debounce_seconds: float = 0.75,
         max_interval_seconds: float = 5.0,
         clock: Callable[[], float] = time.monotonic,
-        save: SaveParamStore = save_param_store,
     ) -> None:
         if not isinstance(store, ParamStore):
             raise TypeError("store は ParamStore である必要があります")
@@ -164,7 +163,6 @@ class ParamStoreAutosave:
         self._status = "saving"
         self._last_error = None
         try:
-            # 既存 save_param_store が atomic write と保存前 cleanup を担当する。
             self._save(self._store, self._path)
         except Exception as exc:
             # 毎 frame リトライする hot loop を避け、次の debounce 後に再試行する。

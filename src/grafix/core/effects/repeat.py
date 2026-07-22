@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
-from typing import Any
 
 import numpy as np
 from numba import njit  # type: ignore[attr-defined, import-untyped]
 
 from grafix.core.operation_authoring import effect
+from grafix.core.operation_schema import UiVisiblePred
 from grafix.core.parameters.meta import ParamMeta
 from grafix.core.realized_geometry import GeomTuple
 from grafix.core.resource_budget import ensure_geometry_output
@@ -98,14 +98,14 @@ repeat_meta = {
     ),
 }
 
-def _layout_is(name: str):
-    def _pred(v: Mapping[str, Any]) -> bool:
+def _layout_is(name: str) -> UiVisiblePred:
+    def _pred(v: Mapping[str, object]) -> bool:
         return v.get("layout", "grid") == name
 
     return _pred
 
 
-def _curve_visible(v: Mapping[str, Any]) -> bool:
+def _curve_visible(v: Mapping[str, object]) -> bool:
     layout = v.get("layout", "grid")
     if layout == "radial":
         return v.get("cumulative_scale") is True or v.get("cumulative_rotate") is True

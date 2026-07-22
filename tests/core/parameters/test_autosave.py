@@ -10,9 +10,12 @@ from grafix.core.parameters.frame_params import FrameParamRecord
 from grafix.core.parameters.key import ParameterKey
 from grafix.core.parameters.merge_ops import merge_frame_params
 from grafix.core.parameters.meta import ParamMeta
-from grafix.core.parameters.persistence import load_param_store
 from grafix.core.parameters.store import ParamStore
 from grafix.core.parameters.ui_ops import update_state_from_ui
+
+
+def _ignore_save(_store: ParamStore, _path: Path) -> None:
+    pass
 
 
 def _touch_with_parameter(store: ParamStore, value: float = 0.5) -> ParameterKey:
@@ -141,21 +144,23 @@ def test_autosave_waits_for_release_debounce_while_edit_is_active(
     assert calls == [store.revision]
 
 
-def test_autosave_flush_uses_existing_atomic_persistence(tmp_path: Path) -> None:
+def test_autosave_flush_uses_injected_save_callback(tmp_path: Path) -> None:
     store = ParamStore()
-    key = _touch_with_parameter(store, 0.75)
+    _touch_with_parameter(store, 0.75)
     path = tmp_path / "nested" / "store.json"
-    autosave = ParamStoreAutosave(store, path)
+    calls: list[tuple[ParamStore, Path]] = []
+    autosave = ParamStoreAutosave(
+        store,
+        path,
+        save=lambda current, target: calls.append((current, target)),
+    )
 
     # 生成時点の revision は clean。その後の変更だけを保存する。
     header = primitive_collapsed_header_key(("line", "site-1"))
     store._collapsed_headers_ref().add(header)
     store._touch()
     assert autosave.flush() is True
-    assert path.exists()
-    loaded = load_param_store(path)
-    assert loaded.get_state(key) is not None
-    assert loaded._collapsed_headers_ref() == {header}
+    assert calls == [(store, path)]
     assert autosave.flush() is False
 
 
@@ -196,7 +201,11 @@ def test_autosave_failure_is_retried_after_debounce(tmp_path: Path) -> None:
 
 def test_mark_clean_acknowledges_an_external_save(tmp_path: Path) -> None:
     store = ParamStore()
-    autosave = ParamStoreAutosave(store, tmp_path / "store.json")
+    autosave = ParamStoreAutosave(
+        store,
+        tmp_path / "store.json",
+        save=_ignore_save,
+    )
     _touch_with_parameter(store)
     assert autosave.dirty is True
 
@@ -235,6 +244,7 @@ def test_autosave_validates_max_interval(tmp_path: Path) -> None:
         ParamStoreAutosave(
             ParamStore(),
             tmp_path / "store.json",
+            save=_ignore_save,
             max_interval_seconds=0.0,
         )
 
@@ -248,6 +258,7 @@ def test_autosave_rejects_non_finite_debounce(
         ParamStoreAutosave(
             ParamStore(),
             tmp_path / "store.json",
+            save=_ignore_save,
             debounce_seconds=value,
         )
 
@@ -261,5 +272,14 @@ def test_autosave_rejects_non_finite_max_interval(
         ParamStoreAutosave(
             ParamStore(),
             tmp_path / "store.json",
+            save=_ignore_save,
             max_interval_seconds=value,
+        )
+
+
+def test_autosave_requires_explicit_save_callback(tmp_path: Path) -> None:
+    with pytest.raises(TypeError, match="save"):
+        ParamStoreAutosave(  # type: ignore[call-arg]
+            ParamStore(),
+            tmp_path / "store.json",
         )

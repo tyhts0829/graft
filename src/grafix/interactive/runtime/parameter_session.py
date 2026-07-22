@@ -18,12 +18,6 @@ from grafix.core.parameters import (
     ParamStoreAutosave,
     ParamStoreHistory,
 )
-from grafix.core.parameters.persistence import (
-    finalize_param_store_session,
-    load_param_store_with_recovery,
-    param_store_recovery_path,
-    save_param_store_recovery,
-)
 from grafix.core.parameters.source import ParameterLoadMode
 from grafix.core.preset_catalog import PresetCatalog
 from grafix.interactive.diagnostics import DiagnosticAction, DiagnosticEvent
@@ -31,6 +25,12 @@ from grafix.interactive.runtime.parameter_recovery import (
     ParamStoreRecoverySession,
     param_store_load_diagnostic_events,
     recovered_session_diagnostic,
+)
+from grafix.parameter_storage import (
+    finalize_parameter_session,
+    param_store_recovery_path,
+    recover_param_store_session,
+    write_param_store_recovery,
 )
 
 _logger = logging.getLogger(__name__)
@@ -79,7 +79,7 @@ def _persist_param_store_on_shutdown(
         # event loop が正常に制御を返した場合だけ。例外終了では
         # recovery を残し、次回起動時に live override を戻せるようにする。
         if primary_path is not None and session_completed_cleanly:
-            finalize_param_store_session(
+            finalize_parameter_session(
                 store,
                 primary_path,
                 known_operations=known_operations,
@@ -231,7 +231,7 @@ class ParameterSession:
         self.primary_path = primary_path
         self.known_operations = known_operations
         self.store = (
-            load_param_store_with_recovery(primary_path)
+            recover_param_store_session(primary_path)
             if primary_path is not None
             else ParamStore()
         )
@@ -241,7 +241,7 @@ class ParameterSession:
             ParamStoreAutosave(
                 self.store,
                 param_store_recovery_path(primary_path),
-                save=save_param_store_recovery,
+                save=write_param_store_recovery,
             )
             if primary_path is not None
             else None

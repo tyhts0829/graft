@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from grafix.export import image
-from grafix.core.runtime_config import runtime_config
+from grafix.runtime_config_loader import runtime_config
 
 
 # `grafix.export.image`（SVG→PNG / resvg）をテストする。

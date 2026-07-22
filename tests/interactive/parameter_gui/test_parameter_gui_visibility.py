@@ -11,6 +11,7 @@ from grafix.core.parameters.merge_ops import merge_frame_params
 from grafix.core.parameters.view import ParameterRow
 from grafix.interactive.parameter_gui import store_bridge
 from grafix.interactive.parameter_gui.parameter_filter import ParameterFilterState
+from grafix.interactive.parameter_gui.session_state import WidgetSessionState
 from grafix.interactive.parameter_gui.table import TableEdits
 from grafix.interactive.parameter_gui.visibility import active_mask_for_rows
 
@@ -214,14 +215,23 @@ def test_render_store_parameter_table_filters_rows_passed_to_renderer(monkeypatc
         store,
         show_inactive_params=False,
     )
-    store_bridge.render_store_parameter_table(store, table_view=active_view)
+    widget_state = WidgetSessionState()
+    store_bridge.render_store_parameter_table(
+        store,
+        table_view=active_view,
+        widget_state=widget_state,
+    )
     assert captured_args == ["base", "cell_size"]
 
     all_view = store_bridge.parameter_table_view_for_store(
         store,
         show_inactive_params=True,
     )
-    store_bridge.render_store_parameter_table(store, table_view=all_view)
+    store_bridge.render_store_parameter_table(
+        store,
+        table_view=all_view,
+        widget_state=widget_state,
+    )
     assert captured_args == ["base", "cell_size", "ratio"]
 
 
@@ -285,6 +295,7 @@ def test_search_filter_composes_with_existing_show_inactive_visibility(
     store_bridge.render_store_parameter_table(
         store,
         table_view=hidden_view,
+        widget_state=WidgetSessionState(),
     )
     assert captured_args == []
 
@@ -297,6 +308,7 @@ def test_search_filter_composes_with_existing_show_inactive_visibility(
     store_bridge.render_store_parameter_table(
         store,
         table_view=shown_view,
+        widget_state=WidgetSessionState(),
     )
     assert captured_args == ["ratio"]
 

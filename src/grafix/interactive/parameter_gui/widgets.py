@@ -17,11 +17,9 @@ from grafix.core.parameters.validation import (
 from grafix.core.parameters.view import ParameterRow
 
 from .pyglet_backend import content_region_available_width
+from .session_state import WidgetSessionState
 
 WidgetFn = Callable[[ParameterRow], tuple[bool, Any]]
-
-_FONT_FILTER_BY_KEY: dict[tuple[str, str, str], str] = {}
-_CHOICE_FILTER_BY_KEY: dict[tuple[str, str, str], str] = {}
 
 _MAX_INLINE_CHOICE_COUNT = 4
 _SEARCHABLE_CHOICE_COUNT = 8
@@ -137,10 +135,11 @@ def _render_choice_filter(
     imgui: Any,
     *,
     key: tuple[str, str, str],
+    state: WidgetSessionState,
 ) -> str:
     """開いている choice popup の一時 filter を描画して返す。"""
 
-    filter_text = _CHOICE_FILTER_BY_KEY.get(key, "")
+    filter_text = state.choice_filter_by_key.get(key, "")
     imgui.set_next_item_width(-1)
     changed, value = imgui.input_text_with_hint(
         "##choice_filter",
@@ -149,7 +148,7 @@ def _render_choice_filter(
     )
     if changed:
         filter_text = str(value)
-        _CHOICE_FILTER_BY_KEY[key] = filter_text
+        state.choice_filter_by_key[key] = filter_text
     return str(filter_text)
 
 
@@ -161,6 +160,7 @@ def _render_choice_combo(
     current_value: str,
     changed: bool,
     preserve_unavailable: bool,
+    state: WidgetSessionState,
 ) -> tuple[bool, str]:
     """choice を必要に応じて検索可能な combo として描画する。"""
 
@@ -181,7 +181,11 @@ def _render_choice_combo(
 
         key = (row.op, row.site_id, row.arg)
         searchable = len(choices) >= _SEARCHABLE_CHOICE_COUNT
-        filter_text = _render_choice_filter(imgui, key=key) if searchable else ""
+        filter_text = (
+            _render_choice_filter(imgui, key=key, state=state)
+            if searchable
+            else ""
+        )
         filtered = _filter_choice_labels(choices, query=filter_text)
         if not filtered:
             imgui.text_disabled("No match")
@@ -195,7 +199,7 @@ def _render_choice_combo(
                 if clicked:
                     value_out = choice
                     changed = True
-                    _CHOICE_FILTER_BY_KEY.pop(key, None)
+                    state.choice_filter_by_key.pop(key, None)
                 if selected:
                     imgui.set_item_default_focus()
     return bool(changed), value_out
@@ -365,7 +369,11 @@ def widget_string_input(row: ParameterRow) -> tuple[bool, str]:
     return imgui.input_text_multiline("##value", value, -1, 0.0, float(height))
 
 
-def widget_font_picker(row: ParameterRow) -> tuple[bool, str]:
+def widget_font_picker(
+    row: ParameterRow,
+    *,
+    state: WidgetSessionState,
+) -> tuple[bool, str]:
     """kind=font のフォント選択を描画し、(changed, value) を返す。
 
     Notes
@@ -378,13 +386,13 @@ def widget_font_picker(row: ParameterRow) -> tuple[bool, str]:
     import imgui
 
     key = (row.op, row.site_id, row.arg)
-    filter_text = _FONT_FILTER_BY_KEY.get(key, "")
+    filter_text = state.font_filter_by_key.get(key, "")
 
     # --- filter input ---
     imgui.set_next_item_width(-1)
     changed_filter, new_filter = imgui.input_text("##font_filter", str(filter_text))
     if changed_filter:
-        _FONT_FILTER_BY_KEY[key] = str(new_filter)
+        state.font_filter_by_key[key] = str(new_filter)
         filter_text = str(new_filter)
 
     # --- dropdown ---
@@ -422,7 +430,11 @@ def widget_font_picker(row: ParameterRow) -> tuple[bool, str]:
     return changed_value, str(value_out)
 
 
-def widget_choice_radio(row: ParameterRow) -> tuple[bool, str]:
+def widget_choice_radio(
+    row: ParameterRow,
+    *,
+    state: WidgetSessionState,
+) -> tuple[bool, str]:
     """kind=choice を利用可能幅に応じた radio/combo で描画する。"""
 
     import imgui
@@ -458,6 +470,7 @@ def widget_choice_radio(row: ParameterRow) -> tuple[bool, str]:
         current_value=current_value,
         changed=changed,
         preserve_unavailable=True,
+        state=state,
     )
 
 
@@ -468,12 +481,14 @@ _KIND_TO_WIDGET: dict[str, WidgetFn] = {
     "rgb": widget_rgb_color_edit3,
     "bool": widget_bool_checkbox,
     "str": widget_string_input,
-    "font": widget_font_picker,
-    "choice": widget_choice_radio,
 }
 
 
-def render_value_widget(row: ParameterRow) -> tuple[bool, Any]:
+def render_value_widget(
+    row: ParameterRow,
+    *,
+    state: WidgetSessionState,
+) -> tuple[bool, Any]:
     """row.kind に応じたウィジェットを描画し、(changed, value) を返す。
 
     Parameters
@@ -494,6 +509,10 @@ def render_value_widget(row: ParameterRow) -> tuple[bool, Any]:
         未知 kind の場合。
     """
 
+    if row.kind == "font":
+        return widget_font_picker(row, state=state)
+    if row.kind == "choice":
+        return widget_choice_radio(row, state=state)
     fn = _KIND_TO_WIDGET.get(row.kind)
     if fn is None:
         raise ValueError(f"unknown kind: {row.kind}")

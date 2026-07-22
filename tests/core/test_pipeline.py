@@ -26,6 +26,10 @@ from grafix.core.preset_catalog import (
     PresetDeclaration,
 )
 from grafix.core.realize import RealizeSession
+from grafix.runtime_config_loader import runtime_config
+
+
+_TEST_RUNTIME_CONFIG = replace(runtime_config(), font_dirs=())
 
 
 def test_realize_scene_normalizes_and_realizes_layers() -> None:
@@ -36,7 +40,7 @@ def test_realize_scene_normalizes_and_realizes_layers() -> None:
         return [Layer(g1, site_id="layer:1", color=None, thickness=None), g2]
 
     defaults = LayerStyleDefaults(color=(0.1, 0.2, 0.3), thickness=0.05)
-    realized_layers = realize_scene(draw, t=0.0, defaults=defaults)
+    realized_layers = realize_scene(draw, t=0.0, defaults=defaults, config=_TEST_RUNTIME_CONFIG)
 
     assert len(realized_layers) == 2
     colors = [item.color for item in realized_layers]
@@ -45,10 +49,7 @@ def test_realize_scene_normalizes_and_realizes_layers() -> None:
     assert thicknesses == [0.05, 0.05]
     assert all(isinstance(item.realized.coords, np.ndarray) for item in realized_layers)
     assert [item.cache_key.geometry_id for item in realized_layers] == [g1.id, g2.id]
-    assert (
-        realized_layers[0].cache_key.evaluation
-        == realized_layers[1].cache_key.evaluation
-    )
+    assert realized_layers[0].cache_key.evaluation == realized_layers[1].cache_key.evaluation
 
 
 def test_realize_scene_reuses_explicit_session_between_frames() -> None:
@@ -59,8 +60,12 @@ def test_realize_scene_reuses_explicit_session_between_frames() -> None:
 
     defaults = LayerStyleDefaults(color=(0.1, 0.2, 0.3), thickness=0.05)
     with RealizeSession() as session:
-        first = realize_scene(draw, t=0.0, defaults=defaults, session=session)
-        second = realize_scene(draw, t=1.0, defaults=defaults, session=session)
+        first = realize_scene(
+            draw, t=0.0, defaults=defaults, session=session, config=_TEST_RUNTIME_CONFIG
+        )
+        second = realize_scene(
+            draw, t=1.0, defaults=defaults, session=session, config=_TEST_RUNTIME_CONFIG
+        )
 
     assert second[0].realized is first[0].realized
     assert second[0].cache_key == first[0].cache_key
@@ -97,6 +102,7 @@ def test_realize_scene_binds_explicit_preset_snapshot() -> None:
             defaults=defaults,
             session=session,
             presets=presets,
+            config=_TEST_RUNTIME_CONFIG,
         )
 
     assert calls == ["called"]
@@ -127,6 +133,7 @@ def test_realized_layer_validates_direct_construction(
             color=(0.0, 0.0, 0.0),
             thickness=0.01,
         ),
+        config=_TEST_RUNTIME_CONFIG,
     )[0]
     with pytest.raises(error):
         replace(valid, **changes)
@@ -142,7 +149,7 @@ def test_realize_scene_observes_and_applies_layer_style_overrides() -> None:
     store = ParamStore()
 
     with parameter_context(store=store, cc_snapshot=None):
-        _ = realize_scene(draw, t=0.0, defaults=defaults)
+        _ = realize_scene(draw, t=0.0, defaults=defaults, config=_TEST_RUNTIME_CONFIG)
 
     assert store.get_label(LAYER_STYLE_OP, "layer:1") == "bg"
 
@@ -160,7 +167,7 @@ def test_realize_scene_observes_and_applies_layer_style_overrides() -> None:
     assert ok and err is None
 
     with parameter_context(store=store, cc_snapshot=None):
-        realized_layers = realize_scene(draw, t=0.0, defaults=defaults)
+        realized_layers = realize_scene(draw, t=0.0, defaults=defaults, config=_TEST_RUNTIME_CONFIG)
 
     assert realized_layers[0].thickness == 0.123
     assert realized_layers[0].color == (1.0, 0.0, 0.0)
@@ -180,15 +187,13 @@ def test_realize_scene_records_layer_style_without_param_store() -> None:
     defaults = LayerStyleDefaults(color=(0.1, 0.2, 0.3), thickness=0.05)
 
     with parameter_context_from_snapshot(snapshot={}, cc_snapshot=None) as frame_params:
-        realized_layers = realize_scene(draw, t=0.0, defaults=defaults)
+        realized_layers = realize_scene(draw, t=0.0, defaults=defaults, config=_TEST_RUNTIME_CONFIG)
 
     assert realized_layers[0].thickness == 0.05
     assert realized_layers[0].color == (0.1, 0.2, 0.3)
 
     records_by_key = {record.key: record for record in frame_params.records}
-    thickness_record = records_by_key[
-        layer_style_key("layer:1", LAYER_STYLE_LINE_THICKNESS)
-    ]
+    thickness_record = records_by_key[layer_style_key("layer:1", LAYER_STYLE_LINE_THICKNESS)]
     color_record = records_by_key[layer_style_key("layer:1", LAYER_STYLE_LINE_COLOR)]
     assert thickness_record.effective == 0.05
     assert thickness_record.source == "code"

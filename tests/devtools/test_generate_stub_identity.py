@@ -77,19 +77,19 @@ def test_generated_stub_exposes_operation_catalogs_with_exact_types() -> None:
         stub,
         protocol="_G",
         method="catalog",
-    ) == "def catalog(self) -> tuple[OperationCatalogEntry, ...]:"
+    ) == "def catalog(self) -> tuple[OperationInfo, ...]:"
     assert _protocol_method_signature(
         stub,
         protocol="_G",
         method="describe",
-    ) == "def describe(self, name: str) -> OperationCatalogEntry:"
+    ) == "def describe(self, name: str) -> OperationInfo:"
     assert _protocol_method_signature(
         stub,
         protocol="_E",
         method="catalog",
-    ) == "def catalog(self) -> tuple[OperationCatalogEntry, ...]:"
+    ) == "def catalog(self) -> tuple[OperationInfo, ...]:"
     assert _protocol_method_signature(
         stub,
         protocol="_E",
         method="describe",
-    ) == "def describe(self, name: str) -> OperationCatalogEntry:"
+    ) == "def describe(self, name: str) -> OperationInfo:"

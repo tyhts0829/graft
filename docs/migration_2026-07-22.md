@@ -27,9 +27,10 @@ test は以下の手順で更新する。
 2. operation の列挙・説明は `G.catalog()` / `E.catalog()` と
    `G.describe(name)` / `E.describe(name)` を使う。内部 consumer が snapshot を必要とする場合は
    `OperationCatalog` / `PresetCatalog` を composition root から受け取る。
-3. evaluator と GUI schema を一つの旧 `OpSpec` として扱わない。
-   evaluator contract は `OpDeclaration` / `OperationCatalogEntry`、parameter 表示は
-   `ParameterOpSchema`、GUI は evaluator-free `ParameterGuiCatalog` を使う。
+3. evaluator と GUI/public inspection schema を一つの旧 `OpSpec` として扱わない。
+   evaluator contract は内部の `OpDeclaration` / `OperationCatalogEntry`、公開 inspection は
+   evaluator-free `OperationInfo`、parameter 表示は `ParameterOpSchema`、GUI は evaluator-free
+   `ParameterGuiCatalog` を使う。
 4. source/config loader は registry object を差し替えない。`RegistrationTarget` と
    `registration_scope()` で candidate を構築し、`AuthoringDefinitionsSnapshot` を採用する。
 
@@ -42,6 +43,23 @@ test は以下の手順で更新する。
 組み込み operation を追加する場合は decorator だけでなく `core/builtins.py` の manifest に
 module、callable attribute、evaluator ABI version を追加する。旧 lazy registry helper や import
 reload で復旧する経路はない。
+
+公開 catalog consumer は core entry を import せず、返り値を `OperationInfo` として扱う。
+
+```python
+# 旧: evaluator/owner を持つ内部型を公開 inspection として利用
+from grafix import G
+from grafix.core.operation_catalog import OperationCatalogEntry
+
+entry: OperationCatalogEntry = G.describe("circle")
+
+# 新: public evaluator-free value
+from grafix import G, OperationInfo
+
+entry: OperationInfo = G.describe("circle")
+```
+
+`OperationCatalogEntry` を再公開する alias/shim はない。
 
 ## 2. Custom operation の cache contract
 
@@ -87,23 +105,53 @@ process counter への fallback はない。外部 file を content cache の一
 `@preset` の呼び出し identity は従来どおり
 `P(name=..., key=..., instance_key=..., shared=...).foo(...)` に置く。`activate` は wrapper が追加する。
 
-## 4. Runtime config
+## 4. Runtime config と EvaluationConfig
 
-process-global の mutable config path/cache/scope は削除した。config は pure loader で取得する。
+process-global の mutable config path/cache/scope は削除した。immutable value と pure mapping validation
+は `grafix.core.runtime_config`、YAML/package resource、CWD/HOME 探索、merge、path 解決は
+`grafix.runtime_config_loader` が所有する。
 
 ```python
-from grafix.core.runtime_config import load_runtime_config
+from grafix.runtime_config_loader import load_runtime_config
 
 config = load_runtime_config(".grafix/config.yaml")
 ```
 
+旧 core loader import は削除しており、re-export shim はない。
+
+```python
+# 旧: ImportError
+from grafix.core.runtime_config import load_runtime_config
+
+# 新
+from grafix.runtime_config_loader import load_runtime_config
+```
+
 application 境界から `RuntimeConfig` を明示的に渡す。`run()` / `RenderSession` では
-`config_path=` と `config=` を同時指定できない。短い evaluator/draw 呼び出し中に
+`config_path=` と `config=` を同時指定できない。短い draw/authoring 呼び出し中に
 `bind_runtime_config()` を使うことはできるが、constructor から `close()` まで process state を
 差し替える lifetime scope として使わない。
 
-font resolver、output path、worker、source reload、capture は session が確定した同じ config を
-受け取る。別 config の session は同一 process/thread 内で共存できる。
+output path、worker、source reload、capture など application subsystem は session が確定した同じ full
+config を受け取る。font resolver はそこから射影した `EvaluationConfig` だけを受け取る。別 config の
+session は同一 process/thread 内で共存できる。
+
+DAG evaluator の `EvaluationContext.config` は full `RuntimeConfig` ではなく、評価結果へ影響する最小の
+`EvaluationConfig` である。現行 field は `font_dirs` だけで、UI、MIDI、output path は evaluator/cache
+fingerprint に入らない。low-level context を組み立てる extension は明示的に射影する。
+
+```python
+from grafix.core.evaluation_config import EvaluationConfig
+from grafix.core.evaluation_context import EvaluationContext
+
+evaluation = EvaluationContext(
+    catalog=catalog,
+    quality="final",
+    config=EvaluationConfig(font_dirs=runtime_config.font_dirs),
+)
+```
+
+`EvaluationContext(config=runtime_config)` を受け付ける互換変換はない。
 
 ## 5. Geometry と cache key
 
@@ -115,15 +163,16 @@ cache consumer は `GeometryCacheKey` をそのまま伝播する。
 ```text
 GeometryCacheKey(
     geometry_id,
-    evaluation=EvaluationFingerprint(quality, effective config),
+    evaluation=EvaluationFingerprint(quality, EvaluationConfig),
     external_dependencies=ExternalDependenciesFingerprint(...),
     uncached_generation=None | int,
 )
 ```
 
 CPU cache、inflight、`RealizedLayer`、renderer GPU cache で独自 tuple/revision key を再構築しない。
-quality、config、使用 operation、external asset が異なる結果は別 key になる。未使用 operation や
-schema-only の変更で全 geometry cache を捨てない。
+quality、evaluation-semantic config、使用 operation、external asset が異なる結果は別 key になる。
+UI/output だけが異なる full config、未使用 operation、schema-only の変更で全 geometry cache を
+捨てない。
 
 ## 6. RealizeSession と resource ownership
 
@@ -153,6 +202,26 @@ shared cache store を混同しない。これらの composition owner は depen
 module/class-global の text/font cache は削除した。font resource は `EvaluationResources.fonts` が
 bounded LRU として所有し、同一 path の内容差替えも後続 lookup で新 fingerprint として観測する。
 
+`RenderSession` の公開 property は `options`、`param_store`、`config`、`runtime_limits`、`metadata` の
+allowlist に限定した。旧 extension が `style_resolver`、`realize_session`、`evaluation_context`、
+`definitions`、`evaluation_resources`、`cache_store` を取得していた場合は、child owner を外から
+close/mutate せず、必要な dependency を extension 自身の composition root で組み立てる。互換
+property はない。
+
+`SceneItem` の再帰 container は runtime/type contract とも `list` / `tuple` だけに統一した。
+
+```python
+# 旧: custom Sequence / generator は受理されない
+import itertools
+
+return itertools.chain((layer_a,), (layer_b,))
+
+# 新
+return [layer_a, layer_b]
+```
+
+`str`、`bytes`、custom `Sequence`、set、generator を list へ暗黙変換する shim はない。
+
 ## 7. ParamStore mutation と rollback
 
 API/interactive から次のような private/live state access を削除する。
@@ -174,6 +243,50 @@ variation batch など、処理後に必ず全 state を戻す用途は
 書戻しは削除する。rollback は state/revision/runtime counter を exact restoreし、history/observer
 event を発生させず、derived cache を無効化する。
 
+history、snapshot slot、variation が保存する GUI-owned state は
+`ParameterAdjustmentSnapshot` に統一した。snapshot は frozen state/meta、collapse、effect order、
+topology signature だけを保持し、live `ParamState` / mutable mapping を公開しない。capture/apply は
+`ParamStore.capture_adjustment_snapshot()` / `ParamStore.apply_adjustment_snapshot()` を使う。
+
+```python
+# 旧: ImportError。private representation を複製する memento は廃止
+from grafix.core.parameters.memento import ParamStoreMemento
+
+# 新
+snapshot = store.capture_adjustment_snapshot()
+store.apply_adjustment_snapshot(snapshot)
+```
+
+`ParamStoreMemento` の alias/re-export はない。
+
+### 7.1 ParamStore file read、recovery、commit
+
+旧 `grafix.core.parameters.persistence` は削除し、filesystem policy を
+`grafix.parameter_storage` へ移した。
+
+```python
+from grafix.parameter_storage import (
+    finalize_parameter_session,
+    read_param_store,
+    recover_param_store_session,
+    write_param_store,
+)
+
+read = read_param_store(path)          # 原本を変更しない
+store = recover_param_store_session(path)  # 明示 recovery。quarantine し得る
+write_param_store(store, path)         # direct atomic commit
+finalize_parameter_session(store, path, known_operations=schema)
+```
+
+- `read_param_store()` は `ParamStoreReadResult` を返し、rename/write/unlink を行わない。
+- `recover_primary_param_store()` / `recover_param_store_session()` だけが破損 file の quarantine と
+  recovery journal 選択を行う。
+- `write_param_store*()` は atomic writer、`finalize_parameter_session()` は既知 schema で prune した
+  primary commit 成功後だけ recovery journal を削除する。
+
+旧 `load_param_store*` / `save_param_store*` / `finalize_param_store_session` 名や core import path を保つ
+shim はない。read のつもりで recover を呼ばず、mutation policy を呼び出し側で明示する。
+
 ## 8. Interactive contract と composition owner
 
 削除した旧 import path:
@@ -186,14 +299,42 @@ re-export shim はない。telemetry の immutable snapshot/Protocol は
 
 runtime/GUI extension は次の owner を尊重する。
 
+- `_InteractiveApplication`: `run()` validation/config/options 確定後の workspace、parameter、MIDI、DWS、
+  GUI、activation、window loop lifetime。部分構築時も取得済み resource を逆順に閉じ、root error を保持
 - `PygletImguiBackend`: ImGui context、IO sync、new frame、render、font texture、close
 - `DrawRenderer`: ModernGL context、framebuffer/viewport、RGB24 readback、GPU cache
+- `PresentedFrameState`: 表示 layers/t、revision/frame ID、fresh serial、preview/capture snapshot、
+  provenance token の accept/prepare/publish
 - `CaptureQueue`: capture admission/FIFO/drain
 - `RecordingSession`: transport/window restore と video staging/publish
 - `WorkspaceWindowController`: multi-screen placement/visibility/persistence
 - `ParameterSession`: parameter load/recovery/autosave/finalization
+- `WidgetSessionState`: GUI instance ごとの font/choice filter と snippet popup text/focus
 
 renderer の `.ctx`、ParamStore private state、platform screen API に coordinator から到達しない。
+
+`api.runner.run()` は public validation、effective `RuntimeConfig` / `RenderOptions`、private
+`_InteractiveApplication.run()` への委譲だけになった。extension が `run()` の nested closure や cleanup
+list を monkeypatch する経路はない。
+
+`SceneRunner` の MP backend fake は private field へ代入せず、constructor の `mp_draw_factory` から
+private `_MpDrawClient` Protocol 準拠 object を渡す。
+
+```python
+# 旧: private state injection
+runner._mp_draw = fake
+
+# 新: initial/reload の両方が同じ factory を使う
+runner = SceneRunner(..., mp_draw_factory=lambda draw, **kwargs: fake)
+```
+
+既定 factory だけが concrete `MpDraw` を作る。`MpDraw` 内部では `_MpDrawState` が ACK/known revision、
+latest-task、stale-result transition を持ち、process/Queue/restart/close は `MpDraw` に残る。private field
+互換 setter はない。
+
+GUI extension は widgets/table 呼び出しへ `ParameterGuiSessionState.widgets` を明示的に渡す。旧
+module-global font/choice filter や snippet popup state、global reset API はないため、session close 後の
+state を新 session へ引き継がない。
 
 ## 9. Capture / output path infrastructure
 
@@ -223,6 +364,14 @@ core には immutable provenance/manifest value と codec だけを残す。form
 | resample/filter helper | `grafix.core.geometry_kernels.resample` |
 
 effect module から sibling effect を import せず、数値 kernel は effect/diagnostics に依存させない。
+
+grid planning は `geometry_kernels.grid.plan_grid_from_bbox()` が副作用のない `GridPlanResult` を返し、
+`core.operation_diagnostics.grid_spec_from_bbox_with_diagnostic()` だけが `OperationDiagnostic` を emit して
+`GridSpec | None` へ変換する。metaball、growth、reaction-diffusion、isocontour のローカル
+`_grid_spec_from_bbox` clone は削除した。
+
+budget 語彙は実際に確保する点数へ合わせ、`DEFAULT_MAX_GRID_CELLS` / `cell_count` / `max_cells` を
+`DEFAULT_MAX_GRID_POINTS` / `point_count` / `max_points` へ破壊的に変更した。旧名の alias はない。
 
 ## 11. G-code stroke order
 
@@ -267,7 +416,43 @@ fresh-process executor は `communicate()` の timeout だけでなく全 `BaseE
 noteへ残し、cleanup errorで元の`BaseException`を置換しない。custom toolがexecutorを包む場合も、
 この cleanupを迂回して独自`Popen` lifecycleを再実装しない。
 
-## 13. Stub と検証
+## 13. Validation ownership
+
+validation は次の信頼境界へ集中した。
+
+| 境界 | owner |
+|---|---|
+| public API | public method/function |
+| filesystem / IPC deserialize | decoder/receiver |
+| custom evaluator output | evaluation boundary |
+| trusted private DTO | producer の canonicalization + DTO 固有の意味的 invariant |
+
+`MpDraw.submit()` が time/revision/snapshot/epoch/quality を検証して `_DrawTask` を作るため、private
+`_DrawTask.__post_init__` で同じ field を再検証しない。export の format/snapshot/G-code/output-size
+invariant は `_validate_export_request()` 一つを submit と `ExportJob` が共有する。IPC message、file
+decode、payload 排他など untrusted boundary の検査は削除しない。
+
+private DTO constructor の重複検査に依存する extension は、DTO を直接作らず public producer を使う。
+旧 validation wrapper/shim は追加していない。
+
+## 14. Test taxonomy
+
+- marker なし: unit。process/subprocess/実 resource を使わない domain/coordinator test
+- `integration`: multiprocessing、subprocess、または実 resource lifecycle
+- `e2e`: 公開 CLI/application を entrypoint から往復
+- performance: pytest marker ではなく決定的 benchmark CLI
+
+```bash
+pytest -q -m "not integration and not e2e"
+pytest -q -m integration
+pytest -q -m e2e
+python -m grafix benchmark run --suite smoke --profile smoke
+```
+
+marker の正本は `pyproject.toml`、運用と CI lane は `docs/agent_docs/testing.md` と
+`.github/workflows/ci.yml`。重い test を directory 名だけで分類しない。
+
+## 15. Stub と検証
 
 custom operation/preset を変更したら current environment で fresh subprocess の stub を生成する。
 

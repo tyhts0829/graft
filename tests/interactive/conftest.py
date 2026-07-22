@@ -7,7 +7,8 @@ import pytest
 import pyglet
 
 from grafix.core.parameters import ParamStore
-from grafix.core.runtime_config import RuntimeConfig, runtime_config
+from grafix.core.runtime_config import RuntimeConfig
+from grafix.runtime_config_loader import runtime_config
 from grafix.interactive.parameter_gui import gui as gui_module
 from grafix.interactive.parameter_gui.gui import ParameterGUI
 

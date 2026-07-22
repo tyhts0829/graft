@@ -14,8 +14,8 @@ from typing import Any, Generic, TypeVar
 
 import numpy as np
 
+from grafix.core.evaluation_config import EvaluationConfig
 from grafix.core.font_resolver import resolve_font_path
-from grafix.core.runtime_config import RuntimeConfig
 from grafix.core.value_validation import exact_integer
 
 _DEFAULT_MAX_ASSETS = 8
@@ -535,12 +535,12 @@ class FontResources:
         font: str,
         face_index: int,
         *,
-        config: RuntimeConfig,
+        config: EvaluationConfig,
     ) -> ResolvedFontLease:
         """現在の探索優先順を再評価し、内容一致時だけ lease を再利用する。"""
 
-        if type(config) is not RuntimeConfig:
-            raise TypeError("config は exact RuntimeConfig です")
+        if type(config) is not EvaluationConfig:
+            raise TypeError("config は exact EvaluationConfig です")
         index = exact_integer(face_index, name="face_index", minimum=0)
         with self._lock:
             self._ensure_open()

@@ -168,10 +168,11 @@ class MpDrawWorkerError(RuntimeError):
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class _DrawTask:
-    """worker に渡す 1 フレーム分の入力。
+    """親 process が検証済みの 1 フレーム分入力。
 
     Notes
     -----
+    - private producer である :meth:`MpDraw.submit` が境界検証を所有する。
     - worker が revision を適用済みと確認できた通常時は snapshot を省略する。
     - 未確認時は snapshot を同梱し、control queue の ACK より先に評価を進める。
     - `frame_id` はメインプロセス側で単調増加し、結果の新旧判定に使う。
@@ -186,50 +187,6 @@ class _DrawTask:
     epoch: int
     generation: int
     quality: PreviewQuality
-
-    def __post_init__(self) -> None:
-        """task の scalar と同梱 snapshot を Queue 投入前に検証する。"""
-
-        object.__setattr__(
-            self,
-            "frame_id",
-            exact_integer(self.frame_id, name="frame_id", minimum=1),
-        )
-        object.__setattr__(self, "t", finite_real(self.t, name="t"))
-        object.__setattr__(
-            self,
-            "snapshot_revision",
-            exact_integer(
-                self.snapshot_revision,
-                name="snapshot_revision",
-                minimum=0,
-            ),
-        )
-        object.__setattr__(
-            self,
-            "epoch",
-            exact_integer(self.epoch, name="epoch", minimum=0),
-        )
-        object.__setattr__(
-            self,
-            "generation",
-            exact_integer(self.generation, name="generation", minimum=0),
-        )
-        object.__setattr__(self, "quality", _preview_quality(self.quality))
-        if self.cc_snapshot is not None and not isinstance(
-            self.cc_snapshot,
-            MidiFrameSnapshot,
-        ):
-            raise TypeError("cc_snapshot は MidiFrameSnapshot または None である必要があります")
-
-        if (self.snapshot is None) != (self.effect_order_snapshot is None):
-            raise ValueError("snapshot と effect_order_snapshot は同時に指定してください")
-        if self.snapshot is not None:
-            _require_plain_dict(self.snapshot, name="snapshot")
-            _require_plain_dict(
-                self.effect_order_snapshot,
-                name="effect_order_snapshot",
-            )
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -548,6 +505,221 @@ class _WorkerReady:
 _WorkerMessage = DrawResult | _WorkerReady | _SnapshotAck | _TaskRejected | _TaskStarted
 
 
+class _MpDrawState:
+    """ACK、latest-wins、stale 判定だけを持つ副作用なしの親側 state。
+
+    process、Queue、thread、clock、close は所有しない。I/O の結果を明示的な
+    transition method へ渡し、次に Queue へ書く値は query として返す。
+    """
+
+    def __init__(self) -> None:
+        self.current_epoch = 0
+        self.latest_received: DrawResult | None = None
+        self.latest_successful: DrawResult | None = None
+        self.completed_result_count = 0
+        self.stale_result_count = 0
+        self.last_stale_result: tuple[int, int, int] | None = None
+        self.stale_generation_result_count = 0
+        self.last_stale_generation_result: tuple[int, int, int] | None = None
+        self.snapshot_ack_count = 0
+        self.last_snapshot_ack: _SnapshotAck | None = None
+        self.task_enqueue_count = 0
+        self.task_drop_count = 0
+        self.rejected_task_count = 0
+        self.last_rejection: _TaskRejected | None = None
+        self.last_published_frame_id = 0
+        self._ready_worker_pids: set[int] = set()
+        self._worker_snapshot_revisions: dict[int, int] = {}
+        self._control_index_by_pid: dict[int, int] = {}
+        self._pending_snapshot_updates: dict[int, _SnapshotUpdate] = {}
+        self._queued_snapshot_revisions: dict[int, int] = {}
+        self._pending_task: _DrawTask | None = None
+
+    def reset_generation(self) -> None:
+        """worker 世代にだけ属する ACK/task state を空にする。"""
+
+        self._ready_worker_pids.clear()
+        self._worker_snapshot_revisions.clear()
+        self.clear_queue_state()
+
+    def clear_queue_state(self) -> None:
+        """Queue endpoint と同じ寿命の親側 slot を空にする。"""
+
+        self._control_index_by_pid.clear()
+        self._pending_snapshot_updates.clear()
+        self._queued_snapshot_revisions.clear()
+        self._pending_task = None
+
+    def register_worker(self, *, pid: int, control_index: int) -> None:
+        """起動済み worker と専用 control queue の対応を記録する。"""
+
+        self._control_index_by_pid[pid] = control_index
+
+    def mark_worker_ready(self, pid: int) -> None:
+        """ready message を適用する。"""
+
+        self._ready_worker_pids.add(pid)
+
+    @property
+    def ready_worker_pids(self) -> frozenset[int]:
+        return frozenset(self._ready_worker_pids)
+
+    def apply_snapshot_ack(self, ack: _SnapshotAck) -> None:
+        """ACK を適用し、既知 revision と pending latest を前進させる。"""
+
+        pid = ack.pid
+        applied = ack.applied_revision
+        previous = self._worker_snapshot_revisions.get(pid)
+        if previous is None or applied > previous:
+            self._worker_snapshot_revisions[pid] = applied
+        self.snapshot_ack_count += 1
+        self.last_snapshot_ack = ack
+
+        control_index = self._control_index_by_pid.get(pid)
+        if control_index is None:
+            return
+        queued_revision = self._queued_snapshot_revisions.get(control_index)
+        if queued_revision == ack.requested_revision:
+            self._queued_snapshot_revisions.pop(control_index, None)
+        pending = self._pending_snapshot_updates.get(control_index)
+        if pending is not None and pending.revision <= applied:
+            self._pending_snapshot_updates.pop(control_index, None)
+
+    def queue_snapshot_update(
+        self,
+        update: _SnapshotUpdate,
+        *,
+        worker_count: int,
+    ) -> None:
+        """worker ごとの親側 pending slot を同じ latest update へ置換する。"""
+
+        for index in range(worker_count):
+            self._pending_snapshot_updates[index] = update
+
+    def snapshot_updates_ready_to_send(self) -> tuple[tuple[int, _SnapshotUpdate], ...]:
+        """control queue が空と判明している pending update を返す。"""
+
+        return tuple(
+            (index, update)
+            for index, update in self._pending_snapshot_updates.items()
+            if index not in self._queued_snapshot_revisions
+        )
+
+    def mark_snapshot_update_queued(self, *, index: int, revision: int) -> None:
+        """指定 worker の control queue が ACK 待ちになったことを記録する。"""
+
+        self._queued_snapshot_revisions[index] = revision
+
+    def workers_have_revision(self, revision: int) -> bool:
+        """ready worker 全員が同じ revision を ACK 済みなら True。"""
+
+        expected = self._ready_worker_pids
+        return bool(expected) and all(
+            self._worker_snapshot_revisions.get(pid) == revision for pid in expected
+        )
+
+    @property
+    def worker_snapshot_revisions(self) -> dict[int, int]:
+        return dict(self._worker_snapshot_revisions)
+
+    @property
+    def pending_snapshot_update_count(self) -> int:
+        return len(self._pending_snapshot_updates)
+
+    @property
+    def queued_snapshot_update_count(self) -> int:
+        return len(self._queued_snapshot_revisions)
+
+    def replace_pending_task(self, task: _DrawTask) -> None:
+        """親側 latest task slot を置換し、旧 slot があれば drop と数える。"""
+
+        if self._pending_task is not None:
+            self.task_drop_count += 1
+        self._pending_task = task
+
+    @property
+    def pending_task(self) -> _DrawTask | None:
+        return self._pending_task
+
+    def mark_pending_task_enqueued(self, task: _DrawTask) -> None:
+        """現在の latest task が enqueue 済みなら slot を空にする。"""
+
+        if self._pending_task is task:
+            self._pending_task = None
+        self.task_enqueue_count += 1
+
+    def record_queue_drop(self) -> None:
+        self.task_drop_count += 1
+
+    def record_rejection(self, rejection: _TaskRejected) -> None:
+        self.rejected_task_count += 1
+        self.last_rejection = rejection
+
+    def begin_epoch(self, requested: int) -> bool:
+        """epoch を前進させ、旧 timeline の表示候補と pending task を捨てる。"""
+
+        if requested < self.current_epoch:
+            raise ValueError(
+                "epoch は現在値以上である必要があります: "
+                f"current={self.current_epoch}, got={requested}"
+            )
+        if requested == self.current_epoch:
+            return False
+        self.current_epoch = requested
+        self.latest_received = None
+        self.latest_successful = None
+        self._pending_task = None
+        return True
+
+    def reset_received_for_generation(self) -> None:
+        """restart 後に旧世代の受信候補だけを外す。"""
+
+        self.latest_received = None
+
+    def record_stale_generation(
+        self,
+        result: DrawResult,
+        *,
+        current_generation: int,
+    ) -> None:
+        self.stale_generation_result_count += 1
+        self.last_stale_generation_result = (
+            result.frame_id,
+            result.generation,
+            current_generation,
+        )
+
+    def accept_result(self, result: DrawResult) -> bool:
+        """current epoch の結果を採用し、stale なら False を返す。"""
+
+        self.completed_result_count += 1
+        if result.epoch != self.current_epoch:
+            self.stale_result_count += 1
+            self.last_stale_result = (
+                result.frame_id,
+                result.epoch,
+                self.current_epoch,
+            )
+            return False
+        if self.latest_received is None or result.frame_id > self.latest_received.frame_id:
+            self.latest_received = result
+        if result.error is None and (
+            self.latest_successful is None
+            or result.frame_id > self.latest_successful.frame_id
+        ):
+            self.latest_successful = result
+        return True
+
+    def publish_latest(self) -> DrawResult | None:
+        """未公開の最新結果だけを一度返す。"""
+
+        latest = self.latest_received
+        if latest is None or latest.frame_id <= self.last_published_frame_id:
+            return None
+        self.last_published_frame_id = latest.frame_id
+        return latest
+
+
 def _draw_worker_main(
     task_q: mp_queues.Queue[_DrawTask | None],
     control_q: mp_queues.Queue[_SnapshotUpdate],
@@ -832,44 +1004,20 @@ class MpDraw:
         self._closed = False
 
         self._next_frame_id = 0
-        self._current_epoch = 0
-        # 「最後に受信した結果」と「最後に成功した結果」は別の寿命を持つ。
-        # error result も poll_latest() では呼び出し側へ通知する必要がある一方、
-        # preview は直近の成功 scene を保持し続ける必要があるため、1 変数で兼用しない。
-        self._latest_received: DrawResult | None = None
-        self._latest_successful: DrawResult | None = None
-        self._completed_result_count = 0
-        self._stale_result_count = 0
-        self._last_stale_result: tuple[int, int, int] | None = None
-        self._stale_generation_result_count = 0
-        self._last_stale_generation_result: tuple[int, int, int] | None = None
+        self._state = _MpDrawState()
         self._snapshot_broadcast_count = 0
-        self._snapshot_ack_count = 0
         self._snapshot_payload_copy_count = 0
-        self._last_snapshot_ack: _SnapshotAck | None = None
-        self._task_enqueue_count = 0
-        self._task_drop_count = 0
-        self._rejected_task_count = 0
-        self._last_rejection: _TaskRejected | None = None
         # latest-wins queue で結果が返らない task もあるため、submit 時刻は明示的に
         # bounded とする。worker lag はこの時刻から result 到着までを測る。
         self._submitted_at_by_frame: OrderedDict[int, float] = OrderedDict()
         self._submitted_revision_by_frame: OrderedDict[int, int] = OrderedDict()
-        # `poll_latest()` の「同じ結果を二度返さない」ためのブックキーピング。
-        self._last_published_frame_id = 0
 
         # generation resource の作成途中でも close() が参照できる空状態を先に作る。
         # Queue 本体は作成に成功した順に属性へ束縛し、partial failure 時にも
         # 取得済み endpoint だけを確実に閉じられるようにする。
         self._procs: list[mp_process.BaseProcess] = []
         self._control_qs: list[mp.Queue[_SnapshotUpdate]] = []
-        self._ready_worker_pids: set[int] = set()
-        self._worker_snapshot_revisions: dict[int, int] = {}
-        self._control_index_by_pid: dict[int, int] = {}
-        self._pending_snapshot_updates: dict[int, _SnapshotUpdate] = {}
-        self._queued_snapshot_revisions: dict[int, int] = {}
         self._active_tasks_by_pid: dict[int, tuple[int, float]] = {}
-        self._pending_task: _DrawTask | None = None
         self._snapshot_broadcast_revision: int | None = None
         self._snapshot_payload_revision: int | None = None
         self._snapshot_payload: ParamSnapshot | None = None
@@ -900,13 +1048,8 @@ class MpDraw:
         # 書き込んだ message を新世代が誤って採用する経路そのものを断つ。
         self._procs = []
         self._control_qs = []
-        self._ready_worker_pids = set()
-        self._worker_snapshot_revisions = {}
-        self._control_index_by_pid = {}
-        self._pending_snapshot_updates = {}
-        self._queued_snapshot_revisions = {}
+        self._state.reset_generation()
         self._active_tasks_by_pid = {}
-        self._pending_task = None
         self._snapshot_broadcast_revision = None
         self._snapshot_payload_revision = None
         self._snapshot_payload = None
@@ -940,7 +1083,7 @@ class MpDraw:
             self._procs.append(proc)
             proc.start()
             if proc.pid is not None:
-                self._control_index_by_pid[proc.pid] = i
+                self._state.register_worker(pid=proc.pid, control_index=i)
         if wait_ready:
             self._await_workers_ready()
 
@@ -1020,7 +1163,7 @@ class MpDraw:
         self._generation += 1
         self._restart_count += 1
         self._last_restart_reason = normalized_reason
-        self._latest_received = None
+        self._state.reset_received_for_generation()
         self._submitted_at_by_frame.clear()
         self._submitted_revision_by_frame.clear()
 
@@ -1058,14 +1201,14 @@ class MpDraw:
         expected = {proc.pid for proc in self._procs if proc.pid is not None}
         deadline = time.monotonic() + _WORKER_READY_TIMEOUT_S
 
-        while self._ready_worker_pids != expected:
+        while self._state.ready_worker_pids != expected:
             self._check_health()
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 pending = next(
                     proc
                     for proc in self._procs
-                    if proc.pid is None or proc.pid not in self._ready_worker_pids
+                    if proc.pid is None or proc.pid not in self._state.ready_worker_pids
                 )
                 error = MpDrawWorkerError(
                     worker=pending.name,
@@ -1086,7 +1229,7 @@ class MpDraw:
                 and message.generation == self._generation
                 and message.pid in expected
             ):
-                self._ready_worker_pids.add(message.pid)
+                self._state.mark_worker_ready(message.pid)
 
         self._check_health()
 
@@ -1139,39 +1282,22 @@ class MpDraw:
             message_generation = message.generation
             if message_generation != current_generation:
                 if isinstance(message, DrawResult):
-                    self._stale_generation_result_count += 1
-                    self._last_stale_generation_result = (
-                        message.frame_id,
-                        message_generation,
-                        current_generation,
+                    self._state.record_stale_generation(
+                        message,
+                        current_generation=current_generation,
                     )
                 continue
 
             if isinstance(message, _WorkerReady):
-                self._ready_worker_pids.add(message.pid)
+                self._state.mark_worker_ready(message.pid)
             elif isinstance(message, _SnapshotAck):
-                pid = message.pid
-                applied = message.applied_revision
-                previous = self._worker_snapshot_revisions.get(pid)
-                if previous is None or applied > previous:
-                    self._worker_snapshot_revisions[pid] = applied
-                self._snapshot_ack_count += 1
-                self._last_snapshot_ack = message
+                self._state.apply_snapshot_ack(message)
                 self._record_event(
                     "mp_snapshot_applied",
                     revision=message.applied_revision,
                 )
-                control_index = self._control_index_by_pid.get(pid)
-                if control_index is not None:
-                    queued_revision = self._queued_snapshot_revisions.get(control_index)
-                    if queued_revision == message.requested_revision:
-                        self._queued_snapshot_revisions.pop(control_index, None)
-                    pending = self._pending_snapshot_updates.get(control_index)
-                    if pending is not None and pending.revision <= applied:
-                        self._pending_snapshot_updates.pop(control_index, None)
             elif isinstance(message, _TaskRejected):
-                self._rejected_task_count += 1
-                self._last_rejection = message
+                self._state.record_rejection(message)
             elif isinstance(message, _TaskStarted):
                 self._active_tasks_by_pid[message.pid] = (
                     message.frame_id,
@@ -1188,36 +1314,15 @@ class MpDraw:
                     active = self._active_tasks_by_pid.get(worker_pid)
                     if active is not None and active[0] == message.frame_id:
                         self._active_tasks_by_pid.pop(worker_pid, None)
-                self._completed_result_count += 1
                 self._submitted_revision_by_frame.pop(
                     message.frame_id,
                     None,
                 )
-                current_epoch = self._current_epoch
-                result_epoch = message.epoch
-                if result_epoch != current_epoch:
+                if not self._state.accept_result(message):
                     # worker error であっても旧 timeline の結果なら現在の preview
                     # failure として通知しない。破棄理由は worker health error と
                     # 区別できるよう診断値へ残す。
-                    self._stale_result_count += 1
-                    self._last_stale_result = (
-                        message.frame_id,
-                        result_epoch,
-                        current_epoch,
-                    )
                     continue
-                if (
-                    self._latest_received is None
-                    or message.frame_id > self._latest_received.frame_id
-                ):
-                    # poll 用には成功/失敗を問わず、受信した最新結果を保持する。
-                    self._latest_received = message
-                if message.error is None and (
-                    self._latest_successful is None
-                    or message.frame_id > self._latest_successful.frame_id
-                ):
-                    # preview fallback 用の成功結果は、後続の error で上書きしない。
-                    self._latest_successful = message
 
     def _plain_snapshot_for_revision(
         self,
@@ -1269,8 +1374,10 @@ class MpDraw:
         )
         # worker ごとに「queue 内 1 件 + 親側 latest 1 件」だけを保持する。
         # 既に古い update が queue にある場合は、それが ack された後に latest を送る。
-        for index in range(len(self._control_qs)):
-            self._pending_snapshot_updates[index] = update
+        self._state.queue_snapshot_update(
+            update,
+            worker_count=len(self._control_qs),
+        )
         self._flush_snapshot_updates()
         self._snapshot_broadcast_revision = revision
         self._snapshot_broadcast_count += 1
@@ -1299,28 +1406,26 @@ class MpDraw:
     def _flush_snapshot_updates(self) -> None:
         """各 worker の空いた control queue へ pending latest を 1 件だけ送る。"""
 
-        for index, update in tuple(self._pending_snapshot_updates.items()):
-            if index in self._queued_snapshot_revisions:
-                continue
+        for index, update in self._state.snapshot_updates_ready_to_send():
             try:
                 self._control_qs[index].put_nowait(update)
             except queue.Full:
                 # feeder/reader 間の短い race。次の submit/poll で再試行する。
                 continue
-            self._queued_snapshot_revisions[index] = update.revision
+            self._state.mark_snapshot_update_queued(
+                index=index,
+                revision=update.revision,
+            )
 
     def _workers_have_revision(self, revision: int) -> bool:
-        expected = self._ready_worker_pids
-        return bool(expected) and all(
-            self._worker_snapshot_revisions.get(pid) == revision for pid in expected
-        )
+        return self._state.workers_have_revision(revision)
 
     def _enqueue_latest(self, task: _DrawTask) -> bool:
         """有限 task queue へ latest-wins で投入し、成功したかを返す。"""
 
         try:
             self._task_q.put_nowait(task)
-            self._task_enqueue_count += 1
+            self._state.mark_pending_task_enqueued(task)
             return True
         except queue.Full:
             try:
@@ -1332,20 +1437,19 @@ class MpDraw:
                 # で再試行できるよう失敗を返す。
                 return False
             if isinstance(dropped, _DrawTask):
-                self._task_drop_count += 1
+                self._state.record_queue_drop()
             try:
                 self._task_q.put_nowait(task)
-                self._task_enqueue_count += 1
+                self._state.mark_pending_task_enqueued(task)
                 return True
             except queue.Full:
                 return False
 
     def _enqueue_pending(self) -> None:
-        task = self._pending_task
+        task = self._state.pending_task
         if task is None:
             return
-        if self._enqueue_latest(task):
-            self._pending_task = None
+        self._enqueue_latest(task)
 
     def begin_epoch(self, epoch: int | None = None) -> int:
         """新しい transport epoch へ進み、旧結果を表示候補から外す。
@@ -1368,21 +1472,16 @@ class MpDraw:
         """
 
         self._check_health()
-        current = self._current_epoch
+        current = self._state.current_epoch
         requested = current + 1 if epoch is None else exact_integer(epoch, name="epoch", minimum=0)
-        if requested < current:
-            raise ValueError(
-                f"epoch は現在値以上である必要があります: current={current}, got={requested}"
-            )
-        if requested == current:
-            return current
+        if requested <= current:
+            self._state.begin_epoch(requested)
+            return self._state.current_epoch
 
         # 既に到着済みの current result を accounting してから境界を進める。
         self._drain_result_queue()
-        self._current_epoch = requested
-        self._latest_received = None
-        self._latest_successful = None
-        self._pending_task = None
+        if not self._state.begin_epoch(requested):
+            return self._state.current_epoch
 
         while True:
             try:
@@ -1397,8 +1496,8 @@ class MpDraw:
                 except queue.Full:
                     pass
                 break
-            self._task_drop_count += 1
-        return self._current_epoch
+            self._state.record_queue_drop()
+        return self._state.current_epoch
 
     def submit(
         self,
@@ -1446,12 +1545,12 @@ class MpDraw:
                 MidiFrameSnapshot,
             ):
                 raise TypeError("cc_snapshot は MidiFrameSnapshot または None である必要があります")
-            if requested_epoch < self._current_epoch:
+            if requested_epoch < self._state.current_epoch:
                 raise ValueError(
                     "古い epoch の draw task は投入できません: "
-                    f"current={self._current_epoch}, got={requested_epoch}"
+                    f"current={self._state.current_epoch}, got={requested_epoch}"
                 )
-            if requested_epoch > self._current_epoch:
+            if requested_epoch > self._state.current_epoch:
                 self.begin_epoch(requested_epoch)
             # 前フレームまでの ACK を先に反映する。ACK は snapshot 省略の最適化に
             # だけ使い、task enqueue の correctness barrier にはしない。
@@ -1513,9 +1612,7 @@ class MpDraw:
 
             # queue の feeder race で即時投入できなくても、最新 task を親側に
             # 1 件だけ保持し、次の submit/poll で再試行する。
-            if self._pending_task is not None:
-                self._task_drop_count += 1
-            self._pending_task = task
+            self._state.replace_pending_task(task)
             self._enqueue_pending()
         finally:
             # enqueue 中に worker が落ちても次の frame まで空画面で待たない。
@@ -1553,14 +1650,7 @@ class MpDraw:
         # drain 中に process が終了した場合も、その場で明示的に失敗させる。
         self._check_health()
 
-        if (
-            self._latest_received is None
-            or self._latest_received.frame_id <= self._last_published_frame_id
-        ):
-            return None
-
-        self._last_published_frame_id = self._latest_received.frame_id
-        return self._latest_received
+        return self._state.publish_latest()
 
     @property
     def snapshot_broadcast_count(self) -> int:
@@ -1578,7 +1668,7 @@ class MpDraw:
     def snapshot_ack_count(self) -> int:
         """worker から受信した snapshot ack 数を返す。"""
 
-        return self._snapshot_ack_count
+        return self._state.snapshot_ack_count
 
     @property
     def snapshot_payload_copy_count(self) -> int:
@@ -1590,13 +1680,19 @@ class MpDraw:
     def worker_snapshot_revisions(self) -> dict[int, int]:
         """worker pid ごとの適用済み snapshot revision を返す。"""
 
-        return dict(self._worker_snapshot_revisions)
+        return self._state.worker_snapshot_revisions
+
+    @property
+    def ready_worker_pids(self) -> frozenset[int]:
+        """初期化を完了した現 worker 世代の pid を返す。"""
+
+        return self._state.ready_worker_pids
 
     @property
     def last_snapshot_ack(self) -> tuple[int, int, str] | None:
         """直近 ack の (requested, applied, status) を返す。"""
 
-        ack = self._last_snapshot_ack
+        ack = self._state.last_snapshot_ack
         if ack is None:
             return None
         return ack.requested_revision, ack.applied_revision, ack.status
@@ -1605,31 +1701,31 @@ class MpDraw:
     def rejected_task_count(self) -> int:
         """未知または古い snapshot revision で拒否された task 数を返す。"""
 
-        return self._rejected_task_count
+        return self._state.rejected_task_count
 
     @property
     def task_enqueue_count(self) -> int:
         """task queue への投入に成功した回数を返す。"""
 
-        return self._task_enqueue_count
+        return self._state.task_enqueue_count
 
     @property
     def task_drop_count(self) -> int:
         """latest-wins または epoch 境界で未開始 task を破棄した回数を返す。"""
 
-        return self._task_drop_count
+        return self._state.task_drop_count
 
     @property
     def completed_result_count(self) -> int:
         """親が回収済みの DrawResult 総数を返す。"""
 
-        return self._completed_result_count
+        return self._state.completed_result_count
 
     @property
     def current_epoch(self) -> int:
         """現在採用対象としている transport epoch を返す。"""
 
-        return self._current_epoch
+        return self._state.current_epoch
 
     @property
     def generation(self) -> int:
@@ -1659,43 +1755,43 @@ class MpDraw:
     def stale_result_count(self) -> int:
         """旧/未知 epoch のため表示候補から破棄した result 数を返す。"""
 
-        return self._stale_result_count
+        return self._state.stale_result_count
 
     @property
     def last_stale_result(self) -> tuple[int, int, int] | None:
         """直近 stale result の `(frame_id, result_epoch, current_epoch)`。"""
 
-        return self._last_stale_result
+        return self._state.last_stale_result
 
     @property
     def stale_generation_result_count(self) -> int:
         """旧 worker 世代のため破棄した result 数を返す。"""
 
-        return self._stale_generation_result_count
+        return self._state.stale_generation_result_count
 
     @property
     def last_stale_generation_result(self) -> tuple[int, int, int] | None:
         """直近の `(frame_id, result_generation, current_generation)`。"""
 
-        return self._last_stale_generation_result
+        return self._state.last_stale_generation_result
 
     @property
     def pending_snapshot_update_count(self) -> int:
         """親側で保持する worker 別 latest update 数を返す。"""
 
-        return len(self._pending_snapshot_updates)
+        return self._state.pending_snapshot_update_count
 
     @property
     def queued_snapshot_update_count(self) -> int:
         """control queue へ投入済みで ack 待ちの update 数を返す。"""
 
-        return len(self._queued_snapshot_revisions)
+        return self._state.queued_snapshot_update_count
 
     @property
     def last_rejection(self) -> tuple[int, int | None, str] | None:
         """直近拒否の (requested, applied, reason) を返す。"""
 
-        rejection = self._last_rejection
+        rejection = self._state.last_rejection
         if rejection is None:
             return None
         return (
@@ -1711,9 +1807,10 @@ class MpDraw:
         これにより一時的な user draw の失敗で preview が空になることを防ぐ。
         """
 
-        if self._latest_successful is None:
+        latest = self._state.latest_successful
+        if latest is None:
             return None
-        return self._latest_successful.layers
+        return latest.layers
 
     def latest_successful_result(self) -> DrawResult | None:
         """直近の成功結果を、その入力時刻と共に返す。
@@ -1724,7 +1821,7 @@ class MpDraw:
         `latest_layers()` とは別に結果全体を公開する。
         """
 
-        return self._latest_successful
+        return self._state.latest_successful
 
     def _send_stop_tokens(self, count: int) -> None:
         """待機中の古い task を捨てながら、通常終了用 sentinel を送る。"""
@@ -1820,9 +1917,7 @@ class MpDraw:
         for control_q in self._control_qs:
             self._close_queue(control_q, cancel_pending=not clean_shutdown)
         self._control_qs.clear()
-        self._pending_snapshot_updates.clear()
-        self._queued_snapshot_revisions.clear()
-        self._control_index_by_pid.clear()
+        self._state.clear_queue_state()
         if result_q is not None:
             self._close_queue(result_q, cancel_pending=not clean_shutdown)
 

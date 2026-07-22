@@ -295,7 +295,7 @@ def test_reaction_diffusion_draft_caps_steps_and_reports_effective_value(
     )
 
 
-def test_reaction_diffusion_draft_bounds_cell_step_work_and_keeps_final_steps(
+def test_reaction_diffusion_draft_bounds_point_step_work_and_keeps_final_steps(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import grafix.core.effects.reaction_diffusion as module
@@ -330,10 +330,10 @@ def test_reaction_diffusion_draft_bounds_cell_step_work_and_keeps_final_steps(
     with preview_quality_context("final"):
         module.reaction_diffusion(mask, **kwargs)
 
-    draft_cells, draft_steps = seen_work[0]
-    final_cells, final_steps = seen_work[1]
-    assert draft_cells * draft_steps <= module.DRAFT_MAX_CELL_STEPS
-    assert draft_cells < final_cells
+    draft_points, draft_steps = seen_work[0]
+    final_points, final_steps = seen_work[1]
+    assert draft_points * draft_steps <= module.DRAFT_MAX_POINT_STEPS
+    assert draft_points < final_points
     assert final_steps == 5000
     assert any(
         item.op == "reaction_diffusion.grid_pitch"

@@ -11,6 +11,7 @@ from grafix.core.parameters.frame_params import FrameEffectChainRecord
 from grafix.core.parameters.history import ParamStoreHistory
 from grafix.core.parameters.store import ParamStore
 from grafix.interactive.parameter_gui import store_bridge
+from grafix.interactive.parameter_gui.session_state import WidgetSessionState
 from grafix.interactive.parameter_gui.store_bridge import apply_effect_order_command
 from grafix.interactive.parameter_gui.snippet import snippet_for_block
 from grafix.interactive.parameter_gui.grouping import GroupType
@@ -829,6 +830,7 @@ def test_store_bridge_commits_effect_command_as_one_history_unit(
     result = store_bridge.render_store_parameter_table(
         store,
         table_view=view,
+        widget_state=WidgetSessionState(),
         history=history,
     )
     assert result.changed is True

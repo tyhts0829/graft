@@ -216,7 +216,7 @@ def test_growth_sdf_grid_coarsens_before_allocating() -> None:
         ring_maxs,
         pitch_hint=1.0,
         pad=0.0,
-        max_cells=25,
+        max_points=25,
     )
 
     assert sdf.size <= 25

@@ -18,7 +18,6 @@ from ._operation_selector import (
 from grafix.core.geometry import Geometry
 from grafix.core.operation_catalog import (
     OperationCatalog,
-    OperationCatalogEntry,
     current_operation_catalog,
 )
 from grafix.core.operation_declaration import EffectStepRef, OpDeclaration
@@ -41,7 +40,9 @@ from grafix.core.parameters.identity import identity_string
 from grafix.core.value_validation import exact_bool
 
 from ._op_validation import validate_operation_kwargs
+from ._operation_info import operation_info
 from ._unset import _UNSET_TARGET, _UnsetTarget
+from .operation_info import OperationInfo
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -543,18 +544,21 @@ class EffectNamespace:
         例: E.scale(scale=(2.0, 2.0, 2.0))(g) -> Geometry(op="scale", inputs=(g,), params=...)
     """
 
-    def catalog(self) -> tuple[OperationCatalogEntry, ...]:
+    def catalog(self) -> tuple[OperationInfo, ...]:
         """登録済み effect の catalog を名前順で返す。
 
         Returns
         -------
-        tuple[OperationCatalogEntry, ...]
+        tuple[OperationInfo, ...]
             名前、説明、引数、source を含む immutable entry の列。
         """
 
-        return current_operation_catalog().public_entries(kind="effect")
+        return tuple(
+            operation_info(entry)
+            for entry in current_operation_catalog().public_entries(kind="effect")
+        )
 
-    def describe(self, name: str) -> OperationCatalogEntry:
+    def describe(self, name: str) -> OperationInfo:
         """effect の catalog entry を名前で取得する。
 
         Parameters
@@ -564,8 +568,8 @@ class EffectNamespace:
 
         Returns
         -------
-        OperationCatalogEntry
-            immutable catalog の declaration entry。
+        OperationInfo
+            evaluator を含まない immutable inspection value。
 
         Raises
         ------
@@ -576,7 +580,7 @@ class EffectNamespace:
         name_s = identity_string(name, name="effect name")
         catalog = current_operation_catalog()
         try:
-            return catalog.resolve("effect", name_s)
+            return operation_info(catalog.resolve("effect", name_s))
         except KeyError:
             raise KeyError(f"未登録の effect: {name_s!r}")
 

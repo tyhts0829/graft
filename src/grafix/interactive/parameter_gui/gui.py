@@ -9,6 +9,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable
 
+from grafix.core.evaluation_config import EvaluationConfig, bind_evaluation_config
 from grafix.core.font_resolver import default_font_path, resolve_font_path
 from grafix.core.lifecycle import CleanupErrors
 from grafix.core.parameters.favorites import favorite_parameter_key_set
@@ -363,7 +364,11 @@ class ParameterGUI:
             )
             if type(self._catalog) is not ParameterGuiCatalog:
                 raise TypeError("catalog は exact ParameterGuiCatalog である必要があります")
-            with bind_runtime_config(effective_config):
+            evaluation_config = EvaluationConfig(font_dirs=effective_config.font_dirs)
+            with (
+                bind_runtime_config(effective_config),
+                bind_evaluation_config(evaluation_config),
+            ):
                 self._initialize(
                     gui_window,
                     effective_config=effective_config,
@@ -1472,7 +1477,12 @@ class ParameterGUI:
     def draw_frame(self) -> bool:
         """確定済み config を束縛して 1 フレーム分の UI を描画する。"""
 
-        with bind_runtime_config(self._effective_config):
+        with (
+            bind_runtime_config(self._effective_config),
+            bind_evaluation_config(
+                EvaluationConfig(font_dirs=self._effective_config.font_dirs)
+            ),
+        ):
             return self._draw_frame()
 
     def _render_parameter_workspace(
@@ -1509,6 +1519,7 @@ class ParameterGUI:
             table_result = render_store_parameter_table(
                 self._store,
                 table_view=table_view,
+                widget_state=self._session.widgets,
                 metric_scale=coordinate_scale,
                 midi_learn_state=self._session.midi_learn,
                 midi_last_cc_change=(
@@ -1621,6 +1632,10 @@ class ParameterGUI:
         if getattr(self, "_closed", False):
             return
         self._closed = True
+
+        session = getattr(self, "_session", None)
+        if isinstance(session, ParameterGuiSessionState):
+            session.widgets.clear()
 
         errors = CleanupErrors()
 

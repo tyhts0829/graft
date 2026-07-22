@@ -14,8 +14,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast
 
+from grafix.core.evaluation_config import EvaluationConfig, bind_evaluation_config
 from grafix.core.font_resolver import default_font_path
-from grafix.core.runtime_config import bind_runtime_config, load_runtime_config
+from grafix.core.runtime_config import bind_runtime_config
+from grafix.runtime_config_loader import load_runtime_config
 from grafix.core.value_validation import exact_string, exact_string_choice
 
 DoctorStatus = Literal["ok", "warning", "error"]
@@ -320,7 +322,12 @@ def run_doctor(
         configured_output = Path(output_dir)
 
     config_context = nullcontext() if config is None else bind_runtime_config(config)
-    with config_context:
+    evaluation_context = (
+        nullcontext()
+        if config is None
+        else bind_evaluation_config(EvaluationConfig(font_dirs=config.font_dirs))
+    )
+    with config_context, evaluation_context:
         checks = [
             _check_gl(),
             _check_command("resvg"),

@@ -4,9 +4,12 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from .effects import E
 from .export import export
 from .layers import L
+from .operation_info import OperationInfo as OperationInfo
 from .preset import preset
 from .presets import P
 from .primitives import G
@@ -29,6 +32,9 @@ from grafix.core.operation_authoring import effect, primitive
 from grafix.core.resource_budget import ResourceBudget, ResourceLimitError
 from grafix.core.runtime_limits import RuntimeLimitProfiles, RuntimeLimits
 
+if TYPE_CHECKING:
+    from .runner import run as run
+
 __all__ = [
     "Color",
     "E",
@@ -37,6 +43,7 @@ __all__ = [
     "Frame",
     "G",
     "L",
+    "OperationInfo",
     "P",
     "RenderOptions",
     "RenderSession",
@@ -57,9 +64,11 @@ __all__ = [
 ]
 
 
-def run(*args, **kwargs):
-    """公開 run API へのラッパ（遅延インポートで GUI 依存を後回しにする）。"""
+if not TYPE_CHECKING:
 
-    from .runner import run as _run
+    def run(*args: object, **kwargs: object) -> None:
+        """公開 run API へのラッパ（遅延インポートで GUI 依存を後回しにする）。"""
 
-    return _run(*args, **kwargs)
+        from .runner import run as _run
+
+        _run(*args, **kwargs)

@@ -51,6 +51,7 @@ from grafix.interactive.parameter_gui.parameter_filter import (
     parameter_search_token_may_be_dynamic,
     parameter_search_tokens,
 )
+from grafix.interactive.parameter_gui.session_state import WidgetSessionState
 from grafix.interactive.parameter_gui.table import TableEdits
 
 ParameterHotPathOperation = Literal[
@@ -1243,7 +1244,7 @@ def benchmark_draw(_t: float) -> tuple[()]:
 
 def setup_provenance(parameters: dict[str, Any], _seed: int) -> object:
     from grafix.export.capture_provenance import CaptureProvenanceBuilder
-    from grafix.core.runtime_config import runtime_config
+    from grafix.runtime_config_loader import runtime_config
 
     store = parameter_store_fixture(rows=int(parameters["rows"]))
     builder = CaptureProvenanceBuilder(
@@ -1447,6 +1448,7 @@ def parameter_snapshot_model_workload(
     store_bridge.clear_parameter_table_model_cache()
     render_calls = 0
     visible_rows = 0
+    widget_state = WidgetSessionState()
 
     def fake_render(render_input: Any, **_kwargs: Any) -> TableEdits:
         nonlocal render_calls, visible_rows
@@ -1475,6 +1477,7 @@ def parameter_snapshot_model_workload(
             changed = store_bridge.render_store_parameter_table(
                 store,
                 table_view=table_view,
+                widget_state=widget_state,
             )
             elapsed = time.perf_counter_ns() - started
             if changed.changed:

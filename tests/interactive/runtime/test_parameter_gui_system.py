@@ -137,9 +137,7 @@ def test_gui_system_keeps_injected_config_after_ambient_config_changes(
         parameter_gui_window_size=(999, 888),
         parameter_gui_font_size_base_px=99.0,
     )
-    runtime_config_module = importlib.import_module(
-        "grafix.core.runtime_config"
-    )
+    runtime_config_module = importlib.import_module("grafix.runtime_config_loader")
     monkeypatch.setattr(
         runtime_config_module,
         "runtime_config",

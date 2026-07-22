@@ -304,31 +304,31 @@ def test_closed_resample_large_step_keeps_three_distinct_ring_samples(
     np.testing.assert_array_equal(sampled[0], sampled[-1])
 
 
-def test_grid_plan_rejects_first_cell_over_cap() -> None:
+def test_grid_plan_rejects_first_point_over_cap() -> None:
     fitting_plan = plan_grid_from_bbox(
         (0.0, 0.0),
         (2.0, 1.0),
         pitch=1.0,
-        max_cells=6,
+        max_points=6,
         overflow="reject",
     )
     overflowing_plan = plan_grid_from_bbox(
         (0.0, 0.0),
         (2.0, 1.0),
         pitch=1.0,
-        max_cells=5,
+        max_points=5,
         overflow="reject",
     )
 
     fitting = fitting_plan.spec
     assert fitting is not None
-    assert (fitting.nx, fitting.ny, fitting.cell_count) == (3, 2, 6)
+    assert (fitting.nx, fitting.ny, fitting.point_count) == (3, 2, 6)
     assert fitting_plan.diagnostic is None
     assert overflowing_plan.spec is None
     assert overflowing_plan.diagnostic is not None
     assert (
         overflowing_plan.diagnostic.reason
-        == "requested grid exceeded the cell limit and was rejected"
+        == "requested grid exceeded the point limit and was rejected"
     )
 
 
@@ -337,14 +337,14 @@ def test_grid_plan_coarsens_both_axes_with_one_pitch() -> None:
         (0.0, 0.0),
         (100.0, 100.0),
         pitch=1.0,
-        max_cells=100,
+        max_points=100,
         overflow="coarsen",
     )
 
     grid = plan.spec
     assert grid is not None
     assert grid.coarsened
-    assert grid.cell_count <= 100
+    assert grid.point_count <= 100
     assert plan.diagnostic is not None
     assert plan.diagnostic.original_value == 1.0
     assert plan.diagnostic.effective_value == grid.pitch
@@ -358,7 +358,7 @@ def test_grid_plan_rejects_degenerate_unpadded_bbox() -> None:
         (1.0, 2.0),
         (1.0, 2.0),
         pitch=1.0,
-        max_cells=100,
+        max_points=100,
     )
 
     assert plan.spec is None

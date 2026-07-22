@@ -22,14 +22,15 @@ from grafix.core.parameters import (
 )
 from grafix.core.parameters.autosave import ParamStoreAutosave
 from grafix.core.parameters.merge_ops import merge_frame_params
-from grafix.core.parameters.persistence import (
-    load_param_store,
-    load_param_store_with_recovery,
-    param_store_recovery_path,
-    save_param_store_recovery,
-)
 from grafix.core.parameters.ui_ops import update_state_from_ui
-from grafix.core.runtime_config import RuntimeConfigFallback, runtime_config
+from grafix.parameter_storage import (
+    param_store_recovery_path,
+    read_param_store,
+    recover_param_store_session,
+    write_param_store_recovery,
+)
+from grafix.core.runtime_config import RuntimeConfigFallback
+from grafix.runtime_config_loader import runtime_config
 from grafix.interactive.midi.midi_controller import (
     CcSnapshotLoadResult,
     CcSnapshotWriteBlockedError,
@@ -98,7 +99,7 @@ def _session_with_dirty_explicit_override(
     autosave = ParamStoreAutosave(
         store,
         param_store_recovery_path(primary),
-        save=save_param_store_recovery,
+        save=write_param_store_recovery,
     )
     ok, error = update_state_from_ui(
         store,
@@ -128,7 +129,7 @@ def test_abnormal_shutdown_flushes_recovery_without_finalizing_primary(
 
     assert not primary.exists()
     assert recovery.exists()
-    recovered = load_param_store_with_recovery(primary).get_state(key)
+    recovered = recover_param_store_session(primary).get_state(key)
     assert recovered is not None
     assert recovered.ui_value == pytest.approx(0.9)
     assert recovered.override is True
@@ -149,7 +150,7 @@ def test_clean_shutdown_promotes_primary_and_removes_recovery(tmp_path: Path) ->
 
     assert primary.exists()
     assert not recovery.exists()
-    finalized = load_param_store(primary).get_state(key)
+    finalized = read_param_store(primary).store.get_state(key)
     assert finalized is not None
     assert finalized.ui_value == pytest.approx(0.9)
     assert finalized.override is False
@@ -162,11 +163,11 @@ def test_recovered_session_actions_are_wired_to_shared_diagnostic_center(
     recovery = param_store_recovery_path(primary)
     store, key, autosave = _session_with_dirty_explicit_override(primary)
     autosave.flush()
-    recovered = load_param_store_with_recovery(primary)
+    recovered = recover_param_store_session(primary)
     recovered_autosave = ParamStoreAutosave(
         recovered,
         recovery,
-        save=save_param_store_recovery,
+        save=write_param_store_recovery,
     )
     monitor = RuntimeMonitor()
 
@@ -203,7 +204,7 @@ def test_recovered_session_actions_are_wired_to_shared_diagnostic_center(
     assert monitor.diagnostic_center.dispatch_action(recovered_event, keep)
     assert monitor.snapshot().recovered_session is False
     assert not recovery.exists()
-    kept = load_param_store(primary).get_state(key)
+    kept = read_param_store(primary).store.get_state(key)
     assert kept is not None
     assert kept.ui_value == pytest.approx(0.9)
 
@@ -220,7 +221,7 @@ def test_retry_action_retries_autosave_and_clears_failure(
         attempts += 1
         if attempts == 1:
             raise OSError("disk full")
-        save_param_store_recovery(current, path)
+        write_param_store_recovery(current, path)
 
     autosave._save = flaky_save
     with pytest.raises(OSError, match="disk full"):

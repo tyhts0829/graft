@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from grafix.api import G
+from grafix.core.evaluation_config import EvaluationConfig
 from grafix.core.evaluation_context import (
     EMPTY_EXTERNAL_DEPENDENCIES_FINGERPRINT,
     ExternalDependencySnapshot,
@@ -20,7 +21,8 @@ from grafix.core.primitives._text_flatten import flatten_recording
 from grafix.core.primitives.text import text as text_impl
 from grafix.core.realize import RealizeError, realize
 from grafix.core.realized_geometry import RealizedGeometry
-from grafix.core.runtime_config import RuntimeConfig, load_runtime_config
+from grafix.core.runtime_config import RuntimeConfig
+from grafix.runtime_config_loader import load_runtime_config
 
 
 def _geometry_checksum(
@@ -56,7 +58,11 @@ def _bound_text_font(
         lease = resources.resolve(
             font,
             font_index,
-            config=load_runtime_config() if config is None else config,
+            config=EvaluationConfig(
+                font_dirs=(
+                    load_runtime_config() if config is None else config
+                ).font_dirs
+            ),
         )
         snapshot = ExternalDependencySnapshot(
             fingerprint=EMPTY_EXTERNAL_DEPENDENCIES_FINGERPRINT,

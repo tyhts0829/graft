@@ -142,7 +142,7 @@ def _execute_polytree(
     clip_paths: Sequence[Sequence[tuple[int, int]]],
     *,
     clip_type: int,
-):
+) -> pyclipper.PyPolyNode:
     clipper = pyclipper.Pyclipper()  # type: ignore[attr-defined]
     if subject_paths:
         clipper.AddPaths(subject_paths, pyclipper.PT_SUBJECT, True)  # type: ignore[attr-defined]
@@ -174,10 +174,12 @@ def _canonical_ring(
     return tuple(rotated)
 
 
-def _canonical_tree_paths(root) -> list[tuple[tuple[int, int], ...]]:
+def _canonical_tree_paths(
+    root: pyclipper.PyPolyNode,
+) -> list[tuple[tuple[int, int], ...]]:
     """PolyTree を親優先かつ sibling 間で決定的な ring 列へ変換する。"""
 
-    def visit(node) -> tuple[
+    def visit(node: pyclipper.PyPolyNode) -> tuple[
         tuple[int, tuple[tuple[int, int], ...]],
         list[tuple[tuple[int, int], ...]],
     ]:

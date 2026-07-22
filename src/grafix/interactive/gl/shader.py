@@ -4,6 +4,28 @@
 なぜ: 単純なラインを太さ付き四角形に展開し、視認性を高めるため。
 """
 
+from typing import Protocol, runtime_checkable
+
+import moderngl
+
+
+class _ShaderUniform(Protocol):
+    """DrawRenderer が使用する uniform の最小契約。"""
+
+    value: object
+
+    def write(self, value: bytes) -> None:
+        """uniform へ packed bytes を書き込む。"""
+
+
+@runtime_checkable
+class _ShaderProgram(Protocol):
+    """線描画 renderer が使用する program の最小契約。"""
+
+    def __getitem__(self, name: str) -> _ShaderUniform: ...
+
+    def release(self) -> None: ...
+
 
 class Shader:
     VERTEX_SHADER = """
@@ -52,10 +74,12 @@ class Shader:
     """
 
     @classmethod
-    def create_shader(cls, mgl_context):
+    def create_shader(cls, mgl_context: moderngl.Context) -> _ShaderProgram:
         line_program = mgl_context.program(
             vertex_shader=Shader.VERTEX_SHADER,
             geometry_shader=Shader.GEOMETRY_SHADER,
             fragment_shader=Shader.FRAGMENT_SHADER,
         )
+        if not isinstance(line_program, _ShaderProgram):
+            raise TypeError("ModernGL program does not satisfy the line shader contract")
         return line_program

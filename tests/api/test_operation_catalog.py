@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from dataclasses import FrozenInstanceError
 
 import pytest
 
-from grafix.api import E, G
-from grafix.core.operation_declaration import OpDeclaration
+from grafix.api import E, G, OperationInfo
 
 
 def test_g_describe_exposes_primitive_spec_metadata() -> None:
@@ -25,8 +25,10 @@ def test_g_describe_exposes_primitive_spec_metadata() -> None:
     assert entry.source is not None
     assert Path(entry.source).name == "line.py"
     assert entry.provenance == "grafix.core.primitives.line:line"
-    assert isinstance(entry.declaration, OpDeclaration)
-    assert not hasattr(entry, "spec")
+    assert isinstance(entry, OperationInfo)
+    assert not hasattr(entry, "declaration")
+    assert not hasattr(entry, "evaluation")
+    assert not hasattr(entry, "evaluator")
 
 
 def test_e_describe_excludes_geometry_inputs_from_effect_args() -> None:
@@ -44,8 +46,19 @@ def test_e_describe_excludes_geometry_inputs_from_effect_args() -> None:
     assert entry.source is not None
     assert Path(entry.source).name == "scale.py"
     assert entry.provenance == "grafix.core.effects.scale:scale"
-    assert isinstance(entry.declaration, OpDeclaration)
-    assert not hasattr(entry, "spec")
+    assert isinstance(entry, OperationInfo)
+    assert not hasattr(entry, "declaration")
+    assert not hasattr(entry, "evaluation")
+    assert not hasattr(entry, "evaluator")
+
+
+def test_operation_info_is_immutable() -> None:
+    entry = G.describe("line")
+
+    with pytest.raises(FrozenInstanceError):
+        entry.name = "other"  # type: ignore[misc]
+    with pytest.raises(TypeError):
+        entry.defaults["length"] = 2.0  # type: ignore[index]
 
 
 def test_catalog_loads_all_builtins_and_is_sorted() -> None:

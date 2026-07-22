@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from types import ModuleType
 
 from grafix.core.parameters.history import ParamStoreHistory
 from grafix.core.parameters.identity import GroupKey
@@ -124,7 +125,7 @@ def format_parameter_group(group: GroupKey) -> str:
 
 
 def render_reconcile_orphan_popup(
-    imgui,
+    imgui: ModuleType,
     model: ReconcileOrphanPanelModel,
     *,
     error_message: str | None = None,

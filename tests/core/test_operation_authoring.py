@@ -143,6 +143,31 @@ def test_public_decorator_defaults_are_explicit() -> None:
     assert signature(effect).parameters["cache_policy"].default == "content"
 
 
+def test_public_decorators_return_the_original_callable() -> None:
+    def original_primitive(*, size: float = 1.0) -> GeomTuple:
+        _ = size
+        return _empty_geometry()
+
+    def original_effect(
+        geometry: GeomTuple,
+        *,
+        amount: float = 1.0,
+    ) -> GeomTuple:
+        _ = amount
+        return geometry
+
+    with registration_scope(RegistrationTarget()):
+        decorated_primitive = primitive(original_primitive)
+        decorated_effect = effect(meta={"amount": ParamMeta(kind="float")})(
+            original_effect
+        )
+
+    assert decorated_primitive is original_primitive
+    assert decorated_effect is original_effect
+    assert operation_declaration(decorated_primitive) is not None
+    assert operation_declaration(decorated_effect) is not None
+
+
 @pytest.mark.parametrize("overwrite", [1, 0, "false", None])
 def test_public_decorators_require_exact_bool_overwrite(overwrite: object) -> None:
     with pytest.raises(TypeError, match="overwrite"):

@@ -10,7 +10,11 @@ from threading import RLock
 from types import MappingProxyType
 from typing import Any, Literal, cast
 
-from .operation_catalog import OperationCatalog, current_operation_catalog
+from .operation_catalog import (
+    OperationCatalog,
+    OperationCatalogEntry,
+    current_operation_catalog,
+)
 from .operation_declaration import OpKind
 from .operation_schema import ParameterOpSchema, UiVisiblePred
 from .parameters.identity import identity_string
@@ -224,7 +228,7 @@ def _selector_entries(
     *,
     kind: SelectorKind,
     n_inputs: int,
-):
+) -> tuple[OperationCatalogEntry, ...]:
     return tuple(
         entry
         for entry in catalog.public_entries(kind=cast(OpKind, kind))
@@ -236,7 +240,7 @@ def _selector_fingerprint(
     *,
     kind: SelectorKind,
     n_inputs: int,
-    entries,
+    entries: tuple[OperationCatalogEntry, ...],
 ) -> SelectorCatalogFingerprint:
     digest = hashlib.sha256()
     digest.update(b"grafix-selector-catalog-v1\0")
@@ -255,7 +259,7 @@ def _build_selector_spec(
     *,
     kind: SelectorKind,
     n_inputs: int,
-    entries,
+    entries: tuple[OperationCatalogEntry, ...],
     fingerprint: SelectorCatalogFingerprint,
 ) -> SelectorSpec:
     names = tuple(entry.name for entry in entries)

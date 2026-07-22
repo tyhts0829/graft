@@ -11,18 +11,19 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Literal
 
 import numpy as np
 from numba import njit, prange  # type: ignore[attr-defined, import-untyped]
 
 from grafix.core.operation_authoring import effect
-from grafix.core.operation_diagnostics import emit_operation_diagnostic
+from grafix.core.operation_diagnostics import (
+    emit_operation_diagnostic,
+    grid_spec_from_bbox_with_diagnostic,
+)
 from grafix.core.parameters.meta import ParamMeta
 from grafix.core.preview_quality import current_preview_quality
 from grafix.core.realized_geometry import GeomTuple, concat_geom_tuples
 
-from grafix.core.geometry_kernels.grid import GridSpec, plan_grid_from_bbox
 from grafix.core.geometry_kernels.packed import (
     empty_packed_geometry,
     pack_polylines,
@@ -46,36 +47,7 @@ DRAFT_MAX_TOTAL_POINTS = 4_096
 DRAFT_MAX_FORCE_GRID_CELLS = 65_536
 
 _BOUNDARY_PUSH_GAIN = 0.1
-_MAX_SDF_GRID_CELLS = 1_000_000
-
-
-def _grid_spec_from_bbox(
-    mins: np.ndarray,
-    maxs: np.ndarray,
-    *,
-    pitch: float,
-    padding: float,
-    max_cells: int,
-    overflow: Literal["reject", "coarsen"],
-) -> GridSpec | None:
-    plan = plan_grid_from_bbox(
-        mins,
-        maxs,
-        pitch=pitch,
-        padding=padding,
-        max_cells=max_cells,
-        overflow=overflow,
-    )
-    diagnostic = plan.diagnostic
-    if diagnostic is not None:
-        emit_operation_diagnostic(
-            op="GridSpec.from_bbox",
-            original_value=diagnostic.original_value,
-            effective_value=diagnostic.effective_value,
-            reason=diagnostic.reason,
-            severity=diagnostic.severity,
-        )
-    return plan.spec
+_MAX_SDF_GRID_POINTS = 1_000_000
 
 
 growth_meta = {
@@ -244,7 +216,7 @@ def _build_sdf_grid(
     *,
     pitch_hint: float,
     pad: float,
-    max_cells: int,
+    max_points: int,
 ) -> tuple[np.ndarray, float, float, float]:
     """SDF を 2D グリッドに前計算する（以降は bilinear 参照）。"""
     pitch0 = float(pitch_hint)
@@ -257,12 +229,12 @@ def _build_sdf_grid(
 
     bbox_min = np.min(ring_mins.astype(np.float64, copy=False), axis=0)
     bbox_max = np.max(ring_maxs.astype(np.float64, copy=False), axis=0)
-    grid = _grid_spec_from_bbox(
+    grid = grid_spec_from_bbox_with_diagnostic(
         bbox_min,
         bbox_max,
         pitch=pitch0,
         padding=pad0,
-        max_cells=max_cells,
+        max_points=max_points,
         overflow="coarsen",
     )
     if grid is None:
@@ -1168,7 +1140,7 @@ def growth(
         ring_maxs,
         pitch_hint=step_sdf,
         pad=sdf_pad,
-        max_cells=_MAX_SDF_GRID_CELLS,
+        max_points=_MAX_SDF_GRID_POINTS,
     )
 
     bbox_min = np.min(ring_mins, axis=0)

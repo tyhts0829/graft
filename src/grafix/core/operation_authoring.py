@@ -5,7 +5,7 @@ from __future__ import annotations
 import inspect
 import sys
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any, TypeAlias, cast
+from typing import Any, ParamSpec, TypeAlias, TypeVar, cast, overload
 
 from grafix.core.authoring_definitions import register_authoring_declaration
 from grafix.core.builtins import builtin_evaluator_abi
@@ -41,6 +41,9 @@ EffectEvaluator: TypeAlias = Callable[
     [Sequence[RealizedGeometry], tuple[tuple[str, Any], ...]],
     RealizedGeometry,
 ]
+
+_P = ParamSpec("_P")
+_GeomTupleT = TypeVar("_GeomTupleT", bound=GeomTuple)
 
 _WRAPPER_ARGUMENTS = frozenset({"activate", "instance_key", "key", "shared"})
 _ACTIVATE_META = {
@@ -221,6 +224,32 @@ def _source_owner(func: Callable[..., object], *, kind: OpKind) -> str:
     )
 
 
+@overload
+def primitive(
+    func: Callable[_P, _GeomTupleT],
+    *,
+    overwrite: bool = False,
+    cache_policy: CachePolicy = "content",
+    version: str | None = None,
+    external_dependency_hook: ExternalDependencyHook | None = None,
+    meta: Mapping[str, ParamMeta | Mapping[str, object]] | None = None,
+    ui_visible: Mapping[str, UiVisiblePred] | None = None,
+) -> Callable[_P, _GeomTupleT]: ...
+
+
+@overload
+def primitive(
+    func: None = None,
+    *,
+    overwrite: bool = False,
+    cache_policy: CachePolicy = "content",
+    version: str | None = None,
+    external_dependency_hook: ExternalDependencyHook | None = None,
+    meta: Mapping[str, ParamMeta | Mapping[str, object]] | None = None,
+    ui_visible: Mapping[str, UiVisiblePred] | None = None,
+) -> Callable[[Callable[_P, _GeomTupleT]], Callable[_P, _GeomTupleT]]: ...
+
+
 def primitive(
     func: Callable[..., GeomTuple] | None = None,
     *,
@@ -230,6 +259,9 @@ def primitive(
     external_dependency_hook: ExternalDependencyHook | None = None,
     meta: Mapping[str, ParamMeta | Mapping[str, object]] | None = None,
     ui_visible: Mapping[str, UiVisiblePred] | None = None,
+) -> (
+    Callable[..., GeomTuple]
+    | Callable[[Callable[..., GeomTuple]], Callable[..., GeomTuple]]
 ):
     """関数を primitive として宣言する公開 decorator。
 
@@ -325,6 +357,32 @@ def primitive(
     return decorator(func)
 
 
+@overload
+def effect(
+    func: Callable[_P, _GeomTupleT],
+    *,
+    overwrite: bool = False,
+    cache_policy: CachePolicy = "content",
+    version: str | None = None,
+    n_inputs: int = 1,
+    meta: Mapping[str, ParamMeta | Mapping[str, object]] | None = None,
+    ui_visible: Mapping[str, UiVisiblePred] | None = None,
+) -> Callable[_P, _GeomTupleT]: ...
+
+
+@overload
+def effect(
+    func: None = None,
+    *,
+    overwrite: bool = False,
+    cache_policy: CachePolicy = "content",
+    version: str | None = None,
+    n_inputs: int = 1,
+    meta: Mapping[str, ParamMeta | Mapping[str, object]] | None = None,
+    ui_visible: Mapping[str, UiVisiblePred] | None = None,
+) -> Callable[[Callable[_P, _GeomTupleT]], Callable[_P, _GeomTupleT]]: ...
+
+
 def effect(
     func: Callable[..., GeomTuple] | None = None,
     *,
@@ -334,6 +392,9 @@ def effect(
     n_inputs: int = 1,
     meta: Mapping[str, ParamMeta | Mapping[str, object]] | None = None,
     ui_visible: Mapping[str, UiVisiblePred] | None = None,
+) -> (
+    Callable[..., GeomTuple]
+    | Callable[[Callable[..., GeomTuple]], Callable[..., GeomTuple]]
 ):
     """関数を effect として宣言する公開 decorator。
 

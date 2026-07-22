@@ -424,7 +424,7 @@ def test_pipeline_measurement_uses_the_setup_evaluation_generation(
     """timed workload 内で config discovery/catalog composition をやり直さない。"""
 
     from grafix.core import operation_catalog as catalog_module
-    from grafix.core import runtime_config as config_module
+    from grafix import runtime_config_loader as config_module
 
     definition = next(
         definition

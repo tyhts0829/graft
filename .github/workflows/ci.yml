@@ -26,11 +26,21 @@ jobs:
         run: ruff check src/grafix tests
       - name: Mypy
         run: mypy src/grafix
-      - name: Pytest
+      - name: Unit tests
         env:
           PYTHONDONTWRITEBYTECODE: "1"
           PYTHONPATH: src
-        run: pytest -q -p no:cacheprovider
+        run: pytest -q -p no:cacheprovider -m "not integration and not e2e"
+      - name: Integration tests
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          PYTHONPATH: src
+        run: pytest -q -p no:cacheprovider -m integration
+      - name: End-to-end tests
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          PYTHONPATH: src
+        run: pytest -q -p no:cacheprovider -m e2e
 
   performance-smoke:
     runs-on: macos-latest

@@ -373,19 +373,25 @@ NOISE_GRADIENTS_3D = np.asarray(_GRAD3_12, dtype=np.float32)
 
 
 @njit(fastmath=True, cache=True)
-def fade(t):
+def fade(t: float) -> float:
     """Perlin ノイズ用のフェード関数。"""
     return t * t * t * (t * (t * 6 - 15) + 10)
 
 
 @njit(fastmath=True, cache=True)
-def lerp(a, b, t):
+def lerp(a: float, b: float, t: float) -> float:
     """線形補間。"""
     return a + t * (b - a)
 
 
 @njit(fastmath=True, cache=True)
-def grad(hash_val, x, y, z, grad3_array):
+def grad(
+    hash_val: int,
+    x: float,
+    y: float,
+    z: float,
+    grad3_array: np.ndarray,
+) -> float:
     """勾配ベクトル計算。"""
     idx = int(hash_val) % 12
     g = grad3_array[idx]
@@ -393,7 +399,13 @@ def grad(hash_val, x, y, z, grad3_array):
 
 
 @njit(fastmath=True, cache=True)
-def perlin_noise_3d(x, y, z, perm_table, grad3_array):
+def perlin_noise_3d(
+    x: float,
+    y: float,
+    z: float,
+    perm_table: np.ndarray,
+    grad3_array: np.ndarray,
+) -> float:
     """3 次元 Perlin ノイズ生成。"""
     X = int(np.floor(x)) & 255
     Y = int(np.floor(y)) & 255
@@ -433,11 +445,11 @@ def perlin_noise_3d(x, y, z, perm_table, grad3_array):
 @njit(fastmath=True, cache=True)
 def perlin_core(
     vertices: np.ndarray,
-    frequency: tuple,
-    phase: tuple,
+    frequency: tuple[float, float, float],
+    phase: tuple[np.float32, np.float32, np.float32],
     perm_table: np.ndarray,
     grad3_array: np.ndarray,
-):
+) -> np.ndarray:
     """コア Perlin ノイズ計算（3 次元頂点専用）。
 
     入力空間変換は noise(pos * freq + phase)。phase は freq に非依存。
@@ -465,13 +477,13 @@ def perlin_core(
 @njit(fastmath=True, cache=True)
 def _apply_noise_to_coords(
     coords: np.ndarray,
-    amplitude: tuple,
-    amplitude_grad: tuple,
-    frequency: tuple,
-    frequency_grad: tuple,
-    gradient_center_offset: tuple,
+    amplitude: tuple[float, float, float],
+    amplitude_grad: tuple[float, float, float],
+    frequency: tuple[float, float, float],
+    frequency_grad: tuple[float, float, float],
+    gradient_center_offset: tuple[float, float, float],
     gradient_profile_mode: int,
-    gradient_radius: tuple,
+    gradient_radius: tuple[float, float, float],
     time: float,
     min_factor: float,
     max_factor: float,

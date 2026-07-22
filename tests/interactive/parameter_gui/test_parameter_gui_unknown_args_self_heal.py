@@ -4,6 +4,7 @@ from grafix.core.parameters import ParamMeta, ParamStore, ParameterKey
 from grafix.core.parameters.frame_params import FrameParamRecord
 from grafix.core.parameters.merge_ops import merge_frame_params
 from grafix.interactive.parameter_gui import store_bridge
+from grafix.interactive.parameter_gui.session_state import WidgetSessionState
 from grafix.interactive.parameter_gui.table import TableEdits
 
 # 登録（meta 取得）に必要なので、対象モジュールを明示的に import する。
@@ -62,7 +63,11 @@ def test_render_store_parameter_table_filters_unknown_arg(monkeypatch) -> None:
         store,
         show_inactive_params=True,
     )
-    store_bridge.render_store_parameter_table(store, table_view=view)
+    store_bridge.render_store_parameter_table(
+        store,
+        table_view=view,
+        widget_state=WidgetSessionState(),
+    )
 
     args = [r.arg for r in captured_rows if getattr(r, "op", None) == "line"]
     assert args == ["length"]
@@ -115,7 +120,11 @@ def test_render_store_parameter_table_filters_unknown_arg_for_component(monkeypa
         store,
         show_inactive_params=True,
     )
-    store_bridge.render_store_parameter_table(store, table_view=view)
+    store_bridge.render_store_parameter_table(
+        store,
+        table_view=view,
+        widget_state=WidgetSessionState(),
+    )
 
     args = [r.arg for r in captured_rows if getattr(r, "op", None) == "preset._logo_component"]
     assert args == ["center"]

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from grafix.core.runtime_config import load_runtime_config
+from grafix.runtime_config_loader import load_runtime_config
 from grafix.devtools.generate_stub import generate_stubs_str
 
 

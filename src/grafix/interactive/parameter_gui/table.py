@@ -8,7 +8,7 @@ import json
 import math
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from types import MappingProxyType
+from types import MappingProxyType, ModuleType
 from typing import Literal, assert_never
 
 from grafix.core.parameters.collapsed_header import (
@@ -34,7 +34,8 @@ from .labeling import (
 )
 from .midi_learn import MidiLearnState
 from .pyglet_backend import content_region_available_width
-from .rules import ui_rules_for_row
+from .rules import RowUiRules, ui_rules_for_row
+from .session_state import WidgetSessionState
 from .snippet import snippet_for_block
 from .table_model import EffectChainTableState
 from .theme import PARAMETER_GUI_PALETTE, source_badge_color
@@ -416,7 +417,7 @@ def source_badge_for_row(row: ParameterRow, last_source: ValueSource | None) -> 
     return "CODE"
 
 
-def _set_item_tooltip(imgui, text: str) -> None:
+def _set_item_tooltip(imgui: ModuleType, text: str) -> None:
     """直前の item がhoverまたはkeyboard focus中ならtooltipを設定する。"""
 
     if imgui.is_item_hovered() or imgui.is_item_focused():
@@ -424,7 +425,7 @@ def _set_item_tooltip(imgui, text: str) -> None:
 
 
 def _notify_parameter_help(
-    imgui,
+    imgui: ModuleType,
     row: ParameterRow,
     callback: Callable[[ParameterRow, bool], None] | None,
 ) -> None:
@@ -443,7 +444,7 @@ def _notify_parameter_help(
         callback(row, selected)
 
 
-def _imgui_metric_scale(imgui) -> float:
+def _imgui_metric_scale(imgui: ModuleType) -> float:
     """font atlas の座標系に合わせる寸法倍率を返す。
 
     Retina では ImGui の content width / font が backing pixel 単位になるため、
@@ -456,7 +457,7 @@ def _imgui_metric_scale(imgui) -> float:
 
 
 def _setup_parameter_table_columns(
-    imgui,
+    imgui: ModuleType,
     *,
     metric_scale: float | None = None,
 ) -> None:
@@ -572,7 +573,7 @@ def _source_segment_style(
 
 
 def _render_source_segment_button(
-    imgui,
+    imgui: ModuleType,
     *,
     source: str,
     visible_label: str | None = None,
@@ -607,7 +608,7 @@ def _render_source_segment_button(
 
 
 def _render_midi_button(
-    imgui,
+    imgui: ModuleType,
     *,
     label: str,
     width: float,
@@ -640,7 +641,7 @@ def _render_midi_button(
 
 
 def _render_source_actions_menu(
-    imgui,
+    imgui: ModuleType,
     *,
     reset_available: bool,
     width: float,
@@ -679,7 +680,7 @@ def _render_source_actions_menu(
 
 
 def _render_label_cell(
-    imgui,
+    imgui: ModuleType,
     *,
     row_label: str,
     kind: str,
@@ -759,7 +760,10 @@ def _render_label_cell(
     return source_changed, override_out, reset_to_code
 
 
-def _render_favorite_toggle(imgui, favorite: bool) -> tuple[bool, bool]:
+def _render_favorite_toggle(
+    imgui: ModuleType,
+    favorite: bool,
+) -> tuple[bool, bool]:
     """label cell 末尾に favorite/pin を描画して更新値を返す。"""
 
     imgui.same_line(0.0, 4.0 * _imgui_metric_scale(imgui))
@@ -772,16 +776,21 @@ def _render_favorite_toggle(imgui, favorite: bool) -> tuple[bool, bool]:
     return clicked, (not favorite if clicked else bool(favorite))
 
 
-def _render_control_cell(imgui, row: ParameterRow) -> tuple[bool, object]:
+def _render_control_cell(
+    imgui: ModuleType,
+    row: ParameterRow,
+    *,
+    widget_state: WidgetSessionState,
+) -> tuple[bool, object]:
     """control 列を描画し、(changed, ui_value) を返す。"""
 
     imgui.table_set_column_index(1)
     imgui.set_next_item_width(-1)  # 残り幅いっぱい
-    return render_value_widget(row)
+    return render_value_widget(row, state=widget_state)
 
 
 def _draw_effect_step_insertion_line(
-    imgui,
+    imgui: ModuleType,
     *,
     item_min: tuple[float, float],
     item_max: tuple[float, float],
@@ -823,7 +832,7 @@ def _draw_effect_step_insertion_line(
 
 
 def _effect_step_item_rect(
-    imgui,
+    imgui: ModuleType,
 ) -> tuple[tuple[float, float], tuple[float, float]]:
     """直前itemのscreen-space矩形を返す。"""
 
@@ -835,14 +844,14 @@ def _effect_step_item_rect(
     )
 
 
-def _effect_step_mouse_y(imgui) -> float:
+def _effect_step_mouse_y(imgui: ModuleType) -> float:
     """現在のmouse yを返す。"""
 
     return float(imgui.get_mouse_position()[1])
 
 
 def _render_effect_step_context_menu(
-    imgui,
+    imgui: ModuleType,
     *,
     state: EffectChainTableState | None,
     step: EffectStepKey,
@@ -889,7 +898,7 @@ def _render_effect_step_context_menu(
 
 
 def _render_effect_step_heading(
-    imgui,
+    imgui: ModuleType,
     label: str,
     *,
     step: EffectStepKey,
@@ -1031,9 +1040,9 @@ def _effect_step_heading_by_rows(
 
 
 def _render_minmax_cell(
-    imgui,
+    imgui: ModuleType,
     *,
-    rules,
+    rules: RowUiRules,
     ui_min: float | int | None,
     ui_max: float | int | None,
 ) -> tuple[bool, float | int | None, float | int | None]:
@@ -1079,7 +1088,7 @@ def _render_minmax_cell(
 
 
 def _snippet_popup_geometry(
-    imgui,
+    imgui: ModuleType,
     *,
     preferred_size: tuple[float, float] = SNIPPET_POPUP_WINDOW_SIZE_PX,
     margin: float = SNIPPET_POPUP_VIEWPORT_MARGIN_PX,
@@ -1136,10 +1145,10 @@ def _snippet_popup_geometry(
 
 
 def _render_cc_cell(
-    imgui,
+    imgui: ModuleType,
     *,
     row: ParameterRow,
-    rules,
+    rules: RowUiRules,
     cc_key: int | tuple[int | None, int | None, int | None] | None,
     width_spacer: int,
     midi_learn_state: MidiLearnState | None,
@@ -1366,6 +1375,7 @@ def _render_cc_cell(
 def render_parameter_row_4cols(
     row: ParameterRow,
     *,
+    widget_state: WidgetSessionState,
     catalog: ParameterGuiCatalog | None = None,
     visible_label: str | None = None,
     midi_learn_state: MidiLearnState | None = None,
@@ -1454,7 +1464,11 @@ def render_parameter_row_4cols(
         # --- Column 2: control（kind に応じたウィジェット）---
         # slider の visible label はテーブルの label 列で代替するため、
         # ウィジェット側は "##value" を使って非表示にしている。
-        changed, value = _render_control_cell(imgui, row)
+        changed, value = _render_control_cell(
+            imgui,
+            row,
+            widget_state=widget_state,
+        )
         if changed:
             changed_any = True
             ui_value = value
@@ -1514,6 +1528,7 @@ def render_parameter_row_4cols(
 def render_parameter_table(
     render_input: TableRenderInput,
     *,
+    widget_state: WidgetSessionState,
     on_help_row: Callable[[ParameterRow, bool], None] | None = None,
 ) -> TableEdits:
     """immutable snapshot を描画し、immutable edit 集合を返す。"""
@@ -1540,7 +1555,6 @@ def render_parameter_table(
 
     # --- Code（ポップアップ出力）---
     # “トリガ（ボタン）” と “表示（ポップアップ）” を分離し、コピペ用途に寄せる。
-    global _SNIPPET_POPUP_TEXT, _SNIPPET_POPUP_FOCUS_NEXT
     want_open_snippet_popup = False
     snippet_popup_text_new: str | None = None
 
@@ -1705,6 +1719,7 @@ def render_parameter_table(
                     )
                     _row_changed, updated, midi_learn_state = render_parameter_row_4cols(
                         row,
+                        widget_state=widget_state,
                         catalog=catalog,
                         visible_label=item.visible_label,
                         midi_learn_state=midi_learn_state,
@@ -1724,8 +1739,8 @@ def render_parameter_table(
     #
     # open_popup と begin_popup_modal は “同じ ID スタック” が必要なので、push_id の外で扱う。
     if want_open_snippet_popup and snippet_popup_text_new is not None:
-        _SNIPPET_POPUP_TEXT = str(snippet_popup_text_new)
-        _SNIPPET_POPUP_FOCUS_NEXT = True
+        widget_state.snippet_popup_text = str(snippet_popup_text_new)
+        widget_state.snippet_popup_focus_next = True
         imgui.open_popup("Code##snippet_popup")
 
     popup_x, popup_y, popup_width, popup_height = _snippet_popup_geometry(imgui)
@@ -1749,22 +1764,22 @@ def render_parameter_table(
                 imgui.close_current_popup()
             imgui.same_line()
             if imgui.button("Copy"):
-                imgui.set_clipboard_text(str(_SNIPPET_POPUP_TEXT))
+                imgui.set_clipboard_text(str(widget_state.snippet_popup_text))
                 imgui.close_current_popup()
-                _SNIPPET_POPUP_FOCUS_NEXT = False
+                widget_state.snippet_popup_focus_next = False
             imgui.same_line()
             imgui.text_disabled("macOS Cmd+A→Cmd+C / Win/Linux Ctrl+A→Ctrl+C")
 
-            if _SNIPPET_POPUP_FOCUS_NEXT:
+            if widget_state.snippet_popup_focus_next:
                 imgui.set_keyboard_focus_here()
-                _SNIPPET_POPUP_FOCUS_NEXT = False
+                widget_state.snippet_popup_focus_next = False
 
             avail_w, avail_h = imgui.get_content_region_available()
             editor_width = max(1.0, float(avail_w))
             editor_height = max(1.0, float(avail_h) - 8.0)
             _changed, _text_out = imgui.input_text_multiline(
                 "##snippet_text",
-                str(_SNIPPET_POPUP_TEXT),
+                str(widget_state.snippet_popup_text),
                 -1,
                 editor_width,
                 editor_height,
@@ -1773,7 +1788,7 @@ def render_parameter_table(
             if imgui.is_item_focused() or imgui.is_item_active():
                 io = imgui.get_io()
                 if (io.key_ctrl or io.key_super) and imgui.is_key_pressed(imgui.KEY_C, False):
-                    imgui.set_clipboard_text(str(_SNIPPET_POPUP_TEXT))
+                    imgui.set_clipboard_text(str(widget_state.snippet_popup_text))
 
     return TableEdits(
         rows=tuple(updated_rows),
@@ -1781,8 +1796,3 @@ def render_parameter_table(
         midi_learn_state=midi_learn_state,
         effect_order_commands=tuple(effect_order_commands),
     )
-
-
-# Code popup の一時状態（永続化しない）。
-_SNIPPET_POPUP_TEXT = ""
-_SNIPPET_POPUP_FOCUS_NEXT = False

@@ -62,7 +62,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         _parser().error("--evaluation-timeoutは正の値である必要があります")
 
     from grafix.api.runner import run
-    from grafix.core.runtime_config import runtime_config_with_fallback
+    from grafix.runtime_config_loader import runtime_config_with_fallback
     from grafix.interactive.runtime.source_reload import (
         SourceReloadController,
         source_reload_context,

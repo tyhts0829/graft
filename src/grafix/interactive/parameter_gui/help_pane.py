@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import ModuleType
 
 from grafix.core.operation_selector import selector_help_identity
 from grafix.core.parameters.view import ParameterRow
@@ -46,7 +47,7 @@ def parameter_help_content(row: ParameterRow) -> ParameterHelpContent:
     )
 
 
-def render_parameter_help_pane(imgui, row: ParameterRow | None) -> None:
+def render_parameter_help_pane(imgui: ModuleType, row: ParameterRow | None) -> None:
     """selected/hover/focused row のコンパクトな Help pane を描画する。"""
 
     imgui.text_disabled("HELP")

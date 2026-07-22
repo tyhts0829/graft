@@ -49,7 +49,7 @@ def test_single_key_changed_frame_reports_split_timing_and_hard_contracts() -> N
         assert metric.distribution is not None
         assert metric.distribution.count == 4
 
-    assert metrics["param_edit.changed_frame.full_memento_captures"].value == 0
+    assert metrics["param_edit.changed_frame.full_snapshot_captures"].value == 0
     assert metrics["param_edit.changed_frame.table_model_builds"].value == 0
     assert metrics["param_edit.changed_frame.max_changed_keys"].value == 1
     assert metrics["param_edit.changed_frame.max_changed_row_identities"].value == 1

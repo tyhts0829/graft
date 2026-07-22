@@ -10,6 +10,10 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from typing import NoReturn, Protocol
 
+from grafix.core.evaluation_config import (
+    bind_evaluation_config,
+    current_evaluation_config,
+)
 from grafix.core.evaluation_context import (
     EvaluationContext,
     EvaluationFingerprint,
@@ -24,11 +28,8 @@ from grafix.core.operation_diagnostics import emit_operation_diagnostic
 from grafix.core.preview_quality import current_preview_quality, preview_quality_context
 from grafix.core.realized_geometry import RealizedGeometry, concat_realized_geometries
 from grafix.core.resource_budget import ensure_geometry_output, resource_budget_context
-from grafix.core.runtime_config import (
-    bind_runtime_config,
-    current_runtime_config,
-)
 from grafix.core.runtime_limits import DEFAULT_FINAL_RUNTIME_LIMITS, RuntimeLimits
+from grafix.core.runtime_config import without_runtime_config
 from grafix.core.value_validation import exact_integer, exact_string
 
 
@@ -329,7 +330,7 @@ class RealizeSession:
                 EvaluationContext(
                     catalog=current_operation_catalog(),
                     quality=current_preview_quality(),
-                    config=current_runtime_config(),
+                    config=current_evaluation_config(),
                 )
                 if context is None
                 else context
@@ -513,7 +514,13 @@ class RealizeSession:
                 raise RuntimeError("close 済みの RealizeSession は使用できません")
             self._active_realizations += 1
         try:
-            result = self._realize_with_key_active(geometry)
+            with (
+                without_runtime_config(),
+                bind_evaluation_config(self._context.config),
+                bind_operation_catalog(self._context.catalog),
+                preview_quality_context(self._context.quality),
+            ):
+                result = self._realize_with_key_active(geometry)
         except BaseException as error:
             errors = CleanupErrors(initial_error=error)
             errors.attempt(self._finish_realization, "finish failed realization")
@@ -841,7 +848,7 @@ class RealizeSession:
             with (
                 self._profile_operation(op),
                 bind_operation_catalog(self._context.catalog),
-                bind_runtime_config(self._context.config),
+                bind_evaluation_config(self._context.config),
                 preview_quality_context(self._context.quality),
                 bind_external_dependency(external_snapshot, geometry.id),
             ):
@@ -881,7 +888,7 @@ def realize(
         EvaluationContext(
             catalog=current_operation_catalog(),
             quality=current_preview_quality(),
-            config=current_runtime_config(),
+            config=current_evaluation_config(),
         )
         if context is None
         else context

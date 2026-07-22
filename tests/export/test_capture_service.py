@@ -19,7 +19,7 @@ from grafix import (
     render,
 )
 from grafix.export.capture_publish import capture_manifest_path_for
-from grafix.core.runtime_config import runtime_config
+from grafix.runtime_config_loader import runtime_config
 from grafix.export import capture as capture_module
 from grafix.export.capture import CaptureService
 from grafix.export.gcode import export_gcode

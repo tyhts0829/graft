@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
+
 import pytest
 
 from grafix.core.parameters.collapsed_header import effect_chain_collapsed_header_key
@@ -11,16 +13,15 @@ from grafix.core.parameters.frame_params import (
 from grafix.core.parameters.effects import EffectStepTopology
 from grafix.core.parameters.key import ParameterKey
 from grafix.core.parameters.labels_ops import set_label
-from grafix.core.parameters.memento import (
-    ParamStoreMemento,
-    capture_param_store_memento,
-    restore_param_store_memento,
+from grafix.core.parameters.adjustment_snapshot import (
+    ParameterAdjustment,
+    ParameterAdjustmentSnapshot,
 )
 from grafix.core.parameters.merge_ops import merge_frame_params
 from grafix.core.parameters.meta import ParamMeta
 from grafix.core.parameters.snapshot_ops import store_snapshot
 from grafix.core.parameters.store import ParamStore
-from grafix.core.parameters.state import ParamState
+from grafix.core.parameters.state import ParamStateSnapshot
 from grafix.core.parameters.style import STYLE_GLOBAL_THICKNESS, style_key
 from grafix.core.parameters.style_ops import ensure_style_entries
 from grafix.core.parameters.ui_ops import update_state_from_ui
@@ -84,11 +85,11 @@ def _populated_store() -> tuple[ParamStore, ParameterKey]:
     return store, key
 
 
-def test_memento_restores_gui_state_but_keeps_code_owned_structure_and_runtime() -> None:
+def test_snapshot_restores_gui_state_but_keeps_code_owned_structure_and_runtime() -> None:
     store, key = _populated_store()
     runtime = store._runtime_ref()
     runtime.loaded_groups.add(("runtime", "before"))
-    memento = capture_param_store_memento(store)
+    snapshot = store.capture_adjustment_snapshot()
 
     # GUI-owned 状態と code-owned 状態を両方変更する。
     state = store._get_state_ref(key)
@@ -113,7 +114,7 @@ def test_memento_restores_gui_state_but_keeps_code_owned_structure_and_runtime()
     runtime.loaded_groups.add(("runtime", "after"))
     runtime_identity = id(runtime)
     revision_before_restore = store.revision
-    assert restore_param_store_memento(store, memento) is True
+    assert store.apply_adjustment_snapshot(snapshot) is True
 
     restored = store.get_state(key)
     assert restored is not None
@@ -142,9 +143,9 @@ def test_memento_restores_gui_state_but_keeps_code_owned_structure_and_runtime()
     assert store.revision > revision_before_restore
 
 
-def test_memento_merge_preserves_a_parameter_discovered_after_capture() -> None:
+def test_snapshot_merge_preserves_a_parameter_discovered_after_capture() -> None:
     store, key = _populated_store()
-    memento = capture_param_store_memento(store)
+    snapshot = store.capture_adjustment_snapshot()
 
     new_key = ParameterKey(op="wobble", site_id="site-2", arg="frequency")
     merge_frame_params(
@@ -175,7 +176,7 @@ def test_memento_merge_preserves_a_parameter_discovered_after_capture() -> None:
         meta=ParamMeta(kind="float", ui_min=0.0, ui_max=1.0),
     )
 
-    assert restore_param_store_memento(store, memento) is True
+    assert store.apply_adjustment_snapshot(snapshot) is True
     assert store.get_state(key).ui_value == 0.75  # type: ignore[union-attr]
     discovered = store.get_state(new_key)
     assert discovered is not None
@@ -185,9 +186,9 @@ def test_memento_merge_preserves_a_parameter_discovered_after_capture() -> None:
     assert store.get_meta(new_key) == ParamMeta(kind="float", ui_min=0.0, ui_max=8.0)
 
 
-def test_memento_skips_a_key_whose_current_code_kind_changed() -> None:
+def test_snapshot_skips_a_key_whose_current_code_kind_changed() -> None:
     store, key = _populated_store()
-    memento = capture_param_store_memento(store)
+    snapshot = store.capture_adjustment_snapshot()
     state = store._get_state_ref(key)
     assert state is not None
     state.ui_value = 7
@@ -196,36 +197,88 @@ def test_memento_skips_a_key_whose_current_code_kind_changed() -> None:
     store._set_meta(key, ParamMeta(kind="int", ui_min=0, ui_max=10))
 
     revision_before = store.revision
-    assert restore_param_store_memento(store, memento) is False
+    assert store.apply_adjustment_snapshot(snapshot) is False
     assert store.revision == revision_before
     assert store.get_state(key).ui_value == 7  # type: ignore[union-attr]
     assert store.get_meta(key) == ParamMeta(kind="int", ui_min=0, ui_max=10)
 
 
-def test_memento_is_deep_and_can_be_restored_more_than_once() -> None:
+def test_snapshot_is_immutable_and_can_be_restored_more_than_once() -> None:
     store, key = _populated_store()
     state = store._get_state_ref(key)
     assert state is not None
-    state.ui_value = {"nested": [1, 2]}
+    state.ui_value = (1, 2)
     store._touch()
-    memento = capture_param_store_memento(store)
+    snapshot = store.capture_adjustment_snapshot()
 
-    state.ui_value["nested"].append(3)
-    assert restore_param_store_memento(store, memento) is True
+    state.ui_value = (1, 2, 3)
+    assert store.apply_adjustment_snapshot(snapshot) is True
     restored = store._get_state_ref(key)
     assert restored is not None
-    assert restored.ui_value == {"nested": [1, 2]}
+    assert restored.ui_value == (1, 2)
 
-    restored.ui_value["nested"].append(99)
-    assert restore_param_store_memento(store, memento) is True
+    restored.ui_value = (99,)
+    assert store.apply_adjustment_snapshot(snapshot) is True
     restored_again = store._get_state_ref(key)
     assert restored_again is not None
-    assert restored_again.ui_value == {"nested": [1, 2]}
+    assert restored_again.ui_value == (1, 2)
+
+
+def test_snapshot_queries_expose_only_frozen_values() -> None:
+    store, key = _populated_store()
+
+    snapshot = store.capture_adjustment_snapshot()
+    adjustment = snapshot.get(key)
+
+    assert isinstance(snapshot.items(), tuple)
+    assert adjustment is not None
+    assert type(adjustment.state) is ParamStateSnapshot
+    with pytest.raises(FrozenInstanceError):
+        adjustment.state.override = False  # type: ignore[misc]
+
+
+def test_snapshot_apply_publishes_one_fully_applied_revision(monkeypatch) -> None:
+    store, first_key = _populated_store()
+    second_key = ParameterKey(op="wobble", site_id="site-2", arg="amount")
+    meta = ParamMeta(kind="float", ui_min=0.0, ui_max=1.0)
+    merge_frame_params(
+        store,
+        [
+            FrameParamRecord(
+                key=second_key,
+                base=0.4,
+                meta=meta,
+                effective=0.4,
+                source="code",
+                explicit=False,
+            )
+        ],
+    )
+    snapshot = store.capture_adjustment_snapshot()
+    assert update_state_from_ui(store, first_key, 0.1, meta=meta)[0]
+    assert update_state_from_ui(store, second_key, 0.9, meta=meta)[0]
+    revision = store.revision
+
+    published_values: list[tuple[object, object]] = []
+    original_touch = store._touch
+
+    def observe_touch(**kwargs: object) -> None:
+        first = store.get_state(first_key)
+        second = store.get_state(second_key)
+        assert first is not None and second is not None
+        published_values.append((first.ui_value, second.ui_value))
+        original_touch(**kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(store, "_touch", observe_touch)
+
+    assert store.apply_adjustment_snapshot(snapshot) is True
+    assert published_values == [(0.75, 0.4)]
+    assert store.revision == revision + 1
 
 
 def test_restore_invalidates_cached_snapshot() -> None:
     store, key = _populated_store()
-    memento = capture_param_store_memento(store)
+    snapshot = store.capture_adjustment_snapshot()
     before = store_snapshot(store)
 
     update_state_from_ui(
@@ -234,7 +287,7 @@ def test_restore_invalidates_cached_snapshot() -> None:
         0.2,
         meta=ParamMeta(kind="float", ui_min=0.0, ui_max=1.0),
     )
-    assert restore_param_store_memento(store, memento) is True
+    assert store.apply_adjustment_snapshot(snapshot) is True
     after = store_snapshot(store)
 
     assert after is not before
@@ -252,28 +305,28 @@ def test_restore_style_value_advances_style_without_rebuilding_table() -> None:
     key = style_key(STYLE_GLOBAL_THICKNESS)
     meta = store.get_meta(key)
     assert meta is not None
-    memento = capture_param_store_memento(store)
+    snapshot = store.capture_adjustment_snapshot()
     assert update_state_from_ui(store, key, 0.005, meta=meta)[0]
     table_revision = store.table_revision
     style_revision = store.style_revision
     value_revision = store.value_revision
 
-    assert restore_param_store_memento(store, memento) is True
+    assert store.apply_adjustment_snapshot(snapshot) is True
     assert store.table_revision == table_revision
     assert store.style_revision == style_revision + 1
     assert store.value_revision == value_revision + 1
 
 
-def test_restoring_the_same_memento_is_a_revision_noop() -> None:
+def test_restoring_the_same_snapshot_is_a_revision_noop() -> None:
     store, _key = _populated_store()
-    memento = capture_param_store_memento(store)
+    snapshot = store.capture_adjustment_snapshot()
     revision_before = store.revision
 
-    assert restore_param_store_memento(store, memento) is False
+    assert store.apply_adjustment_snapshot(snapshot) is False
     assert store.revision == revision_before
 
 
-def test_memento_restores_gui_effect_order_without_replacing_code_topology() -> None:
+def test_snapshot_restores_gui_effect_order_without_replacing_code_topology() -> None:
     store = ParamStore()
     _record_effect_chain(store)
     assert store._effects_ref().set_order_override(
@@ -281,35 +334,35 @@ def test_memento_restores_gui_effect_order_without_replacing_code_topology() -> 
         EFFECT_UI_ORDER,
     )
     store._touch()
-    memento = capture_param_store_memento(store)
+    snapshot = store.capture_adjustment_snapshot()
     topology_before = store._effects_ref().topology("chain-order")
 
     assert store._effects_ref().reset_order("chain-order")
     store._touch()
 
-    assert restore_param_store_memento(store, memento) is True
+    assert store.apply_adjustment_snapshot(snapshot) is True
     assert store._effects_ref().effective_order("chain-order") == EFFECT_UI_ORDER
     assert store._effects_ref().topology("chain-order") == topology_before
 
 
-def test_memento_can_restore_code_order_and_skips_incompatible_topology() -> None:
+def test_snapshot_can_restore_code_order_and_skips_incompatible_topology() -> None:
     store = ParamStore()
     _record_effect_chain(store)
-    code_order_memento = capture_param_store_memento(store)
+    code_order_snapshot = store.capture_adjustment_snapshot()
     assert store._effects_ref().set_order_override(
         "chain-order",
         EFFECT_UI_ORDER,
     )
     store._touch()
 
-    assert restore_param_store_memento(store, code_order_memento) is True
+    assert store.apply_adjustment_snapshot(code_order_snapshot) is True
     assert store._effects_ref().order_overrides() == {}
     assert store._effects_ref().set_order_override(
         "chain-order",
         EFFECT_UI_ORDER,
     )
     store._touch()
-    reordered_memento = capture_param_store_memento(store)
+    reordered_snapshot = store.capture_adjustment_snapshot()
     assert store._effects_ref().record_chain(
         chain_id="chain-order",
         steps=(
@@ -321,12 +374,12 @@ def test_memento_can_restore_code_order_and_skips_incompatible_topology() -> Non
     store._touch()
     revision_before = store.revision
 
-    assert restore_param_store_memento(store, reordered_memento) is False
+    assert store.apply_adjustment_snapshot(reordered_snapshot) is False
     assert store.revision == revision_before
     assert store._effects_ref().order_overrides() == {}
 
 
-def test_memento_does_not_restore_order_after_effect_arity_change() -> None:
+def test_snapshot_does_not_restore_order_after_effect_arity_change() -> None:
     store = ParamStore()
     initial_topology = (
         EffectStepTopology("first", "first-site", 1, 0),
@@ -346,7 +399,7 @@ def test_memento_does_not_restore_order_after_effect_arity_change() -> None:
         ),
     )
     store._touch()
-    memento = capture_param_store_memento(store)
+    snapshot = store.capture_adjustment_snapshot()
 
     assert store._effects_ref().record_chain(
         chain_id="arity-chain",
@@ -359,20 +412,26 @@ def test_memento_does_not_restore_order_after_effect_arity_change() -> None:
     store._touch()
     revision = store.revision
 
-    assert restore_param_store_memento(store, memento) is False
+    assert store.apply_adjustment_snapshot(snapshot) is False
     assert store.revision == revision
     assert store.effect_order_overrides() == {}
 
 
-def test_memento_rejects_corrupt_non_bool_override() -> None:
+def test_snapshot_rejects_corrupt_non_bool_override() -> None:
     key = ParameterKey("line", "site", "length")
-    state = ParamState(override=True, ui_value=1.0)
-    state.override = 1  # type: ignore[assignment]
 
-    with pytest.raises(TypeError, match="overrides must be exact bool"):
-        ParamStoreMemento(
-            states={key: state},
-            meta={key: ParamMeta(kind="float")},
+    with pytest.raises(TypeError, match="state.override"):
+        ParameterAdjustmentSnapshot(
+            adjustments={
+                key: ParameterAdjustment(
+                    state=ParamStateSnapshot(
+                        override=1,  # type: ignore[arg-type]
+                        ui_value=1.0,
+                        cc_key=None,
+                    ),
+                    meta=ParamMeta(kind="float"),
+                )
+            },
             collapsed_by_header={},
             effect_order_state={},
             effect_topology_signatures={},

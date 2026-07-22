@@ -6,13 +6,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from typing import TypeAlias
 
 from grafix.core.geometry import Geometry
 from grafix.core.layer import Layer
 
-SceneItem: TypeAlias = Geometry | Layer | Sequence["SceneItem"]
+SceneItem: TypeAlias = Geometry | Layer | list["SceneItem"] | tuple["SceneItem", ...]
 
 
 def normalize_scene(scene: SceneItem) -> list[Layer]:
@@ -53,9 +52,9 @@ def normalize_scene(scene: SceneItem) -> list[Layer]:
             implicit_index += 1
             result.append(Layer(geometry=item, site_id=f"implicit:{implicit_index}"))
             return
-        if isinstance(item, Sequence) and not isinstance(item, (str, bytes)):
+        if isinstance(item, (list, tuple)):
             for child in item:
-                _walk(child)  # type: ignore[arg-type]
+                _walk(child)
             return
         raise TypeError(f"normalize_scene で処理できない型: {type(item)!r}")
 

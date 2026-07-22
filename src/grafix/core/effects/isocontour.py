@@ -21,20 +21,14 @@
 
 from __future__ import annotations
 
-from typing import Literal
-
 import numpy as np
 
 from grafix.core.operation_authoring import effect
-from grafix.core.operation_diagnostics import emit_operation_diagnostic
+from grafix.core.operation_diagnostics import grid_spec_from_bbox_with_diagnostic
 from grafix.core.parameters.meta import ParamMeta
 from grafix.core.realized_geometry import GeomTuple
 
-from grafix.core.geometry_kernels.grid import (
-    DEFAULT_MAX_GRID_CELLS,
-    GridSpec,
-    plan_grid_from_bbox,
-)
+from grafix.core.geometry_kernels.grid import DEFAULT_MAX_GRID_POINTS
 from grafix.core.geometry_kernels.marching import marching_squares_loops
 from grafix.core.geometry_kernels.packed import (
     empty_packed_geometry,
@@ -48,39 +42,10 @@ from grafix.core.geometry_kernels.planar import (
 )
 from grafix.core.geometry_kernels.raster import signed_distance_grid_edt
 
-MAX_GRID_POINTS = DEFAULT_MAX_GRID_CELLS
+MAX_GRID_POINTS = DEFAULT_MAX_GRID_POINTS
 
 _AUTO_CLOSE_THRESHOLD_DEFAULT = 1e-3
 _MODE_CHOICES = ("inside", "outside", "both")
-
-
-def _grid_spec_from_bbox(
-    mins: np.ndarray,
-    maxs: np.ndarray,
-    *,
-    pitch: float,
-    padding: float,
-    max_cells: int,
-    overflow: Literal["reject", "coarsen"],
-) -> GridSpec | None:
-    plan = plan_grid_from_bbox(
-        mins,
-        maxs,
-        pitch=pitch,
-        padding=padding,
-        max_cells=max_cells,
-        overflow=overflow,
-    )
-    diagnostic = plan.diagnostic
-    if diagnostic is not None:
-        emit_operation_diagnostic(
-            op="GridSpec.from_bbox",
-            original_value=diagnostic.original_value,
-            effective_value=diagnostic.effective_value,
-            reason=diagnostic.reason,
-            severity=diagnostic.severity,
-        )
-    return plan.spec
 
 
 isocontour_meta = {
@@ -220,12 +185,12 @@ def isocontour(
 
     # SDF は「輪郭から max_dist だけ離れた範囲」まで必要なので、AABB を余裕を持って拡張する。
     margin = max_dist + 2.0 * pitch
-    grid = _grid_spec_from_bbox(
+    grid = grid_spec_from_bbox_with_diagnostic(
         mins,
         maxs,
         pitch=pitch,
         padding=margin,
-        max_cells=MAX_GRID_POINTS,
+        max_points=MAX_GRID_POINTS,
         overflow="reject",
     )
     if grid is None:

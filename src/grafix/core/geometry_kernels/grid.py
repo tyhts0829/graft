@@ -9,7 +9,7 @@ from typing import Literal, TypeAlias
 
 import numpy as np
 
-DEFAULT_MAX_GRID_CELLS = 4_000_000
+DEFAULT_MAX_GRID_POINTS = 4_000_000
 
 GridOverflowPolicy: TypeAlias = Literal["reject", "coarsen"]
 GridPlanDiagnosticSeverity: TypeAlias = Literal["warning", "error"]
@@ -44,7 +44,7 @@ class GridSpec:
     requested_pitch: float
 
     @property
-    def cell_count(self) -> int:
+    def point_count(self) -> int:
         """グリッド点数を返す。"""
 
         return int(self.nx) * int(self.ny)
@@ -104,7 +104,7 @@ def plan_grid_from_bbox(
     *,
     pitch: float,
     padding: float = 0.0,
-    max_cells: int = DEFAULT_MAX_GRID_CELLS,
+    max_points: int = DEFAULT_MAX_GRID_POINTS,
     overflow: GridOverflowPolicy = "reject",
 ) -> GridPlanResult:
     """bboxから上限内のgridと診断情報を副作用なしで計画する。"""
@@ -114,7 +114,7 @@ def plan_grid_from_bbox(
 
     requested_pitch = float(pitch)
     pad = float(padding)
-    limit = int(max_cells)
+    limit = int(max_points)
     if (
         not math.isfinite(requested_pitch)
         or requested_pitch <= 0.0
@@ -124,7 +124,7 @@ def plan_grid_from_bbox(
     ):
         return _failed_grid_plan(
             original_value=(requested_pitch, pad, limit, overflow),
-            reason="invalid grid pitch, padding, or cell limit was rejected",
+            reason="invalid grid pitch, padding, or point limit was rejected",
             severity="warning",
         )
 
@@ -166,12 +166,12 @@ def plan_grid_from_bbox(
         return nx, ny, int(nx) * int(ny)
 
     effective_pitch = requested_pitch
-    nx, ny, cells = shape_for(effective_pitch)
-    if cells > limit:
+    nx, ny, points = shape_for(effective_pitch)
+    if points > limit:
         if overflow == "reject":
             return _failed_grid_plan(
-                original_value=(requested_pitch, cells, limit, overflow),
-                reason="requested grid exceeded the cell limit and was rejected",
+                original_value=(requested_pitch, points, limit, overflow),
+                reason="requested grid exceeded the point limit and was rejected",
                 severity="warning",
             )
 
@@ -181,37 +181,37 @@ def plan_grid_from_bbox(
             high *= 2.0
             if not math.isfinite(high):
                 return _failed_grid_plan(
-                    original_value=(requested_pitch, cells, limit, overflow),
+                    original_value=(requested_pitch, points, limit, overflow),
                     reason="grid could not be coarsened to a finite pitch",
                     severity="error",
                 )
-            nx_high, ny_high, cells_high = shape_for(high)
-            if cells_high <= limit:
+            nx_high, ny_high, points_high = shape_for(high)
+            if points_high <= limit:
                 break
 
         for _ in range(64):
             middle = low + 0.5 * (high - low)
             if middle == low or middle == high:
                 break
-            _nx_mid, _ny_mid, cells_mid = shape_for(middle)
-            if cells_mid > limit:
+            _nx_mid, _ny_mid, points_mid = shape_for(middle)
+            if points_mid > limit:
                 low = middle
             else:
                 high = middle
 
         effective_pitch = high
-        nx, ny, cells = shape_for(effective_pitch)
-        if cells > limit:
+        nx, ny, points = shape_for(effective_pitch)
+        if points > limit:
             return _failed_grid_plan(
-                original_value=(requested_pitch, cells, limit, overflow),
-                reason="grid coarsening did not satisfy the cell limit",
+                original_value=(requested_pitch, points, limit, overflow),
+                reason="grid coarsening did not satisfy the point limit",
                 severity="error",
             )
 
         diagnostic = GridPlanDiagnostic(
             original_value=requested_pitch,
             effective_value=effective_pitch,
-            reason="grid pitch was coarsened to satisfy the cell limit",
+            reason="grid pitch was coarsened to satisfy the point limit",
             severity="warning",
         )
     else:

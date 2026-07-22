@@ -6,7 +6,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from grafix.core.runtime_config import RuntimeConfigReport, load_runtime_config_report
+from grafix.core.runtime_config import RuntimeConfigReport
+from grafix.runtime_config_loader import load_runtime_config_report
 
 
 def _add_config_path_argument(parser: argparse.ArgumentParser) -> None:

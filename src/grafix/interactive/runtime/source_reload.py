@@ -977,6 +977,11 @@ class SourceReloadController:
             )
         except BaseException as exc:
             _remove_source_modules(module_name)
+            # candidate generation の一時 module は終了操作でも必ず破棄するが、
+            # KeyboardInterrupt / SystemExit などの process-control 例外を
+            # 通常の reload failure へ変換してはならない。
+            if not isinstance(exc, Exception):
+                raise
             if source_package is not None:
                 self._source_paths = tuple(
                     dict.fromkeys(
@@ -1017,12 +1022,15 @@ class SourceReloadController:
                 if same_path:
                     source = f"{self._path}:{tb.tb_lineno}"
                 tb = tb.tb_next
+            summary = f"{type(exc).__name__}: {exc}"
+            if previous_generation < 0:
+                raise RuntimeError(summary) from exc
             return SourceReloadResult(
                 status="failed",
                 generation=self._generation,
                 draw=self._draw,
                 definitions=self._definitions,
-                summary=f"{type(exc).__name__}: {exc}",
+                summary=summary,
                 details=details,
                 source=source,
             )

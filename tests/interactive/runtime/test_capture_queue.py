@@ -9,7 +9,7 @@ import pytest
 
 from grafix.core.export_format import ExportFormat
 from grafix.core.parameters import ParamStore
-from grafix.core.runtime_config import runtime_config
+from grafix.runtime_config_loader import runtime_config
 from grafix.core.runtime_limits import RuntimeLimits
 from grafix.export.capture import CaptureService
 from grafix.export.capture_provenance import CaptureProvenanceBuilder

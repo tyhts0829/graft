@@ -14,6 +14,7 @@ from grafix.core.parameters.ui_ops import update_state_from_ui
 from grafix.interactive.parameter_gui import store_bridge
 from grafix.interactive.parameter_gui.catalog import current_parameter_gui_catalog
 from grafix.interactive.parameter_gui.parameter_filter import ParameterFilterState
+from grafix.interactive.parameter_gui.session_state import WidgetSessionState
 from grafix.interactive.parameter_gui.table import TableEdits
 
 
@@ -59,6 +60,7 @@ def test_1000_rows_reuse_one_table_model_for_60_frames(monkeypatch) -> None:
     store, records = _store_with_rows(1_000)
     store_bridge.clear_parameter_table_model_cache()
     render_calls = 0
+    widget_state = WidgetSessionState()
 
     def fake_render(render_input, **_kwargs):
         nonlocal render_calls
@@ -79,6 +81,7 @@ def test_1000_rows_reuse_one_table_model_for_60_frames(monkeypatch) -> None:
         assert not store_bridge.render_store_parameter_table(
             store,
             table_view=view,
+            widget_state=widget_state,
         ).changed
 
     assert render_calls == 60
@@ -271,6 +274,7 @@ def test_unchanged_render_returns_immutable_rows_without_store_change(monkeypatc
     assert not store_bridge.render_store_parameter_table(
         store,
         table_view=view,
+        widget_state=WidgetSessionState(),
     ).changed
 
 
@@ -290,7 +294,9 @@ def test_changed_render_refreshes_only_value_without_model_rebuild(monkeypatch) 
         show_inactive_params=True,
     )
     assert store_bridge.render_store_parameter_table(
-        store, table_view=view
+        store,
+        table_view=view,
+        widget_state=WidgetSessionState(),
     ).changed
 
     model = store_bridge._parameter_table_model_for_store(store)
@@ -326,6 +332,7 @@ def test_filtered_render_keeps_model_indices_for_layout_and_applies_visible_edit
     assert store_bridge.render_store_parameter_table(
         store,
         table_view=view,
+        widget_state=WidgetSessionState(),
     ).changed
 
     assert store.get_state(records[0].key).ui_value == 0.0
@@ -581,6 +588,7 @@ def test_favorite_is_view_overlay_and_does_not_rebuild_static_model(
     store_bridge.render_store_parameter_table(
         store,
         table_view=favorite_view,
+        widget_state=WidgetSessionState(),
     )
     assert captured_favorite == [True]
     assert store_bridge.parameter_table_model_build_count() == 1

@@ -2,24 +2,28 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import TypeAlias, cast
+from typing import Any, TypeAlias, cast
 
 from grafix.core.definition_fingerprint import (
     EvaluationSpecFingerprint,
     ParameterSchemaFingerprint,
 )
 from grafix.core.operation_declaration import (
+    CachePolicy,
     EvaluationOpRef,
     EvaluationOpSpec,
     OpDeclaration,
     OpKind,
 )
+from grafix.core.operation_schema import ParameterOpSchema
 from grafix.core.parameters.identity import identity_string
+from grafix.core.parameters.meta import ParamMeta
+from grafix.core.realized_geometry import RealizedGeometry
 from grafix.core.value_validation import exact_bool, exact_string_choice
 
 OperationKey: TypeAlias = tuple[OpKind, str]
@@ -80,13 +84,13 @@ class OperationCatalogEntry:
         return self.evaluation.ref
 
     @property
-    def schema(self):
+    def schema(self) -> ParameterOpSchema:
         """selector/GUI が参照する parameter schema。"""
 
         return self.declaration.schema
 
     @property
-    def evaluator(self):
+    def evaluator(self) -> Callable[..., RealizedGeometry]:
         """runtime dispatch が呼び出す evaluator。"""
 
         return self.evaluation.evaluator
@@ -140,19 +144,19 @@ class OperationCatalogEntry:
         return self.declaration.accepts_var_kwargs
 
     @property
-    def cache_policy(self):
+    def cache_policy(self) -> CachePolicy:
         """evaluation cache policy。"""
 
         return self.evaluation.cache_policy
 
     @property
-    def defaults(self):
+    def defaults(self) -> Mapping[str, Any]:
         """parameter default mapping。"""
 
         return self.schema.defaults
 
     @property
-    def meta(self):
+    def meta(self) -> Mapping[str, ParamMeta]:
         """parameter metadata mapping。"""
 
         return self.schema.meta

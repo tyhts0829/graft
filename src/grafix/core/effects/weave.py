@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable, Iterator
+
 import numpy as np
 from numba import njit, types  # type: ignore[attr-defined, import-untyped]
 from numba.typed import List  # type: ignore[attr-defined]
@@ -48,7 +50,10 @@ MAX_RELAXATION_ITERATIONS = 50
 MAX_STEP = 0.5
 
 
-def _iter_polylines(coords: np.ndarray, offsets: np.ndarray):
+def _iter_polylines(
+    coords: np.ndarray,
+    offsets: np.ndarray,
+) -> Iterator[np.ndarray]:
     for i in range(int(offsets.size) - 1):
         s = int(offsets[i])
         e = int(offsets[i + 1])
@@ -201,7 +206,16 @@ def _webify_single_polyline(
 
 
 @njit(fastmath=True, cache=True)
-def line_segment_intersection_nb(Ax, Ay, Bx, By, p0x, p0y, p1x, p1y):
+def line_segment_intersection_nb(
+    Ax: float,
+    Ay: float,
+    Bx: float,
+    By: float,
+    p0x: float,
+    p0y: float,
+    p1x: float,
+    p1y: float,
+) -> tuple[bool, float, float, float]:
     r_x = Bx - Ax
     r_y = By - Ay
     s_x = p1x - p0x
@@ -221,12 +235,16 @@ def line_segment_intersection_nb(Ax, Ay, Bx, By, p0x, p0y, p1x, p1y):
 
 
 @njit(fastmath=True, cache=True, inline="always")
-def fract(x):
+def fract(x: float) -> float:
     return x - math.floor(x)
 
 
 @njit(fastmath=True, cache=True)
-def generate_candidate_line_from_curve_nb(closed_curve, cl, seed):
+def generate_candidate_line_from_curve_nb(
+    closed_curve: np.ndarray,
+    cl: int,
+    seed: int,
+) -> tuple[float, float, float, float]:
     """指定された cl と seed に基づいて候補線（2 点）を生成する。"""
     N = closed_curve.shape[0]
     seed1 = cl * 12.9898 + seed + 78.233
@@ -252,7 +270,12 @@ def generate_candidate_line_from_curve_nb(closed_curve, cl, seed):
 
 
 @njit(fastmath=True, cache=True)
-def generate_best_candidate_line_from_curve_nb(closed_curve, cl, base_seed, n_attempts):
+def generate_best_candidate_line_from_curve_nb(
+    closed_curve: np.ndarray,
+    cl: int,
+    base_seed: int,
+    n_attempts: int,
+) -> tuple[float, float, float, float]:
     """同じ cl に対し、2 点間距離が最大となる候補線を選択する。"""
     best_dist2 = -1.0
     best_A_x = 0.0
@@ -275,7 +298,13 @@ def generate_best_candidate_line_from_curve_nb(closed_curve, cl, base_seed, n_at
 
 
 @njit(fastmath=True, cache=True)
-def elastic_relaxation_nb(positions, edges, fixed, iterations, step):
+def elastic_relaxation_nb(
+    positions: np.ndarray,
+    edges: np.ndarray,
+    fixed: np.ndarray,
+    iterations: int,
+    step: float,
+) -> np.ndarray:
     n = positions.shape[0]
     for _it in range(iterations):
         forces = np.zeros((n, 2), dtype=positions.dtype)
@@ -308,7 +337,10 @@ def elastic_relaxation_nb(positions, edges, fixed, iterations, step):
 
 
 @njit(fastmath=True, cache=True)
-def build_adjacency_arrays(num_nodes, edges):
+def build_adjacency_arrays(
+    num_nodes: int,
+    edges: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """辞書ではなく配列で隣接リストを構築する。
 
     Notes
@@ -349,15 +381,15 @@ def build_adjacency_arrays(num_nodes, edges):
 
 @njit(fastmath=True, cache=True)
 def trace_chain(
-    start,
-    first_neighbor,
-    first_edge_id,
-    adjacency,
-    adjacency_edge_ids,
-    degrees,
-    visited_edges,
-    max_chain_length=10000,
-):
+    start: int,
+    first_neighbor: int,
+    first_edge_id: int,
+    adjacency: np.ndarray,
+    adjacency_edge_ids: np.ndarray,
+    degrees: np.ndarray,
+    visited_edges: np.ndarray,
+    max_chain_length: int = 10000,
+) -> tuple[np.ndarray, int]:
     chain = np.empty(max_chain_length, dtype=np.int32)
     chain[0] = start
     chain[1] = first_neighbor
@@ -398,7 +430,13 @@ def trace_chain(
 
 
 @njit(fastmath=True, cache=True)
-def trace_cycle(start, adjacency, adjacency_edge_ids, visited_edges, max_cycle_length=10000):
+def trace_cycle(
+    start: int,
+    adjacency: np.ndarray,
+    adjacency_edge_ids: np.ndarray,
+    visited_edges: np.ndarray,
+    max_cycle_length: int = 10000,
+) -> tuple[np.ndarray, int]:
     cycle = np.empty(max_cycle_length, dtype=np.int32)
     cycle[0] = start
     cycle_length = 1
@@ -471,7 +509,10 @@ def trace_cycle(start, adjacency, adjacency_edge_ids, visited_edges, max_cycle_l
     fastmath=True,
     cache=True,
 )
-def merge_edges_into_polylines(nodes, edges):
+def merge_edges_into_polylines(
+    nodes: np.ndarray,
+    edges: np.ndarray,
+) -> Iterable[np.ndarray]:
     """ノード集合とエッジから連結成分をポリラインへ変換する。"""
     num_nodes = nodes.shape[0]
     adjacency, adjacency_edge_ids, degrees = build_adjacency_arrays(num_nodes, edges)
@@ -532,7 +573,12 @@ def merge_edges_into_polylines(nodes, edges):
 
 
 @njit(fastmath=True, cache=True)
-def create_web_nb(closed_curve, num_candidate_lines, relaxation_iterations, step):
+def create_web_nb(
+    closed_curve: np.ndarray,
+    num_candidate_lines: int,
+    relaxation_iterations: int,
+    step: float,
+) -> tuple[np.ndarray, np.ndarray]:
     n = closed_curve.shape[0]
     max_nodes = n + 2 * num_candidate_lines
     nodes = np.zeros((max_nodes, 3), dtype=np.float64)

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-from typing import Literal
 
 import numpy as np
 from numba import (  # type: ignore[attr-defined, import-untyped]
@@ -13,15 +12,14 @@ from numba import (  # type: ignore[attr-defined, import-untyped]
 )
 
 from grafix.core.operation_authoring import effect
-from grafix.core.operation_diagnostics import emit_operation_diagnostic
+from grafix.core.operation_diagnostics import (
+    emit_operation_diagnostic,
+    grid_spec_from_bbox_with_diagnostic,
+)
 from grafix.core.parameters.meta import ParamMeta
 from grafix.core.preview_quality import current_preview_quality
 from grafix.core.realized_geometry import GeomTuple
-from grafix.core.geometry_kernels.grid import (
-    DEFAULT_MAX_GRID_CELLS,
-    GridSpec,
-    plan_grid_from_bbox,
-)
+from grafix.core.geometry_kernels.grid import DEFAULT_MAX_GRID_POINTS
 from grafix.core.geometry_kernels.marching import marching_squares_loops
 from grafix.core.geometry_kernels.packed import pack_polylines
 from grafix.core.geometry_kernels.planar import (
@@ -34,45 +32,16 @@ from grafix.core.geometry_kernels.planar import (
 from grafix.core.geometry_kernels.raster import scanline_evenodd_mask
 
 _AUTO_CLOSE_THRESHOLD_DEFAULT = 1e-3
-MAX_GRID_POINTS = DEFAULT_MAX_GRID_CELLS
+MAX_GRID_POINTS = DEFAULT_MAX_GRID_POINTS
 DRAFT_MAX_GRID_POINTS = 16_384
 DRAFT_MIN_RING_SEGMENTS = 8
-DRAFT_MAX_CELL_SEGMENTS = 12_000_000
+DRAFT_MAX_POINT_SEGMENTS = 12_000_000
 _PARALLEL_FIELD_WORK_THRESHOLD = 100_000
 _PACKED_FIELD_MIN_GRID_POINTS = 256
 _PACKED_FIELD_SEGMENT_BYTES = 5 * np.dtype(np.float64).itemsize
 _PACKED_FIELD_OFFSET_BYTES = np.dtype(np.int64).itemsize
 _PACKED_FIELD_MAX_SEGMENT_SCRATCH_BYTES = 8 * 1024 * 1024
 _PACKED_FIELD_MAX_ROW_SCRATCH_BYTES = 8 * 1024 * 1024
-
-
-def _grid_spec_from_bbox(
-    mins: np.ndarray,
-    maxs: np.ndarray,
-    *,
-    pitch: float,
-    padding: float,
-    max_cells: int,
-    overflow: Literal["reject", "coarsen"],
-) -> GridSpec | None:
-    plan = plan_grid_from_bbox(
-        mins,
-        maxs,
-        pitch=pitch,
-        padding=padding,
-        max_cells=max_cells,
-        overflow=overflow,
-    )
-    diagnostic = plan.diagnostic
-    if diagnostic is not None:
-        emit_operation_diagnostic(
-            op="GridSpec.from_bbox",
-            original_value=diagnostic.original_value,
-            effective_value=diagnostic.effective_value,
-            reason=diagnostic.reason,
-            severity=diagnostic.severity,
-        )
-    return plan.spec
 
 
 metaball_meta = {
@@ -829,17 +798,17 @@ def metaball(
             DRAFT_MAX_GRID_POINTS,
             max(
                 4,
-                DRAFT_MAX_CELL_SEGMENTS // max(1, minimum_segments),
+                DRAFT_MAX_POINT_SEGMENTS // max(1, minimum_segments),
             ),
         )
     else:
         draft_grid_limit = DRAFT_MAX_GRID_POINTS
-    grid = _grid_spec_from_bbox(
+    grid = grid_spec_from_bbox_with_diagnostic(
         mins,
         maxs,
         pitch=pitch,
         padding=margin,
-        max_cells=(draft_grid_limit if quality == "draft" else MAX_GRID_POINTS),
+        max_points=(draft_grid_limit if quality == "draft" else MAX_GRID_POINTS),
         overflow=("coarsen" if quality == "draft" else "reject"),
     )
     if grid is None:
@@ -868,7 +837,7 @@ def metaball(
         ) = _simplify_rings_for_draft(
             rings,
             pitch=pitch,
-            max_segments=DRAFT_MAX_CELL_SEGMENTS // grid.cell_count,
+            max_segments=DRAFT_MAX_POINT_SEGMENTS // grid.point_count,
         )
         if effective_ring_count != original_ring_count:
             emit_operation_diagnostic(
@@ -892,15 +861,15 @@ def metaball(
                 ),
                 severity="info",
             )
-        original_work = grid.cell_count * original_segments
-        effective_work = grid.cell_count * effective_segments
+        original_work = grid.point_count * original_segments
+        effective_work = grid.point_count * effective_segments
         if effective_work != original_work:
             emit_operation_diagnostic(
-                op="metaball.cell_segments",
+                op="metaball.point_segments",
                 original_value=original_work,
                 effective_value=effective_work,
                 reason=(
-                    "draft preview bounded cells × segments field work; final "
+                    "draft preview bounded points × segments field work; final "
                     "capture keeps full ring detail"
                 ),
                 severity="info",

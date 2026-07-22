@@ -385,8 +385,7 @@ def test_batch_exactly_isolates_render_mutations_and_restores_store(
     session = _Session(store, mutate_store_during_render=True)
     before_revision = store.revision
     before_favorite_revision = store.favorite_revision
-    before_states = deepcopy(store._states)
-    before_meta = deepcopy(store._meta)
+    before_adjustments = store.capture_adjustment_snapshot()
     before_explicit = deepcopy(store._explicit_by_key)
     before_favorites = set(store._favorite_keys_ref())
     before_locks = set(store._locked_keys_ref())
@@ -407,8 +406,7 @@ def test_batch_exactly_isolates_render_mutations_and_restores_store(
     assert result.success_count == 3
     assert session.discovered_was_present == [False, False, False]
     assert store.revision == before_revision
-    assert store._states == before_states
-    assert store._meta == before_meta
+    assert store.capture_adjustment_snapshot() == before_adjustments
     assert store._explicit_by_key == before_explicit
     assert store._favorite_keys_ref() == before_favorites
     assert store._locked_keys_ref() == before_locks

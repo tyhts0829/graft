@@ -22,12 +22,10 @@ from grafix.core.capture_provenance import (
 from grafix.core.export_format import ExportFormat
 from grafix.core.export_result import ExportResult
 from grafix.core.evaluation_context import EvaluationContext, EvaluationResources
+from grafix.core.evaluation_config import EvaluationConfig
 from grafix.core.layer import LayerStyleDefaults
+from grafix.core.lifecycle import CleanupErrors
 from grafix.core.parameters.context import parameter_context
-from grafix.core.parameters.persistence import (
-    load_param_store,
-    load_param_store_with_recovery,
-)
 from grafix.export.output_paths import default_param_store_path
 from grafix.export.capture_provenance import CaptureProvenanceBuilder
 from grafix.core.parameters.runtime import LoadProvenance
@@ -46,9 +44,11 @@ from grafix.core.render_options import (
     RenderOptions,
 )
 from grafix.core.runtime_limits import DEFAULT_FINAL_RUNTIME_LIMITS, RuntimeLimits
-from grafix.core.runtime_config import RuntimeConfig, bind_runtime_config, load_runtime_config
+from grafix.core.runtime_config import RuntimeConfig, bind_runtime_config
+from grafix.runtime_config_loader import load_runtime_config
 from grafix.core.scene import SceneItem
 from grafix.core.value_validation import exact_string_choice, finite_real
+from grafix.parameter_storage import read_param_store, recover_param_store_session
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,7 +168,7 @@ def _load_parameter_store(
 ) -> tuple[ParamStore, ParameterLoadMode, Path | None]:
     if isinstance(parameter_source, Path):
         source_path = Path(parameter_source).expanduser().resolve(strict=False)
-        return load_param_store(source_path), source_path, source_path
+        return read_param_store(source_path).store, source_path, source_path
     if parameter_source == "code":
         return ParamStore(), "code", None
     if parameter_source not in {"saved", "recovery"}:
@@ -178,8 +178,28 @@ def _load_parameter_store(
 
     source_path = default_param_store_path(draw, run_id=run_id, config=config)
     if parameter_source == "saved":
-        return load_param_store(source_path), "saved", source_path
-    return load_param_store_with_recovery(source_path), "recovery", source_path
+        return read_param_store(source_path).store, "saved", source_path
+    return recover_param_store_session(source_path), "recovery", source_path
+
+
+def _attempt_render_dependency_cleanup(
+    errors: CleanupErrors,
+    *,
+    realize_session: RealizeSession | None,
+    cache_store: RealizeCacheStore | None,
+    evaluation_resources: EvaluationResources | None,
+) -> None:
+    """RenderSession が所有する dependency を構築の逆順に閉じる。"""
+
+    if realize_session is not None:
+        errors.attempt(realize_session.close, "close render realize session")
+    if cache_store is not None:
+        errors.attempt(cache_store.close, "close render realize cache store")
+    if evaluation_resources is not None:
+        errors.attempt(
+            evaluation_resources.close,
+            "close render evaluation resources",
+        )
 
 
 class RenderSession:
@@ -273,29 +293,40 @@ class RenderSession:
         evaluation_context = EvaluationContext(
             catalog=session_definitions.operations,
             quality="final",
-            config=effective_config,
+            config=EvaluationConfig(font_dirs=effective_config.font_dirs),
         )
         evaluation_resources = EvaluationResources()
-        cache_store = RealizeCacheStore.from_runtime_limits(runtime_limits)
+        cache_store: RealizeCacheStore | None = None
+        realize_session: RealizeSession | None = None
         try:
+            cache_store = RealizeCacheStore.from_runtime_limits(runtime_limits)
             realize_session = RealizeSession(
                 context=evaluation_context,
                 resources=evaluation_resources,
                 cache_store=cache_store,
                 runtime_limits=runtime_limits,
             )
-        except BaseException:
-            evaluation_resources.close()
-            cache_store.close()
+            metadata = RenderSessionMetadata(
+                config_path=effective_config.config_path,
+                effective_config=effective_config,
+                parameter_source=normalized_source,
+                parameter_store_path=store_path,
+                parameter_load_provenance=store.load_provenance,
+                provenance=provenance_builder.session,
+            )
+        except BaseException as error:
+            errors = CleanupErrors(initial_error=error)
+            _attempt_render_dependency_cleanup(
+                errors,
+                realize_session=realize_session,
+                cache_store=cache_store,
+                evaluation_resources=evaluation_resources,
+            )
+            errors.raise_if_any()
             raise
-        metadata = RenderSessionMetadata(
-            config_path=effective_config.config_path,
-            effective_config=effective_config,
-            parameter_source=normalized_source,
-            parameter_store_path=store_path,
-            parameter_load_provenance=store.load_provenance,
-            provenance=provenance_builder.session,
-        )
+
+        assert cache_store is not None
+        assert realize_session is not None
 
         self._draw = draw
         self._options = render_options
@@ -318,8 +349,16 @@ class RenderSession:
             raise RuntimeError("close 済みの RenderSession は再利用できません")
         return self
 
-    def __exit__(self, *_exc_info: object) -> None:
-        self.close()
+    def __exit__(
+        self,
+        _exc_type: object,
+        exc: BaseException | None,
+        _traceback: object,
+    ) -> None:
+        errors = CleanupErrors(initial_error=exc)
+        self._close_with_errors(errors)
+        if exc is None:
+            errors.raise_if_any()
 
     @property
     def options(self) -> RenderOptions:
@@ -334,48 +373,12 @@ class RenderSession:
         return self._config
 
     @property
-    def style_resolver(self) -> StyleResolver:
-        return self._style_resolver
-
-    @property
-    def realize_session(self) -> RealizeSession:
-        return self._realize_session
-
-    @property
-    def evaluation_context(self) -> EvaluationContext:
-        """セッション開始時に固定した final evaluation context。"""
-
-        return self._evaluation_context
-
-    @property
-    def definitions(self) -> AuthoringDefinitionsSnapshot:
-        """この session が draw 全体へ束縛する authoring snapshot。"""
-
-        return self._definitions
-
-    @property
-    def evaluation_resources(self) -> EvaluationResources:
-        """この RenderSession が所有する evaluation resource owner。"""
-
-        return self._evaluation_resources
-
-    @property
-    def cache_store(self) -> RealizeCacheStore:
-        """この RenderSession が所有する bounded realize cache。"""
-
-        return self._cache_store
-
-    @property
     def runtime_limits(self) -> RuntimeLimits:
         return self._runtime_limits
 
     @property
     def metadata(self) -> RenderSessionMetadata:
         return self._metadata
-
-    @property
-    def closed(self) -> bool:
-        return self._closed
 
     def render(
         self,
@@ -422,6 +425,7 @@ class RenderSession:
                         self._draw,
                         render_t,
                         defaults,
+                        config=self._config,
                         session=self._realize_session,
                     )
                 )
@@ -447,16 +451,22 @@ class RenderSession:
     def close(self) -> None:
         """realize cache を解放し、以後の評価を禁止する。"""
 
+        errors = CleanupErrors()
+        self._close_with_errors(errors)
+        errors.raise_if_any()
+
+    def _close_with_errors(self, errors: CleanupErrors) -> None:
+        """close 済みにし、依存 resource の失敗を ``errors`` へ集約する。"""
+
         if self._closed:
             return
         self._closed = True
-        try:
-            self._realize_session.close()
-        finally:
-            try:
-                self._evaluation_resources.close()
-            finally:
-                self._cache_store.close()
+        _attempt_render_dependency_cleanup(
+            errors,
+            realize_session=self._realize_session,
+            cache_store=self._cache_store,
+            evaluation_resources=self._evaluation_resources,
+        )
 
 
 def render(

@@ -5,9 +5,11 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from typing import Protocol
 
 from grafix.core.authoring_definitions import AuthoringDefinitionsSnapshot
 from grafix.core.authoring_loader import authoring_definitions_for_draw
+from grafix.core.evaluation_config import EvaluationConfig
 from grafix.core.evaluation_context import EvaluationContext, EvaluationResources
 from grafix.core.layer import Layer, LayerStyleDefaults, resolve_layer_style
 from grafix.core.operation_catalog import OperationCatalog
@@ -17,6 +19,7 @@ from grafix.core.operation_diagnostics import (
     extend_operation_diagnostics,
 )
 from grafix.core.parameters import (
+    EffectOrderSnapshot,
     MidiFrameSnapshot,
     ParamStore,
     current_effect_order_snapshot,
@@ -25,6 +28,7 @@ from grafix.core.parameters import (
     parameter_context,
 )
 from grafix.core.parameters.layer_style import observe_and_apply_layer_style
+from grafix.core.parameters.snapshot_ops import ParamSnapshot
 from grafix.core.pipeline import RealizedLayer, realize_scene
 from grafix.core.realize import RealizeCacheStore, RealizeSession
 from grafix.core.preview_quality import PreviewQuality
@@ -36,9 +40,84 @@ from grafix.core.runtime_limits import (
 from grafix.core.runtime_config import RuntimeConfig
 from grafix.core.scene import SceneItem
 from grafix.core.value_validation import exact_integer, finite_real
-from grafix.interactive.runtime.mp_draw import MpDraw
+from grafix.interactive.runtime.mp_draw import DrawResult, MpDraw
 from grafix.interactive.runtime.perf import PerfCollector
 from grafix.interactive.diagnostics import DiagnosticCenter, DiagnosticEvent
+
+
+class _MpDrawEventCallback(Protocol):
+    """MpDraw が親 process の causal event を通知する callback。"""
+
+    def __call__(
+        self,
+        name: str,
+        *,
+        frame_id: int | None = None,
+        revision: int | None = None,
+    ) -> None: ...
+
+
+class _MpDrawClient(Protocol):
+    """SceneRunner が background draw に要求する最小契約。"""
+
+    @property
+    def last_submitted_frame_id(self) -> int: ...
+
+    def submit(
+        self,
+        *,
+        t: float,
+        snapshot_revision: int,
+        snapshot: ParamSnapshot,
+        effect_order_snapshot: EffectOrderSnapshot,
+        cc_snapshot: MidiFrameSnapshot | None,
+        epoch: int,
+        quality: PreviewQuality,
+    ) -> None: ...
+
+    def poll_latest(self) -> DrawResult | None: ...
+
+    def latest_successful_result(self) -> DrawResult | None: ...
+
+    def begin_epoch(self, epoch: int | None = None) -> int: ...
+
+    def close(self) -> None: ...
+
+
+class _MpDrawFactory(Protocol):
+    """一つの draw generation に対応する background client を作る。"""
+
+    def __call__(
+        self,
+        draw: Callable[[float], SceneItem],
+        *,
+        n_worker: int,
+        evaluation_timeout: float | None,
+        effective_config: RuntimeConfig,
+        definitions: AuthoringDefinitionsSnapshot,
+        event_callback: _MpDrawEventCallback | None,
+    ) -> _MpDrawClient: ...
+
+
+def _default_mp_draw_factory(
+    draw: Callable[[float], SceneItem],
+    *,
+    n_worker: int,
+    evaluation_timeout: float | None,
+    effective_config: RuntimeConfig,
+    definitions: AuthoringDefinitionsSnapshot,
+    event_callback: _MpDrawEventCallback | None,
+) -> _MpDrawClient:
+    """production の concrete MpDraw を生成する既定 factory。"""
+
+    return MpDraw(
+        draw,
+        n_worker=n_worker,
+        evaluation_timeout=evaluation_timeout,
+        effective_config=effective_config,
+        definitions=definitions,
+        event_callback=event_callback,
+    )
 
 
 def _make_evaluation_generation(
@@ -64,7 +143,7 @@ def _make_evaluation_generation(
         quality: EvaluationContext(
             catalog=catalog,
             quality=quality,
-            config=config,
+            config=EvaluationConfig(font_dirs=config.font_dirs),
         )
         for quality in qualities
     }
@@ -124,6 +203,7 @@ class SceneRunner:
         diagnostic_center: DiagnosticCenter | None = None,
         effective_config: RuntimeConfig,
         definitions: AuthoringDefinitionsSnapshot | None = None,
+        mp_draw_factory: _MpDrawFactory = _default_mp_draw_factory,
     ) -> None:
         worker_count = exact_integer(n_worker, name="n_worker", minimum=0)
         timeout = (
@@ -147,6 +227,7 @@ class SceneRunner:
         self._worker_count = worker_count
         self._evaluation_timeout = timeout
         self._runtime_limit_profiles = runtime_limit_profiles
+        self._mp_draw_factory = mp_draw_factory
         if not isinstance(effective_config, RuntimeConfig):
             raise TypeError("effective_config は RuntimeConfig である必要があります")
         self._effective_config = effective_config
@@ -190,21 +271,9 @@ class SceneRunner:
         self._diagnostic_center = diagnostic_center
         self._last_operation_diagnostics: tuple[OperationDiagnostic, ...] = ()
         try:
-            self._mp_draw: MpDraw | None = (
-                MpDraw(
-                    draw,
-                    n_worker=worker_count,
-                    evaluation_timeout=timeout,
-                    effective_config=self._effective_config,
-                    definitions=selected_definitions,
-                    **(
-                        {"event_callback": perf.record_event}
-                        if perf.enabled
-                        else {}
-                    ),
-                )
-                if worker_count >= 1
-                else None
+            self._mp_draw: _MpDrawClient | None = self._create_mp_draw(
+                draw,
+                definitions=selected_definitions,
             )
         except BaseException:
             try:
@@ -244,6 +313,25 @@ class SceneRunner:
         self._last_recording: bool | None = None
         self._last_quality: PreviewQuality | None = None
 
+    def _create_mp_draw(
+        self,
+        draw: Callable[[float], SceneItem],
+        *,
+        definitions: AuthoringDefinitionsSnapshot,
+    ) -> _MpDrawClient | None:
+        """設定済みの同一 factory から generation client を作る。"""
+
+        if self._worker_count < 1:
+            return None
+        return self._mp_draw_factory(
+            draw,
+            n_worker=self._worker_count,
+            evaluation_timeout=self._evaluation_timeout,
+            effective_config=self._effective_config,
+            definitions=definitions,
+            event_callback=(self._perf.record_event if self._perf.enabled else None),
+        )
+
     def replace_draw(
         self,
         draw: Callable[[float], SceneItem],
@@ -261,7 +349,7 @@ class SceneRunner:
             raise TypeError("draw は callable である必要があります")
 
         next_epoch = self._mp_epoch + 1
-        replacement: MpDraw | None = None
+        replacement: _MpDrawClient | None = None
         next_definitions = authoring_definitions_for_draw(
             draw,
             config=self._effective_config,
@@ -280,19 +368,11 @@ class SceneRunner:
             profiler=self._perf,
         )
         try:
-            if self._worker_count >= 1:
-                replacement = MpDraw(
-                    draw,
-                    n_worker=self._worker_count,
-                    evaluation_timeout=self._evaluation_timeout,
-                    effective_config=self._effective_config,
-                    definitions=next_definitions,
-                    **(
-                        {"event_callback": self._perf.record_event}
-                        if self._perf.enabled
-                        else {}
-                    ),
-                )
+            replacement = self._create_mp_draw(
+                draw,
+                definitions=next_definitions,
+            )
+            if replacement is not None:
                 replacement.begin_epoch(next_epoch)
         except BaseException as startup_error:  # noqa: BLE001
             if replacement is not None:
@@ -729,6 +809,7 @@ class SceneRunner:
                 draw_fn,
                 t,
                 defaults,
+                config=self._effective_config,
                 session=self._realize_sessions[quality],
                 presets=self._definitions.presets,
             )
@@ -837,6 +918,7 @@ class SceneRunner:
                 draw_from_mp,
                 t,
                 defaults,
+                config=self._effective_config,
                 session=self._realize_sessions[quality],
                 presets=self._definitions.presets,
             )

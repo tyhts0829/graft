@@ -55,6 +55,25 @@ class _FailingBackend:
         raise RuntimeError("backend close failed")
 
 
+class _FakeWindow:
+    def __init__(self, calls: list[str]) -> None:
+        self._calls = calls
+
+    def switch_to(self) -> None:
+        self._calls.append("switch_to")
+
+    def close(self) -> None:
+        self._calls.append("window.close")
+
+
+class _FakeBackend:
+    def __init__(self, calls: list[str]) -> None:
+        self._calls = calls
+
+    def close(self) -> None:
+        self._calls.append("backend.close")
+
+
 def test_parameter_gui_owns_injected_catalog_without_global_lookup(
     monkeypatch: pytest.MonkeyPatch,
     effective_runtime_config: RuntimeConfig,
@@ -150,6 +169,58 @@ def test_parameter_gui_close_attempts_backend_and_window_cleanup(
         gui.close()
 
     assert calls == ["backend.close", "switch_to", "window.close"]
+
+
+def test_widget_state_is_released_across_fake_gui_close_and_reopen(
+    monkeypatch: pytest.MonkeyPatch,
+    effective_runtime_config: RuntimeConfig,
+) -> None:
+    calls: list[str] = []
+
+    def initialize(
+        self: ParameterGUI,
+        window: _FakeWindow,
+        *,
+        store: ParamStore,
+        **_kwargs: object,
+    ) -> None:
+        self._window = window
+        self._store = store
+        self._session = gui_module.ParameterGuiSessionState.for_store(store)
+        self._backend = _FakeBackend(calls)
+        self._closed = False
+
+    monkeypatch.setattr(ParameterGUI, "_initialize", initialize)
+    key = ("text", "same-site", "font")
+
+    first = ParameterGUI(
+        _FakeWindow(calls),
+        effective_config=effective_runtime_config,
+        store=ParamStore(),
+    )
+    first._session.widgets.font_filter_by_key[key] = "old filter"
+    first._session.widgets.snippet_popup_text = "old snippet"
+    first.close()
+
+    assert first._session.widgets.font_filter_by_key == {}
+    assert first._session.widgets.snippet_popup_text == ""
+
+    reopened = ParameterGUI(
+        _FakeWindow(calls),
+        effective_config=effective_runtime_config,
+        store=ParamStore(),
+    )
+    assert reopened._session.widgets.font_filter_by_key == {}
+    assert reopened._session.widgets.snippet_popup_text == ""
+    reopened.close()
+    assert calls == [
+        "backend.close",
+        "switch_to",
+        "window.close",
+        "backend.close",
+        "switch_to",
+        "window.close",
+    ]
 
 
 def test_catalog_lookup_failure_closes_owned_window_and_preserves_root_error(

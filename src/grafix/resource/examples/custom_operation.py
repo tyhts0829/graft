@@ -1,9 +1,13 @@
 """project-local primitive を定義する example。"""
 
+from __future__ import annotations
+
 import numpy as np
 
 from grafix import primitive, run
 from grafix.api import G
+from grafix.core.realized_geometry import GeomTuple
+from grafix.core.scene import SceneItem
 
 
 @primitive(
@@ -26,7 +30,7 @@ def diamond(
     *,
     size: float = 80.0,
     center: tuple[float, float, float] = (150.0, 150.0, 0.0),
-):
+) -> GeomTuple:
     """指定中心の菱形を生成する。"""
 
     half = float(size) * 0.5
@@ -45,7 +49,7 @@ def diamond(
     return coords, offsets
 
 
-def draw(t: float):
+def draw(t: float) -> SceneItem:
     """時刻 ``t`` の scene を返す。"""
 
     _ = t

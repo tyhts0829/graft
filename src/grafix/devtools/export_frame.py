@@ -12,11 +12,8 @@ from typing import Any, cast
 from grafix.api import ExportFormat, ExportResult, RenderOptions, RenderSession, export
 from grafix.api.render import ParameterLoadMode
 from grafix.export.output_paths import output_path_for_draw
-from grafix.core.runtime_config import (
-    RuntimeConfig,
-    bind_runtime_config,
-    load_runtime_config,
-)
+from grafix.core.runtime_config import RuntimeConfig, bind_runtime_config
+from grafix.runtime_config_loader import load_runtime_config
 from grafix.export.image import default_png_output_path
 
 

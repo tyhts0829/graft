@@ -11,7 +11,7 @@ from typing import Any, Literal, Protocol, TypeAlias
 
 from grafix.core.geometry import Geometry
 from grafix.core.layer import Layer
-from grafix.core.operation_catalog import OperationCatalogEntry
+from grafix.api.operation_info import OperationInfo as OperationInfo
 from grafix.core.scene import SceneItem
 
 Vec3: TypeAlias = tuple[float, float, float]
@@ -20,10 +20,10 @@ class _G(Protocol):
     def __call__(self, name: str | None = None) -> _G:
         """ラベル付き primitive 名前空間を返す。"""
         ...
-    def catalog(self) -> tuple[OperationCatalogEntry, ...]:
+    def catalog(self) -> tuple[OperationInfo, ...]:
         """登録済み primitive の catalog を名前順で返す。"""
         ...
-    def describe(self, name: str) -> OperationCatalogEntry:
+    def describe(self, name: str) -> OperationInfo:
         """primitive の catalog entry を名前で取得する。"""
         ...
     def select(self, *, target: str = ..., params_by_target: Mapping[str, Mapping[str, Any]] | None = ..., key: str | int | None = ..., instance_key: str | int | None = ..., shared: bool = ...) -> Geometry:
@@ -1028,10 +1028,10 @@ class _E(Protocol):
     def __call__(self, name: str | None = None) -> _E:
         """ラベル付き effect 名前空間を返す。"""
         ...
-    def catalog(self) -> tuple[OperationCatalogEntry, ...]:
+    def catalog(self) -> tuple[OperationInfo, ...]:
         """登録済み effect の catalog を名前順で返す。"""
         ...
-    def describe(self, name: str) -> OperationCatalogEntry:
+    def describe(self, name: str) -> OperationInfo:
         """effect の catalog entry を名前で取得する。"""
         ...
     def select(self, *, target: str = ..., n_inputs: int = ..., params_by_target: Mapping[str, Mapping[str, Any]] | None = ..., key: str | int | None = ..., instance_key: str | int | None = ..., shared: bool = ...) -> _EffectBuilder:
@@ -1960,4 +1960,4 @@ def run(
     """
     ...
 
-__all__ = ['Color', 'E', 'ExportFormat', 'ExportResult', 'Frame', 'G', 'L', 'P', 'RenderOptions', 'RenderSession', 'RenderSessionMetadata', 'ResourceBudget', 'ResourceLimitError', 'RuntimeLimitProfiles', 'RuntimeLimits', 'VariationBatchResult', 'VariationRenderResult', 'effect', 'export', 'preset', 'primitive', 'render', 'render_variation_batch', 'run']
+__all__ = ['Color', 'E', 'ExportFormat', 'ExportResult', 'Frame', 'G', 'L', 'OperationInfo', 'P', 'RenderOptions', 'RenderSession', 'RenderSessionMetadata', 'ResourceBudget', 'ResourceLimitError', 'RuntimeLimitProfiles', 'RuntimeLimits', 'VariationBatchResult', 'VariationRenderResult', 'effect', 'export', 'preset', 'primitive', 'render', 'render_variation_batch', 'run']

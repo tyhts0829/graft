@@ -18,6 +18,7 @@ from grafix.core.builtins import (
     ensure_builtin_primitive_registered,
 )
 from grafix.core.evaluation_context import EvaluationContext
+from grafix.core.evaluation_config import EvaluationConfig
 from grafix.core.geometry import Geometry
 from grafix.core.layer import LayerStyleDefaults
 from grafix.core.parameters.context import current_param_snapshot
@@ -25,7 +26,8 @@ from grafix.core.parameters.history import ParamStoreHistory
 from grafix.core.parameters.key import ParameterKey
 from grafix.core.parameters.ui_ops import update_state_from_ui
 from grafix.core.realize import RealizeSession
-from grafix.core.runtime_config import RuntimeConfig, runtime_config
+from grafix.core.runtime_config import RuntimeConfig
+from grafix.runtime_config_loader import runtime_config
 from grafix.devtools.benchmarks import renderer_benchmark
 from grafix.devtools.benchmarks.definition import CaseDefinition, define_case
 from grafix.devtools.benchmarks.parameter_hotpath_benchmark import (
@@ -693,7 +695,7 @@ def _expected_mesh_checksum(
     context = EvaluationContext(
         catalog=definitions.operations,
         quality="final",
-        config=config,
+        config=EvaluationConfig(font_dirs=config.font_dirs),
     )
     with RealizeSession(context=context) as session:
         realized = session.realize(geometry)

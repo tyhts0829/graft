@@ -94,7 +94,8 @@
 - `context.py`: フレーム境界を作る（snapshot と buffer を contextvars に固定）。
 - `resolver.py`: base/GUI/CC から effective 値を決定し、Frame の観測ログ（record）を作る。
 - `codec.py`: JSON encode/decode（スキーマ仕様の置き場）。
-- `persistence.py`: ファイル入出力（未観測 group の自動削除は行わない）。
+- filesystem read/write、quarantine、recovery/finalize は core 外の
+  `grafix.parameter_storage` が所有する。
 - `invariants.py`: テスト専用の不変条件チェック（本番常時実行はしない）。
 
 ---
@@ -131,7 +132,8 @@ ParamStore には反映しない。
 ### 3) 永続化（JSON）
 
 - save:
-  - `save_param_store()` は、今回未観測のロード済み group も保持する。
+  - `grafix.parameter_storage.write_param_store()` は、今回未観測の
+    ロード済み group も保持する。
   - 不要 group を掃除するときは `prune_stale_loaded_groups(store)` または
     `prune_groups(store, groups)` を明示的に呼び出す。
   - `encode_param_store()` は **meta を持たない state を drop** して永続化しない。

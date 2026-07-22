@@ -10,6 +10,7 @@ from grafix.core.parameters.merge_ops import merge_frame_params
 from grafix.core.parameters.snapshot_ops import store_snapshot_for_gui
 from grafix.core.parameters.ui_ops import update_state_from_ui
 from grafix.interactive.parameter_gui.store_bridge import _apply_updated_rows_to_store
+from grafix.interactive.parameter_gui.session_state import WidgetSessionState
 from grafix.interactive.parameter_gui.table import render_parameter_row_4cols
 
 
@@ -198,7 +199,10 @@ def test_code_to_ui_render_store_undo_redo_keeps_midi(monkeypatch) -> None:
     rows_before = rows_from_snapshot(snapshot)
 
     monkeypatch.setitem(sys.modules, "imgui", _SourceSwitchImGui())
-    changed, rendered, _learn_state = render_parameter_row_4cols(rows_before[0])
+    changed, rendered, _learn_state = render_parameter_row_4cols(
+        rows_before[0],
+        widget_state=WidgetSessionState(),
+    )
 
     assert changed is True
     assert rendered.override is True

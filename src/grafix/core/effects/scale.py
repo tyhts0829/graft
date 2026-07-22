@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import numpy as np
 
 from grafix.core.operation_authoring import effect
+from grafix.core.operation_schema import UiVisiblePred
 from grafix.core.parameters.meta import ParamMeta
 from grafix.core.realized_geometry import GeomTuple
 
@@ -44,8 +47,8 @@ scale_meta = {
     ),
 }
 
-def _mode_is(name: str):
-    def _pred(v) -> bool:
+def _mode_is(name: str) -> UiVisiblePred:
+    def _pred(v: Mapping[str, object]) -> bool:
         return v.get("mode", "all") == name
 
     return _pred

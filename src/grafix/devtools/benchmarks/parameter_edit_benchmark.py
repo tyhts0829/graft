@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from grafix.core.parameters import history as history_module
+from grafix.core.parameters.adjustment_snapshot import ParameterAdjustmentSnapshot
 from grafix.core.parameters.history import ParamStoreHistory
 from grafix.core.parameters.key import ParameterKey
 from grafix.core.parameters.meta import ParamMeta
@@ -180,23 +180,23 @@ def run_parameter_edit_scenario(
     max_changed_keys = 0
     max_changed_row_identities = 0
     visible_rows = 0
-    full_memento_captures = 0
+    full_snapshot_captures = 0
 
     low_value = 0.25
     high_value = 0.75
     ascending = float(state_before.ui_value) != high_value
     final_value = high_value if ascending else low_value
 
-    original_full_capture = history_module.capture_param_store_memento
+    original_full_capture = store.capture_adjustment_snapshot
 
-    def counted_full_capture(target_store: ParamStore):
-        nonlocal full_memento_captures
-        full_memento_captures += 1
-        return original_full_capture(target_store)
+    def counted_full_capture() -> ParameterAdjustmentSnapshot:
+        nonlocal full_snapshot_captures
+        full_snapshot_captures += 1
+        return original_full_capture()
 
     with patch.object(
-        history_module,
-        "capture_param_store_memento",
+        store,
+        "capture_adjustment_snapshot",
         counted_full_capture,
     ):
         for frame in range(1, changed_frames + 1):
@@ -367,8 +367,8 @@ def run_parameter_edit_scenario(
         _counter_metric("param_edit.rows", scenario.rows),
         _counter_metric("param_edit.changed_frames", changed_frames),
         _counter_metric(
-            "param_edit.changed_frame.full_memento_captures",
-            full_memento_captures,
+            "param_edit.changed_frame.full_snapshot_captures",
+            full_snapshot_captures,
         ),
         _counter_metric(
             "param_edit.changed_frame.table_model_builds",
@@ -437,11 +437,11 @@ def run_parameter_edit_scenario(
     )
     contracts = (
         _hard_contract(
-            "param_edit.changed_frame.full_memento_zero",
-            full_memento_captures,
+            "param_edit.changed_frame.full_snapshot_zero",
+            full_snapshot_captures,
             "eq",
             0,
-            "single-key changed-frame must use patch history without full memento",
+            "single-key changed-frame must use patch history without full snapshot",
         ),
         _hard_contract(
             "param_edit.changed_frame.structure_build_zero",

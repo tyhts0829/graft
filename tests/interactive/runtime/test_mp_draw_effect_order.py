@@ -8,7 +8,7 @@ from grafix.api.effects import EffectBuilder, _make_effect_operation_step
 from grafix.core.builtins import builtin_operation_catalog
 from grafix.core.geometry import Geometry
 from grafix.core.parameters.effects import EffectStepKey
-from grafix.core.runtime_config import runtime_config
+from grafix.runtime_config_loader import runtime_config
 from grafix.interactive.runtime.mp_draw import DrawResult, MpDraw
 
 

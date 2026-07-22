@@ -15,7 +15,7 @@ from grafix.core.parameters.context import parameter_context_from_snapshot
 from grafix.core.parameters.snapshot_ops import ParamSnapshot, store_snapshot
 from grafix.core.parameters.ui_ops import update_state_from_ui
 from grafix.core.scene import normalize_scene
-from grafix.core.runtime_config import runtime_config
+from grafix.runtime_config_loader import runtime_config
 from grafix.devtools.benchmarks.definition import CaseDefinition, define_case
 from grafix.devtools.benchmarks.metrics import (
     counter_metric,

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from grafix import G, RuntimeLimitProfiles, RuntimeLimits
@@ -7,6 +9,10 @@ from grafix.core.layer import LayerStyleDefaults
 from grafix.core.pipeline import realize_scene
 from grafix.core.realize import RealizeSession
 from grafix.core.resource_budget import ResourceBudget, ResourceLimitError
+from grafix.runtime_config_loader import runtime_config
+
+
+_TEST_RUNTIME_CONFIG = replace(runtime_config(), font_dirs=())
 
 
 def _budget(*, vertices: int) -> ResourceBudget:
@@ -99,11 +105,12 @@ def test_scene_aggregate_is_rejected_before_new_results_enter_cpu_cache(
 
     with RealizeSession(runtime_limits=limits) as session:
         with pytest.raises(ResourceLimitError, match=message):
-            realize_scene(
-                lambda _t: [first, second],
-                0.0,
-                _defaults(),
-                session=session,
+                realize_scene(
+                    lambda _t: [first, second],
+                    0.0,
+                    _defaults(),
+                    config=_TEST_RUNTIME_CONFIG,
+                    session=session,
             )
         stats = session.stats()
 
@@ -124,6 +131,7 @@ def test_scene_aggregate_within_limit_commits_cache_transaction() -> None:
             lambda _t: geometry,
             0.0,
             _defaults(),
+            config=_TEST_RUNTIME_CONFIG,
             session=session,
         )
         stats = session.stats()

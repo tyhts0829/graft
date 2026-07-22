@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from grafix.api import E, G
+from grafix.core.evaluation_config import EvaluationConfig
 from grafix.core.evaluation_context import EvaluationContext, EvaluationResources
 from grafix.core.font_resolver import resolve_font_path
 from grafix.core.font_resources import FontResources, ResolvedFontLease, TextRenderer
@@ -16,7 +17,8 @@ from grafix.core.operation_catalog import current_operation_catalog
 from grafix.core.operation_declaration import operation_declaration
 from grafix.core.primitives.text import text
 from grafix.core.realize import RealizeCacheStore, RealizeSession
-from grafix.core.runtime_config import RuntimeConfig, load_runtime_config
+from grafix.core.runtime_config import RuntimeConfig
+from grafix.runtime_config_loader import load_runtime_config
 from grafix.core.runtime_limits import DEFAULT_FINAL_RUNTIME_LIMITS
 
 
@@ -37,7 +39,7 @@ def _realize_session(
     context = EvaluationContext(
         catalog=current_operation_catalog(),
         quality="final",
-        config=config,
+        config=EvaluationConfig(font_dirs=config.font_dirs),
     )
     try:
         with RealizeSession(
@@ -53,9 +55,10 @@ def _realize_session(
 
 def _packaged_fonts() -> tuple[Path, Path]:
     config = load_runtime_config()
+    evaluation_config = EvaluationConfig(font_dirs=config.font_dirs)
     return (
-        resolve_font_path("GoogleSans-Regular.ttf", config=config),
-        resolve_font_path("NotoSansJP-Regular.ttf", config=config),
+        resolve_font_path("GoogleSans-Regular.ttf", config=evaluation_config),
+        resolve_font_path("NotoSansJP-Regular.ttf", config=evaluation_config),
     )
 
 
@@ -247,7 +250,11 @@ def test_evaluation_resources_clear_and_close_delegate_to_font_owner(
     config = _config_with_font_dirs(tmp_path, font_dir)
     resources = EvaluationResources()
     fonts = resources.fonts
-    lease = fonts.resolve("Owned.ttf", 0, config=config)
+    lease = fonts.resolve(
+        "Owned.ttf",
+        0,
+        config=EvaluationConfig(font_dirs=config.font_dirs),
+    )
     fonts.renderer.get_font(lease)
 
     resources.clear()

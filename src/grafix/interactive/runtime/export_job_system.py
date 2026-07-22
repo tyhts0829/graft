@@ -261,6 +261,38 @@ def _normalize_output_size(
     return positive_integer_pair(output_size, name="output_size")
 
 
+def _validate_export_request(
+    *,
+    format: object,
+    snapshot: object,
+    split_gcode_layers: object,
+    output_size: tuple[int, int] | None,
+) -> tuple[
+    ExportFormat,
+    CaptureExportSnapshot,
+    bool,
+    tuple[int, int] | None,
+]:
+    """export request 共通 field の invariant を一箇所で検証する。"""
+
+    if not isinstance(format, ExportFormat):
+        raise TypeError("format は ExportFormat である必要があります")
+    if not isinstance(snapshot, CaptureExportSnapshot):
+        raise TypeError("snapshot は CaptureExportSnapshot である必要があります")
+    if type(split_gcode_layers) is not bool:
+        raise TypeError("split_gcode_layers は bool である必要があります")
+    if split_gcode_layers and format is not ExportFormat.GCODE:
+        raise ValueError("split_gcode_layers は G-code export にのみ指定できます")
+    if format is ExportFormat.GCODE and snapshot.gcode_params is None:
+        raise ValueError("G-code export snapshot には gcode_params が必要です")
+
+    normalized_output_size = _normalize_output_size(
+        format,
+        output_size,
+    )
+    return format, snapshot, split_gcode_layers, normalized_output_size
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class ExportJob:
     """worker へ渡す不変 export request。"""
@@ -277,28 +309,12 @@ class ExportJob:
     deadline_monotonic: float | None = field(default=None, compare=False, repr=False)
 
     def __post_init__(self) -> None:
-        if not isinstance(self.format, ExportFormat):
-            raise TypeError("format は ExportFormat である必要があります")
-        if type(self.split_gcode_layers) is not bool:
-            raise TypeError("split_gcode_layers は bool である必要があります")
-        if (
-            self.split_gcode_layers
-            and self.format is not ExportFormat.GCODE
-        ):
-            raise ValueError(
-                "split_gcode_layers は G-code export にのみ指定できます"
-            )
-        if not isinstance(self.snapshot, CaptureExportSnapshot):
-            raise TypeError(
-                "snapshot は CaptureExportSnapshot である必要があります"
-            )
-        if (
-            self.format is ExportFormat.GCODE
-            and self.snapshot.gcode_params is None
-        ):
-            raise ValueError(
-                "G-code export snapshot には gcode_params が必要です"
-            )
+        _, _, _, normalized_output_size = _validate_export_request(
+            format=self.format,
+            snapshot=self.snapshot,
+            split_gcode_layers=self.split_gcode_layers,
+            output_size=self.output_size,
+        )
         job_id = exact_integer(self.job_id, name="job_id", minimum=1)
         output_path = _path(self.output_path, name="output_path")
         base_output_path = (
@@ -307,10 +323,6 @@ class ExportJob:
             else _path(self.base_output_path, name="base_output_path")
         )
         staging_dir = _path(self.staging_dir, name="staging_dir")
-        normalized_output_size = _normalize_output_size(
-            self.format,
-            self.output_size,
-        )
         timeout_s = finite_real(
             self.timeout_s,
             name="timeout_s",
@@ -968,21 +980,13 @@ class ExportJobSystem:
 
         if self._closed:
             raise RuntimeError("ExportJobSystem は close 済みです")
-        if not isinstance(snapshot, CaptureExportSnapshot):
-            raise TypeError(
-                "snapshot は CaptureExportSnapshot である必要があります"
+        format, snapshot, split_gcode_layers, normalized_output_size = (
+            _validate_export_request(
+                format=format,
+                snapshot=snapshot,
+                split_gcode_layers=split_gcode_layers,
+                output_size=output_size,
             )
-        if not isinstance(format, ExportFormat):
-            raise TypeError("format は ExportFormat である必要があります")
-        if type(split_gcode_layers) is not bool:
-            raise TypeError("split_gcode_layers は bool である必要があります")
-        if split_gcode_layers and format is not ExportFormat.GCODE:
-            raise ValueError(
-                "split_gcode_layers は G-code export にのみ指定できます"
-            )
-        normalized_output_size = _normalize_output_size(
-            format,
-            output_size,
         )
         self._service()
 

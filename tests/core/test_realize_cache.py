@@ -19,6 +19,7 @@ from grafix.core.definition_fingerprint import (
     EvaluationSpecFingerprint,
     ParameterSchemaFingerprint,
 )
+from grafix.core.evaluation_config import EvaluationConfig, current_evaluation_config
 from grafix.core.evaluation_context import EvaluationContext, EvaluationResources
 from grafix.core.geometry import Geometry
 from grafix.core.operation_declaration import (
@@ -45,7 +46,11 @@ from grafix.core.realize import (
 from grafix.core.realized_geometry import RealizedGeometry
 from grafix.core.resource_budget import ResourceBudget
 from grafix.core.runtime_limits import RuntimeLimits
-from grafix.core.runtime_config import runtime_config
+from grafix.core.runtime_config import (
+    bind_runtime_config,
+    current_runtime_config,
+)
+from grafix.runtime_config_loader import runtime_config
 
 realize_module = importlib.import_module("grafix.core.realize")
 
@@ -170,7 +175,7 @@ def _evaluation_context(
     return EvaluationContext(
         catalog=catalog,
         quality=quality,
-        config=runtime_config(),
+        config=EvaluationConfig(font_dirs=runtime_config().font_dirs),
     )
 
 
@@ -193,6 +198,36 @@ def test_session_reuses_same_content_across_geometry_instances(
     assert stats.misses == 1
     assert stats.entries == 1
     assert stats.bytes == first.byte_size
+
+
+def test_dag_evaluator_observes_only_evaluation_config(
+    isolated_catalog: _CatalogPair,
+) -> None:
+    primitives, _ = isolated_catalog
+    runtime = runtime_config()
+    expected = EvaluationConfig(font_dirs=runtime.font_dirs)
+    observed: list[EvaluationConfig] = []
+
+    def evaluate(_args: tuple[tuple[str, object], ...]) -> RealizedGeometry:
+        observed.append(current_evaluation_config())
+        with pytest.raises(RuntimeError, match="束縛されていません"):
+            current_runtime_config()
+        return _realized(1)
+
+    primitives.register("evaluation_config_scope_probe", _primitive_spec(evaluate))
+    catalog = primitives.catalog
+    with bind_operation_catalog(catalog):
+        geometry = G.evaluation_config_scope_probe()
+    context = EvaluationContext(
+        catalog=catalog,
+        quality="final",
+        config=expected,
+    )
+
+    with bind_runtime_config(runtime), RealizeSession(context=context) as session:
+        session.realize(geometry)
+
+    assert observed == [expected]
 
 
 def test_module_convenience_call_does_not_share_global_cache(

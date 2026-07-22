@@ -11,7 +11,8 @@ import threading
 from collections.abc import Callable
 from pathlib import Path
 
-from grafix.core.runtime_config import RuntimeConfig, runtime_config
+from grafix.core.runtime_config import RuntimeConfig
+from grafix.runtime_config_loader import runtime_config
 from grafix.core.value_validation import (
     exact_integer,
     exact_string,

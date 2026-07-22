@@ -7,7 +7,10 @@ import pytest
 
 from grafix.core.operation_selector import PRIMITIVE_SELECTOR_OP
 from grafix.core.parameters import ParameterRow
-from grafix.interactive.parameter_gui.widgets import widget_choice_radio
+from grafix.interactive.parameter_gui.session_state import WidgetSessionState
+from grafix.interactive.parameter_gui.widgets import (
+    widget_choice_radio as _widget_choice_radio,
+)
 
 
 @dataclass(frozen=True)
@@ -166,6 +169,19 @@ def _visible_selectables(imgui: _ChoiceImgui) -> list[str]:
         _ChoiceImgui._visible_label(label)
         for label, _selected in imgui.selectable_labels
     ]
+
+
+def widget_choice_radio(
+    row: ParameterRow,
+    *,
+    state: WidgetSessionState | None = None,
+) -> tuple[bool, str]:
+    """各testが所有する一時stateをproduction widgetへ明示注入する。"""
+
+    return _widget_choice_radio(
+        row,
+        state=WidgetSessionState() if state is None else state,
+    )
 
 
 def test_short_choices_that_fit_use_inline_radio(
@@ -339,6 +355,44 @@ def test_filter_edit_alone_does_not_change_choice_value(
     assert imgui.filter_calls
 
 
+def test_choice_filter_isolated_between_two_widget_sessions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    choices = tuple(f"choice-{index}" for index in range(8))
+    row = _choice_row(
+        choices=choices,
+        value="choice-3",
+        site_id="same-site-in-two-sessions",
+    )
+    first_state = WidgetSessionState()
+    second_state = WidgetSessionState()
+
+    first_imgui = _ChoiceImgui(
+        available_width=10_000.0,
+        filter_value="choice-1",
+    )
+    monkeypatch.setitem(sys.modules, "imgui", first_imgui)
+    widget_choice_radio(row, state=first_state)
+
+    second_imgui = _ChoiceImgui(available_width=10_000.0)
+    monkeypatch.setitem(sys.modules, "imgui", second_imgui)
+    widget_choice_radio(row, state=second_state)
+
+    reopened_first_imgui = _ChoiceImgui(available_width=10_000.0)
+    monkeypatch.setitem(sys.modules, "imgui", reopened_first_imgui)
+    widget_choice_radio(row, state=first_state)
+
+    key = (row.op, row.site_id, row.arg)
+    assert first_state.choice_filter_by_key == {key: "choice-1"}
+    assert second_state.choice_filter_by_key == {}
+    assert second_imgui.filter_calls == [
+        ("##choice_filter", "Filter choices", ""),
+    ]
+    assert reopened_first_imgui.filter_calls == [
+        ("##choice_filter", "Filter choices", "choice-1"),
+    ]
+
+
 def test_selecting_a_filtered_choice_clears_temporary_filter(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -354,12 +408,13 @@ def test_selecting_a_filtered_choice_clears_temporary_filter(
         click="choice-1",
     )
     monkeypatch.setitem(sys.modules, "imgui", selecting_imgui)
+    widget_state = WidgetSessionState()
 
-    assert widget_choice_radio(row) == (True, "choice-1")
+    assert widget_choice_radio(row, state=widget_state) == (True, "choice-1")
 
     reopened_imgui = _ChoiceImgui(available_width=10_000.0)
     monkeypatch.setitem(sys.modules, "imgui", reopened_imgui)
-    widget_choice_radio(row)
+    widget_choice_radio(row, state=widget_state)
 
     assert reopened_imgui.filter_calls == [
         ("##choice_filter", "Filter choices", ""),

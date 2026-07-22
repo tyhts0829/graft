@@ -4,11 +4,11 @@ import numpy as np
 import pytest
 
 from grafix.core.effects.subdivide import MAX_SUBDIVISIONS, subdivide
-from grafix.core.effects.isocontour import _grid_spec_from_bbox
 from grafix.core.geometry_kernels.grid import plan_grid_from_bbox
 from grafix.core.operation_diagnostics import (
     current_operation_diagnostics,
     emit_operation_diagnostic,
+    grid_spec_from_bbox_with_diagnostic,
     operation_diagnostic_context,
 )
 
@@ -95,7 +95,7 @@ def test_grid_planner_is_pure_on_normal_path() -> None:
             (0.0, 0.0),
             (2.0, 1.0),
             pitch=1.0,
-            max_cells=6,
+            max_points=6,
             overflow="reject",
         )
 
@@ -111,7 +111,7 @@ def test_grid_planner_returns_rejection_without_emitting() -> None:
             (0.0, 0.0),
             (2.0, 1.0),
             pitch=1.0,
-            max_cells=5,
+            max_points=5,
             overflow="reject",
         )
 
@@ -121,7 +121,7 @@ def test_grid_planner_returns_rejection_without_emitting() -> None:
     assert plan.diagnostic.effective_value is None
     assert (
         plan.diagnostic.reason
-        == "requested grid exceeded the cell limit and was rejected"
+        == "requested grid exceeded the point limit and was rejected"
     )
     assert plan.diagnostic.severity == "warning"
     assert buffer.snapshot() == ()
@@ -129,12 +129,12 @@ def test_grid_planner_returns_rejection_without_emitting() -> None:
 
 def test_effect_side_grid_wrapper_emits_rejection_diagnostic() -> None:
     with operation_diagnostic_context() as buffer:
-        grid = _grid_spec_from_bbox(
+        grid = grid_spec_from_bbox_with_diagnostic(
             (0.0, 0.0),
             (2.0, 1.0),
             pitch=1.0,
             padding=0.0,
-            max_cells=5,
+            max_points=5,
             overflow="reject",
         )
 
@@ -146,7 +146,7 @@ def test_effect_side_grid_wrapper_emits_rejection_diagnostic() -> None:
     assert diagnostic.effective_value is None
     assert (
         diagnostic.reason
-        == "requested grid exceeded the cell limit and was rejected"
+        == "requested grid exceeded the point limit and was rejected"
     )
     assert diagnostic.severity == "warning"
 
@@ -155,12 +155,12 @@ def test_grid_repeated_non_finite_rejection_is_deduplicated() -> None:
     with operation_diagnostic_context() as buffer:
         for _ in range(2):
             assert (
-                _grid_spec_from_bbox(
+                grid_spec_from_bbox_with_diagnostic(
                     (0.0, 0.0),
                     (2.0, 1.0),
                     pitch=float("nan"),
                     padding=0.0,
-                    max_cells=4_000_000,
+                    max_points=4_000_000,
                     overflow="reject",
                 )
                 is None
@@ -171,12 +171,12 @@ def test_grid_repeated_non_finite_rejection_is_deduplicated() -> None:
 
 def test_grid_coarsen_emits_one_diagnostic() -> None:
     with operation_diagnostic_context() as buffer:
-        grid = _grid_spec_from_bbox(
+        grid = grid_spec_from_bbox_with_diagnostic(
             (0.0, 0.0),
             (100.0, 100.0),
             pitch=1.0,
             padding=0.0,
-            max_cells=100,
+            max_points=100,
             overflow="coarsen",
         )
 
@@ -185,5 +185,5 @@ def test_grid_coarsen_emits_one_diagnostic() -> None:
     diagnostic = buffer.snapshot()[0]
     assert diagnostic.original_value == 1.0
     assert diagnostic.effective_value == grid.pitch
-    assert diagnostic.reason == "grid pitch was coarsened to satisfy the cell limit"
+    assert diagnostic.reason == "grid pitch was coarsened to satisfy the point limit"
     assert diagnostic.severity == "warning"

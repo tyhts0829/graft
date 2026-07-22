@@ -8,10 +8,7 @@ from collections.abc import Mapping
 from typing import Any, Callable
 
 from grafix.core.geometry import Geometry
-from grafix.core.operation_catalog import (
-    OperationCatalogEntry,
-    current_operation_catalog,
-)
+from grafix.core.operation_catalog import current_operation_catalog
 from grafix.core.operation_selector import selector_spec as build_selector_spec
 from grafix.core.parameters import caller_site_id
 from grafix.core.parameters.identity import identity_string
@@ -21,8 +18,10 @@ from ._operation_selector import (
     freeze_params_by_target,
     resolve_primitive_selection,
 )
+from ._operation_info import operation_info
 from ._param_resolution import resolve_api_params, set_api_label
 from ._unset import _UNSET_TARGET, _UnsetTarget
+from .operation_info import OperationInfo
 
 
 class PrimitiveNamespace:
@@ -35,18 +34,21 @@ class PrimitiveNamespace:
         例: G.circle(radius=1.0) -> Geometry
     """
 
-    def catalog(self) -> tuple[OperationCatalogEntry, ...]:
+    def catalog(self) -> tuple[OperationInfo, ...]:
         """登録済み primitive の catalog を名前順で返す。
 
         Returns
         -------
-        tuple[OperationCatalogEntry, ...]
+        tuple[OperationInfo, ...]
             名前、説明、引数、source を含む immutable entry の列。
         """
 
-        return current_operation_catalog().public_entries(kind="primitive")
+        return tuple(
+            operation_info(entry)
+            for entry in current_operation_catalog().public_entries(kind="primitive")
+        )
 
-    def describe(self, name: str) -> OperationCatalogEntry:
+    def describe(self, name: str) -> OperationInfo:
         """primitive の catalog entry を名前で取得する。
 
         Parameters
@@ -56,8 +58,8 @@ class PrimitiveNamespace:
 
         Returns
         -------
-        OperationCatalogEntry
-            immutable catalog の declaration entry。
+        OperationInfo
+            evaluator を含まない immutable inspection value。
 
         Raises
         ------
@@ -68,7 +70,7 @@ class PrimitiveNamespace:
         name_s = identity_string(name, name="primitive name")
         catalog = current_operation_catalog()
         try:
-            return catalog.resolve("primitive", name_s)
+            return operation_info(catalog.resolve("primitive", name_s))
         except KeyError:
             raise KeyError(f"未登録の primitive: {name_s!r}")
 

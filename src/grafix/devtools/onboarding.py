@@ -8,6 +8,7 @@ import re
 import sys
 from dataclasses import dataclass
 from importlib import resources
+from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Literal
 
@@ -154,7 +155,7 @@ def _example_description(text: str) -> str:
     return doc.splitlines()[0].strip()
 
 
-def _example_root():
+def _example_root() -> Traversable:
     return resources.files("grafix").joinpath("resource", "examples")
 
 

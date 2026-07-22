@@ -62,6 +62,10 @@ grafix = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+  "integration: multiprocessing、subprocess、または実 resource lifecycle を使うテスト",
+  "e2e: 公開 CLI/application を entrypoint から往復するテスト",
+]
 
 [tool.ruff]
 line-length = 100
@@ -70,3 +74,5 @@ target-version = "py311"
 [tool.mypy]
 python_version = "3.11"
 mypy_path = "typings"
+check_untyped_defs = true
+disallow_untyped_defs = true

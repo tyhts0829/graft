@@ -91,12 +91,14 @@
 
 ## Undo / Redo と Snapshot A/B の境界
 
-- `memento.py` は ParamStore 全体の過去コピーではなく、次の
+- `adjustment_snapshot.py` の `ParameterAdjustmentSnapshot` は
+  ParamStore 全体の過去コピーではなく、次の
   **GUI-owned 調整値**だけを保存する:
   - `override` / `ui_value`
   - MIDI CC 割当
   - GUI が調整した `ui_min` / `ui_max`
   - 既存 header の折りたたみ状態
+  - effect 順と、その互換性を判定する topology signature
 - 復元は whole-store 置換ではなく、現在も存在する key への merge である。
   Snapshot 保存後に draw が発見した parameter、label、ordinal、
   effect chain、explicit 情報、runtime 観測値は削除・巻き戻ししない。

@@ -8,13 +8,15 @@ from pathlib import Path
 
 from grafix.core.parameters.codec import dumps_param_store
 from grafix.core.parameters.known_operations import KnownOperationSchemaSnapshot
-from grafix.core.parameters.persistence import (
-    finalize_param_store_session,
-    load_param_store,
-    param_store_recovery_path,
-)
 from grafix.core.parameters.store import ParamStore
 from grafix.interactive.diagnostics import DiagnosticAction, DiagnosticEvent
+from grafix.parameter_storage import (
+    discard_param_store_recovery,
+    finalize_parameter_session,
+    param_store_recovery_path,
+    read_param_store,
+    recover_primary_param_store,
+)
 
 
 def param_store_load_diagnostic_events(
@@ -94,7 +96,7 @@ class ParamStoreRecoverySession:
     def keep(self) -> None:
         """復元済みの現在状態を primary として確定する。"""
 
-        finalize_param_store_session(
+        finalize_parameter_session(
             self.store,
             self.primary_path,
             known_operations=self.known_operations,
@@ -104,9 +106,9 @@ class ParamStoreRecoverySession:
     def discard(self) -> tuple[DiagnosticEvent, ...]:
         """primary を同一 store object へ戻し、recovery journal を破棄する。"""
 
-        primary = load_param_store(self.primary_path)
+        primary = recover_primary_param_store(self.primary_path)
         self.store.replace_contents_from(primary)
-        self.recovery_path.unlink(missing_ok=True)
+        discard_param_store_recovery(self.primary_path)
         return param_store_load_diagnostic_events(
             self.store,
             primary_path=self.primary_path,
@@ -115,7 +117,7 @@ class ParamStoreRecoverySession:
     def compare_diagnostic(self) -> DiagnosticEvent:
         """primary と現在の recovered state の unified diff 診断を返す。"""
 
-        primary = load_param_store(self.primary_path)
+        primary = read_param_store(self.primary_path).store
         primary_text = dumps_param_store(primary).splitlines(keepends=True)
         recovered_text = dumps_param_store(
             self.store,

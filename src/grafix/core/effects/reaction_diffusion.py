@@ -2,22 +2,19 @@
 
 from __future__ import annotations
 
-from typing import Literal
-
 import numpy as np
 from numba import get_num_threads, njit, prange  # type: ignore[attr-defined, import-untyped]
 
 from grafix.core.operation_authoring import effect
-from grafix.core.operation_diagnostics import emit_operation_diagnostic
+from grafix.core.operation_diagnostics import (
+    emit_operation_diagnostic,
+    grid_spec_from_bbox_with_diagnostic,
+)
 from grafix.core.parameters.meta import ParamMeta
 from grafix.core.preview_quality import current_preview_quality
 from grafix.core.realized_geometry import GeomTuple
 
-from grafix.core.geometry_kernels.grid import (
-    DEFAULT_MAX_GRID_CELLS,
-    GridSpec,
-    plan_grid_from_bbox,
-)
+from grafix.core.geometry_kernels.grid import DEFAULT_MAX_GRID_POINTS
 from grafix.core.geometry_kernels.marching import marching_squares_loops
 from grafix.core.geometry_kernels.packed import (
     empty_packed_geometry,
@@ -32,42 +29,13 @@ from grafix.core.geometry_kernels.raster import (
     squared_euclidean_distance_transform,
 )
 
-MAX_GRID_POINTS = DEFAULT_MAX_GRID_CELLS
+MAX_GRID_POINTS = DEFAULT_MAX_GRID_POINTS
 DRAFT_MAX_GRID_POINTS = 262_144
 DRAFT_MAX_STEPS = 600
-DRAFT_MAX_CELL_STEPS = 14_000_000
-_PARALLEL_MIN_GRID_CELLS = 65_536
+DRAFT_MAX_POINT_STEPS = 14_000_000
+_PARALLEL_MIN_GRID_POINTS = 65_536
 _PARALLEL_MIN_STEPS = 8
 _BOUNDARY_CHOICES = ("noflux", "dirichlet")
-
-
-def _grid_spec_from_bbox(
-    mins: np.ndarray,
-    maxs: np.ndarray,
-    *,
-    pitch: float,
-    padding: float,
-    max_cells: int,
-    overflow: Literal["reject", "coarsen"],
-) -> GridSpec | None:
-    plan = plan_grid_from_bbox(
-        mins,
-        maxs,
-        pitch=pitch,
-        padding=padding,
-        max_cells=max_cells,
-        overflow=overflow,
-    )
-    diagnostic = plan.diagnostic
-    if diagnostic is not None:
-        emit_operation_diagnostic(
-            op="GridSpec.from_bbox",
-            original_value=diagnostic.original_value,
-            effective_value=diagnostic.effective_value,
-            reason=diagnostic.reason,
-            severity=diagnostic.severity,
-        )
-    return plan.spec
 
 
 reaction_diffusion_meta = {
@@ -429,7 +397,7 @@ def _gray_scott_simulate_masked(
     use_parallel = (
         get_num_threads() > 1
         and int(u0.shape[0]) >= 2
-        and int(u0.size) >= _PARALLEL_MIN_GRID_CELLS
+        and int(u0.size) >= _PARALLEL_MIN_GRID_POINTS
         and steps >= _PARALLEL_MIN_STEPS
         and bool(np.isfinite(u0).all())
         and bool(np.isfinite(v0).all())
@@ -551,22 +519,22 @@ def reaction_diffusion(
     quality = current_preview_quality()
     if quality == "draft":
         draft_step_target = max(0, min(steps, DRAFT_MAX_STEPS))
-        draft_cell_limit = (
+        draft_point_limit = (
             DRAFT_MAX_GRID_POINTS
             if draft_step_target == 0
             else min(
                 DRAFT_MAX_GRID_POINTS,
-                max(4, DRAFT_MAX_CELL_STEPS // draft_step_target),
+                max(4, DRAFT_MAX_POINT_STEPS // draft_step_target),
             )
         )
     else:
-        draft_cell_limit = DRAFT_MAX_GRID_POINTS
-    grid = _grid_spec_from_bbox(
+        draft_point_limit = DRAFT_MAX_GRID_POINTS
+    grid = grid_spec_from_bbox_with_diagnostic(
         mins,
         maxs,
         pitch=pitch,
         padding=margin,
-        max_cells=(draft_cell_limit if quality == "draft" else MAX_GRID_POINTS),
+        max_points=(draft_point_limit if quality == "draft" else MAX_GRID_POINTS),
         overflow=("coarsen" if quality == "draft" else "reject"),
     )
     if grid is None:
@@ -581,7 +549,7 @@ def reaction_diffusion(
             original_value=grid.requested_pitch,
             effective_value=grid.pitch,
             reason=(
-                "draft preview coarsened the simulation grid to keep cells × steps "
+                "draft preview coarsened the simulation grid to keep points × steps "
                 "within budget; final capture keeps the requested pitch"
             ),
             severity="info",
@@ -642,7 +610,7 @@ def reaction_diffusion(
 
     boundary_i = 0 if boundary == "noflux" else 1
     if quality == "draft":
-        work_budget_steps = DRAFT_MAX_CELL_STEPS // max(1, grid.cell_count)
+        work_budget_steps = DRAFT_MAX_POINT_STEPS // max(1, grid.point_count)
         effective_steps = min(
             steps,
             DRAFT_MAX_STEPS,
@@ -656,7 +624,7 @@ def reaction_diffusion(
             original_value=steps,
             effective_value=effective_steps,
             reason=(
-                "draft preview capped cells × steps work; final capture keeps the "
+                "draft preview capped points × steps work; final capture keeps the "
                 "requested value"
             ),
             severity="info",

@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.e2e
+
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _SKETCH_ROOT = _PROJECT_ROOT / "sketch"
 

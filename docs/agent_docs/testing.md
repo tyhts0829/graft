@@ -20,5 +20,11 @@
 
 ## markers 実行例
 
-- 並行処理: `pytest -q -m integration -k worker`
-- e2e/perf: `pytest -q -m "e2e or perf"`
+- unit: `pytest -q -m "not integration and not e2e"`
+- multiprocessing/subprocess/resource lifecycle: `pytest -q -m integration`
+- 公開 CLI/application round trip: `pytest -q -m e2e`
+
+performance は pytest marker ではなく、決定的 benchmark CLI を使う。
+
+- smoke: `python -m grafix benchmark run --suite smoke --profile smoke`
+- full/manual: `python -m grafix benchmark run --suite all --profile long --mode warm`

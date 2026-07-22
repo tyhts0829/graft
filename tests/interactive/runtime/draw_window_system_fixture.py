@@ -12,7 +12,7 @@ from grafix.api.render import RenderOptions
 from grafix.core.capture_manifest import RecordingManifest
 from grafix.core.parameters import ParamStore
 from grafix.core.pipeline import RealizedLayer
-from grafix.core.runtime_config import runtime_config
+from grafix.runtime_config_loader import runtime_config
 from grafix.core.runtime_limits import RuntimeLimits
 from grafix.core.scene import SceneItem
 from grafix.interactive.gl.index_buffer import LineIndexStats
