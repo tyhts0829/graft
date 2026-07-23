@@ -4,11 +4,11 @@ import importlib
 from pathlib import Path
 
 from grafix import G, RenderOptions, export, render
-from grafix.core.parameters import ParamStore
+from grafix.core.parameters import ParameterLoadState, ParamStore
 from grafix.core.parameters.style import style_key
 from grafix.core.parameters.style_ops import ensure_style_entries
 from grafix.core.parameters.ui_ops import update_state_from_ui
-from grafix.parameter_storage import ParamStoreReadResult
+from grafix.parameter_storage import ParamStoreLoadResult
 
 
 def test_export_uses_paramstore_background_color(monkeypatch, tmp_path: Path) -> None:
@@ -37,7 +37,11 @@ def test_export_uses_paramstore_background_color(monkeypatch, tmp_path: Path) ->
     monkeypatch.setattr(
         render_module,
         "read_param_store",
-        lambda _path: ParamStoreReadResult(store, "loaded"),
+        lambda _path: ParamStoreLoadResult(
+            store,
+            "loaded",
+            ParameterLoadState(),
+        ),
     )
 
     captured: dict[str, object] = {}

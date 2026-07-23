@@ -9,10 +9,15 @@ from grafix.core.parameters import ParamMeta, ParamStore, ParameterKey
 from grafix.core.parameters.frame_params import FrameParamRecord
 from grafix.core.parameters.merge_ops import merge_frame_params
 from grafix.core.parameters.view import ParameterRow
-from grafix.interactive.parameter_gui import store_bridge
+import grafix.interactive.parameter_gui.table_commit as table_commit_module
 from grafix.interactive.parameter_gui.parameter_filter import ParameterFilterState
 from grafix.interactive.parameter_gui.session_state import WidgetSessionState
 from grafix.interactive.parameter_gui.table import TableEdits
+from grafix.interactive.parameter_gui.table_commit import render_store_parameter_table
+from grafix.interactive.parameter_gui.table_view import (
+    ParameterTableViewCache,
+    parameter_table_view_for_store,
+)
 from grafix.interactive.parameter_gui.visibility import active_mask_for_rows
 
 
@@ -162,7 +167,10 @@ def test_active_mask_activate_off_uses_last_effective_by_key() -> None:
     assert mask == [True, False]
 
 
-def test_render_store_parameter_table_filters_rows_passed_to_renderer(monkeypatch) -> None:
+def test_render_store_parameter_table_filters_rows_passed_to_renderer(
+    monkeypatch,
+    parameter_table_cache: ParameterTableViewCache,
+) -> None:
     store = ParamStore()
     merge_frame_params(
         store,
@@ -209,25 +217,31 @@ def test_render_store_parameter_table_filters_rows_passed_to_renderer(monkeypatc
             midi_learn_state=render_input.midi_learn_state,
         )
 
-    monkeypatch.setattr(store_bridge, "render_parameter_table", _fake_render_parameter_table)
+    monkeypatch.setattr(
+        table_commit_module,
+        "render_parameter_table",
+        _fake_render_parameter_table,
+    )
 
-    active_view = store_bridge.parameter_table_view_for_store(
+    active_view = parameter_table_view_for_store(
         store,
+        cache=parameter_table_cache,
         show_inactive_params=False,
     )
     widget_state = WidgetSessionState()
-    store_bridge.render_store_parameter_table(
+    render_store_parameter_table(
         store,
         table_view=active_view,
         widget_state=widget_state,
     )
     assert captured_args == ["base", "cell_size"]
 
-    all_view = store_bridge.parameter_table_view_for_store(
+    all_view = parameter_table_view_for_store(
         store,
+        cache=parameter_table_cache,
         show_inactive_params=True,
     )
-    store_bridge.render_store_parameter_table(
+    render_store_parameter_table(
         store,
         table_view=all_view,
         widget_state=widget_state,
@@ -237,6 +251,7 @@ def test_render_store_parameter_table_filters_rows_passed_to_renderer(monkeypatc
 
 def test_search_filter_composes_with_existing_show_inactive_visibility(
     monkeypatch,
+    parameter_table_cache: ParameterTableViewCache,
 ) -> None:
     store = ParamStore()
     merge_frame_params(
@@ -284,28 +299,30 @@ def test_search_filter_composes_with_existing_show_inactive_visibility(
             midi_learn_state=render_input.midi_learn_state,
         )
 
-    monkeypatch.setattr(store_bridge, "render_parameter_table", fake_render)
+    monkeypatch.setattr(table_commit_module, "render_parameter_table", fake_render)
 
-    hidden_view = store_bridge.parameter_table_view_for_store(
+    hidden_view = parameter_table_view_for_store(
         store,
+        cache=parameter_table_cache,
         show_inactive_params=False,
         filter_state=state,
     )
     assert (hidden_view.filtered_count, hidden_view.total_count) == (0, 3)
-    store_bridge.render_store_parameter_table(
+    render_store_parameter_table(
         store,
         table_view=hidden_view,
         widget_state=WidgetSessionState(),
     )
     assert captured_args == []
 
-    shown_view = store_bridge.parameter_table_view_for_store(
+    shown_view = parameter_table_view_for_store(
         store,
+        cache=parameter_table_cache,
         show_inactive_params=True,
         filter_state=state,
     )
     assert (shown_view.filtered_count, shown_view.total_count) == (1, 3)
-    store_bridge.render_store_parameter_table(
+    render_store_parameter_table(
         store,
         table_view=shown_view,
         widget_state=WidgetSessionState(),

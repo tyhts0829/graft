@@ -13,12 +13,13 @@ from grafix.core.parameters.reconcile_ops import list_reconcile_orphans
 from grafix.core.parameters.store import ParamStore
 from grafix.core.parameters.view import ParameterRow
 
+from .catalog import ParameterGuiCatalog
 from .midi_learn import MidiLearnState
 from .parameter_filter import ParameterFilterState
 from .reconcile_panel import ReconcileOrphanPanelModel, reconcile_orphan_panel_model
 
 if TYPE_CHECKING:
-    from .store_bridge import ParameterTableView
+    from .table_view import ParameterTableView, ParameterTableViewCache
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +52,7 @@ class WidgetSessionState:
 class ParameterGuiSessionState:
     """Parameter GUI instance と同じ寿命を持つ frame 間 state。"""
 
+    table_cache: ParameterTableViewCache
     show_inactive_parameters: bool = False
     filter_state: ParameterFilterState = field(default_factory=ParameterFilterState)
     table_view: ParameterTableView | None = None
@@ -67,20 +69,46 @@ class ParameterGuiSessionState:
     widgets: WidgetSessionState = field(default_factory=WidgetSessionState)
 
     @classmethod
-    def for_store(cls, store: ParamStore) -> ParameterGuiSessionState:
+    def for_store(
+        cls,
+        store: ParamStore,
+        *,
+        catalog: ParameterGuiCatalog,
+    ) -> ParameterGuiSessionState:
         """store 由来の初期 state を構築する。"""
 
+        from .table_view import ParameterTableViewCache
+
         return cls(
+            table_cache=ParameterTableViewCache(catalog),
             favorite_keys=favorite_parameter_key_set(store),
-            reconcile_model=reconcile_orphan_panel_model(
-                list_reconcile_orphans(store)
-            ),
+            reconcile_model=reconcile_orphan_panel_model(list_reconcile_orphans(store)),
         )
 
     def invalidate_table(self) -> None:
         """次の描画で immutable table view を再構築させる。"""
 
         self.table_view = None
+
+    def replace_catalog(self, catalog: ParameterGuiCatalog) -> None:
+        """この session の table cache だけを新 catalog へ交換する。"""
+
+        if type(catalog) is not ParameterGuiCatalog:
+            raise TypeError("catalog は exact ParameterGuiCatalog である必要があります")
+        if catalog is self.table_cache.catalog:
+            return
+        from .table_view import ParameterTableViewCache
+
+        self.table_cache.clear()
+        self.table_cache = ParameterTableViewCache(catalog)
+        self.table_view = None
+
+    def close(self) -> None:
+        """table/widget state と session-owned cache をまとめて破棄する。"""
+
+        self.table_view = None
+        self.table_cache.clear()
+        self.widgets.clear()
 
 
 __all__ = ["MidiClearNotice", "ParameterGuiSessionState", "WidgetSessionState"]

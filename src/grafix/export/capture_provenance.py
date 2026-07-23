@@ -206,7 +206,7 @@ class CaptureProvenanceBuilder:
         config: RuntimeConfig,
         parameter_source: str | Path,
         parameter_store_path: Path | None,
-        parameter_load_provenance: LoadProvenance,
+        parameter_load_provenance: LoadProvenance | Callable[[], LoadProvenance],
         seed: int | None = None,
     ) -> None:
         if not callable(draw):
@@ -229,6 +229,13 @@ class CaptureProvenanceBuilder:
             raise TypeError(
                 "parameter_store_path は Path または None である必要があります"
             )
+        self._parameter_load_provenance: Callable[[], LoadProvenance] | None
+        if callable(parameter_load_provenance):
+            self._parameter_load_provenance = parameter_load_provenance
+            initial_load_provenance = parameter_load_provenance()
+        else:
+            self._parameter_load_provenance = None
+            initial_load_provenance = parameter_load_provenance
         seed = normalize_provenance_seed(seed, parameter_name="seed")
         source = _snapshot_source(draw)
         self._session = SessionProvenance(
@@ -238,7 +245,7 @@ class CaptureProvenanceBuilder:
             config=ConfigProvenance.from_config(config),
             parameter_source=parameter_source_text,
             parameter_store_path=parameter_store_path,
-            parameter_load_provenance=parameter_load_provenance,
+            parameter_load_provenance=initial_load_provenance,
             seed=seed,
         )
         # Parameter snapshot は immutable であり、store の永続状態と
@@ -289,6 +296,8 @@ class CaptureProvenanceBuilder:
         ``provenance_seed`` が ``"session"`` なら構築時の session seed を使う。
         int/None はこの frame の provenance だけを明示的に上書きし、
         source/Git/config の再探索や乱数 global state の変更は行わない。
+        load provenance provider が指定されている場合は、この frame を固定する時点の
+        値を取得する。
         """
 
         if not isinstance(store, ParamStore):
@@ -296,6 +305,12 @@ class CaptureProvenanceBuilder:
         if provenance_seed == "session" and type(provenance_seed) is not str:
             raise TypeError("provenance_seed は int、None、または 'session' である必要があります")
         session = self._session
+        load_provenance = self._parameter_load_provenance
+        if load_provenance is not None:
+            session = replace(
+                session,
+                parameter_load_provenance=load_provenance(),
+            )
         if provenance_seed != "session":
             session = replace(
                 session,

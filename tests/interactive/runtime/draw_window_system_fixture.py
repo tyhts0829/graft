@@ -284,4 +284,5 @@ def make_draw_window_system(
             store=target_store,
             monitor=monitor,
             effective_config=runtime_config(),
+            parameter_load_provenance=lambda: "primary",
         )

@@ -40,8 +40,9 @@ from grafix.interactive.parameter_gui.catalog import (
 from grafix.interactive.parameter_gui.grouping import GroupType
 from grafix.interactive.parameter_gui.help_pane import parameter_help_content
 from grafix.interactive.parameter_gui.snippet import snippet_for_block
-from grafix.interactive.parameter_gui.store_bridge import (
+from grafix.interactive.parameter_gui.table_view import (
     ParameterTableView,
+    ParameterTableViewCache,
     parameter_table_view_for_store,
 )
 from grafix.interactive.parameter_gui.table import _effect_step_heading_by_rows
@@ -132,9 +133,10 @@ def _selector_view_and_block(
     kind: SelectorKind,
     catalog: ParameterGuiCatalog | None = None,
 ) -> tuple[ParameterTableView, GroupBlockLayout]:
+    selected_catalog = current_parameter_gui_catalog() if catalog is None else catalog
     view = parameter_table_view_for_store(
         store,
-        catalog=catalog,
+        cache=ParameterTableViewCache(selected_catalog),
         show_inactive_params=False,
     )
     selector_blocks = [
@@ -288,6 +290,7 @@ def test_effect_step_headings_number_selectors_with_different_arities() -> None:
 
     view = parameter_table_view_for_store(
         store,
+        cache=ParameterTableViewCache(current_parameter_gui_catalog()),
         show_inactive_params=False,
     )
     selector_rows = [
@@ -543,7 +546,7 @@ def test_table_keeps_stale_selector_group_when_arity_catalog_disappears() -> Non
     )
     view = parameter_table_view_for_store(
         store,
-        catalog=reduced_catalog,
+        cache=ParameterTableViewCache(reduced_catalog),
         show_inactive_params=False,
     )
     target_row = next(
@@ -581,7 +584,12 @@ def test_gui_store_keeps_catalog_snapshot_after_operation_overwrite() -> None:
         arg="mode",
     )
     _set_ui_value(store, mode_key, "b")
-    parameter_table_view_for_store(store, show_inactive_params=False)
+    table_cache = ParameterTableViewCache(current_parameter_gui_catalog())
+    parameter_table_view_for_store(
+        store,
+        cache=table_cache,
+        show_inactive_params=False,
+    )
 
     def selector_test_choice_reload_v2(
         *,
@@ -598,6 +606,7 @@ def test_gui_store_keeps_catalog_snapshot_after_operation_overwrite() -> None:
 
     view = parameter_table_view_for_store(
         store,
+        cache=table_cache,
         show_inactive_params=False,
     )
     mode_row = next(row for row in view.model.rows if row.arg == mode_key.arg)
@@ -612,6 +621,7 @@ def test_gui_store_keeps_catalog_snapshot_after_operation_overwrite() -> None:
         )
     new_view = parameter_table_view_for_store(
         new_store,
+        cache=ParameterTableViewCache(current_parameter_gui_catalog()),
         show_inactive_params=False,
     )
     new_mode_row = next(
@@ -664,6 +674,7 @@ def test_gui_uses_current_default_for_incompatible_target_kind_change() -> None:
 
     view = parameter_table_view_for_store(
         store,
+        cache=ParameterTableViewCache(current_parameter_gui_catalog()),
         show_inactive_params=True,
     )
     value_row = next(row for row in view.model.rows if row.arg == value_key.arg)

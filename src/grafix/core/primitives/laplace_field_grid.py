@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -270,6 +272,12 @@ def _map_exp(W: np.ndarray, *, k: complex) -> np.ndarray:
     return np.exp(k * W)
 
 
+def _finite_complex(values: np.ndarray) -> np.ndarray:
+    """有限な実部・虚部を持つ要素だけを示す mask を返す。"""
+
+    return np.isfinite(values.real) & np.isfinite(values.imag)
+
+
 def _apply_transform(
     points: np.ndarray,
     *,
@@ -278,13 +286,12 @@ def _apply_transform(
     rotate_deg: float,
 ) -> np.ndarray:
     cx, cy, cz = center
-    s_f = scale
     theta = math.radians(rotate_deg)
     c = math.cos(theta)
     s = math.sin(theta)
 
     out = points.astype(np.float64, copy=True)
-    out[:, 0:2] *= s_f
+    out[:, 0:2] *= scale
 
     if theta != 0.0:
         x = out[:, 0].copy()
@@ -316,6 +323,250 @@ def _clip_and_split(
         & (points[:, 1] <= ymax)
     )
     return _split_by_mask(points, inside)
+
+
+def _append_mapped_line(
+    output: list[np.ndarray],
+    z: np.ndarray,
+    *,
+    valid: np.ndarray,
+    center: tuple[float, float, float],
+    scale: float,
+    rotate: float,
+    clip: bool,
+    clip_bounds: tuple[float, float, float, float],
+) -> None:
+    """一つの complex line を分割、変換、clip して出力へ追加する。"""
+
+    points = np.zeros((z.shape[0], 3), dtype=np.float64)
+    points[:, 0] = z.real
+    points[:, 1] = z.imag
+    x_min, x_max, y_min, y_max = clip_bounds
+    for piece in _split_by_mask(points, valid):
+        transformed = _apply_transform(
+            piece,
+            center=center,
+            scale=scale,
+            rotate_deg=rotate,
+        )
+        for clipped in _clip_and_split(
+            transformed,
+            enabled=clip,
+            xmin=x_min,
+            xmax=x_max,
+            ymin=y_min,
+            ymax=y_max,
+        ):
+            output.append(clipped.astype(np.float32, copy=False))
+
+
+def _emit_mapped_grid(
+    output: list[np.ndarray],
+    *,
+    u_values: np.ndarray,
+    v_values: np.ndarray,
+    u_samples: np.ndarray,
+    v_samples: np.ndarray,
+    mapper: Callable[[np.ndarray], np.ndarray],
+    validity: Callable[[np.ndarray], np.ndarray],
+    center: tuple[float, float, float],
+    scale: float,
+    rotate: float,
+    clip: bool,
+    clip_bounds: tuple[float, float, float, float],
+) -> None:
+    """u=const、v=const の順序で同じ mapper を使って格子線を emit する。"""
+
+    if u_values.size:
+        complex_v = v_samples.astype(np.complex128, copy=False)
+        for u in u_values:
+            w = np.complex128(float(u)) + np.complex128(1j) * complex_v
+            z = mapper(w)
+            _append_mapped_line(
+                output,
+                z,
+                valid=validity(z),
+                center=center,
+                scale=scale,
+                rotate=rotate,
+                clip=clip,
+                clip_bounds=clip_bounds,
+            )
+    if v_values.size:
+        complex_u = u_samples.astype(np.complex128, copy=False)
+        for v in v_values:
+            w = complex_u + np.complex128(1j) * float(v)
+            z = mapper(w)
+            _append_mapped_line(
+                output,
+                z,
+                valid=validity(z),
+                center=center,
+                scale=scale,
+                rotate=rotate,
+                clip=clip,
+                clip_bounds=clip_bounds,
+            )
+
+
+def _append_cylinder_boundary(
+    output: list[np.ndarray],
+    *,
+    radius: float,
+    samples: int,
+    center: tuple[float, float, float],
+    scale: float,
+    rotate: float,
+    clip: bool,
+    clip_bounds: tuple[float, float, float, float],
+) -> None:
+    """cylinder preset の境界円を末尾へ追加する。"""
+
+    if samples < 3:
+        raise ValueError("laplace_field_grid の boundary_samples は 3 以上が必要")
+    theta = np.linspace(0.0, 2.0 * math.pi, num=samples, dtype=np.float64)
+    z = np.complex128(radius) * np.exp(np.complex128(1j) * theta)
+    _append_mapped_line(
+        output,
+        z,
+        valid=np.isfinite(z.real) & np.isfinite(z.imag),
+        center=center,
+        scale=scale,
+        rotate=rotate,
+        clip=clip,
+        clip_bounds=clip_bounds,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _GridDomain:
+    """検証済み W 平面 sampling と clip bounds。"""
+
+    u_values: np.ndarray
+    v_values: np.ndarray
+    u_samples: np.ndarray
+    v_samples: np.ndarray
+    clip_bounds: tuple[float, float, float, float]
+
+
+@dataclass(frozen=True, slots=True)
+class _MappingPlan:
+    """preset 固有の写像、validity、任意境界線。"""
+
+    mapper: Callable[[np.ndarray], np.ndarray] | None
+    validity: Callable[[np.ndarray], np.ndarray]
+    boundary: tuple[float, int] | None
+
+
+def _grid_domain(
+    *,
+    u_min: float,
+    u_max: float,
+    v_min: float,
+    v_max: float,
+    n_u: int,
+    n_v: int,
+    samples: int,
+    clip: bool,
+    clip_xmin: float,
+    clip_xmax: float,
+    clip_ymin: float,
+    clip_ymax: float,
+) -> _GridDomain:
+    """共通引数を検証し、格子 sampling plan を返す。"""
+
+    if n_u < 0 or n_v < 0:
+        raise ValueError("laplace_field_grid の n_u/n_v は 0 以上が必要")
+    if samples < 2:
+        raise ValueError("laplace_field_grid の samples は 2 以上が必要")
+    if u_min > u_max:
+        raise ValueError("laplace_field_grid の u_min は u_max 以下である必要がある")
+    if v_min > v_max:
+        raise ValueError("laplace_field_grid の v_min は v_max 以下である必要がある")
+    if clip and not (clip_xmin < clip_xmax and clip_ymin < clip_ymax):
+        raise ValueError("laplace_field_grid の clip 矩形が不正（min < max が必要）")
+
+    return _GridDomain(
+        u_values=(
+            np.linspace(u_min, u_max, num=n_u, dtype=np.float64)
+            if n_u > 0
+            else np.empty((0,), dtype=np.float64)
+        ),
+        v_values=(
+            np.linspace(v_min, v_max, num=n_v, dtype=np.float64)
+            if n_v > 0
+            else np.empty((0,), dtype=np.float64)
+        ),
+        u_samples=np.linspace(u_min, u_max, num=samples, dtype=np.float64),
+        v_samples=np.linspace(v_min, v_max, num=samples, dtype=np.float64),
+        clip_bounds=(
+            (clip_xmin, clip_xmax, clip_ymin, clip_ymax)
+            if clip
+            else (0.0, 0.0, 0.0, 0.0)
+        ),
+    )
+
+
+def _mapping_plan(
+    *,
+    preset: str,
+    a: float,
+    U: float,
+    gap: float,
+    draw_boundary: bool,
+    boundary_samples: int,
+    alpha: complex,
+    beta: complex,
+    gamma: complex,
+    delta: complex,
+    coefficient: complex,
+) -> _MappingPlan:
+    """preset 引数を検証し、実行する写像と境界線を固定する。"""
+
+    if preset == "cylinder_uniform":
+        if a < 0.0:
+            raise ValueError("laplace_field_grid の a は 0 以上が必要")
+        if gap < 0.0:
+            raise ValueError("laplace_field_grid の gap は 0 以上が必要")
+        boundary = (a, boundary_samples) if draw_boundary and a > 0.0 else None
+        if U == 0.0:
+            return _MappingPlan(None, _finite_complex, boundary)
+        minimum_radius = a * (1.0 + gap)
+
+        def map_cylinder(w: np.ndarray) -> np.ndarray:
+            return _map_cylinder_uniform(w, a=a, U=U)
+
+        def outside_cylinder(z: np.ndarray) -> np.ndarray:
+            return _finite_complex(z) & (np.abs(z) >= minimum_radius)
+
+        return _MappingPlan(map_cylinder, outside_cylinder, boundary)
+
+    if preset == "mobius":
+        if abs(alpha * delta - beta * gamma) < 1e-12:
+            raise ValueError(
+                "laplace_field_grid の mobius 係数が不正"
+                "（alpha*delta - beta*gamma ≈ 0）"
+            )
+
+        def map_mobius(w: np.ndarray) -> np.ndarray:
+            return _map_mobius(
+                w,
+                alpha=alpha,
+                beta=beta,
+                gamma=gamma,
+                delta=delta,
+            )
+
+        return _MappingPlan(map_mobius, _finite_complex, None)
+
+    if preset == "exp":
+
+        def map_exp(w: np.ndarray) -> np.ndarray:
+            return _map_exp(w, k=coefficient)
+
+        return _MappingPlan(map_exp, _finite_complex, None)
+
+    raise ValueError(f"laplace_field_grid の preset が不明: {preset!r}")
 
 
 LAPLACE_FIELD_GRID_UI_VISIBLE = {
@@ -425,170 +676,59 @@ def laplace_field_grid(
         u/v の最小値が最大値を超えるか、分割数またはサンプル数が定義域外の場合。
     """
 
-    preset_s = preset
-
-    n_u_i = n_u
-    n_v_i = n_v
-    samples_i = samples
-    if n_u_i < 0 or n_v_i < 0:
-        raise ValueError("laplace_field_grid の n_u/n_v は 0 以上が必要")
-    if samples_i < 2:
-        raise ValueError("laplace_field_grid の samples は 2 以上が必要")
-
-    u_min_f = u_min
-    u_max_f = u_max
-    v_min_f = v_min
-    v_max_f = v_max
-    if u_min_f > u_max_f:
-        raise ValueError("laplace_field_grid の u_min は u_max 以下である必要がある")
-    if v_min_f > v_max_f:
-        raise ValueError("laplace_field_grid の v_min は v_max 以下である必要がある")
-
-    clip_b = clip
-    if clip_b:
-        xmin = clip_xmin
-        xmax = clip_xmax
-        ymin = clip_ymin
-        ymax = clip_ymax
-        if not (xmin < xmax and ymin < ymax):
-            raise ValueError("laplace_field_grid の clip 矩形が不正（min < max が必要）")
-    else:
-        xmin = xmax = ymin = ymax = 0.0
-
-    u_line_values = (
-        np.linspace(u_min_f, u_max_f, num=n_u_i, dtype=np.float64)
-        if n_u_i > 0
-        else np.empty((0,), dtype=np.float64)
+    domain = _grid_domain(
+        u_min=u_min,
+        u_max=u_max,
+        v_min=v_min,
+        v_max=v_max,
+        n_u=n_u,
+        n_v=n_v,
+        samples=samples,
+        clip=clip,
+        clip_xmin=clip_xmin,
+        clip_xmax=clip_xmax,
+        clip_ymin=clip_ymin,
+        clip_ymax=clip_ymax,
     )
-    v_line_values = (
-        np.linspace(v_min_f, v_max_f, num=n_v_i, dtype=np.float64)
-        if n_v_i > 0
-        else np.empty((0,), dtype=np.float64)
+    plan = _mapping_plan(
+        preset=preset,
+        a=a,
+        U=U,
+        gap=gap,
+        draw_boundary=draw_boundary,
+        boundary_samples=boundary_samples,
+        alpha=complex(alpha_re, alpha_im),
+        beta=complex(beta_re, beta_im),
+        gamma=complex(gamma_re, gamma_im),
+        delta=complex(delta_re, delta_im),
+        coefficient=complex(k_re, k_im),
     )
-    v_samples = np.linspace(v_min_f, v_max_f, num=samples_i, dtype=np.float64)
-    u_samples = np.linspace(u_min_f, u_max_f, num=samples_i, dtype=np.float64)
-
-    lines_out: list[np.ndarray] = []
-
-    def emit_line_from_z(z: np.ndarray, *, base_mask: np.ndarray) -> None:
-        points = np.zeros((z.shape[0], 3), dtype=np.float64)
-        points[:, 0] = z.real
-        points[:, 1] = z.imag
-        pieces = _split_by_mask(points, base_mask)
-        for piece in pieces:
-            transformed = _apply_transform(
-                piece, center=center, scale=scale, rotate_deg=rotate
-            )
-            for clipped in _clip_and_split(
-                transformed, enabled=clip_b, xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax
-            ):
-                lines_out.append(clipped.astype(np.float32, copy=False))
-
-    if preset_s == "cylinder_uniform":
-        a_f = a
-        U_f = U
-        gap_f = gap
-        if a_f < 0.0:
-            raise ValueError("laplace_field_grid の a は 0 以上が必要")
-        if gap_f < 0.0:
-            raise ValueError("laplace_field_grid の gap は 0 以上が必要")
-        if U_f == 0.0:
-            if draw_boundary and a_f > 0.0:
-                boundary_n = boundary_samples
-                if boundary_n < 3:
-                    raise ValueError(
-                        "laplace_field_grid の boundary_samples は 3 以上が必要"
-                    )
-                theta = np.linspace(
-                    0.0, 2.0 * math.pi, num=boundary_n, dtype=np.float64
-                )
-                z = np.complex128(a_f) * np.exp(np.complex128(1j) * theta)
-                base_mask = np.isfinite(z.real) & np.isfinite(z.imag)
-                emit_line_from_z(z, base_mask=base_mask)
-            return pack_polylines(lines_out)
-
-        radius_min = a_f * (1.0 + gap_f)
-
-        if n_u_i > 0:
-            v_samples_complex = v_samples.astype(np.complex128, copy=False)
-            for u in u_line_values:
-                W = (
-                    np.complex128(float(u))
-                    + np.complex128(1j) * v_samples_complex
-                )
-                z = _map_cylinder_uniform(W, a=a_f, U=U_f)
-                finite = np.isfinite(z.real) & np.isfinite(z.imag)
-                base_mask = finite & (np.abs(z) >= radius_min)
-                emit_line_from_z(z, base_mask=base_mask)
-
-        if n_v_i > 0:
-            u_samples_complex = u_samples.astype(np.complex128, copy=False)
-            for v in v_line_values:
-                W = u_samples_complex + np.complex128(1j) * float(v)
-                z = _map_cylinder_uniform(W, a=a_f, U=U_f)
-                finite = np.isfinite(z.real) & np.isfinite(z.imag)
-                base_mask = finite & (np.abs(z) >= radius_min)
-                emit_line_from_z(z, base_mask=base_mask)
-
-        if draw_boundary and a_f > 0.0:
-            boundary_n = boundary_samples
-            if boundary_n < 3:
-                raise ValueError("laplace_field_grid の boundary_samples は 3 以上が必要")
-            theta = np.linspace(0.0, 2.0 * math.pi, num=boundary_n, dtype=np.float64)
-            z = np.complex128(a_f) * np.exp(np.complex128(1j) * theta)
-            base_mask = np.isfinite(z.real) & np.isfinite(z.imag)
-            emit_line_from_z(z, base_mask=base_mask)
-
-    elif preset_s == "mobius":
-        alpha = complex(alpha_re, alpha_im)
-        beta = complex(beta_re, beta_im)
-        gamma = complex(gamma_re, gamma_im)
-        delta = complex(delta_re, delta_im)
-        det = alpha * delta - beta * gamma
-        if abs(det) < 1e-12:
-            raise ValueError("laplace_field_grid の mobius 係数が不正（alpha*delta - beta*gamma ≈ 0）")
-
-        if n_u_i > 0:
-            v_samples_complex = v_samples.astype(np.complex128, copy=False)
-            for u in u_line_values:
-                W = (
-                    np.complex128(float(u))
-                    + np.complex128(1j) * v_samples_complex
-                )
-                z = _map_mobius(W, alpha=alpha, beta=beta, gamma=gamma, delta=delta)
-                base_mask = np.isfinite(z.real) & np.isfinite(z.imag)
-                emit_line_from_z(z, base_mask=base_mask)
-
-        if n_v_i > 0:
-            u_samples_complex = u_samples.astype(np.complex128, copy=False)
-            for v in v_line_values:
-                W = u_samples_complex + np.complex128(1j) * float(v)
-                z = _map_mobius(W, alpha=alpha, beta=beta, gamma=gamma, delta=delta)
-                base_mask = np.isfinite(z.real) & np.isfinite(z.imag)
-                emit_line_from_z(z, base_mask=base_mask)
-
-    elif preset_s == "exp":
-        k = complex(k_re, k_im)
-        if n_u_i > 0:
-            v_samples_complex = v_samples.astype(np.complex128, copy=False)
-            for u in u_line_values:
-                W = (
-                    np.complex128(float(u))
-                    + np.complex128(1j) * v_samples_complex
-                )
-                z = _map_exp(W, k=k)
-                base_mask = np.isfinite(z.real) & np.isfinite(z.imag)
-                emit_line_from_z(z, base_mask=base_mask)
-
-        if n_v_i > 0:
-            u_samples_complex = u_samples.astype(np.complex128, copy=False)
-            for v in v_line_values:
-                W = u_samples_complex + np.complex128(1j) * float(v)
-                z = _map_exp(W, k=k)
-                base_mask = np.isfinite(z.real) & np.isfinite(z.imag)
-                emit_line_from_z(z, base_mask=base_mask)
-
-    else:
-        raise ValueError(f"laplace_field_grid の preset が不明: {preset_s!r}")
-
-    return pack_polylines(lines_out)
+    output: list[np.ndarray] = []
+    if plan.mapper is not None:
+        _emit_mapped_grid(
+            output,
+            u_values=domain.u_values,
+            v_values=domain.v_values,
+            u_samples=domain.u_samples,
+            v_samples=domain.v_samples,
+            mapper=plan.mapper,
+            validity=plan.validity,
+            center=center,
+            scale=scale,
+            rotate=rotate,
+            clip=clip,
+            clip_bounds=domain.clip_bounds,
+        )
+    if plan.boundary is not None:
+        radius, boundary_count = plan.boundary
+        _append_cylinder_boundary(
+            output,
+            radius=radius,
+            samples=boundary_count,
+            center=center,
+            scale=scale,
+            rotate=rotate,
+            clip=clip,
+            clip_bounds=domain.clip_bounds,
+        )
+    return pack_polylines(output)

@@ -15,7 +15,8 @@ from grafix.interactive.parameter_gui.help_pane import (
     NOT_SPECIFIED,
     parameter_help_content,
 )
-from grafix.interactive.parameter_gui.store_bridge import (
+from grafix.interactive.parameter_gui.table_view import (
+    ParameterTableViewCache,
     parameter_table_view_for_store,
 )
 from grafix.interactive.parameter_gui.table import _notify_parameter_help
@@ -96,7 +97,9 @@ def test_selected_hovered_and_focused_rows_feed_help_pane(state: str) -> None:
     assert seen == [(row, state == "selected")]
 
 
-def test_loaded_builtin_meta_is_upgraded_before_gui_help() -> None:
+def test_loaded_builtin_meta_is_upgraded_before_gui_help(
+    parameter_table_cache: ParameterTableViewCache,
+) -> None:
     store = ParamStore()
     with parameter_context(store):
         line = G.line(key="description-upgrade-line")
@@ -111,6 +114,7 @@ def test_loaded_builtin_meta_is_upgraded_before_gui_help() -> None:
     loaded = decode_param_store_result(payload).store
     pre_draw_view = parameter_table_view_for_store(
         loaded,
+        cache=parameter_table_cache,
         show_inactive_params=True,
     )
     pre_draw_rows = [
@@ -137,6 +141,7 @@ def test_loaded_builtin_meta_is_upgraded_before_gui_help() -> None:
 
     current_view = parameter_table_view_for_store(
         loaded,
+        cache=parameter_table_cache,
         show_inactive_params=True,
     )
     rows = [

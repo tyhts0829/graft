@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from grafix.api import G, P
+from grafix.core.evaluation_context import EvaluationResources
 from grafix.core.geometry import Geometry
 from grafix.core.layer import Layer, LayerStyleDefaults
 from grafix.core.operation_schema import ParameterOpSchema
@@ -25,7 +26,7 @@ from grafix.core.preset_catalog import (
     PresetCatalogBuilder,
     PresetDeclaration,
 )
-from grafix.core.realize import RealizeSession
+from grafix.core.realize import RealizeCacheStore, RealizeSession
 from grafix.runtime_config_loader import runtime_config
 
 
@@ -69,6 +70,53 @@ def test_realize_scene_reuses_explicit_session_between_frames() -> None:
 
     assert second[0].realized is first[0].realized
     assert second[0].cache_key == first[0].cache_key
+
+
+def test_realize_scene_standalone_preserves_body_error_while_closing_owned_dependencies(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    body_error = RuntimeError("draw failed")
+    resource_close_error = OSError("resources failed")
+    store_close_error = KeyboardInterrupt("store failed")
+    calls: list[str] = []
+    original_resources_close = EvaluationResources.close
+    original_store_close = RealizeCacheStore.close
+
+    def close_resources(resources: EvaluationResources) -> None:
+        calls.append("resources")
+        original_resources_close(resources)
+        raise resource_close_error
+
+    def close_store(store: RealizeCacheStore) -> None:
+        calls.append("store")
+        original_store_close(store)
+        raise store_close_error
+
+    def draw(_t: float) -> Geometry:
+        raise body_error
+
+    monkeypatch.setattr(EvaluationResources, "close", close_resources)
+    monkeypatch.setattr(RealizeCacheStore, "close", close_store)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        realize_scene(
+            draw,
+            t=0.0,
+            defaults=LayerStyleDefaults(
+                color=(0.0, 0.0, 0.0),
+                thickness=0.01,
+            ),
+            config=_TEST_RUNTIME_CONFIG,
+        )
+
+    assert exc_info.value is body_error
+    assert calls == ["resources", "store"]
+    assert body_error.__notes__ == [
+        "Secondary cleanup failure (close realize session): "
+        "OSError: resources failed",
+        "Secondary cleanup failure (close owned realize cache store): "
+        "KeyboardInterrupt: store failed",
+    ]
 
 
 def test_realize_scene_binds_explicit_preset_snapshot() -> None:

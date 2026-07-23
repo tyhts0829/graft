@@ -11,7 +11,7 @@ from grafix.core.parameters import ParamStore
 from grafix.interactive.parameter_gui import gui as gui_module
 from grafix.interactive.parameter_gui.midi_learn import MidiLearnState
 from grafix.interactive.parameter_gui.parameter_filter import ParameterFilterState
-from grafix.interactive.parameter_gui.store_bridge import (
+from grafix.interactive.parameter_gui.table_view import (
     parameter_table_view_for_store,
 )
 from grafix.interactive.parameter_gui.theme import apply_parameter_gui_theme
@@ -97,6 +97,7 @@ def test_dynamic_drawer_content_does_not_move_or_narrow_parameter_table(
         def render_parameter_table_toolbar() -> bool:
             parameter_gui._session.table_view = parameter_table_view_for_store(
                 parameter_gui._store,
+                cache=parameter_gui._session.table_cache,
                 show_inactive_params=False,
             )
             return False

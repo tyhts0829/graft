@@ -8,11 +8,16 @@ from pathlib import Path
 
 from grafix.core.parameters.codec import dumps_param_store
 from grafix.core.parameters.known_operations import KnownOperationSchemaSnapshot
+from grafix.core.parameters.runtime import (
+    ParameterLoadState,
+    ParamStoreLoadDiagnostic,
+)
 from grafix.core.parameters.store import ParamStore
 from grafix.interactive.diagnostics import DiagnosticAction, DiagnosticEvent
 from grafix.parameter_storage import (
     discard_param_store_recovery,
     finalize_parameter_session,
+    ParamStoreLoadResult,
     param_store_recovery_path,
     read_param_store,
     recover_primary_param_store,
@@ -20,14 +25,14 @@ from grafix.parameter_storage import (
 
 
 def param_store_load_diagnostic_events(
-    store: ParamStore,
+    diagnostics: tuple[ParamStoreLoadDiagnostic, ...],
     *,
     primary_path: Path,
 ) -> tuple[DiagnosticEvent, ...]:
     """ParamStore load 時の recovery/quarantine 情報を共通診断へ変換する。"""
 
     events: list[DiagnosticEvent] = []
-    for item in store.load_diagnostics:
+    for item in diagnostics:
         source = item.backup_path if item.backup_path is not None else primary_path
         actions: list[DiagnosticAction] = []
         if item.details:
@@ -93,26 +98,28 @@ class ParamStoreRecoverySession:
     def recovery_path(self) -> Path:
         return param_store_recovery_path(self.primary_path)
 
-    def keep(self) -> None:
+    def keep(self) -> ParamStoreLoadResult:
         """復元済みの現在状態を primary として確定する。"""
 
+        candidate = ParamStore()
+        candidate.replace_contents_from(self.store)
         finalize_parameter_session(
-            self.store,
+            candidate,
             self.primary_path,
             known_operations=self.known_operations,
         )
-        self.store.accept_loaded_state()
-
-    def discard(self) -> tuple[DiagnosticEvent, ...]:
-        """primary を同一 store object へ戻し、recovery journal を破棄する。"""
-
-        primary = recover_primary_param_store(self.primary_path)
-        self.store.replace_contents_from(primary)
-        discard_param_store_recovery(self.primary_path)
-        return param_store_load_diagnostic_events(
-            self.store,
-            primary_path=self.primary_path,
+        return ParamStoreLoadResult(
+            store=candidate,
+            status="loaded",
+            load_state=ParameterLoadState(),
         )
+
+    def discard(self) -> ParamStoreLoadResult:
+        """primary の detached result を作り、recovery journal を破棄する。"""
+
+        loaded = recover_primary_param_store(self.primary_path)
+        discard_param_store_recovery(self.primary_path)
+        return loaded
 
     def compare_diagnostic(self) -> DiagnosticEvent:
         """primary と現在の recovered state の unified diff 診断を返す。"""

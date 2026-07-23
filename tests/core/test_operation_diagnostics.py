@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import importlib
+
 import numpy as np
 import pytest
 
@@ -187,3 +189,54 @@ def test_grid_coarsen_emits_one_diagnostic() -> None:
     assert diagnostic.effective_value == grid.pitch
     assert diagnostic.reason == "grid pitch was coarsened to satisfy the point limit"
     assert diagnostic.severity == "warning"
+
+
+def test_grid_budget_rejection_diagnostic_is_consistent_across_effects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """effect ごとの helper 構成ではなく、共有する利用者向け挙動を固定する。"""
+
+    square = (
+        np.asarray(
+            [
+                [0.0, 0.0, 0.0],
+                [10.0, 0.0, 0.0],
+                [10.0, 10.0, 0.0],
+                [0.0, 10.0, 0.0],
+                [0.0, 0.0, 0.0],
+            ],
+            dtype=np.float32,
+        ),
+        np.asarray([0, 5], dtype=np.int32),
+    )
+    effect_modules = (
+        importlib.import_module("grafix.core.effects.metaball"),
+        importlib.import_module("grafix.core.effects.isocontour"),
+    )
+    observed: list[tuple[object, object, str, str]] = []
+
+    for module in effect_modules:
+        monkeypatch.setattr(module, "MAX_GRID_POINTS", 5)
+        operation = getattr(module, module.__name__.rsplit(".", 1)[-1])
+        with operation_diagnostic_context() as buffer:
+            operation(square)
+
+        assert len(buffer) == 1
+        diagnostic = buffer.snapshot()[0]
+        observed.append(
+            (
+                diagnostic.op,
+                diagnostic.effective_value,
+                diagnostic.reason,
+                diagnostic.severity,
+            )
+        )
+
+    assert observed == [
+        (
+            "GridSpec.from_bbox",
+            None,
+            "requested grid exceeded the point limit and was rejected",
+            "warning",
+        )
+    ] * len(effect_modules)

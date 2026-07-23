@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-import grafix.api.variation_batch as variation_batch_module
+from grafix.export import variation_batch as variation_export_module
 from grafix import (
     ExportFormat,
     ExportResult,
@@ -564,7 +564,7 @@ def test_overwrite_publish_failure_rolls_back_previous_generation(
         real_replace(source, destination)
 
     monkeypatch.setattr(
-        variation_batch_module.os,
+        variation_export_module.os,
         "replace",
         fail_staging_publish,
     )

@@ -1,4 +1,5 @@
-from grafix.interactive.parameter_gui.store_bridge import _order_rows_for_display
+from grafix.interactive.parameter_gui.catalog import current_parameter_gui_catalog
+from grafix.interactive.parameter_gui.table_view import _order_rows_for_display
 from grafix.core.parameters.view import ParameterRow
 
 # 登録（param_order 取得）に必要なので、対象モジュールを明示的に import する。
@@ -39,6 +40,7 @@ def test_order_rows_for_display_primitive_uses_signature_arg_order():
     ]
     out = _order_rows_for_display(
         rows,
+        catalog=current_parameter_gui_catalog(),
         step_info_by_site={},
         display_order_by_group={("polygon", "p:1"): 1},
     )
@@ -55,6 +57,7 @@ def test_order_rows_for_display_primitive_uses_activate_then_signature_arg_order
     ]
     out = _order_rows_for_display(
         rows,
+        catalog=current_parameter_gui_catalog(),
         step_info_by_site={},
         display_order_by_group={("polygon", "p:1"): 1},
     )
@@ -71,6 +74,7 @@ def test_order_rows_for_display_effect_step_uses_activate_then_signature_arg_ord
     ]
     out = _order_rows_for_display(
         rows,
+        catalog=current_parameter_gui_catalog(),
         step_info_by_site={("scale", "e:1"): ("chain:1", 0)},
         display_order_by_group={("scale", "e:1"): 1},
     )
@@ -84,6 +88,7 @@ def test_order_rows_for_display_places_unknown_arg_last_for_primitive():
     ]
     out = _order_rows_for_display(
         rows,
+        catalog=current_parameter_gui_catalog(),
         step_info_by_site={},
         display_order_by_group={("polygon", "p:1"): 1},
     )
@@ -97,6 +102,7 @@ def test_order_rows_for_display_places_unknown_arg_last_for_effect():
     ]
     out = _order_rows_for_display(
         rows,
+        catalog=current_parameter_gui_catalog(),
         step_info_by_site={("scale", "e:1"): ("chain:1", 0)},
         display_order_by_group={("scale", "e:1"): 1},
     )
@@ -111,6 +117,7 @@ def test_order_rows_for_display_keeps_reconcile_orphan_effect_after_observed_gro
 
     out = _order_rows_for_display(
         rows,
+        catalog=current_parameter_gui_catalog(),
         step_info_by_site={},
         display_order_by_group={("polygon", "p:1"): 1},
     )
@@ -128,6 +135,7 @@ def test_order_rows_for_display_preset_uses_signature_arg_order():
     ]
     out = _order_rows_for_display(
         rows,
+        catalog=current_parameter_gui_catalog(),
         step_info_by_site={},
         display_order_by_group={("preset._logo_component_param_order", "c:1"): 1},
     )
@@ -142,6 +150,7 @@ def test_order_rows_for_display_preset_uses_activate_then_signature_arg_order():
     ]
     out = _order_rows_for_display(
         rows,
+        catalog=current_parameter_gui_catalog(),
         step_info_by_site={},
         display_order_by_group={("preset._logo_component_param_order", "c:1"): 1},
     )
@@ -155,6 +164,7 @@ def test_order_rows_for_display_places_unknown_arg_last_for_preset():
     ]
     out = _order_rows_for_display(
         rows,
+        catalog=current_parameter_gui_catalog(),
         step_info_by_site={},
         display_order_by_group={("preset._logo_component_param_order", "c:1"): 1},
     )

@@ -58,7 +58,7 @@ _PROVENANCE_BUILDER = CaptureProvenanceBuilder(
     config=runtime_config(),
     parameter_source="code",
     parameter_store_path=None,
-    parameter_load_provenance=_PROVENANCE_STORE.load_provenance,
+    parameter_load_provenance="primary",
 )
 
 
@@ -1147,7 +1147,7 @@ def test_default_worker_uses_parent_gcode_params_recorded_in_manifest(
         config=effective_config,
         parameter_source="code",
         parameter_store_path=None,
-        parameter_load_provenance=store.load_provenance,
+        parameter_load_provenance="primary",
     ).frame(
         store,
         t=0.0,

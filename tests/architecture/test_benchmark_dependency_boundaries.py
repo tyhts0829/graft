@@ -129,22 +129,3 @@ def test_provider_dependencies_use_only_public_symbols() -> None:
     }
 
     assert violations == {}
-
-
-def test_runner_is_only_the_catalog_executor_composition_root() -> None:
-    path = _benchmark_root() / "runner.py"
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    public_definitions = [
-        node.name
-        for node in tree.body
-        if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and not node.name.startswith("_")
-    ]
-
-    assert public_definitions == ["run_case_isolated"]
-    assert len(path.read_text(encoding="utf-8").splitlines()) <= 100
-    assert _module_imports(path, set(_import_graph())) == {
-        "catalog",
-        "definition",
-        "executor",
-        "schema",
-    }

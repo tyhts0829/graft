@@ -31,7 +31,7 @@ def test_grn_6_draw_evaluates_with_repository_preset_path(tmp_path: Path) -> Non
     command = "\n".join(
         [
             "import json, runpy",
-            "from grafix.core.authoring_loader import load_config_authoring_definitions",
+            "from grafix.authoring_loader import load_config_authoring_definitions",
             "from grafix.core.operation_catalog import bind_operation_catalog",
             "from grafix.core.preset_catalog import bind_preset_catalog",
             "from grafix.runtime_config_loader import load_runtime_config",

@@ -84,8 +84,6 @@ def _logical_state(store: ParamStore) -> object:
             dict(runtime.last_effective_by_key),
             frozenset(runtime.warned_unknown_args),
             dict(runtime.last_source_by_key),
-            runtime.load_provenance,
-            runtime.load_diagnostics,
             dict(runtime.reconcile_orphans),
             runtime.effective_revision,
             runtime.visibility_revision,
@@ -122,8 +120,6 @@ def _mutate_every_logical_area(store: ParamStore) -> None:
     runtime.last_effective_by_key[_KEY] = 9.0
     runtime.warned_unknown_args.add(("rollback", "transient"))
     runtime.last_source_by_key[_KEY] = "ui"
-    runtime.load_provenance = "session_recovery"
-    runtime.load_diagnostics = ()
     runtime.reconcile_orphans.clear()
     runtime.record_effective_changes((_KEY,))
 
@@ -261,4 +257,3 @@ def test_transient_rollback_does_not_add_history_events() -> None:
     assert history.undo_depth == 0
     assert history.redo_depth == 0
     assert history.record_change(source="after-rollback") is False
-

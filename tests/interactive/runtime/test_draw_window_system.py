@@ -78,7 +78,7 @@ def _provenance_builder_for(store: ParamStore) -> CaptureProvenanceBuilder:
         config=runtime_config(),
         parameter_source="code",
         parameter_store_path=None,
-        parameter_load_provenance=store.load_provenance,
+        parameter_load_provenance="primary",
         seed=1847,
     )
 
@@ -194,6 +194,7 @@ def test_draw_window_requires_canonical_finite_float_fps(
             render_scale=1.0,
             store=ParamStore(),
             effective_config=runtime_config(),
+            parameter_load_provenance=lambda: "primary",
             fps=fps,  # type: ignore[arg-type]
         )
 
@@ -205,7 +206,7 @@ class _CountingProvenanceBuilder:
             config=runtime_config(),
             parameter_source="code",
             parameter_store_path=None,
-            parameter_load_provenance=store.load_provenance,
+            parameter_load_provenance="primary",
             seed=1847,
         )
         self.calls: list[dict[str, object]] = []
@@ -222,7 +223,7 @@ def _capture_provenance(t: float) -> CaptureProvenance:
         config=runtime_config(),
         parameter_source="code",
         parameter_store_path=None,
-        parameter_load_provenance=store.load_provenance,
+        parameter_load_provenance="primary",
         seed=1847,
     ).frame(
         store,
@@ -2102,6 +2103,214 @@ def test_close_switches_to_draw_context_before_renderer_release() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    ("failure_stage", "expected_cleanup"),
+    [
+        ("window", []),
+        ("renderer", ["close window"]),
+        ("perf", ["close renderer", "close window"]),
+        (
+            "recording",
+            ["close perf", "close renderer", "close window"],
+        ),
+        (
+            "capture",
+            [
+                "close recording",
+                "close perf",
+                "close renderer",
+                "close window",
+            ],
+        ),
+        (
+            "scene",
+            [
+                "close capture",
+                "close recording",
+                "close perf",
+                "close renderer",
+                "close window",
+            ],
+        ),
+        (
+            "post_scene",
+            [
+                "close scene",
+                "close capture",
+                "close recording",
+                "close perf",
+                "close renderer",
+                "close window",
+            ],
+        ),
+    ],
+)
+def test_constructor_failure_rolls_back_every_acquired_closeable_in_reverse_order(
+    failure_stage: str,
+    expected_cleanup: list[str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    root_error = RuntimeError(f"{failure_stage} construction failed")
+    fail_cleanup = failure_stage == "post_scene"
+
+    def cleanup(label: str) -> None:
+        events.append(f"close {label}")
+        if fail_cleanup:
+            raise RuntimeError(f"close {label}")
+
+    class Window:
+        def push_handlers(self, **_kwargs: object) -> None:
+            events.append("push handlers")
+
+    class Renderer:
+        def release(self) -> None:
+            cleanup("renderer")
+
+    class Perf:
+        enabled = False
+
+        def section(self, _name: str) -> object:
+            raise AssertionError("recording section must remain lazy")
+
+        def close(self) -> None:
+            cleanup("perf")
+
+    class Recording:
+        def close(self, *, timeout_s: float, stop_reason: str) -> None:
+            assert timeout_s == 0.0
+            assert stop_reason == "shutdown"
+            cleanup("recording")
+
+    class Capture:
+        def close(self, *, timeout_s: float) -> None:
+            assert timeout_s == 0.0
+            cleanup("capture")
+
+    class Scene:
+        def close(self) -> None:
+            cleanup("scene")
+
+    class Midi:
+        def close(self) -> None:
+            events.append("close midi")
+
+    class DiagnosticCenter:
+        def register_action(self, *_args: object, **_kwargs: object) -> None:
+            events.append("register diagnostic action")
+            raise root_error
+
+    class Monitor:
+        diagnostic_center = DiagnosticCenter()
+
+        def set_profiler(self, _snapshot: object) -> None:
+            return None
+
+    def create_window(*_args: object, **_kwargs: object) -> Window:
+        events.append("create window")
+        if failure_stage == "window":
+            raise root_error
+        return Window()
+
+    def create_renderer(*_args: object, **_kwargs: object) -> Renderer:
+        events.append("create renderer")
+        if failure_stage == "renderer":
+            raise root_error
+        return Renderer()
+
+    def create_perf(**_kwargs: object) -> Perf:
+        events.append("create perf")
+        if failure_stage == "perf":
+            raise root_error
+        return Perf()
+
+    def create_recording(**_kwargs: object) -> Recording:
+        events.append("create recording")
+        if failure_stage == "recording":
+            raise root_error
+        return Recording()
+
+    def create_capture(**_kwargs: object) -> Capture:
+        events.append("create capture")
+        if failure_stage == "capture":
+            raise root_error
+        return Capture()
+
+    def create_scene(*_args: object, **_kwargs: object) -> Scene:
+        events.append("create scene")
+        if failure_stage == "scene":
+            raise root_error
+        return Scene()
+
+    monkeypatch.setattr(draw_window_module, "create_draw_window", create_window)
+    monkeypatch.setattr(draw_window_module, "DrawRenderer", create_renderer)
+    monkeypatch.setattr(
+        draw_window_module,
+        "PerfCollector",
+        SimpleNamespace(from_env=create_perf),
+    )
+    monkeypatch.setattr(draw_window_module, "RecordingSession", create_recording)
+    monkeypatch.setattr(draw_window_module, "CaptureQueue", create_capture)
+    monkeypatch.setattr(draw_window_module, "SceneRunner", create_scene)
+    monkeypatch.setattr(
+        draw_window_module,
+        "activate_pyglet_window_context",
+        lambda _window: True,
+    )
+    monkeypatch.setattr(
+        draw_window_module,
+        "close_pyglet_window",
+        lambda _window: cleanup("window"),
+    )
+    monkeypatch.setattr(
+        draw_window_module,
+        "output_path_for_draw",
+        lambda **kwargs: tmp_path / f"piece.{kwargs['ext']}",
+    )
+    monkeypatch.setattr(
+        draw_window_module,
+        "default_png_output_path",
+        lambda *_args, **_kwargs: tmp_path / "piece.png",
+    )
+    monkeypatch.setattr(
+        draw_window_module,
+        "default_video_output_path",
+        lambda *_args, **_kwargs: tmp_path / "piece.mp4",
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        DrawWindowSystem(
+            lambda _t: None,
+            options=RenderOptions(
+                canvas_size=(100, 80),
+                line_thickness=_DEFAULTS.thickness,
+                line_color=_DEFAULTS.color,
+            ),
+            render_scale=1.0,
+            store=ParamStore(),
+            effective_config=runtime_config(),
+            parameter_load_provenance=lambda: "primary",
+            midi_session=cast(Any, Midi()),
+            monitor=(cast(Any, Monitor()) if failure_stage == "post_scene" else None),
+            source_reload=(cast(Any, object()) if failure_stage == "post_scene" else None),
+            n_worker=0,
+        )
+
+    assert exc_info.value is root_error
+    assert [event for event in events if event.startswith("close ")] == expected_cleanup
+    assert "close midi" not in events
+    if fail_cleanup:
+        assert root_error.__notes__ == [
+            "Secondary cleanup failure (scene runner): RuntimeError: close scene",
+            "Secondary cleanup failure (capture queue): RuntimeError: close capture",
+            "Secondary cleanup failure (recording session): RuntimeError: close recording",
+            "Secondary cleanup failure (performance trace): RuntimeError: close perf",
+            "Secondary cleanup failure (renderer): RuntimeError: close renderer",
+            "Secondary cleanup failure (draw window): RuntimeError: close window",
+        ]
+
+
 def test_partial_draw_window_initialization_releases_acquired_resources(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2171,6 +2380,7 @@ def test_partial_draw_window_initialization_releases_acquired_resources(
             render_scale=1.0,
             store=ParamStore(),
             effective_config=runtime_config(),
+            parameter_load_provenance=lambda: "primary",
             n_worker=0,
         )
 

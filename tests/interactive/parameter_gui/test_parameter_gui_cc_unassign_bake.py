@@ -9,7 +9,7 @@ from grafix.core.parameters.history import ParamStoreHistory
 from grafix.core.parameters.merge_ops import merge_frame_params
 from grafix.core.parameters.snapshot_ops import store_snapshot_for_gui
 from grafix.core.parameters.ui_ops import update_state_from_ui
-from grafix.interactive.parameter_gui.store_bridge import _apply_updated_rows_to_store
+from grafix.interactive.parameter_gui.table_commit import _apply_updated_rows_to_store
 from grafix.interactive.parameter_gui.session_state import WidgetSessionState
 from grafix.interactive.parameter_gui.table import render_parameter_row_4cols
 

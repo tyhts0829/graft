@@ -42,7 +42,7 @@ from dataclasses import dataclass, replace
 from typing import Any, Callable, Protocol, cast
 
 from grafix.core.authoring_definitions import AuthoringDefinitionsSnapshot
-from grafix.core.authoring_loader import (
+from grafix.authoring_loader import (
     authoring_definitions_for_draw,
     load_authoring_definitions_recipe,
 )

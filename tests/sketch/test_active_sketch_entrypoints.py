@@ -55,7 +55,7 @@ from pathlib import Path
 
 import grafix
 from grafix.api.render import RenderSession
-from grafix.core.authoring_loader import default_session_authoring_definitions
+from grafix.authoring_loader import default_session_authoring_definitions
 from grafix.core.render_options import RenderOptions
 from grafix.core.value_validation import (
     exact_bool,

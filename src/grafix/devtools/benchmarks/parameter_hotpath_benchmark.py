@@ -41,7 +41,8 @@ from grafix.devtools.benchmarks.schema import (
     evaluate_contract,
     summarize_distribution,
 )
-from grafix.interactive.parameter_gui import store_bridge
+import grafix.interactive.parameter_gui.table_commit as table_commit_module
+from grafix.interactive.parameter_gui.catalog import current_parameter_gui_catalog
 from grafix.interactive.parameter_gui.group_blocks import (
     group_layout_from_rows,
     visible_group_layout,
@@ -53,6 +54,12 @@ from grafix.interactive.parameter_gui.parameter_filter import (
 )
 from grafix.interactive.parameter_gui.session_state import WidgetSessionState
 from grafix.interactive.parameter_gui.table import TableEdits
+from grafix.interactive.parameter_gui.table_commit import render_store_parameter_table
+from grafix.interactive.parameter_gui.table_view import (
+    ParameterTableViewCache,
+    _parameter_table_model_for_store,
+    parameter_table_view_for_store,
+)
 
 ParameterHotPathOperation = Literal[
     "layout_reuse",
@@ -145,6 +152,7 @@ class ParameterHotPathScenario:
     target_meta: ParamMeta
     snapshot: ParamSnapshot
     initial_merge_ms: float
+    table_cache: ParameterTableViewCache
 
 
 def make_parameter_hot_path_scenario(
@@ -211,18 +219,20 @@ def make_parameter_hot_path_scenario(
     target_key = records[0].key
 
     # setup 固定費と timed steady path を分離する。
-    store_bridge.clear_parameter_table_model_cache()
-    model = store_bridge._parameter_table_model_for_store(store)
+    table_cache = ParameterTableViewCache(current_parameter_gui_catalog())
+    model = _parameter_table_model_for_store(store, cache=table_cache)
     if operation == "layout_reuse":
         visible_group_layout(model.group_layout, (True,) * len(model.rows))
     if operation == "visibility_default":
-        store_bridge.parameter_table_view_for_store(
+        parameter_table_view_for_store(
             store,
+            cache=table_cache,
             show_inactive_params=False,
         )
     elif operation == "visibility_search":
-        store_bridge.parameter_table_view_for_store(
+        parameter_table_view_for_store(
             store,
+            cache=table_cache,
             show_inactive_params=False,
             filter_state=ParameterFilterState(
                 query=f"hotpath-{rows - 1:06d}",
@@ -247,6 +257,7 @@ def make_parameter_hot_path_scenario(
         target_meta=meta,
         snapshot=snapshot,
         initial_merge_ms=initial_merge_ms,
+        table_cache=table_cache,
     )
 
 
@@ -269,7 +280,10 @@ def run_parameter_hot_path_scenario(
 def _run_layout_reuse(
     scenario: ParameterHotPathScenario,
 ) -> BenchmarkOutput:
-    model = store_bridge._parameter_table_model_for_store(scenario.store)
+    model = _parameter_table_model_for_store(
+        scenario.store,
+        cache=scenario.table_cache,
+    )
     visible_mask = (True,) * len(model.rows)
     build_ms: list[float] = []
     reuse_ms: list[float] = []
@@ -636,9 +650,10 @@ def _run_visibility(
     scenario: ParameterHotPathScenario,
 ) -> BenchmarkOutput:
     store = scenario.store
+    table_cache = scenario.table_cache
     search = scenario.operation == "visibility_search"
-    build_count_before = int(store_bridge.parameter_table_model_build_count())
-    view_build_count_before = int(store_bridge.parameter_table_view_build_count())
+    build_count_before = int(table_cache.model_build_count)
+    view_build_count_before = int(table_cache.view_build_count)
     elapsed_ms: list[float] = []
     static_search_ms: list[float] = []
     dynamic_search_ms: list[float] = []
@@ -658,8 +673,9 @@ def _run_visibility(
             expected_search_counts.append(expected_count)
             state = ParameterFilterState(query=query)
         started = time.perf_counter_ns()
-        view = store_bridge.parameter_table_view_for_store(
+        view = parameter_table_view_for_store(
             store,
+            cache=table_cache,
             show_inactive_params=False,
             filter_state=state,
         )
@@ -681,8 +697,8 @@ def _run_visibility(
             last = None if not visible else _key_token(view.model.keys[visible[-1]])
             search_trace.append((query, filtered_count, first, last))
 
-    model_builds = int(store_bridge.parameter_table_model_build_count()) - build_count_before
-    view_builds = int(store_bridge.parameter_table_view_build_count()) - view_build_count_before
+    model_builds = int(table_cache.model_build_count) - build_count_before
+    view_builds = int(table_cache.view_build_count) - view_build_count_before
     expected_filtered = expected_search_counts[-1] if search else scenario.rows
     expected_view_builds = scenario.samples if search else 0
     search_count_digest = _digest_items(item[1] for item in search_trace)
@@ -1252,7 +1268,7 @@ def setup_provenance(parameters: dict[str, Any], _seed: int) -> object:
         config=runtime_config(),
         parameter_source="code",
         parameter_store_path=None,
-        parameter_load_provenance=store.load_provenance,
+        parameter_load_provenance="primary",
     )
     return builder, store
 
@@ -1356,23 +1372,29 @@ def workload_provenance_changed(state: object) -> BenchmarkOutput:
     )
 
 
-def setup_parameter_gui(parameters: dict[str, Any], _seed: int) -> object:
-    from grafix.interactive.parameter_gui.store_bridge import (
-        clear_parameter_table_model_cache,
-    )
+@dataclass(slots=True)
+class _ParameterGuiBenchmarkState:
+    """Formal GUI case の store と session-local table cache。"""
 
-    clear_parameter_table_model_cache()
-    return parameter_store_fixture(rows=int(parameters["rows"]))
+    store: ParamStore
+    table_cache: ParameterTableViewCache
+
+
+def setup_parameter_gui(parameters: dict[str, Any], _seed: int) -> object:
+    store = parameter_store_fixture(rows=int(parameters["rows"]))
+    return _ParameterGuiBenchmarkState(
+        store=store,
+        table_cache=ParameterTableViewCache(current_parameter_gui_catalog()),
+    )
 
 
 def workload_parameter_gui(state: object) -> BenchmarkOutput:
-    from grafix.interactive.parameter_gui.store_bridge import (
-        parameter_table_model_build_count,
-        parameter_table_view_for_store,
-    )
+    if not isinstance(state, _ParameterGuiBenchmarkState):
+        raise TypeError("parameter GUI benchmark state is invalid")
 
     view = parameter_table_view_for_store(
-        state,  # type: ignore[arg-type]
+        state.store,
+        cache=state.table_cache,
         show_inactive_params=True,
     )
     value = {
@@ -1394,7 +1416,7 @@ def workload_parameter_gui(state: object) -> BenchmarkOutput:
                 ("total_count", value["total_count"]),
                 ("filtered_count", value["filtered_count"]),
                 ("visible_count", value["visible_count"]),
-                ("model_builds", int(parameter_table_model_build_count())),
+                ("model_builds", int(state.table_cache.model_build_count)),
             )
         ),
     )
@@ -1445,7 +1467,7 @@ def parameter_snapshot_model_workload(
 
     frame_count = max(2, int(frames))
     store._touch()
-    store_bridge.clear_parameter_table_model_cache()
+    table_cache = ParameterTableViewCache(current_parameter_gui_catalog())
     render_calls = 0
     visible_rows = 0
     widget_state = WidgetSessionState()
@@ -1467,14 +1489,15 @@ def parameter_snapshot_model_workload(
 
     samples: list[int] = []
     first_frame_ns = 0
-    with patch.object(store_bridge, "render_parameter_table", fake_render):
+    with patch.object(table_commit_module, "render_parameter_table", fake_render):
         for frame in range(frame_count):
             started = time.perf_counter_ns()
-            table_view = store_bridge.parameter_table_view_for_store(
+            table_view = parameter_table_view_for_store(
                 store,
+                cache=table_cache,
                 show_inactive_params=True,
             )
-            changed = store_bridge.render_store_parameter_table(
+            changed = render_store_parameter_table(
                 store,
                 table_view=table_view,
                 widget_state=widget_state,
@@ -1487,7 +1510,7 @@ def parameter_snapshot_model_workload(
             else:
                 samples.append(elapsed)
 
-    build_count = store_bridge.parameter_table_model_build_count()
+    build_count = table_cache.model_build_count
     steady = summarize_nanoseconds(samples)
     return {
         "output": {

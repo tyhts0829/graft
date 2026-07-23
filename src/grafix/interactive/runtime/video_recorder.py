@@ -30,9 +30,9 @@ _MIN_PROCESS_REAP_GRACE_S = 0.5
 def default_video_output_path(
     draw: Callable[[float], object],
     *,
+    config: RuntimeConfig,
     run_id: str | None = None,
     ext: str = "mp4",
-    config: RuntimeConfig | None = None,
 ) -> Path:
     """draw の定義元に基づく動画の既定保存パスを返す。
 

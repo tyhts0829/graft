@@ -11,7 +11,7 @@ from typing import Any, Callable, Literal
 from ._param_resolution import resolve_api_params, set_api_label
 from ._operation_selector import (
     FrozenParamsByTarget,
-    freeze_params_by_target,
+    freeze_effect_params_by_target,
     resolve_effect_selection,
     validate_effect_selector_n_inputs,
 )
@@ -21,11 +21,7 @@ from grafix.core.operation_catalog import (
     current_operation_catalog,
 )
 from grafix.core.operation_declaration import EffectStepRef, OpDeclaration
-from grafix.core.operation_selector import (
-    SelectorSpec,
-    selector_spec as build_selector_spec,
-    validate_effect_selector_target,
-)
+from grafix.core.operation_selector import SelectorSpec
 from grafix.core.parameters import (
     caller_site_id,
     current_effect_order_snapshot,
@@ -87,8 +83,18 @@ class _EffectSelectorStep:
     n_inputs: int
     params_by_target: FrozenParamsByTarget
     site_id: str
-    selector: SelectorSpec
-    catalog: OperationCatalog
+
+    @property
+    def selector(self) -> SelectorSpec:
+        """step 作成時に固定した selector schema。"""
+
+        return self.params_by_target.selector
+
+    @property
+    def catalog(self) -> OperationCatalog:
+        """selector と同時に固定した operation catalog。"""
+
+        return self.params_by_target.catalog
 
     @property
     def parameter_op(self) -> str:
@@ -151,18 +157,11 @@ def _make_effect_selector_step(
     )
     count = validate_effect_selector_n_inputs(n_inputs)
     selected_catalog = current_operation_catalog() if catalog is None else catalog
-    target_s = validate_effect_selector_target(
+    target_s, frozen_params = freeze_effect_params_by_target(
         identity_string(target, name="effect selector target"),
-        n_inputs=count,
-        catalog=selected_catalog,
-    )
-    selector = build_selector_spec(selected_catalog, kind="effect", n_inputs=count)
-    frozen_params = freeze_params_by_target(
         params_by_target,
-        kind="effect",
         n_inputs=count,
         catalog=selected_catalog,
-        selector=selector,
     )
     step = object.__new__(_EffectSelectorStep)
     object.__setattr__(step, "target", target_s)
@@ -173,8 +172,6 @@ def _make_effect_selector_step(
     )
     object.__setattr__(step, "n_inputs", count)
     object.__setattr__(step, "params_by_target", frozen_params)
-    object.__setattr__(step, "selector", selector)
-    object.__setattr__(step, "catalog", selected_catalog)
     object.__setattr__(
         step,
         "site_id",
@@ -196,8 +193,6 @@ def _lower_effect_step(
             n_inputs=step.n_inputs,
             params_by_target=step.params_by_target,
             site_id=step.site_id,
-            catalog=catalog,
-            selector=step.selector,
         )
         declaration = catalog.resolve("effect", selected.target).declaration
         return _LoweredEffectStep(
@@ -299,7 +294,7 @@ class EffectBuilder:
                         step.target,
                         step.target_explicit,
                         step.n_inputs,
-                        step.params_by_target,
+                        step.params_by_target.values,
                         step.site_id,
                     )
                 )
@@ -324,15 +319,11 @@ class EffectBuilder:
         # ここでは実体変換は行わず、あくまで Geometry DAG（レシピ）を構築する。
         code_topology: list[EffectStepTopology] = []
         for code_index, step in enumerate(self.steps):
-            if isinstance(step, _EffectOperationStep):
-                n_inputs = step.n_inputs
-            else:
-                n_inputs = step.n_inputs
             code_topology.append(
                 EffectStepTopology(
                     op=step.parameter_op,
                     site_id=step.site_id,
-                    n_inputs=n_inputs,
+                    n_inputs=step.n_inputs,
                     code_index=code_index,
                 )
             )

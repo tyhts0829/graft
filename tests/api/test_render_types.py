@@ -236,7 +236,7 @@ def test_frame_time_must_match_provenance() -> None:
         {"effective_config": object()},
         {"parameter_source": " CODE "},
         {"parameter_store_path": "parameters.json"},
-        {"parameter_load_provenance": "legacy"},
+        {"parameter_load_state": object()},
         {"provenance": object()},
     ],
 )

@@ -552,6 +552,34 @@ def test_trace_close_flushes_partial_window(tmp_path) -> None:
     assert records[2]["records"] == 1
 
 
+def test_trace_close_stops_writer_after_pending_frame_finalize_failure(tmp_path) -> None:
+    trace_path = tmp_path / "failed-finalize.jsonl"
+    root_error = RuntimeError("snapshot callback failed")
+
+    def fail_snapshot_callback(_snapshot: object) -> None:
+        raise root_error
+
+    perf = PerfCollector(
+        enabled=True,
+        console_output=False,
+        trace_path=trace_path,
+        snapshot_callback=fail_snapshot_callback,
+        defer_frame_finalize=True,
+    )
+    writer = perf._trace_writer
+    assert writer is not None
+    with perf.frame():
+        pass
+
+    with pytest.raises(RuntimeError) as exc_info:
+        perf.close()
+
+    assert exc_info.value is root_error
+    assert perf._trace_writer is None
+    assert not writer._thread.is_alive()
+    perf.close()
+
+
 def test_deferred_frame_boundary_keeps_present_and_full_loop_in_same_record(
     tmp_path,
 ) -> None:

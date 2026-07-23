@@ -474,6 +474,83 @@ def perlin_core(
     return result
 
 
+@njit(fastmath=True, inline="always")
+def _clamp_gradient_coefficient(value: np.float32, limit: float) -> np.float32:
+    """gradient coefficient を symmetric limit へ clamp する。"""
+
+    if value > limit:
+        return np.float32(limit)
+    if value < -limit:
+        return np.float32(-limit)
+    return value
+
+
+@njit(fastmath=True, inline="always")
+def _normalized_bbox_position(
+    value: np.float32,
+    minimum: np.float32,
+    span: np.float32,
+) -> float:
+    """bbox 軸上の位置を 0..1 へ正規化する。退化軸は中心を返す。"""
+
+    if span > 1e-9:
+        return float((value - minimum) / span)
+    return 0.5
+
+
+@njit(fastmath=True, inline="always")
+def _gradient_factors(
+    tx: float,
+    ty: float,
+    tz: float,
+    gx: np.float32,
+    gy: np.float32,
+    gz: np.float32,
+    cx: np.float32,
+    cy: np.float32,
+    cz: np.float32,
+    profile_mode: int,
+    inv_rx: np.float32,
+    inv_ry: np.float32,
+    inv_rz: np.float32,
+    minimum: np.float32,
+    maximum: np.float32,
+) -> tuple[float, float, float]:
+    """linear/radial profile を評価し、gradient factor 範囲へ clamp する。"""
+
+    if profile_mode == 0:
+        raw_x = 1.0 + gx * (tx - cx)
+        raw_y = 1.0 + gy * (ty - cy)
+        raw_z = 1.0 + gz * (tz - cz)
+    else:
+        dx = (tx - cx) * inv_rx
+        dy = (ty - cy) * inv_ry
+        dz = (tz - cz) * inv_rz
+        distance = np.sqrt(dx * dx + dy * dy + dz * dz)
+        raw_x = 1.0 - gx * distance
+        raw_y = 1.0 - gy * distance
+        raw_z = 1.0 - gz * distance
+
+    if raw_x < 0.0:
+        raw_x = 0.0  # type: ignore[assignment]
+    if raw_y < 0.0:
+        raw_y = 0.0  # type: ignore[assignment]
+    if raw_z < 0.0:
+        raw_z = 0.0  # type: ignore[assignment]
+
+    one_minus_minimum = np.float32(1.0) - minimum
+    factor_x = minimum + one_minus_minimum * raw_x
+    factor_y = minimum + one_minus_minimum * raw_y
+    factor_z = minimum + one_minus_minimum * raw_z
+    if factor_x > maximum:
+        factor_x = maximum
+    if factor_y > maximum:
+        factor_y = maximum
+    if factor_z > maximum:
+        factor_z = maximum
+    return float(factor_x), float(factor_y), float(factor_z)
+
+
 @njit(fastmath=True, cache=True)
 def _apply_noise_to_coords(
     coords: np.ndarray,
@@ -548,18 +625,9 @@ def _apply_noise_to_coords(
         return result
 
     if not has_freq_grad:
-        if gx > FGX:
-            gx = np.float32(FGX)
-        elif gx < -FGX:
-            gx = np.float32(-FGX)
-        if gy > FGX:
-            gy = np.float32(FGX)
-        elif gy < -FGX:
-            gy = np.float32(-FGX)
-        if gz > FGX:
-            gz = np.float32(FGX)
-        elif gz < -FGX:
-            gz = np.float32(-FGX)
+        gx = _clamp_gradient_coefficient(gx, FGX)
+        gy = _clamp_gradient_coefficient(gy, FGX)
+        gz = _clamp_gradient_coefficient(gz, FGX)
 
         noise_offset = perlin_core(
             coords, frequency, phase_tuple, perm_table, grad3_array
@@ -578,57 +646,32 @@ def _apply_noise_to_coords(
 
         maxf = np.float32(max_factor)
         eps = np.float32(min_factor)
-        one_minus_eps = np.float32(1.0) - eps
         n = coords.shape[0]
         result = np.empty_like(coords, dtype=np.float32)
         for i in range(n):
             x = coords[i, 0]
             y = coords[i, 1]
             z = coords[i, 2]
-
-            if range_x > 1e-9:
-                tx = (x - min_x) / range_x
-            else:
-                tx = 0.5
-            if range_y > 1e-9:
-                ty = (y - min_y) / range_y
-            else:
-                ty = 0.5
-            if range_z > 1e-9:
-                tz = (z - min_z) / range_z
-            else:
-                tz = 0.5
-
-            if gradient_profile_mode == 0:
-                fx_raw = 1.0 + gx * (tx - cx)
-                fy_raw = 1.0 + gy * (ty - cy)
-                fz_raw = 1.0 + gz * (tz - cz)
-            else:
-                dx = (tx - cx) * inv_rx
-                dy = (ty - cy) * inv_ry
-                dz = (tz - cz) * inv_rz
-                d = np.sqrt(dx * dx + dy * dy + dz * dz)
-                fx_raw = 1.0 - gx * d
-                fy_raw = 1.0 - gy * d
-                fz_raw = 1.0 - gz * d
-
-            if fx_raw < 0.0:
-                fx_raw = 0.0
-            if fy_raw < 0.0:
-                fy_raw = 0.0
-            if fz_raw < 0.0:
-                fz_raw = 0.0
-
-            fx = eps + one_minus_eps * fx_raw
-            fy = eps + one_minus_eps * fy_raw
-            fz = eps + one_minus_eps * fz_raw
-
-            if fx > maxf:
-                fx = maxf
-            if fy > maxf:
-                fy = maxf
-            if fz > maxf:
-                fz = maxf
+            tx = _normalized_bbox_position(x, min_x, range_x)
+            ty = _normalized_bbox_position(y, min_y, range_y)
+            tz = _normalized_bbox_position(z, min_z, range_z)
+            fx, fy, fz = _gradient_factors(
+                tx,
+                ty,
+                tz,
+                gx,
+                gy,
+                gz,
+                cx,
+                cy,
+                cz,
+                gradient_profile_mode,
+                inv_rx,
+                inv_ry,
+                inv_rz,
+                eps,
+                maxf,
+            )
 
             ax_i = ax * fx
             ay_i = ay * fy
@@ -641,31 +684,13 @@ def _apply_noise_to_coords(
         return result
 
     if has_amp_grad:
-        if gx > GX:
-            gx = np.float32(GX)
-        elif gx < -GX:
-            gx = np.float32(-GX)
-        if gy > GX:
-            gy = np.float32(GX)
-        elif gy < -GX:
-            gy = np.float32(-GX)
-        if gz > GX:
-            gz = np.float32(GX)
-        elif gz < -GX:
-            gz = np.float32(-GX)
+        gx = _clamp_gradient_coefficient(gx, GX)
+        gy = _clamp_gradient_coefficient(gy, GX)
+        gz = _clamp_gradient_coefficient(gz, GX)
 
-    if fgx > FGX:
-        fgx = np.float32(FGX)
-    elif fgx < -FGX:
-        fgx = np.float32(-FGX)
-    if fgy > FGX:
-        fgy = np.float32(FGX)
-    elif fgy < -FGX:
-        fgy = np.float32(-FGX)
-    if fgz > FGX:
-        fgz = np.float32(FGX)
-    elif fgz < -FGX:
-        fgz = np.float32(-FGX)
+    fgx = _clamp_gradient_coefficient(fgx, FGX)
+    fgy = _clamp_gradient_coefficient(fgy, FGX)
+    fgz = _clamp_gradient_coefficient(fgz, FGX)
 
     min_x = np.float32(np.min(coords[:, 0]))
     max_x = np.float32(np.max(coords[:, 0]))
@@ -679,7 +704,6 @@ def _apply_noise_to_coords(
     range_z = max_z - min_z
 
     eps = np.float32(min_factor)
-    one_minus_eps = np.float32(1.0) - eps
     maxf = np.float32(max_factor)
 
     offset1 = np.float32(100.0)
@@ -691,84 +715,49 @@ def _apply_noise_to_coords(
         y = coords[i, 1]
         z = coords[i, 2]
 
-        if range_x > 1e-9:
-            tx = (x - min_x) / range_x
-        else:
-            tx = 0.5
-        if range_y > 1e-9:
-            ty = (y - min_y) / range_y
-        else:
-            ty = 0.5
-        if range_z > 1e-9:
-            tz = (z - min_z) / range_z
-        else:
-            tz = 0.5
+        tx = _normalized_bbox_position(x, min_x, range_x)
+        ty = _normalized_bbox_position(y, min_y, range_y)
+        tz = _normalized_bbox_position(z, min_z, range_z)
 
         amp_fx = np.float32(1.0)
         amp_fy = np.float32(1.0)
         amp_fz = np.float32(1.0)
         if has_amp_grad:
-            if gradient_profile_mode == 0:
-                fx_raw = 1.0 + gx * (tx - cx)
-                fy_raw = 1.0 + gy * (ty - cy)
-                fz_raw = 1.0 + gz * (tz - cz)
-            else:
-                dx = (tx - cx) * inv_rx
-                dy = (ty - cy) * inv_ry
-                dz = (tz - cz) * inv_rz
-                d = np.sqrt(dx * dx + dy * dy + dz * dz)
-                fx_raw = 1.0 - gx * d
-                fy_raw = 1.0 - gy * d
-                fz_raw = 1.0 - gz * d
+            amp_fx, amp_fy, amp_fz = _gradient_factors(  # type: ignore[assignment]
+                tx,
+                ty,
+                tz,
+                gx,
+                gy,
+                gz,
+                cx,
+                cy,
+                cz,
+                gradient_profile_mode,
+                inv_rx,
+                inv_ry,
+                inv_rz,
+                eps,
+                maxf,
+            )
 
-            if fx_raw < 0.0:
-                fx_raw = 0.0
-            if fy_raw < 0.0:
-                fy_raw = 0.0
-            if fz_raw < 0.0:
-                fz_raw = 0.0
-
-            amp_fx = eps + one_minus_eps * fx_raw
-            amp_fy = eps + one_minus_eps * fy_raw
-            amp_fz = eps + one_minus_eps * fz_raw
-
-            if amp_fx > maxf:
-                amp_fx = maxf
-            if amp_fy > maxf:
-                amp_fy = maxf
-            if amp_fz > maxf:
-                amp_fz = maxf
-
-        if gradient_profile_mode == 0:
-            freq_fx_raw = 1.0 + fgx * (tx - cx)
-            freq_fy_raw = 1.0 + fgy * (ty - cy)
-            freq_fz_raw = 1.0 + fgz * (tz - cz)
-        else:
-            dx = (tx - cx) * inv_rx
-            dy = (ty - cy) * inv_ry
-            dz = (tz - cz) * inv_rz
-            d = np.sqrt(dx * dx + dy * dy + dz * dz)
-            freq_fx_raw = 1.0 - fgx * d
-            freq_fy_raw = 1.0 - fgy * d
-            freq_fz_raw = 1.0 - fgz * d
-
-        if freq_fx_raw < 0.0:
-            freq_fx_raw = 0.0
-        if freq_fy_raw < 0.0:
-            freq_fy_raw = 0.0
-        if freq_fz_raw < 0.0:
-            freq_fz_raw = 0.0
-
-        freq_fx = eps + one_minus_eps * freq_fx_raw
-        freq_fy = eps + one_minus_eps * freq_fy_raw
-        freq_fz = eps + one_minus_eps * freq_fz_raw
-
-        if freq_fx > maxf:
-            freq_fx = maxf
-        if freq_fy > maxf:
-            freq_fy = maxf
-        if freq_fz > maxf:
-            freq_fz = maxf
+        freq_fx, freq_fy, freq_fz = _gradient_factors(
+            tx,
+            ty,
+            tz,
+            fgx,
+            fgy,
+            fgz,
+            cx,
+            cy,
+            cz,
+            gradient_profile_mode,
+            inv_rx,
+            inv_ry,
+            inv_rz,
+            eps,
+            maxf,
+        )
 
         px = x * (fx_base * freq_fx) + phase0
         py = y * (fy_base * freq_fy) + phase0

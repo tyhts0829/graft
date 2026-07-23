@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from grafix.runtime_config_loader import runtime_config
 from grafix.interactive.runtime import video_recorder
 from grafix.interactive.runtime.video_recorder import (
     VideoRecorder,
@@ -19,10 +20,11 @@ def test_default_video_output_path_uses_data_dir_and_script_stem(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("HOME", str(tmp_path))
+
     def draw(t: float) -> None:
         return None
 
-    path = default_video_output_path(draw)
+    path = default_video_output_path(draw, config=runtime_config())
     assert path.parts[0] == "data"
     assert path.parts[1] == "output"
     assert path.parts[2] == "video"
@@ -30,18 +32,31 @@ def test_default_video_output_path_uses_data_dir_and_script_stem(
     assert path.suffix == ".mp4"
 
 
+def test_default_video_output_path_requires_explicit_config() -> None:
+    with pytest.raises(TypeError, match="config"):
+        default_video_output_path(lambda _t: None)  # type: ignore[call-arg]
+
+
 @pytest.mark.parametrize("ext", [1, None, b"mp4"])
 def test_default_video_output_path_rejects_non_string_extension(
     ext: object,
 ) -> None:
     with pytest.raises(TypeError, match="ext"):
-        default_video_output_path(lambda _t: None, ext=ext)  # type: ignore[arg-type]
+        default_video_output_path(
+            lambda _t: None,
+            ext=ext,  # type: ignore[arg-type]
+            config=runtime_config(),
+        )
 
 
 @pytest.mark.parametrize("ext", ["", ".mp4", " mp4", "video/mp4"])
 def test_default_video_output_path_requires_canonical_extension(ext: str) -> None:
     with pytest.raises(ValueError, match="ext"):
-        default_video_output_path(lambda _t: None, ext=ext)
+        default_video_output_path(
+            lambda _t: None,
+            ext=ext,
+            config=runtime_config(),
+        )
 
 
 def test_ffmpeg_command_contains_expected_rawvideo_args():

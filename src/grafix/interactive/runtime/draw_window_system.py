@@ -37,7 +37,11 @@ from pyglet.window import key
 
 from grafix.core.export_format import ExportFormat
 from grafix.core.lifecycle import CleanupErrors
-from grafix.core.parameters import ParamStore, begin_effect_chain_generation
+from grafix.core.parameters import (
+    LoadProvenance,
+    ParamStore,
+    begin_effect_chain_generation,
+)
 from grafix.core.layer import LayerStyleDefaults
 from grafix.core.pipeline import RealizedLayer
 from grafix.export.output_paths import output_path_for_draw
@@ -114,6 +118,7 @@ class DrawWindowSystem:
         render_scale: float,
         store: ParamStore,
         effective_config: RuntimeConfig,
+        parameter_load_provenance: Callable[[], LoadProvenance],
         midi_session: MidiSession | None = None,
         monitor: RuntimeMonitor | None = None,
         fps: float = 60.0,
@@ -162,7 +167,12 @@ class DrawWindowSystem:
         self._fps = frame_rate
         if not isinstance(effective_config, RuntimeConfig):
             raise TypeError("effective_config は RuntimeConfig である必要があります")
+        if not callable(parameter_load_provenance):
+            raise TypeError("parameter_load_provenance は callable である必要があります")
         self._effective_config = effective_config
+        # Keep/Discard 後も capture 時点の session state を使えるよう、値ではなく
+        # owner である ParameterSession への provider を保持する。
+        self._parameter_load_provenance = parameter_load_provenance
         self._parameter_source = parameter_source
         self._parameter_store_path = (
             None if parameter_store_path is None else Path(parameter_store_path)
@@ -175,7 +185,7 @@ class DrawWindowSystem:
                 config=self._effective_config,
                 parameter_source=self._parameter_source,
                 parameter_store_path=self._parameter_store_path,
-                parameter_load_provenance=store.load_provenance,
+                parameter_load_provenance=self._parameter_load_provenance,
                 seed=seed,
             ),
         )
@@ -189,6 +199,8 @@ class DrawWindowSystem:
         self._closed = False
         window = None
         renderer = None
+        perf = None
+        recording_session = None
         capture_queue = None
         scene_runner = None
         try:
@@ -238,12 +250,13 @@ class DrawWindowSystem:
             # preview transport と録画 session は同じ timeline 境界を共有する。
             start_time = time.perf_counter()
             self._clock = TransportClock(start_time=start_time)
-            self._perf = PerfCollector.from_env(
+            perf = PerfCollector.from_env(
                 enabled_by_default=monitor is not None,
                 snapshot_callback=(None if monitor is None else monitor.set_profiler),
                 defer_frame_finalize=True,
             )
-            self._recording_session = RecordingSession(
+            self._perf = perf
+            recording_session = RecordingSession(
                 fps=frame_rate,
                 capture_service=self._capture_service,
                 output_path=video_output_path,
@@ -254,8 +267,9 @@ class DrawWindowSystem:
                     t=float(t),
                     quality="final",
                 ),
-                frame_section=lambda: self._perf.section("video"),
+                frame_section=lambda: perf.section("video"),
             )
+            self._recording_session = recording_session
             self._last_perf_store_revision = int(store.revision)
             self._last_frame_error: str | None = None
             capture_queue = CaptureQueue(
@@ -292,8 +306,9 @@ class DrawWindowSystem:
                 )
         except BaseException as error:
             # constructor が return しない場合、runner は部分構築 object を close
-            # できない。ここで取得済み resource を全て逆順に試す。MIDI ownership は
-            # 正常構築後にだけ移るため、失敗時は caller が close する。
+            # できない。ここで取得済み resource を全て逆順に試す。CaptureService と
+            # TransportClock は close を持たない値である。MIDI ownership は正常構築後
+            # にだけ移るため、失敗時は caller が close する。
             cleanup_steps: list[tuple[str, Callable[[], object]]] = []
             if scene_runner is not None:
                 cleanup_steps.append(("scene runner", scene_runner.close))
@@ -304,6 +319,18 @@ class DrawWindowSystem:
                         lambda: capture_queue.close(timeout_s=0.0),
                     )
                 )
+            if recording_session is not None:
+                cleanup_steps.append(
+                    (
+                        "recording session",
+                        lambda: recording_session.close(
+                            timeout_s=0.0,
+                            stop_reason="shutdown",
+                        ),
+                    )
+                )
+            if perf is not None:
+                cleanup_steps.append(("performance trace", perf.close))
             if renderer is not None and window is not None:
 
                 def release_renderer() -> None:
@@ -324,6 +351,7 @@ class DrawWindowSystem:
             )
             for label, cleanup in cleanup_steps:
                 errors.attempt(cleanup, label)
+            errors.raise_if_any()
             raise
 
     def _on_key_press(self, symbol: int, modifiers: int) -> None:
@@ -417,7 +445,7 @@ class DrawWindowSystem:
             config=self._effective_config,
             parameter_source=self._parameter_source,
             parameter_store_path=self._parameter_store_path,
-            parameter_load_provenance=self._store.load_provenance,
+            parameter_load_provenance=self._parameter_load_provenance,
             seed=self._seed,
         )
 

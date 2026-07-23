@@ -4,14 +4,17 @@
 
 from __future__ import annotations
 
+import logging
+import traceback
 from collections.abc import Callable, Sequence
 from typing import Protocol
 
 from grafix.core.authoring_definitions import AuthoringDefinitionsSnapshot
-from grafix.core.authoring_loader import authoring_definitions_for_draw
+from grafix.authoring_loader import authoring_definitions_for_draw
 from grafix.core.evaluation_config import EvaluationConfig
 from grafix.core.evaluation_context import EvaluationContext, EvaluationResources
 from grafix.core.layer import Layer, LayerStyleDefaults, resolve_layer_style
+from grafix.core.lifecycle import CleanupErrors
 from grafix.core.operation_catalog import OperationCatalog
 from grafix.core.operation_diagnostics import (
     OperationDiagnostic,
@@ -43,6 +46,9 @@ from grafix.core.value_validation import exact_integer, finite_real
 from grafix.interactive.runtime.mp_draw import DrawResult, MpDraw
 from grafix.interactive.runtime.perf import PerfCollector
 from grafix.interactive.diagnostics import DiagnosticCenter, DiagnosticEvent
+
+
+_logger = logging.getLogger(__name__)
 
 
 class _MpDrawEventCallback(Protocol):
@@ -159,34 +165,27 @@ def _make_evaluation_generation(
                 runtime_limits=limits,
                 profiler=profiler,
             )
-    except BaseException:
-        for session in sessions.values():
-            session.close()
-        resources.close()
+    except BaseException as error:
+        errors = CleanupErrors(initial_error=error)
+        _attempt_evaluation_generation_cleanup(errors, sessions, resources)
+        errors.raise_if_any()
         raise
     return catalog, contexts, resources, sessions
 
 
-def _close_evaluation_generation(
+def _attempt_evaluation_generation_cleanup(
+    errors: CleanupErrors,
     sessions: dict[PreviewQuality, RealizeSession],
     resources: EvaluationResources,
 ) -> None:
-    """子 session を先に全て閉じ、その後 resource owner を一度閉じる。"""
+    """generation の全 close を、呼び出し側の error 集約器へ記録する。"""
 
-    first_error: BaseException | None = None
-    for session in tuple(dict.fromkeys(sessions.values())):
-        try:
-            session.close()
-        except BaseException as error:  # noqa: BLE001
-            if first_error is None:
-                first_error = error
-    try:
-        resources.close()
-    except BaseException as error:  # noqa: BLE001
-        if first_error is None:
-            first_error = error
-    if first_error is not None:
-        raise first_error
+    for index, session in enumerate(tuple(dict.fromkeys(sessions.values())), start=1):
+        errors.attempt(
+            session.close,
+            f"close evaluation session {index}",
+        )
+    errors.attempt(resources.close, "close evaluation resources")
 
 
 class SceneRunner:
@@ -259,8 +258,10 @@ class SceneRunner:
                 cache_store=cache_store,
                 profiler=perf,
             )
-        except BaseException:
-            cache_store.close()
+        except BaseException as error:
+            errors = CleanupErrors(initial_error=error)
+            errors.attempt(cache_store.close, "close scene realize cache store")
+            errors.raise_if_any()
             raise
         self._cache_store = cache_store
         self._definitions = selected_definitions
@@ -275,14 +276,18 @@ class SceneRunner:
                 draw,
                 definitions=selected_definitions,
             )
-        except BaseException:
-            try:
-                _close_evaluation_generation(
-                    self._realize_sessions,
-                    self._evaluation_resources,
-                )
-            finally:
-                self._cache_store.close()
+        except BaseException as error:
+            errors = CleanupErrors(initial_error=error)
+            _attempt_evaluation_generation_cleanup(
+                errors,
+                self._realize_sessions,
+                self._evaluation_resources,
+            )
+            errors.attempt(
+                self._cache_store.close,
+                "close scene realize cache store",
+            )
+            errors.raise_if_any()
             raise
         # mp-draw は結果未到着の frame でも前回 scene を再利用して返すため、単なる
         # run() の正常 return だけでは user draw の回復を判定できない。None は
@@ -375,16 +380,19 @@ class SceneRunner:
             if replacement is not None:
                 replacement.begin_epoch(next_epoch)
         except BaseException as startup_error:  # noqa: BLE001
+            errors = CleanupErrors(initial_error=startup_error)
             if replacement is not None:
-                try:
-                    replacement.close()
-                except BaseException:  # noqa: BLE001
-                    pass
-            try:
-                _close_evaluation_generation(next_sessions, next_resources)
-            except BaseException:  # noqa: BLE001
-                pass
-            raise startup_error
+                errors.attempt(
+                    replacement.close,
+                    "close replacement draw worker",
+                )
+            _attempt_evaluation_generation_cleanup(
+                errors,
+                next_sessions,
+                next_resources,
+            )
+            errors.raise_if_any()
+            raise
 
         previous = self._mp_draw
         previous_sessions = self._realize_sessions
@@ -409,38 +417,41 @@ class SceneRunner:
         self._last_realized_frame_id = self._retained_realized_frame_id
         self._waiting_for_fresh_result = replacement is not None
 
-        close_errors: list[BaseException] = []
+        close_errors = CleanupErrors()
         if previous is not None:
-            try:
-                previous.close()
-            except BaseException as error:  # noqa: BLE001
-                close_errors.append(error)
+            close_errors.attempt(previous.close, "close previous draw worker")
+        _attempt_evaluation_generation_cleanup(
+            close_errors,
+            previous_sessions,
+            previous_resources,
+        )
         try:
-            _close_evaluation_generation(
-                previous_sessions,
-                previous_resources,
-            )
-        except BaseException as error:  # noqa: BLE001
-            close_errors.append(error)
-
-        if close_errors:
-            first_close_error = close_errors[0]
+            close_errors.raise_if_any()
+        except BaseException as first_close_error:  # noqa: BLE001
             center = self._diagnostic_center
             if center is not None:
+                details = "".join(
+                    traceback.format_exception_only(
+                        type(first_close_error),
+                        first_close_error,
+                    )
+                ).rstrip()
                 center.publish(
                     DiagnosticEvent(
                         category="reload",
                         severity="warning",
                         summary="旧 draw generation の終了に失敗しました",
-                        details=(
-                            f"{type(first_close_error).__name__}: "
-                            f"{first_close_error}"
-                        ),
+                        details=details,
                         dedupe_key=(
                             "reload-old-generation-close:"
                             f"{type(first_close_error).__name__}:{first_close_error}"
                         ),
                     )
+                )
+            else:
+                _logger.warning(
+                    "旧 draw generation の終了に失敗しました",
+                    exc_info=first_close_error,
                 )
 
     @property
@@ -969,11 +980,9 @@ class SceneRunner:
         self._mp_draw = None
         sessions = self._realize_sessions
         resources = self._evaluation_resources
-        try:
-            if mp_draw is not None:
-                mp_draw.close()
-        finally:
-            try:
-                _close_evaluation_generation(sessions, resources)
-            finally:
-                self._cache_store.close()
+        errors = CleanupErrors()
+        if mp_draw is not None:
+            errors.attempt(mp_draw.close, "close draw worker")
+        _attempt_evaluation_generation_cleanup(errors, sessions, resources)
+        errors.attempt(self._cache_store.close, "close scene realize cache store")
+        errors.raise_if_any()

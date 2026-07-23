@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Literal
 
 from grafix.core.authoring_definitions import AuthoringDefinitionsSnapshot
-from grafix.core.authoring_loader import authoring_definitions_for_draw
+from grafix.authoring_loader import authoring_definitions_for_draw
 from grafix.core.capture_provenance import (
     CaptureProvenance,
     SessionProvenance,
@@ -28,7 +28,7 @@ from grafix.core.lifecycle import CleanupErrors
 from grafix.core.parameters.context import parameter_context
 from grafix.export.output_paths import default_param_store_path
 from grafix.export.capture_provenance import CaptureProvenanceBuilder
-from grafix.core.parameters.runtime import LoadProvenance
+from grafix.core.parameters.runtime import LoadProvenance, ParameterLoadState
 from grafix.core.parameters.source import ParameterLoadMode
 from grafix.core.parameters.store import ParamStore
 from grafix.core.parameters.style_resolver import FrameStyle, StyleResolver
@@ -59,7 +59,7 @@ class RenderSessionMetadata:
     effective_config: RuntimeConfig
     parameter_source: ParameterLoadMode
     parameter_store_path: Path | None
-    parameter_load_provenance: LoadProvenance
+    parameter_load_state: ParameterLoadState
     provenance: SessionProvenance
 
     def __post_init__(self) -> None:
@@ -80,13 +80,16 @@ class RenderSessionMetadata:
             raise TypeError(
                 "parameter_store_path は Path または None である必要があります"
             )
-        exact_string_choice(
-            self.parameter_load_provenance,
-            name="parameter_load_provenance",
-            choices=("primary", "session_recovery", "quarantined"),
-        )
+        if type(self.parameter_load_state) is not ParameterLoadState:
+            raise TypeError("parameter_load_state は exact ParameterLoadState です")
         if not isinstance(self.provenance, SessionProvenance):
             raise TypeError("provenance は SessionProvenance である必要があります")
+
+    @property
+    def parameter_load_provenance(self) -> LoadProvenance:
+        """capture manifest に記録する load provenance を返す。"""
+
+        return self.parameter_load_state.provenance
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,12 +168,13 @@ def _load_parameter_store(
     parameter_source: ParameterLoadMode,
     run_id: str | None,
     config: RuntimeConfig,
-) -> tuple[ParamStore, ParameterLoadMode, Path | None]:
+) -> tuple[ParamStore, ParameterLoadState, ParameterLoadMode, Path | None]:
     if isinstance(parameter_source, Path):
         source_path = Path(parameter_source).expanduser().resolve(strict=False)
-        return read_param_store(source_path).store, source_path, source_path
+        loaded = read_param_store(source_path)
+        return loaded.store, loaded.load_state, source_path, source_path
     if parameter_source == "code":
-        return ParamStore(), "code", None
+        return ParamStore(), ParameterLoadState(), "code", None
     if parameter_source not in {"saved", "recovery"}:
         raise ValueError(
             "parameter_source は 'code', 'saved', 'recovery', Path のいずれかです"
@@ -178,8 +182,10 @@ def _load_parameter_store(
 
     source_path = default_param_store_path(draw, run_id=run_id, config=config)
     if parameter_source == "saved":
-        return read_param_store(source_path).store, "saved", source_path
-    return recover_param_store_session(source_path), "recovery", source_path
+        loaded = read_param_store(source_path)
+        return loaded.store, loaded.load_state, "saved", source_path
+    loaded = recover_param_store_session(source_path)
+    return loaded.store, loaded.load_state, "recovery", source_path
 
 
 def _attempt_render_dependency_cleanup(
@@ -256,7 +262,7 @@ class RenderSession:
         if config is not None and config_path is not None:
             raise ValueError("config と config_path は同時に指定できません")
         effective_config = load_runtime_config(config_path) if config is None else config
-        store, normalized_source, store_path = _load_parameter_store(
+        store, parameter_load_state, normalized_source, store_path = _load_parameter_store(
             draw,
             parameter_source=parameter_source,
             run_id=run_id,
@@ -282,7 +288,7 @@ class RenderSession:
             config=effective_config,
             parameter_source=normalized_source,
             parameter_store_path=store_path,
-            parameter_load_provenance=store.load_provenance,
+            parameter_load_provenance=parameter_load_state.provenance,
             seed=seed,
         )
         session_definitions = authoring_definitions_for_draw(
@@ -311,7 +317,7 @@ class RenderSession:
                 effective_config=effective_config,
                 parameter_source=normalized_source,
                 parameter_store_path=store_path,
-                parameter_load_provenance=store.load_provenance,
+                parameter_load_state=parameter_load_state,
                 provenance=provenance_builder.session,
             )
         except BaseException as error:

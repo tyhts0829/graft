@@ -48,12 +48,12 @@ from .reconcile_panel import (
 )
 from .session_state import MidiClearNotice, ParameterGuiSessionState
 from .shortcuts import resolve_shortcut_keys, shortcut_help_lines
-from .store_bridge import (
+from .table_commit import (
     clear_all_midi_assignments,
-    parameter_table_view_for_store,
     render_store_parameter_table,
     set_all_parameter_groups_collapsed,
 )
+from .table_view import parameter_table_view_for_store
 from .theme import PARAMETER_GUI_PALETTE, apply_parameter_gui_theme
 from .variation_controller import VariationController
 from .variation_panel import (
@@ -411,7 +411,7 @@ class ParameterGUI:
         if catalog is self._catalog:
             return
         self._catalog = catalog
-        self._session.invalidate_table()
+        self._session.replace_catalog(catalog)
 
     def _initialize(
         self,
@@ -466,7 +466,10 @@ class ParameterGUI:
         self._history_key_y = 0
         self._shortcut_modifier_mask = 0
         self._shortcut_shift_mask = 0
-        self._session = ParameterGuiSessionState.for_store(store)
+        self._session = ParameterGuiSessionState.for_store(
+            store,
+            catalog=self._catalog,
+        )
         self._title = title
         self._ui_scale = ui_scale
         self._font_size_base_px = (
@@ -680,7 +683,7 @@ class ParameterGUI:
         scope = controller.scope_summary(
             parameter_table_view_for_store(
                 self._store,
-                catalog=self._catalog,
+                cache=self._session.table_cache,
                 show_inactive_params=bool(self._session.show_inactive_parameters),
                 filter_state=self._session.filter_state,
                 error_keys=self._session.error_keys,
@@ -1132,7 +1135,7 @@ class ParameterGUI:
 
         view = parameter_table_view_for_store(
             self._store,
-            catalog=self._catalog,
+            cache=self._session.table_cache,
             show_inactive_params=bool(self._session.show_inactive_parameters),
             filter_state=state,
             error_keys=self._session.error_keys,
@@ -1635,7 +1638,7 @@ class ParameterGUI:
 
         session = getattr(self, "_session", None)
         if isinstance(session, ParameterGuiSessionState):
-            session.widgets.clear()
+            session.close()
 
         errors = CleanupErrors()
 

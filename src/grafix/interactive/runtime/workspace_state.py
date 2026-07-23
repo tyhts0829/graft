@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from grafix.core.runtime_config import RuntimeConfig
 from grafix.file_io import atomic_write_text
 from grafix.export.output_paths import output_path_for_draw
 from grafix.core.value_validation import finite_real
@@ -68,11 +69,18 @@ def _validate_rect(rect: WindowRect, *, key: str) -> None:
 def default_workspace_state_path(
     draw: Callable[[float], object],
     *,
+    config: RuntimeConfig,
     run_id: str | None = None,
 ) -> Path:
     """draw の sketch/run identity に対応する保存先を返す。"""
 
-    return output_path_for_draw(kind="workspace", ext="json", draw=draw, run_id=run_id)
+    return output_path_for_draw(
+        kind="workspace",
+        ext="json",
+        draw=draw,
+        run_id=run_id,
+        config=config,
+    )
 
 
 def _rect_to_payload(rect: WindowRect | None) -> dict[str, int] | None:

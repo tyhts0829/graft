@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping, Sequence
-from typing import assert_never
+from typing import Literal, assert_never
 
 from grafix.core.operation_selector import (
     decode_selector_param_key,
@@ -307,6 +307,305 @@ def _selector_rows_for_site(
     return site_rows
 
 
+def _kwargs_for_rows(
+    rows: Sequence[ParameterRow],
+    *,
+    last_effective_by_key: Mapping[ParameterKey, object] | None,
+    explicit_key_by_site: Mapping[tuple[str, str], str | int] | None,
+) -> list[tuple[str, str]]:
+    """同じ呼び出しに属する rows を順序付き kwargs へ変換する。"""
+
+    row0 = rows[0]
+    kwargs = [
+        (
+            row.arg,
+            _py_literal(
+                _effective_or_ui_value(
+                    row,
+                    last_effective_by_key=last_effective_by_key,
+                )
+            ),
+        )
+        for row in rows
+    ]
+    return _with_explicit_key(
+        kwargs,
+        op=row0.op,
+        site_id=row0.site_id,
+        explicit_key_by_site=explicit_key_by_site,
+    )
+
+
+def _first_raw_label(
+    rows: Sequence[ParameterRow],
+    raw_label_by_site: Mapping[tuple[str, str], str] | None,
+) -> str:
+    """rows の順で最初に見つかる空でない生ラベルを返す。"""
+
+    if raw_label_by_site is None:
+        return ""
+    for row in rows:
+        raw_label = raw_label_by_site.get((row.op, row.site_id))
+        if raw_label is not None and raw_label.strip():
+            return raw_label.strip()
+    return ""
+
+
+def _labeled_prefix(
+    namespace: str,
+    rows: Sequence[ParameterRow],
+    *,
+    raw_label_by_site: Mapping[tuple[str, str], str] | None,
+    omit_label: str | None = None,
+) -> str:
+    """raw label を反映した ``P.`` / ``G.`` / ``E.`` prefix を返す。"""
+
+    raw_label = _first_raw_label(rows, raw_label_by_site)
+    if not raw_label or raw_label == omit_label:
+        return f"{namespace}."
+    return f"{namespace}(name={_py_literal(raw_label)})."
+
+
+def _operation_call_for_rows(
+    rows: Sequence[ParameterRow],
+    indexed_rows: Sequence[ParameterRow],
+    *,
+    selector_group_kind: Literal["primitive", "effect"],
+    catalog: ParameterGuiCatalog,
+    last_effective_by_key: Mapping[ParameterKey, object] | None,
+    explicit_key_by_site: Mapping[tuple[str, str], str | int] | None,
+) -> tuple[str, list[tuple[str, str]], str | None]:
+    """通常 operation/selector を公開 call 名、kwargs、任意 NOTE へ変換する。"""
+
+    row0 = rows[0]
+    if selector_kind(row0.op) == selector_group_kind:
+        selector_rows = _selector_rows_for_site(
+            indexed_rows,
+            op=row0.op,
+            site_id=row0.site_id,
+        )
+        kwargs, note = _selector_kwargs(
+            selector_rows,
+            catalog=catalog,
+            op=row0.op,
+            site_id=row0.site_id,
+            last_effective_by_key=last_effective_by_key,
+            explicit_key_by_site=explicit_key_by_site,
+        )
+        return "select", kwargs, note
+    return (
+        row0.op,
+        _kwargs_for_rows(
+            rows,
+            last_effective_by_key=last_effective_by_key,
+            explicit_key_by_site=explicit_key_by_site,
+        ),
+        None,
+    )
+
+
+def _emit_style_snippet(
+    rows: Sequence[ParameterRow],
+    *,
+    last_effective_by_key: Mapping[ParameterKey, object] | None,
+    raw_label_by_site: Mapping[tuple[str, str], str] | None,
+    explicit_key_by_site: Mapping[tuple[str, str], str | int] | None,
+) -> str:
+    """global/layer style block の未インデントコードを返す。"""
+
+    style_rows = [row for row in rows if row.op == STYLE_OP]
+    layer_rows = [row for row in rows if row.op == LAYER_STYLE_OP]
+    by_arg = {row.arg: row for row in style_rows}
+    global_items: list[tuple[str, str]] = []
+    if STYLE_BACKGROUND_COLOR in by_arg:
+        rgb255 = validate_rgb255(
+            _effective_or_ui_value(
+                by_arg[STYLE_BACKGROUND_COLOR],
+                last_effective_by_key=last_effective_by_key,
+            )
+        )
+        global_items.append(("background_color", _py_literal(rgb255_to_rgb01(rgb255))))
+    if STYLE_GLOBAL_THICKNESS in by_arg:
+        thickness = _effective_or_ui_value(
+            by_arg[STYLE_GLOBAL_THICKNESS],
+            last_effective_by_key=last_effective_by_key,
+        )
+        global_items.append(("line_thickness", _py_literal(thickness)))
+    if STYLE_GLOBAL_LINE_COLOR in by_arg:
+        rgb255 = validate_rgb255(
+            _effective_or_ui_value(
+                by_arg[STYLE_GLOBAL_LINE_COLOR],
+                last_effective_by_key=last_effective_by_key,
+            )
+        )
+        global_items.append(("line_color", _py_literal(rgb255_to_rgb01(rgb255))))
+
+    output_lines: list[str] = []
+    if global_items:
+        output_lines.append("# --- run(...) ---")
+        output_lines.extend(f"{key}={value}," for key, value in global_items)
+
+    layer_by_site: dict[str, list[ParameterRow]] = {}
+    for row in layer_rows:
+        layer_by_site.setdefault(row.site_id, []).append(row)
+
+    named_layer_blocks: list[list[str]] = []
+    unnamed_layer_site_ids: list[str] = []
+    for site_id, site_rows in layer_by_site.items():
+        layer_name = _first_raw_label(site_rows, raw_label_by_site)
+        if not layer_name:
+            unnamed_layer_site_ids.append(site_id)
+            continue
+
+        by_arg = {row.arg: row for row in site_rows}
+        layer_items: list[tuple[str, str]] = []
+        if LAYER_STYLE_LINE_COLOR in by_arg:
+            rgb255 = validate_rgb255(
+                _effective_or_ui_value(
+                    by_arg[LAYER_STYLE_LINE_COLOR],
+                    last_effective_by_key=last_effective_by_key,
+                )
+            )
+            layer_items.append(("color", _py_literal(rgb255_to_rgb01(rgb255))))
+        if LAYER_STYLE_LINE_THICKNESS in by_arg:
+            thickness = _effective_or_ui_value(
+                by_arg[LAYER_STYLE_LINE_THICKNESS],
+                last_effective_by_key=last_effective_by_key,
+            )
+            layer_items.append(("thickness", _py_literal(thickness)))
+        layer_items = _with_explicit_key(
+            layer_items,
+            op=LAYER_STYLE_OP,
+            site_id=site_id,
+            explicit_key_by_site=explicit_key_by_site,
+        )
+        if layer_items:
+            named_layer_blocks.append(
+                [
+                    "# --- L(name=...).layer(..., color/thickness) ---",
+                    f"# {layer_name}: paste into `L(name={_py_literal(layer_name)}).layer(...)`",
+                    *[f"{key}={value}," for key, value in layer_items],
+                ]
+            )
+
+    if named_layer_blocks:
+        if output_lines:
+            output_lines.append("")
+        output_lines.extend(named_layer_blocks[0])
+        for block_lines in named_layer_blocks[1:]:
+            output_lines.append("")
+            output_lines.extend(block_lines[1:])
+
+    if unnamed_layer_site_ids:
+        if output_lines:
+            output_lines.append("")
+        output_lines.append(
+            "# NOTE: 名前の無い layer_style は snippet に出しません。"
+            "（`L(name=...).layer(...)` でラベル付けすると出ます）"
+        )
+    return "\n".join(output_lines)
+
+
+def _emit_preset_snippet(
+    rows: Sequence[ParameterRow],
+    *,
+    catalog: ParameterGuiCatalog,
+    last_effective_by_key: Mapping[ParameterKey, object] | None,
+    raw_label_by_site: Mapping[tuple[str, str], str] | None,
+    explicit_key_by_site: Mapping[tuple[str, str], str | int] | None,
+) -> str:
+    """preset block の未インデントコードを返す。"""
+
+    row0 = rows[0]
+    entry = catalog.resolve(row0.op)
+    if entry is None or entry.kind != "preset":
+        raise LookupError(f"preset catalog entry が見つかりません: {row0.op!r}")
+    prefix = _labeled_prefix(
+        "P",
+        rows,
+        raw_label_by_site=raw_label_by_site,
+        omit_label=entry.call_name,
+    )
+    kwargs = _kwargs_for_rows(
+        rows,
+        last_effective_by_key=last_effective_by_key,
+        explicit_key_by_site=explicit_key_by_site,
+    )
+    return _format_kwargs_call(prefix, op=entry.call_name, kwargs=kwargs)
+
+
+def _emit_primitive_snippet(
+    rows: Sequence[ParameterRow],
+    indexed_rows: Sequence[ParameterRow],
+    *,
+    catalog: ParameterGuiCatalog,
+    last_effective_by_key: Mapping[ParameterKey, object] | None,
+    raw_label_by_site: Mapping[tuple[str, str], str] | None,
+    explicit_key_by_site: Mapping[tuple[str, str], str | int] | None,
+) -> str:
+    """primitive block の未インデントコードまたは selector NOTE を返す。"""
+
+    prefix = _labeled_prefix("G", rows, raw_label_by_site=raw_label_by_site)
+    call_op, kwargs, note = _operation_call_for_rows(
+        rows,
+        indexed_rows,
+        selector_group_kind="primitive",
+        catalog=catalog,
+        last_effective_by_key=last_effective_by_key,
+        explicit_key_by_site=explicit_key_by_site,
+    )
+    return note if note is not None else _format_kwargs_call(prefix, op=call_op, kwargs=kwargs)
+
+
+def _emit_effect_chain_snippet(
+    rows: Sequence[ParameterRow],
+    indexed_rows: Sequence[ParameterRow],
+    *,
+    catalog: ParameterGuiCatalog,
+    last_effective_by_key: Mapping[ParameterKey, object] | None,
+    step_info_by_site: Mapping[tuple[str, str], tuple[str, int]] | None,
+    raw_label_by_site: Mapping[tuple[str, str], str] | None,
+    explicit_key_by_site: Mapping[tuple[str, str], str | int] | None,
+) -> str:
+    """effect-chain block の未インデントコードまたは selector NOTE を返す。"""
+
+    steps: dict[tuple[int, str, str], list[ParameterRow]] = {}
+    for row in rows:
+        step_index = 10**9
+        if step_info_by_site is not None:
+            info = step_info_by_site.get((row.op, row.site_id))
+            if info is not None:
+                _chain_id, step_index = info
+        steps.setdefault((step_index, row.op, row.site_id), []).append(row)
+    if not steps:
+        return ""
+
+    prefix = _labeled_prefix("E", rows, raw_label_by_site=raw_label_by_site)
+    output_lines: list[str] = []
+    for index, ((_step_index, _op, _site_id), step_rows) in enumerate(sorted(steps.items())):
+        call_op, kwargs, note = _operation_call_for_rows(
+            step_rows,
+            indexed_rows,
+            selector_group_kind="effect",
+            catalog=catalog,
+            last_effective_by_key=last_effective_by_key,
+            explicit_key_by_site=explicit_key_by_site,
+        )
+        if note is not None:
+            return note
+        if index == 0:
+            output_lines.extend(_format_kwargs_call(prefix, op=call_op, kwargs=kwargs).splitlines())
+            continue
+
+        output_lines[-1] += f".{call_op}("
+        call_lines = _format_kwargs_call("", op=call_op, kwargs=kwargs).splitlines()
+        if len(call_lines) == 1:
+            output_lines[-1] = output_lines[-1].rstrip("(") + "()"
+        else:
+            output_lines.extend(call_lines[1:])
+    return "\n".join(output_lines)
+
+
 def snippet_for_block(
     block: GroupBlockLayout,
     indexed_rows: Sequence[ParameterRow],
@@ -357,285 +656,43 @@ def snippet_for_block(
     rows = [indexed_rows[item.row_index] for item in block.items]
 
     if group_type is GroupType.STYLE:
-        # Style は 1 ヘッダ内に「global + layer_style」が混ざるので、出力は中で分割する。
-        style_rows = [r for r in rows if r.op == STYLE_OP]
-        layer_rows = [r for r in rows if r.op == LAYER_STYLE_OP]
-
-        # --- global style ---
-        global_items: list[tuple[str, str]] = []
-        by_arg = {r.arg: r for r in style_rows}
-        if STYLE_BACKGROUND_COLOR in by_arg:
-            # UI は 0-255 の RGB を持つので、スニペットでは 0-1 の浮動小数へ変換して貼れる形にする。
-            bg255 = validate_rgb255(
-                _effective_or_ui_value(
-                    by_arg[STYLE_BACKGROUND_COLOR], last_effective_by_key=last_effective_by_key
-                )
-            )
-            global_items.append(("background_color", _py_literal(rgb255_to_rgb01(bg255))))
-        if STYLE_GLOBAL_THICKNESS in by_arg:
-            thickness = _effective_or_ui_value(
-                by_arg[STYLE_GLOBAL_THICKNESS], last_effective_by_key=last_effective_by_key
-            )
-            global_items.append(("line_thickness", _py_literal(thickness)))
-        if STYLE_GLOBAL_LINE_COLOR in by_arg:
-            line255 = validate_rgb255(
-                _effective_or_ui_value(
-                    by_arg[STYLE_GLOBAL_LINE_COLOR], last_effective_by_key=last_effective_by_key
-                )
-            )
-            global_items.append(("line_color", _py_literal(rgb255_to_rgb01(line255))))
-
-        # --- layer style (site_id ごと) ---
-        layer_by_site: dict[str, list[ParameterRow]] = {}
-        for r in layer_rows:
-            layer_by_site.setdefault(r.site_id, []).append(r)
-
-        style_output_lines: list[str] = []
-
-        if global_items:
-            # `run(..., background_color=..., line_thickness=..., line_color=...)` の引数部分だけを出す。
-            style_output_lines.append("# --- run(...) ---")
-            style_output_lines.extend(f"{k}={v}," for k, v in global_items)
-
-        named_layer_blocks: list[list[str]] = []
-        unnamed_layer_site_ids: list[str] = []
-
-        for site_id, site_rows in layer_by_site.items():
-            layer_raw_name = ""
-            if raw_label_by_site is not None:
-                # layer_style は op が固定（LAYER_STYLE_OP）で、site_id ごとにラベルが付く。
-                raw_label = raw_label_by_site.get((LAYER_STYLE_OP, site_id))
-                if raw_label is not None:
-                    layer_raw_name = raw_label.strip()
-
-            if not layer_raw_name:
-                unnamed_layer_site_ids.append(site_id)
-                continue
-
-            # 行は (arg の並び) が欲しいので明示で揃える。
-            by_arg2 = {r.arg: r for r in site_rows}
-
-            layer_items: list[tuple[str, str]] = []
-            if LAYER_STYLE_LINE_COLOR in by_arg2:
-                # layer_style の color/thickness も 0-1 の RGB に寄せて出す。
-                rgb255 = validate_rgb255(
-                    _effective_or_ui_value(
-                        by_arg2[LAYER_STYLE_LINE_COLOR], last_effective_by_key=last_effective_by_key
-                    )
-                )
-                layer_items.append(("color", _py_literal(rgb255_to_rgb01(rgb255))))
-            if LAYER_STYLE_LINE_THICKNESS in by_arg2:
-                th = _effective_or_ui_value(
-                    by_arg2[LAYER_STYLE_LINE_THICKNESS], last_effective_by_key=last_effective_by_key
-                )
-                layer_items.append(("thickness", _py_literal(th)))
-            layer_items = _with_explicit_key(
-                layer_items,
-                op=LAYER_STYLE_OP,
-                site_id=site_id,
-                explicit_key_by_site=explicit_key_by_site,
-            )
-
-            if layer_items:
-                named_layer_blocks.append(
-                    [
-                        "# --- L(name=...).layer(..., color/thickness) ---",
-                        f"# {layer_raw_name}: paste into `L(name={_py_literal(layer_raw_name)}).layer(...)`",
-                        *[f"{k}={v}," for k, v in layer_items],
-                    ]
-                )
-
-        if named_layer_blocks:
-            if style_output_lines:
-                style_output_lines.append("")
-            # 先頭ブロックだけ “セクション見出し” を付けて、以降の繰り返しを減らす。
-            style_output_lines.extend(named_layer_blocks[0])
-            for block_lines in named_layer_blocks[1:]:
-                style_output_lines.append("")
-                style_output_lines.extend(block_lines[1:])
-
-        if unnamed_layer_site_ids:
-            if style_output_lines:
-                style_output_lines.append("")
-            style_output_lines.append(
-                "# NOTE: 名前の無い layer_style は snippet に出しません。"
-                "（`L(name=...).layer(...)` でラベル付けすると出ます）"
-            )
-
-        if not style_output_lines:
-            return ""
-        return _indent_code("\n".join(style_output_lines).rstrip() + "\n")
-
-    if group_type is GroupType.PRESET:
-        row0 = rows[0]
-        op = row0.op
-        # parameter identity と公開 callable 名は catalog projection で分離する。
-        preset_entry = selected_catalog.resolve(op)
-        if preset_entry is None or preset_entry.kind != "preset":
-            raise LookupError(f"preset catalog entry が見つかりません: {op!r}")
-        call_name = preset_entry.call_name
-        prefix = "P."
-        if raw_label_by_site is not None:
-            raw_label = raw_label_by_site.get((op, row0.site_id))
-            if raw_label is not None:
-                raw_label_s = raw_label.strip()
-                if raw_label_s and raw_label_s != call_name:
-                    prefix = f"P(name={_py_literal(raw_label_s)})."
-        kwargs = _with_explicit_key(
-            [
-                (
-                    r.arg,
-                    _py_literal(
-                        _effective_or_ui_value(
-                            r,
-                            last_effective_by_key=last_effective_by_key,
-                        )
-                    ),
-                )
-                for r in rows
-            ],
-            op=op,
-            site_id=row0.site_id,
+        code = _emit_style_snippet(
+            rows,
+            last_effective_by_key=last_effective_by_key,
+            raw_label_by_site=raw_label_by_site,
             explicit_key_by_site=explicit_key_by_site,
         )
-        return _indent_code(
-            _format_kwargs_call(prefix, op=call_name, kwargs=kwargs).rstrip() + "\n"
-        )
-
-    if group_type is GroupType.PRIMITIVE:
-        row0 = rows[0]
-        op = row0.op
-        prefix = "G."
-        if raw_label_by_site is not None:
-            raw_label = raw_label_by_site.get((op, row0.site_id))
-            if raw_label is not None:
-                raw_label_s = raw_label.strip()
-                if raw_label_s:
-                    prefix = f"G(name={_py_literal(raw_label_s)})."
-        if selector_kind(op) == "primitive":
-            selector_rows = _selector_rows_for_site(
-                indexed_rows,
-                op=op,
-                site_id=row0.site_id,
-            )
-            kwargs, note = _selector_kwargs(
-                selector_rows,
-                catalog=selected_catalog,
-                op=op,
-                site_id=row0.site_id,
-                last_effective_by_key=last_effective_by_key,
-                explicit_key_by_site=explicit_key_by_site,
-            )
-            if note is not None:
-                return _indent_code(note.rstrip() + "\n")
-            return _indent_code(
-                _format_kwargs_call(prefix, op="select", kwargs=kwargs).rstrip() + "\n"
-            )
-        kwargs = _with_explicit_key(
-            [
-                (
-                    r.arg,
-                    _py_literal(
-                        _effective_or_ui_value(
-                            r,
-                            last_effective_by_key=last_effective_by_key,
-                        )
-                    ),
-                )
-                for r in rows
-            ],
-            op=op,
-            site_id=row0.site_id,
+    elif group_type is GroupType.PRESET:
+        code = _emit_preset_snippet(
+            rows,
+            catalog=selected_catalog,
+            last_effective_by_key=last_effective_by_key,
+            raw_label_by_site=raw_label_by_site,
             explicit_key_by_site=explicit_key_by_site,
         )
-        return _indent_code(_format_kwargs_call(prefix, op=op, kwargs=kwargs).rstrip() + "\n")
+    elif group_type is GroupType.PRIMITIVE:
+        code = _emit_primitive_snippet(
+            rows,
+            indexed_rows,
+            catalog=selected_catalog,
+            last_effective_by_key=last_effective_by_key,
+            raw_label_by_site=raw_label_by_site,
+            explicit_key_by_site=explicit_key_by_site,
+        )
+    elif group_type is GroupType.EFFECT_CHAIN:
+        code = _emit_effect_chain_snippet(
+            rows,
+            indexed_rows,
+            catalog=selected_catalog,
+            last_effective_by_key=last_effective_by_key,
+            step_info_by_site=step_info_by_site,
+            raw_label_by_site=raw_label_by_site,
+            explicit_key_by_site=explicit_key_by_site,
+        )
+    else:
+        assert_never(group_type)
 
-    if group_type is GroupType.EFFECT_CHAIN:
-        prefix = "E."
-        if raw_label_by_site is not None:
-            # effect_chain は “チェーン全体” に対する名前として、最初に見つかったラベルを採用する。
-            for r in rows:
-                raw_label = raw_label_by_site.get((r.op, r.site_id))
-                if raw_label is None:
-                    continue
-                raw_label_s = raw_label.strip()
-                if not raw_label_s:
-                    continue
-                prefix = f"E(name={_py_literal(raw_label_s)})."
-                break
-
-        steps: dict[tuple[int, str, str], list[ParameterRow]] = {}
-        for r in rows:
-            # step_info が無い場合でも決定的に並ぶよう、未指定は大きい index に寄せて末尾へ回す。
-            step_index = 10**9
-            if step_info_by_site is not None:
-                info = step_info_by_site.get((r.op, r.site_id))
-                if info is not None:
-                    _cid, idx = info
-                    step_index = idx
-            key = (step_index, r.op, r.site_id)
-            steps.setdefault(key, []).append(r)
-
-        if not steps:
-            return ""
-
-        out_lines: list[str] = []
-        for i, ((_step_index, op, _site_id), step_rows) in enumerate(
-            sorted(steps.items(), key=lambda x: x[0])
-        ):
-            if selector_kind(op) == "effect":
-                selector_rows = _selector_rows_for_site(
-                    indexed_rows,
-                    op=op,
-                    site_id=_site_id,
-                )
-                kwargs, note = _selector_kwargs(
-                    selector_rows,
-                    catalog=selected_catalog,
-                    op=op,
-                    site_id=_site_id,
-                    last_effective_by_key=last_effective_by_key,
-                    explicit_key_by_site=explicit_key_by_site,
-                )
-                if note is not None:
-                    return _indent_code(note.rstrip() + "\n")
-                call_op = "select"
-            else:
-                kwargs = _with_explicit_key(
-                    [
-                        (
-                            r.arg,
-                            _py_literal(
-                                _effective_or_ui_value(
-                                    r,
-                                    last_effective_by_key=last_effective_by_key,
-                                )
-                            ),
-                        )
-                        for r in step_rows
-                    ],
-                    op=op,
-                    site_id=_site_id,
-                    explicit_key_by_site=explicit_key_by_site,
-                )
-                call_op = op
-            if i == 0:
-                call = _format_kwargs_call(prefix, op=call_op, kwargs=kwargs)
-                out_lines.extend(call.splitlines())
-                continue
-
-            # 2 ステップ目以降は `.op(` を行末へ足して “メソッドチェーン” にする。
-            # `kwargs` が空のときは `.op()` に置き換える（括弧の対応を崩さないため）。
-            out_lines[-1] = out_lines[-1] + f".{call_op}("
-            call_lines = _format_kwargs_call("", op=call_op, kwargs=kwargs).splitlines()
-            if len(call_lines) == 1:
-                out_lines[-1] = out_lines[-1].rstrip("(") + "()"
-                continue
-            out_lines.extend(call_lines[1:])
-
-        return _indent_code("\n".join(out_lines).rstrip() + "\n")
-
-    assert_never(group_type)
+    return "" if not code else _indent_code(code.rstrip() + "\n")
 
 
 __all__ = ["snippet_for_block"]

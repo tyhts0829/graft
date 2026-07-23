@@ -12,7 +12,7 @@ from unittest.mock import patch
 import numpy as np
 
 from grafix.core.authoring_definitions import AuthoringDefinitionsSnapshot
-from grafix.core.authoring_loader import authoring_definitions_for_draw
+from grafix.authoring_loader import authoring_definitions_for_draw
 from grafix.core.builtins import (
     ensure_builtin_effect_registered,
     ensure_builtin_primitive_registered,
@@ -42,9 +42,8 @@ from grafix.devtools.benchmarks.schema import (
 from grafix.interactive.gl import draw_renderer as renderer_module
 from grafix.interactive.gl.index_buffer import build_line_indices_and_stats
 from grafix.interactive.parameter_gui.catalog import ParameterGuiCatalog
-from grafix.interactive.parameter_gui.store_bridge import (
-    clear_parameter_table_model_cache,
-    parameter_table_model_build_count,
+from grafix.interactive.parameter_gui.table_view import (
+    ParameterTableViewCache,
     parameter_table_view_for_store,
 )
 from grafix.interactive.runtime.perf import PerfCollector
@@ -291,9 +290,9 @@ def run_interactive_slider_scenario(
 
     ensure_builtin_primitive_registered("line")
     ensure_builtin_effect_registered("scale")
-    clear_parameter_table_model_cache()
 
     store = parameter_store_fixture(rows=scenario.rows)
+    table_cache = ParameterTableViewCache(scenario.gui_catalog)
     target_meta = store.get_meta(_SLIDER_KEY)
     if target_meta is None:
         raise RuntimeError("UX-01 slider parameter metadata is missing")
@@ -357,7 +356,7 @@ def run_interactive_slider_scenario(
         gui_started = time.perf_counter_ns()
         view = parameter_table_view_for_store(
             store,
-            catalog=scenario.gui_catalog,
+            cache=table_cache,
             show_inactive_params=True,
         )
         visible_rows = int(sum(view.visible_mask))
@@ -494,7 +493,7 @@ def run_interactive_slider_scenario(
     )
     max_revision_lag = max(revision_lags, default=0)
     min_revision_lag = min(revision_lags, default=0)
-    model_builds = int(parameter_table_model_build_count())
+    model_builds = int(table_cache.model_build_count)
     dynamic_mesh_entries = len(renderer._dynamic_meshes)
     latency_distribution = summarize_distribution(input_to_present_ms)
     latency_p95 = (

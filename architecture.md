@@ -11,7 +11,7 @@
 Grafix は、線の生成と変形を **不変な Geometry DAG** として記述し、必要な時点で
 `RealizedGeometry` へ評価する creative-coding toolkit である。
 
-設計の中心は次の五点にある。
+設計の中心は次の六点にある。
 
 1. `Geometry` は配列ではなく、operation、入力、引数、operation version を持つレシピである。
 2. evaluator、parameter schema、preset は session/generation ごとの immutable catalog に固定する。
@@ -20,6 +20,8 @@ Grafix は、線の生成と変形を **不変な Geometry DAG** として記述
    明示注入された dependency を借用し、standalone session は省略された dependency だけを所有する。
 5. coordinator は call order と配線だけを持ち、state mutation、encode、publish、window policy を
    それぞれの owner へ委譲する。
+6. filesystem 探索、Python import transaction、config discovery などの capability は top-level
+   infrastructure に置き、`core` には immutable plan/value と domain operation だけを残す。
 
 描画 style は Geometry から分離し、`Layer` が Geometry と色・線幅を束ねる。同じ Geometry を
 異なる style で描いても CPU の geometry cache を共有できる。
@@ -31,6 +33,8 @@ Grafix は、線の生成と変形を **不変な Geometry DAG** として記述
 | `grafix.api` | 公開 DSL (`G` / `E` / `L` / `P`)、`run`、`render`、`export` の facade / composition root |
 | `grafix.core` | Geometry、catalog、評価、parameters、immutable runtime/evaluation config の domain contract |
 | `grafix.core.geometry_kernels` | packed geometry、平面、grid、raster、marching、resample の数値 kernel |
+| `grafix.authoring_loader` | config authoring source の filesystem capture、candidate catalog 構築 |
+| `grafix._snapshot_import` | source bytes の一時 import、`sys.meta_path` / `sys.modules` transaction と共有 lock |
 | `grafix.runtime_config_loader` | YAML/package resource、CWD/HOME 探索、merge、path 解決 |
 | `grafix.parameter_storage` | ParamStore の非変更 read、明示 recovery、atomic commit |
 | `grafix.export` | 形式別 encode、出力 path、staging、no-clobber publish、provenance collection |
@@ -45,11 +49,14 @@ user sketch
     |
     v
 grafix.api -----------------------> grafix.interactive.runtime
-    |                                        |
-    |                                        +--> grafix.interactive leaf
-    |                                        +--> grafix.export
-    v                                        |
-grafix.core <--------------------------------+
+    |                 |                      |
+    |                 v                      +--> grafix.interactive leaf
+    |        grafix.authoring_loader         +--> grafix.export
+    |                 |                      |
+    |                 v                      +--> grafix._snapshot_import
+    |        grafix._snapshot_import         |
+    v                 |                      |
+grafix.core <----------+----------------------+
     ^
     |
 grafix.export
@@ -57,16 +64,33 @@ grafix.export
 
 - `core` は `api`、`export`、`interactive`、`runtime_config_loader`、`parameter_storage` に依存しない。
   また YAML/file 探索、ParamStore file mutation、Git subprocess、fsync、capture publish、出力 path
-  policy を持たない。
+  policy、candidate source の compile/exec を持たない。
+- config authoring の source 発見と bytes capture は `grafix.authoring_loader`、config authoring と
+  source reload が共有する一時 import transaction は `grafix._snapshot_import` が所有する。
 - `export` は `api` と `interactive` に依存しない。
 - `interactive` は `api` に依存しない。
 - `interactive/gl`、`interactive/midi`、`interactive/parameter_gui` は composition layer の
   `interactive.runtime` に逆依存しない。
 - `api` / `interactive.runtime` は必要な I/O を `runtime_config_loader` / `parameter_storage` に委譲し、
   これら top-level module だけが対応する core value/codec と filesystem policy を接続する。
+- `export` の output path helper は config を探索せず、composition root が確定した
+  `RuntimeConfig` を必須 keyword として受け取る。
 - `api` が外側の実装を組み立て、公開型と内部 protocol の変換を担当する。
 
 これらは `tests/architecture/test_dependency_boundaries.py` で検査する。
+
+### 2.1 import と facade の contract
+
+`grafix` と `grafix.api` は公開 identity を保った lazy facade である。`import grafix` だけでは API
+implementation group を読み込まず、`G` / `E` / `L` / `P` の参照も render、export、variation batch、
+interactive runner を初期化しない。`run` は callable wrapper の参照時ではなく呼び出し時に runner を
+読み込む。API の `render` / `export`、root の `export` / `cc` と同名の submodule が先に import
+されても、facade の公開名は module object に置き換わらず、常に同じ callable identity を返す。
+
+`grafix.core` の `__init__` は空の package boundary である。たとえば
+`import grafix.core.geometry` は `grafix.api`、`grafix.export`、`grafix.parameter_storage`、
+`grafix.runtime_config_loader` を初期化しない。core-only consumer が外側の capability を暗黙に取得する
+経路を作らない。この contract は isolated subprocess の import test で固定する。
 
 ## 3. Authoring declaration と immutable catalog
 
@@ -118,6 +142,24 @@ preset/operation は `run()`、`RenderSession`、対応する CLI が session sn
 型ではない。GUI も evaluator を保持しない `ParameterGuiCatalog` へ schema を射影する。selector は
 `ParameterOpSchema` だけを合成し、架空の evaluator を evaluation catalog へ登録しない。
 
+### 3.4 source capture と import transaction
+
+`core.authoring_definitions` は declaration、registration target、immutable snapshot だけを所有する。
+directory 探索、`read_bytes()`、candidate package の import は `grafix.authoring_loader` が担当し、
+確定した bytes を `AuthoringDefinitionsRecipe` として worker へ渡せる形にする。core 内には
+filesystem-aware authoring loader を置かない。
+
+`grafix._snapshot_import` は config authoring と source reload が共有する private infrastructure である。
+caller が作った `SnapshotImportPlan` に対してのみ synthetic namespace package と finder を installし、
+source bytes を `.pyc` を介さず compile/exec する。process-global な `sys.meta_path` / `sys.modules` の
+変更は一つの reentrant lock で直列化し、`BaseException` でも finder と未採用 candidate module を
+必ず除去する。
+
+config authoring は catalog snapshot 完成後に candidate module を除去する。source reload は採用済み
+callable が module globals を使えるよう last-good generation の module だけを保持し、rollback/交換時に
+共通 helper から除去する。source 発見、relative-import policy、catalog registration、generation の
+accept/rollback は各 caller に残し、低水準 import primitive へ混ぜない。
+
 ## 4. Geometry DAG と operation identity
 
 `core/geometry.py` の `Geometry` は次を持つ frozen node である。
@@ -160,6 +202,10 @@ Geometry 評価へ影響する `font_dirs` だけである。UI、MIDI、output 
 `grafix.core.runtime_config` が所有する。変更され得る font file 自体は context へ埋め込まず、lookup
 時点の `ExternalDependenciesFingerprint` として分離する。
 
+application entry point は `RuntimeConfig` を一度だけ解決し、output/parameter/video/workspace path の
+各 helper へ同じ value を `config=` で渡す。`export` package と path helper は ambient CWD/config
+discovery を行わないため、同一 process の二 session が異なる config を使っても相互汚染しない。
+
 CPU cache、inflight、`RealizedLayer`、GPU cache は同じ `GeometryCacheKey` を使う。
 
 ```text
@@ -199,7 +245,7 @@ RenderSession
   └─ RealizeSession (explicit dependency borrower)
 ```
 
-親 owner の終了順は `RealizeSession -> EvaluationResources -> RealizeCacheStore` である。interactive の
+親 owner の終了順は `RealizeSession -> RealizeCacheStore -> EvaluationResources` である。interactive の
 `SceneRunner` は generation をまたぐ一つの `RealizeCacheStore` を所有し、各 generation は
 一つの `EvaluationResources` と draft/final の `RealizeSession` を持つ。reload では新 generation
 を完成させてから交換し、旧子 session と resource を閉じる。cache store は `SceneRunner` 終了時
@@ -246,7 +292,15 @@ order、topology signature の immutable tuple だけを持ち、live `ParamStat
 - no-op command は revision/history/observer を進めない。
 - 一つの command の複数変更は revision/history/observer を一回に集約する。
 - GUI table は `TableRenderInput -> TableEdits` の pure boundary とし、renderer は store を変更しない。
-- `store_bridge` と controller が edit intent を command として commit する。
+- `source_badge.py` が effective source badge を導出し、`table_view.py` の
+  `ParameterTableViewCache` と query が immutable model/view を作り、
+  `table_commit.py` が edit intent を core command として commit する。
+
+`ParameterTableViewCache` は module-global service ではなく一つの `ParameterGuiSessionState` が所有する。
+catalog、model/view、base visibility、search corpus、build count はその instance に閉じる。catalog 交換と
+GUI close は当該 session の cache だけを clear し、別 GUI session の cache identity/build count を
+変更しない。query path は `cache=` を必須注入され、ambient catalog や global reset APIへ fallback
+しない。
 
 variation batch の一時評価は `ParamStore.begin_transient_rollback()` だけを使う。
 `ParamStoreRollback` は owner-bound、one-shot、opaque であり、正常・例外終了の双方で開始時の
@@ -260,13 +314,25 @@ known-operation schema snapshot を使う。direct writer と session finalizati
 
 `grafix.parameter_storage` が ParamStore の filesystem policy を所有し、三つの経路を混ぜない。
 
-- `read_param_store()` は missing/loaded/partial/invalid を `ParamStoreReadResult` で返し、原本を
-  rename、write、unlink しない。
+- `read_param_store()`、`recover_primary_param_store()`、`recover_param_store_session()` はすべて frozen
+  `ParamStoreLoadResult(store, status, load_state, error)` を返す。
+- `read_param_store()` は missing/loaded/partial/invalid を返し、原本を rename、write、unlink しない。
 - `recover_primary_param_store()` / `recover_param_store_session()` は明示的に recovery journal を選び、
   破損 file を quarantine し得る。
 - `write_param_store()` / `write_param_store_recovery()` は atomic write を行い、
   `finalize_parameter_session()` は既知 schema で prune した primary commit の成功後だけ recovery を
   削除する。
+
+`ParameterLoadState(provenance, diagnostics)` は I/O を持たない frozen value である。filesystem load の
+status/error とともに storage result が一 generation を表し、`ParamStore` / `ParamStoreRuntime` は
+provenance、diagnostics、accept command を持たない。この metadata は parameter persistence、history、
+adjustment snapshot、transient rollback に混入しない。
+
+interactive の `ParameterSession` は current `ParameterLoadState` を所有する。Keep/Discard は detached
+store と load state を束ねた新しい `ParamStoreLoadResult` を返し、session が一箇所で自身の store
+contents と load state の採用を揃える。capture/record/export は callable provider から frame ごとの current
+provenance を取得する。一方、headless `RenderSession` は構築時 result の state を
+`RenderSessionMetadata` と capture provenance に固定し、後から storage/runtime metadata を読まない。
 
 codec と `ParamStore` domain は `core.parameters` に残り、filesystem mutation は持たない。
 
@@ -282,17 +348,24 @@ codec と `ParamStore` domain は `core.parameters` に残り、filesystem mutat
 4. scene aggregate transaction 内で各 Geometry を評価する。
 5. resource limit を満たした場合だけ新 cache entry を commitし、`RealizedLayer` を返す。
 
-`RenderSession` は config、authoring definitions、ParamStore、final quality の evaluation context、
-cache/resource を構築時に固定する。`render(t)` は immutable `Frame` を返すだけで filesystem I/O を
-行わない。複数 frame では一つの `RenderSession` を使って cache/resource を再利用し、単発の
-`grafix.render()` は内部で session を作って必ず閉じる。
+`RenderSession` は config、authoring definitions、ParamStore とその構築時 `ParameterLoadState`、final
+quality の evaluation context、cache/resource を構築時に固定する。`render(t)` は immutable `Frame` を
+返すだけで filesystem I/O を行わない。複数 frame では一つの `RenderSession` を使って cache/resource
+を再利用し、単発の `grafix.render()` は内部で session を作って必ず閉じる。
 
-公開 property は `options`、`param_store`、`config`、`runtime_limits`、`metadata` だけである。
-`OperationCatalog`、`EvaluationContext`、`RealizeSession`、cache/resource child owner は公開せず、
+公開 property は `options`、`param_store`、`config`、`runtime_limits`、`metadata` などの immutable
+metadata/session view に限る。派生 view の追加は妨げないが、`OperationCatalog`、`EvaluationContext`、
+`RealizeSession`、cache/resource のように独自の `close()` capability を持つ child owner は公開せず、
 caller が lifetime や evaluator capability を横取りできないようにする。
 
 `grafix.export(frame, path)` は公開 `Frame` を export-side `CaptureFrame` contract へ変換し、
 encode/publish を実行する。render と保存を分けるため、同じ frame を複数形式へ安全に出力できる。
+
+named variation batch でも API と export の transaction owner を分ける。`api.variation_batch` は request
+順、unknown variation、item ごとの transient rollback、render/capture callback と partial failure 化を
+担当する。`export.variation_batch` は private workspace、contact sheet/summary encode、manifest path
+relocation、no-clobber generation retry、overwrite 時の旧 generation 復元を一括所有する。API は
+fsync/link/replace/staging codec を実装せず、export は API/interactive を importしない。
 
 ## 8. Interactive composition
 
@@ -303,7 +376,8 @@ private `_InteractiveApplication` の実行だけを行う。`_InteractiveApplic
 error を優先する。主な owner は次の通り。
 
 - `_InteractiveApplication`: workspace、parameter、MIDI、DWS、GUI、activation、window loop の lifetime
-- `ParameterSession`: load/recovery、history、autosave、known-operation schema、終了時 persist
+- `ParameterSession`: current `ParameterLoadState`、load/recovery decision、history、autosave、
+  known-operation schema、終了時 persist
 - `WorkspaceWindowController`: 二 window の配置、visibility、workspace persistence
 - `DrawWindowSystem`: renderer、SceneRunner、input/reload と frame call order の配線
 - `SceneRunner`: sync/mp draw、generation、draft/final evaluation、last-good scene。background 実装は
@@ -316,7 +390,8 @@ error を優先する。主な owner は次の通り。
 - `CaptureQueue`: immutable capture intent、件数/geometry-byte admission、worker drain
 - `RecordingSession`: transport pause/restore、window size、video staging/publish lifecycle
 - `ParameterGUI`: backend frame と panel/controller の順序
-- `VariationController` / `RangeEditController` / `ParameterGuiSessionState`: GUI domain mutation
+- `VariationController` / `RangeEditController`: GUI domain mutation
+- `ParameterGuiSessionState`: catalog 固定の `ParameterTableViewCache`、current table view、widget state
 - `WidgetSessionState`: GUI instance ごとの font/choice filter と snippet popup text/focus。widgets/table は
   この state を明示的に受け取り、module-global mutable state を持たない
 
@@ -330,21 +405,39 @@ viewport、RGB readback と GPU cache を所有し、runtime が `.ctx` へ到�
 diagnostics、transport、telemetry の immutable/Protocol contract は `interactive/` 直下に置き、
 GL/MIDI/GUI leaf が runtime concrete class に依存しない。
 
+variation thumbnail は GUI leaf に export service を持ち込まない。GUI は `Callable[[str], Path]` の
+capture contract と preview 表示だけを扱う。`interactive.runtime.variation_thumbnail_capture` が
+`CaptureService`、live frame provider、base path、canvas size を受け、要求のたびに current frame を
+取得して no-clobber PNG capture へ適合する。古い frame を closure に固定せず、portable filename
+policy は export の variation batch と共有する。
+
 source reload は entry source と、静的な package-relative import で到達する local helper の bytes
 だけを candidate generation として隔離実行し、draw signature、declaration snapshot、worker startup
 の成功後にだけ交換する。到達しない `.py` は監視せず、同じ directory の helper を absolute import
 することも許さない。失敗時は last-good callable、catalog、worker、frame、ParamStore を維持する。
+candidate import は config authoring と同じ `_snapshot_import` lock/cleanup primitive を使うため、initial
+authoring load と reload が process-global finder/module stateを並行更新しない。
 
 ## 9. Capture / export infrastructure
 
 core に残すのは immutable provenance/manifest value と codec だけである。source/Git/package の
 収集、output path policy、staging、fsync、publish/rollback は `export` が所有する。
 
+output path policy はすでに解決された `RuntimeConfig` を入力とする application policy であり、
+`output_path_for_draw()`、`default_param_store_path()`、`default_png_output_path()`、
+`default_video_output_path()`、`default_workspace_state_path()` は `config=` を必須とする。export layer
+から `runtime_config_loader` へ逆流せず、config discovery は runner/render/CLI の入口で一度だけ行う。
+
 `CaptureService` は完成した frame snapshot を形式別 encoder へ渡す。`CaptureStaging` が private
 sibling directory と work path を所有し、`publish_capture_generation()` が artifact、manifest、
 layer-split G-code family を一 generation として no-clobber publish する。allocation 後の late
 collision は完成済み staging を再 encode せず、別 version path で bounded retry する。失敗時は
 今回の inode だけを rollback する。
+
+variation batch は directory 全体を一 generation として扱う。thumbnail/manifest、contact sheet、
+structured summary を private workspace で完成させ、manifest 内 path を公開先へ relocation してから
+directory を publish する。no-clobber の late collision は次の generation path を選び、overwrite
+publish failure は旧 directory generation を復元する。
 
 interactive の PNG/G-code は `ExportJobSystem` の長寿命 spawn worker を使う。親 process の
 `CaptureQueue` が in-flight 1 件と bounded FIFO/aggregate geometry byte を管理し、満杯時は明示的に
@@ -447,4 +540,4 @@ CI の分割は `pytest -m "not integration and not e2e"`、`pytest -m integrati
 - 公開 API の破壊的変更では source、tests、stub、README、migration note を同じ change set で更新する。
 
 図による overview は `docs/architecture_visualization.md`、利用者向けの更新手順は
-`docs/migration_2026-07-22.md` を参照する。
+`docs/migration_2026-07-23.md` を参照する。

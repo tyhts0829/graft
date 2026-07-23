@@ -10,9 +10,17 @@ from grafix.core.parameters.effects import EffectStepTopology
 from grafix.core.parameters.frame_params import FrameEffectChainRecord
 from grafix.core.parameters.history import ParamStoreHistory
 from grafix.core.parameters.store import ParamStore
-from grafix.interactive.parameter_gui import store_bridge
+import grafix.interactive.parameter_gui.table_commit as table_commit_module
 from grafix.interactive.parameter_gui.session_state import WidgetSessionState
-from grafix.interactive.parameter_gui.store_bridge import apply_effect_order_command
+from grafix.interactive.parameter_gui.table_commit import (
+    apply_effect_order_command,
+    render_store_parameter_table,
+)
+from grafix.interactive.parameter_gui.table_view import (
+    ParameterTableViewCache,
+    _parameter_table_model_for_store,
+    parameter_table_view_for_store,
+)
 from grafix.interactive.parameter_gui.snippet import snippet_for_block
 from grafix.interactive.parameter_gui.grouping import GroupType
 from grafix.interactive.parameter_gui.table import (
@@ -779,8 +787,9 @@ def test_apply_effect_order_command_is_one_full_history_operation() -> None:
     assert store.effect_order_overrides() == {}
 
 
-def test_store_bridge_commits_effect_command_as_one_history_unit(
+def test_table_commit_commits_effect_command_as_one_history_unit(
     monkeypatch,
+    parameter_table_cache: ParameterTableViewCache,
 ) -> None:
     store = ParamStore()
     merge_frame_effect_chains(
@@ -821,13 +830,14 @@ def test_store_bridge_commits_effect_command_as_one_history_unit(
             ),
         )
 
-    monkeypatch.setattr(store_bridge, "render_parameter_table", fake_render)
+    monkeypatch.setattr(table_commit_module, "render_parameter_table", fake_render)
 
-    view = store_bridge.parameter_table_view_for_store(
+    view = parameter_table_view_for_store(
         store,
+        cache=parameter_table_cache,
         show_inactive_params=True,
     )
-    result = store_bridge.render_store_parameter_table(
+    result = render_store_parameter_table(
         store,
         table_view=view,
         widget_state=WidgetSessionState(),
@@ -841,13 +851,18 @@ def test_store_bridge_commits_effect_command_as_one_history_unit(
     assert "chain" in store.effect_order_overrides()
 
 
-def test_effective_order_drives_table_rows_and_copy_code() -> None:
+def test_effective_order_drives_table_rows_and_copy_code(
+    parameter_table_cache: ParameterTableViewCache,
+) -> None:
     store = ParamStore()
     builder = E.scale(key="gui-order-scale").rotate(key="gui-order-rotate")
     with parameter_context(store):
         builder(Geometry.create(op="gui-order-source"))
 
-    model = store_bridge._parameter_table_model_for_store(store)
+    model = _parameter_table_model_for_store(
+        store,
+        cache=parameter_table_cache,
+    )
     state = model.effect_chain_state_by_id[builder.chain_id]
     assert [row.op for row in model.rows if row.op in {"scale", "rotate"}][0] == (
         "scale"
@@ -862,7 +877,10 @@ def test_effective_order_drives_table_rows_and_copy_code() -> None:
         ),
     )
 
-    reordered = store_bridge._parameter_table_model_for_store(store)
+    reordered = _parameter_table_model_for_store(
+        store,
+        cache=parameter_table_cache,
+    )
     assert [
         row.op for row in reordered.rows if row.op in {"scale", "rotate"}
     ][0] == "rotate"

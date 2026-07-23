@@ -186,7 +186,10 @@ def test_widget_state_is_released_across_fake_gui_close_and_reopen(
     ) -> None:
         self._window = window
         self._store = store
-        self._session = gui_module.ParameterGuiSessionState.for_store(store)
+        self._session = gui_module.ParameterGuiSessionState.for_store(
+            store,
+            catalog=self._catalog,
+        )
         self._backend = _FakeBackend(calls)
         self._closed = False
 

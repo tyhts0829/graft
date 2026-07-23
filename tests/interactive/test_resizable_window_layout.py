@@ -15,7 +15,7 @@ from grafix.interactive.parameter_gui import gui as gui_module
 from grafix.interactive.parameter_gui import pyglet_backend
 from grafix.interactive.parameter_gui.midi_learn import MidiLearnState
 from grafix.interactive.parameter_gui.parameter_filter import ParameterFilterState
-from grafix.interactive.parameter_gui.store_bridge import (
+from grafix.interactive.parameter_gui.table_view import (
     parameter_table_view_for_store,
 )
 from grafix.api.render import RenderOptions
@@ -173,6 +173,7 @@ def test_parameter_gui_draw_keeps_requested_logical_width_on_retina(
     def render_parameter_table_toolbar() -> bool:
         gui._session.table_view = parameter_table_view_for_store(
             gui._store,
+            cache=gui._session.table_cache,
             show_inactive_params=False,
         )
         return False

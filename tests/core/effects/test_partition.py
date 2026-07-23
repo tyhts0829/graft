@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 
 import numpy as np
@@ -15,6 +16,10 @@ from grafix.core.realize import realize
 from grafix.core.realized_geometry import GeomTuple, RealizedGeometry
 
 partition_module = importlib.import_module("grafix.core.effects.partition")
+
+
+def _packed_digest(coords: np.ndarray, offsets: np.ndarray) -> str:
+    return hashlib.sha256(coords.tobytes() + offsets.tobytes()).hexdigest()
 
 
 @primitive
@@ -132,6 +137,73 @@ def test_partition_site_density_bias_shifts_mean_x() -> None:
     assert xs_biased.size >= 5
 
     assert float(xs_biased.mean()) > float(xs_uniform.mean()) + 0.05
+
+
+def test_partition_seeded_output_characterization() -> None:
+    base = realize(G.partition_test_square())
+
+    coords, offsets = partition_impl(
+        (base.coords, base.offsets),
+        mode="merge",
+        site_count=7,
+        seed=13,
+        site_density_base=(0.4, 0.0, 0.0),
+        site_density_slope=(0.3, 0.0, 0.0),
+    )
+
+    assert offsets.tolist() == [0, 6, 13, 19, 25, 31, 36, 41]
+    assert _packed_digest(coords, offsets) == (
+        "db90a7db07b361e5bc18b40b5bbdf7d5c22f4f1b3b1d578b3d4969e18dd4f5c8"
+    )
+
+
+def test_partition_site_sampling_rng_order_characterization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base = realize(G.partition_test_square())
+    frame = partition_module.canonical_planar_frame(base.coords, base.offsets)
+    _rings, polygons = partition_module._polygon_inputs(
+        frame.project(base.coords),
+        base.offsets,
+    )
+    region = polygons[0]
+    pivot, inv_extent = partition_module._density_space(
+        base.coords,
+        auto_center=True,
+        pivot=(0.0, 0.0, 0.0),
+    )
+
+    def sample(*, density_enabled: bool) -> list[tuple[float, float]]:
+        return partition_module._sample_region_sites(
+            region,
+            site_count=2,
+            rng=np.random.default_rng(0),
+            frame=frame,
+            density_enabled=density_enabled,
+            density_pivot=pivot,
+            density_inv_extent=inv_extent,
+            density_base=(0.5, 0.0, 0.0),
+            density_slope=(0.5, 0.0, 0.0),
+        )
+
+    assert sample(density_enabled=False) == [
+        (0.2739233746429086, 0.7550578117435922),
+        (-0.4604265724722594, -0.8263702555702117),
+    ]
+    assert sample(density_enabled=True) == [
+        (0.6265404784005448, 0.5983927594322296),
+        (0.8255111545554434, -0.35542655052033645),
+    ]
+
+    monkeypatch.setattr(
+        partition_module,
+        "_density_probabilities",
+        lambda xy, **_kwargs: np.zeros(xy.shape[0], dtype=np.float64),
+    )
+    assert sample(density_enabled=True) == [
+        (-0.6711454126571654, -0.13897396486411395),
+        (0.5899407772980261, 0.3851904219957534),
+    ]
 
 
 def test_partition_pivot_affects_bias_only_when_auto_center_off() -> None:

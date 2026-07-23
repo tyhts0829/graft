@@ -11,14 +11,14 @@ import pytest
 from grafix import G, P, Frame, RenderOptions, RenderSession, RuntimeLimits, render
 from grafix.core.evaluation_config import EvaluationConfig
 from grafix.core.font_resources import FontResources
-from grafix.core.parameters import ParamStore
+from grafix.core.parameters import ParameterLoadState, ParamStore
 from grafix.core.resource_budget import ResourceBudget, ResourceLimitError
 from grafix.core.parameters.style import style_key
 from grafix.core.parameters.ui_ops import update_state_from_ui
 from grafix.core.runtime_config import current_runtime_config
 from grafix.runtime_config_loader import load_runtime_config, runtime_config
 from grafix.core.preview_quality import current_preview_quality, preview_quality_context
-from grafix.parameter_storage import ParamStoreReadResult
+from grafix.parameter_storage import ParamStoreLoadResult
 
 
 def _constant_draw():
@@ -312,20 +312,23 @@ def test_render_session_exit_keeps_body_error_and_notes_cleanup_failures(
     ]
 
 
-def test_render_session_exposes_only_non_owner_properties() -> None:
+def test_render_session_does_not_expose_owned_resources_as_public_properties() -> None:
     public_properties = {
         name
         for name, value in vars(RenderSession).items()
         if isinstance(value, property) and not name.startswith("_")
     }
 
-    assert public_properties == {
-        "config",
-        "metadata",
-        "options",
-        "param_store",
-        "runtime_limits",
-    }
+    # metadata 等の派生 property は追加できる。名前ではなく、session が逆順 close
+    # すべき child resource を caller へ渡す capability だけを禁止する。
+    with RenderSession(_constant_draw()) as session:
+        exposed_close_capabilities = {
+            name
+            for name in public_properties
+            if callable(getattr(getattr(session, name), "close", None))
+        }
+
+    assert not exposed_close_capabilities
 
 
 def test_public_render_returns_one_final_headless_frame() -> None:
@@ -422,13 +425,21 @@ def test_parameter_source_selects_one_explicit_load_path(
         lambda *_args, **_kwargs: default_path,
     )
 
-    def read_saved(path: Path) -> ParamStoreReadResult:
+    def read_saved(path: Path) -> ParamStoreLoadResult:
         calls.append(("saved", Path(path)))
-        return ParamStoreReadResult(ParamStore(), "loaded")
+        return ParamStoreLoadResult(
+            ParamStore(),
+            "loaded",
+            ParameterLoadState(),
+        )
 
-    def load_recovery(path: Path) -> ParamStore:
+    def load_recovery(path: Path) -> ParamStoreLoadResult:
         calls.append(("recovery", Path(path)))
-        return ParamStore()
+        return ParamStoreLoadResult(
+            ParamStore(),
+            "loaded",
+            ParameterLoadState(provenance="session_recovery"),
+        )
 
     monkeypatch.setattr(render_module, "read_param_store", read_saved)
     monkeypatch.setattr(render_module, "recover_param_store_session", load_recovery)
@@ -450,6 +461,9 @@ def test_parameter_source_selects_one_explicit_load_path(
     assert metadata.parameter_source == (
         (tmp_path / "specific.json").resolve() if expected_source == "path" else expected_source
     )
+    assert metadata.parameter_load_provenance == (
+        "session_recovery" if expected_loader == "recovery" else "primary"
+    )
 
 
 @pytest.mark.parametrize("parameter_source", ["saved", "path"])
@@ -470,7 +484,7 @@ def test_saved_and_path_parameter_sources_do_not_mutate_broken_file(
     source: str | Path = "saved" if parameter_source == "saved" else path
 
     with RenderSession(lambda _t: (), parameter_source=source) as session:
-        assert session.param_store.load_diagnostics[0].code == "load_error"
+        assert session.metadata.parameter_load_state.diagnostics[0].code == "load_error"
 
     assert path.read_text(encoding="utf-8") == original_payload
     assert list(tmp_path.glob("broken.json.corrupt-*")) == []

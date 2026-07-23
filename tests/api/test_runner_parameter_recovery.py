@@ -12,10 +12,13 @@ pyglet.options["shadow_window"] = False
 import grafix.api.runner as runner_module
 import grafix.interactive.midi.factory as midi_factory_module
 import grafix.interactive.runtime.parameter_gui_system as gui_system_module
+import grafix.interactive.runtime.parameter_recovery as parameter_recovery_module
 import grafix.interactive.runtime.parameter_session as parameter_session_module
+import grafix.parameter_storage as parameter_storage_module
 from grafix.core.parameters import (
     FrameParamRecord,
     KnownOperationSchemaSnapshot,
+    ParameterLoadState,
     ParamMeta,
     ParamStore,
     ParameterKey,
@@ -23,10 +26,12 @@ from grafix.core.parameters import (
 from grafix.core.parameters.autosave import ParamStoreAutosave
 from grafix.core.parameters.merge_ops import merge_frame_params
 from grafix.core.parameters.ui_ops import update_state_from_ui
+from grafix.export.capture_provenance import CaptureProvenanceBuilder
 from grafix.parameter_storage import (
     param_store_recovery_path,
     read_param_store,
     recover_param_store_session,
+    write_param_store,
     write_param_store_recovery,
 )
 from grafix.core.runtime_config import RuntimeConfigFallback
@@ -40,6 +45,9 @@ from grafix.interactive.runtime.monitor import RuntimeMonitor
 from grafix.interactive.diagnostics import DiagnosticAction, DiagnosticEvent
 
 _EMPTY_KNOWN_OPERATIONS = KnownOperationSchemaSnapshot.empty()
+_CIRCLE_KNOWN_OPERATIONS = KnownOperationSchemaSnapshot(
+    {"circle": frozenset({"radius"})}
+)
 
 
 def test_parameter_session_owns_store_history_and_nonpersistent_finalize() -> None:
@@ -112,6 +120,78 @@ def _session_with_dirty_explicit_override(
     return store, key, autosave
 
 
+def _parameter_session_with_pending_recovery(
+    primary: Path,
+    *,
+    include_obsolete: bool = False,
+) -> tuple[parameter_session_module.ParameterSession, ParameterKey, ParameterKey | None]:
+    primary_store = ParamStore()
+    key = ParameterKey(op="circle", site_id="site", arg="radius")
+    meta = ParamMeta(kind="float", ui_min=0.0, ui_max=1.0)
+    merge_frame_params(
+        primary_store,
+        (
+            FrameParamRecord(
+                key=key,
+                base=0.25,
+                meta=meta,
+                effective=0.25,
+                source="code",
+                explicit=True,
+            ),
+        ),
+    )
+    write_param_store(primary_store, primary)
+    recovered_store, recovered_key, autosave = _session_with_dirty_explicit_override(
+        primary
+    )
+    assert recovered_key == key
+    obsolete: ParameterKey | None = None
+    if include_obsolete:
+        obsolete = ParameterKey(op="circle", site_id="site", arg="obsolete")
+        merge_frame_params(
+            recovered_store,
+            (
+                FrameParamRecord(
+                    key=obsolete,
+                    base=0.4,
+                    meta=meta,
+                    effective=0.4,
+                    source="code",
+                    explicit=True,
+                ),
+            ),
+        )
+    autosave.flush()
+    session = parameter_session_module.ParameterSession(
+        primary_path=primary,
+        gui_enabled=False,
+        known_operations=(
+            _CIRCLE_KNOWN_OPERATIONS
+            if include_obsolete
+            else _EMPTY_KNOWN_OPERATIONS
+        ),
+    )
+    assert session.load_state.provenance == "session_recovery"
+    return session, key, obsolete
+
+
+def _recovery_action(
+    session: parameter_session_module.ParameterSession,
+    action_id: str,
+) -> tuple[RuntimeMonitor, DiagnosticEvent, DiagnosticAction]:
+    monitor = RuntimeMonitor()
+    recovery = session.install_diagnostic_actions(monitor)
+    assert recovery is not None
+    event = next(
+        item
+        for item in monitor.snapshot().diagnostics
+        if item.summary == "Recovered session"
+    )
+    action = next(item for item in event.actions if item.action_id == action_id)
+    return monitor, event, action
+
+
 def test_abnormal_shutdown_flushes_recovery_without_finalizing_primary(
     tmp_path: Path,
 ) -> None:
@@ -129,7 +209,7 @@ def test_abnormal_shutdown_flushes_recovery_without_finalizing_primary(
 
     assert not primary.exists()
     assert recovery.exists()
-    recovered = recover_param_store_session(primary).get_state(key)
+    recovered = recover_param_store_session(primary).store.get_state(key)
     assert recovered is not None
     assert recovered.ui_value == pytest.approx(0.9)
     assert recovered.override is True
@@ -165,15 +245,18 @@ def test_recovered_session_actions_are_wired_to_shared_diagnostic_center(
     autosave.flush()
     recovered = recover_param_store_session(primary)
     recovered_autosave = ParamStoreAutosave(
-        recovered,
+        recovered.store,
         recovery,
         save=write_param_store_recovery,
     )
     monitor = RuntimeMonitor()
+    adopted = [recovered.load_state]
 
     session = parameter_session_module._install_parameter_diagnostic_actions(
         monitor=monitor,
-        store=recovered,
+        store=recovered.store,
+        load_state=recovered.load_state,
+        adopt_load_result=lambda loaded: adopted.__setitem__(0, loaded.load_state),
         primary_path=primary,
         autosave=recovered_autosave,
         history=None,
@@ -204,9 +287,192 @@ def test_recovered_session_actions_are_wired_to_shared_diagnostic_center(
     assert monitor.diagnostic_center.dispatch_action(recovered_event, keep)
     assert monitor.snapshot().recovered_session is False
     assert not recovery.exists()
+    assert adopted[0].provenance == "primary"
     kept = read_param_store(primary).store.get_state(key)
     assert kept is not None
     assert kept.ui_value == pytest.approx(0.9)
+
+
+@pytest.mark.parametrize(
+    ("action_id", "expected_value"),
+    (("keep", 0.9), ("discard", 0.25)),
+)
+def test_parameter_session_adopts_recovery_decision_load_state(
+    tmp_path: Path,
+    action_id: str,
+    expected_value: float,
+) -> None:
+    primary = tmp_path / "store.json"
+    primary_store = ParamStore()
+    key = ParameterKey(op="circle", site_id="site", arg="radius")
+    merge_frame_params(
+        primary_store,
+        (
+            FrameParamRecord(
+                key=key,
+                base=0.25,
+                meta=ParamMeta(kind="float", ui_min=0.0, ui_max=1.0),
+                effective=0.25,
+                source="code",
+                explicit=True,
+            ),
+        ),
+    )
+    write_param_store(primary_store, primary)
+    store, key, autosave = _session_with_dirty_explicit_override(primary)
+    autosave.flush()
+    session = parameter_session_module.ParameterSession(
+        primary_path=primary,
+        gui_enabled=False,
+        known_operations=_EMPTY_KNOWN_OPERATIONS,
+    )
+    assert session.load_state.provenance == "session_recovery"
+    assert session.source == "recovery"
+    provenance = CaptureProvenanceBuilder(
+        lambda _t: None,
+        config=runtime_config(),
+        parameter_source=session.source,
+        parameter_store_path=primary,
+        parameter_load_provenance=lambda: session.load_state.provenance,
+    )
+    recovered_frame = provenance.frame(
+        session.store,
+        t=0.0,
+        frame_index=0,
+        quality="final",
+        origin="interactive",
+    )
+    monitor = RuntimeMonitor()
+    recovery = session.install_diagnostic_actions(monitor)
+    assert recovery is not None
+    event = next(
+        item
+        for item in monitor.snapshot().diagnostics
+        if item.summary == "Recovered session"
+    )
+    action = next(item for item in event.actions if item.action_id == action_id)
+
+    assert monitor.diagnostic_center.dispatch_action(event, action)
+
+    assert session.load_state.provenance == "primary"
+    assert session.load_state.diagnostics == ()
+    assert session.source == "saved"
+    state = session.store.get_state(key)
+    assert state is not None
+    assert state.ui_value == pytest.approx(expected_value)
+    decided_frame = provenance.frame(
+        session.store,
+        t=1.0,
+        frame_index=1,
+        quality="final",
+        origin="interactive",
+    )
+    assert recovered_frame.session.parameter_load_provenance == "session_recovery"
+    assert decided_frame.session.parameter_load_provenance == (
+        session.load_state.provenance
+    )
+    assert decided_frame.frame.parameters.revision == session.store.revision
+
+
+def test_parameter_session_keep_write_failure_preserves_one_recovery_generation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    primary = tmp_path / "store.json"
+    recovery_path = param_store_recovery_path(primary)
+    session, key, obsolete = _parameter_session_with_pending_recovery(
+        primary,
+        include_obsolete=True,
+    )
+    assert obsolete is not None
+    load_state_before = session.load_state
+    primary_before = primary.read_bytes()
+    recovery_before = recovery_path.read_bytes()
+    monitor, event, action = _recovery_action(session, "keep")
+
+    def fail_primary_write(_store: ParamStore, _path: Path) -> None:
+        raise OSError("primary unavailable")
+
+    monkeypatch.setattr(
+        parameter_storage_module,
+        "write_param_store",
+        fail_primary_write,
+    )
+
+    assert monitor.diagnostic_center.dispatch_action(event, action) is False
+
+    assert session.load_state is load_state_before
+    assert session.load_state.provenance == "session_recovery"
+    assert session.store.get_state(obsolete) is not None
+    state = session.store.get_state(key)
+    assert state is not None
+    assert state.ui_value == pytest.approx(0.9)
+    assert primary.read_bytes() == primary_before
+    assert recovery_path.read_bytes() == recovery_before
+
+
+def test_parameter_session_keep_unlink_failure_adopts_committed_primary_generation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    primary = tmp_path / "store.json"
+    recovery_path = param_store_recovery_path(primary)
+    session, key, _obsolete = _parameter_session_with_pending_recovery(primary)
+    monitor, event, action = _recovery_action(session, "keep")
+
+    def fail_recovery_cleanup(_path: Path) -> None:
+        raise OSError("recovery unlink failed")
+
+    monkeypatch.setattr(
+        parameter_storage_module,
+        "discard_param_store_recovery",
+        fail_recovery_cleanup,
+    )
+
+    assert monitor.diagnostic_center.dispatch_action(event, action) is True
+
+    assert session.load_state.provenance == "primary"
+    state = session.store.get_state(key)
+    assert state is not None
+    assert state.ui_value == pytest.approx(0.9)
+    assert recovery_path.exists()
+    restarted = recover_param_store_session(primary)
+    assert restarted.load_state.provenance == "primary"
+    restarted_state = restarted.store.get_state(key)
+    assert restarted_state is not None
+    assert restarted_state.ui_value == pytest.approx(0.9)
+
+
+def test_parameter_session_discard_unlink_failure_preserves_one_recovery_generation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    primary = tmp_path / "store.json"
+    recovery_path = param_store_recovery_path(primary)
+    session, key, _obsolete = _parameter_session_with_pending_recovery(primary)
+    load_state_before = session.load_state
+    primary_before = primary.read_bytes()
+    recovery_before = recovery_path.read_bytes()
+    monitor, event, action = _recovery_action(session, "discard")
+
+    def fail_recovery_cleanup(_path: Path) -> None:
+        raise OSError("recovery unlink failed")
+
+    monkeypatch.setattr(
+        parameter_recovery_module,
+        "discard_param_store_recovery",
+        fail_recovery_cleanup,
+    )
+
+    assert monitor.diagnostic_center.dispatch_action(event, action) is False
+
+    assert session.load_state is load_state_before
+    assert session.load_state.provenance == "session_recovery"
+    state = session.store.get_state(key)
+    assert state is not None
+    assert state.ui_value == pytest.approx(0.9)
+    assert primary.read_bytes() == primary_before
+    assert recovery_path.read_bytes() == recovery_before
 
 
 def test_retry_action_retries_autosave_and_clears_failure(
@@ -236,6 +502,8 @@ def test_retry_action_retries_autosave_and_clears_failure(
     parameter_session_module._install_parameter_diagnostic_actions(
         monitor=monitor,
         store=store,
+        load_state=ParameterLoadState(),
+        adopt_load_result=lambda _loaded: None,
         primary_path=None,
         autosave=autosave,
         history=None,
@@ -286,6 +554,8 @@ def test_open_action_uses_runner_source_handler(tmp_path: Path) -> None:
     parameter_session_module._install_parameter_diagnostic_actions(
         monitor=monitor,
         store=ParamStore(),
+        load_state=ParameterLoadState(),
+        adopt_load_result=lambda _loaded: None,
         primary_path=None,
         autosave=None,
         history=None,

@@ -18,6 +18,8 @@ from grafix.core.capture_provenance import (
     ParameterSnapshotProvenance,
 )
 from grafix.core.parameters.store import ParamStore
+from grafix.core.parameters.runtime import LoadProvenance
+from grafix.runtime_config_loader import runtime_config
 from grafix.core.parameters.style import style_key
 from grafix.core.parameters.ui_ops import update_state_from_ui
 from grafix.interactive.runtime.source_reload import ReloadedDraw
@@ -89,6 +91,72 @@ def test_render_session_snapshots_session_and_frame_provenance_once(
     assert payload["source"]["hash"]["value"] == session_source.sha256
     assert payload["git"]["available"] is first.provenance.session.git.available
     assert payload["seed"] == 1847
+
+
+def test_interactive_builder_reads_current_load_provenance_for_each_frame() -> None:
+    current: LoadProvenance = "session_recovery"
+    provider_calls = 0
+
+    def current_load_provenance() -> LoadProvenance:
+        nonlocal provider_calls
+        provider_calls += 1
+        return current
+
+    store = ParamStore()
+    builder = provenance_module.CaptureProvenanceBuilder(
+        _draw,
+        config=runtime_config(),
+        parameter_source="recovery",
+        parameter_store_path=None,
+        parameter_load_provenance=current_load_provenance,
+    )
+
+    recovered = builder.frame(
+        store,
+        t=0.0,
+        frame_index=0,
+        quality="final",
+        origin="interactive",
+    )
+    current = "primary"
+    kept = builder.frame(
+        store,
+        t=1.0,
+        frame_index=1,
+        quality="final",
+        origin="interactive",
+    )
+
+    assert recovered.session.parameter_load_provenance == "session_recovery"
+    assert kept.session.parameter_load_provenance == "primary"
+    assert recovered.session.source is kept.session.source
+    assert recovered.session.git is kept.session.git
+    assert provider_calls == 3
+
+
+def test_interactive_builder_validates_each_provided_load_provenance() -> None:
+    current = "primary"
+
+    def current_load_provenance() -> LoadProvenance:
+        return current  # type: ignore[return-value]
+
+    builder = provenance_module.CaptureProvenanceBuilder(
+        _draw,
+        config=runtime_config(),
+        parameter_source="saved",
+        parameter_store_path=None,
+        parameter_load_provenance=current_load_provenance,
+    )
+    current = "legacy"
+
+    with pytest.raises(ValueError, match="parameter_load_provenance"):
+        builder.frame(
+            ParamStore(),
+            t=0.0,
+            frame_index=0,
+            quality="final",
+            origin="interactive",
+        )
 
 
 def test_parameter_snapshot_hash_tracks_effective_frame_values() -> None:

@@ -72,7 +72,8 @@ def test_catalog_contains_selector_schema_but_no_selector_evaluator() -> None:
 def test_gui_catalog_consumers_do_not_import_legacy_live_registries() -> None:
     root = Path(__file__).parents[3]
     targets = (
-        root / "src/grafix/interactive/parameter_gui/store_bridge.py",
+        root / "src/grafix/interactive/parameter_gui/table_view.py",
+        root / "src/grafix/interactive/parameter_gui/table_commit.py",
         root / "src/grafix/interactive/parameter_gui/visibility.py",
         root / "src/grafix/interactive/parameter_gui/snippet.py",
         root / "src/grafix/interactive/parameter_gui/table.py",

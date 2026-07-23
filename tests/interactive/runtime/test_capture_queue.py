@@ -37,7 +37,7 @@ def _snapshot(t: float = 2.5) -> CaptureExportSnapshot:
         config=runtime_config(),
         parameter_source="code",
         parameter_store_path=None,
-        parameter_load_provenance=store.load_provenance,
+        parameter_load_provenance="primary",
         seed=1847,
     ).frame(
         store,

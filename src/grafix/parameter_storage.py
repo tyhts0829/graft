@@ -20,47 +20,60 @@ from grafix.core.parameters.codec import (
 )
 from grafix.core.parameters.known_operations import KnownOperationSchemaSnapshot
 from grafix.core.parameters.prune_ops import prune_unknown_args_in_known_ops
-from grafix.core.parameters.runtime import LoadProvenance, ParamStoreLoadDiagnostic
+from grafix.core.parameters.runtime import (
+    LoadProvenance,
+    ParameterLoadState,
+    ParamStoreLoadDiagnostic,
+)
 from grafix.core.parameters.store import ParamStore
 from grafix.file_io import atomic_write_text
 
 _logger = logging.getLogger(__name__)
 
-ParamStoreReadStatus = Literal["missing", "loaded", "partial", "invalid"]
+ParamStoreLoadStatus = Literal["missing", "loaded", "partial", "invalid"]
 
 
 @dataclass(frozen=True, slots=True)
-class ParamStoreReadResult:
-    """filesystem を変更せずに読み込んだ ParamStore と結果種別。"""
+class ParamStoreLoadResult:
+    """storage operation が確定した store と load state。"""
 
     store: ParamStore
-    status: ParamStoreReadStatus
+    status: ParamStoreLoadStatus
+    load_state: ParameterLoadState
     error: Exception | None = None
 
 
-def _set_load_result(
+def _load_result(
     store: ParamStore,
     *,
+    status: ParamStoreLoadStatus,
     provenance: LoadProvenance,
     diagnostics: tuple[ParamStoreLoadDiagnostic, ...] = (),
-) -> ParamStore:
-    runtime = store._runtime_ref()
-    runtime.load_provenance = provenance
-    runtime.load_diagnostics = diagnostics
-    return store
+    error: Exception | None = None,
+) -> ParamStoreLoadResult:
+    return ParamStoreLoadResult(
+        store=store,
+        status=status,
+        load_state=ParameterLoadState(
+            provenance=provenance,
+            diagnostics=diagnostics,
+        ),
+        error=error,
+    )
 
 
 def _finish_read_result(
     result: ParamStoreDecodeResult,
     *,
     source: Path,
-) -> ParamStoreReadResult:
+) -> ParamStoreLoadResult:
     """decode 結果を、原本を変更しない read result へ変換する。"""
 
     if not result.issues:
-        return ParamStoreReadResult(
-            _set_load_result(result.store, provenance="primary"),
-            "loaded",
+        return _load_result(
+            result.store,
+            status="loaded",
+            provenance="primary",
         )
 
     details = "\n".join(issue.describe() for issue in result.issues)
@@ -80,17 +93,15 @@ def _finish_read_result(
         len(result.issues),
         details,
     )
-    return ParamStoreReadResult(
-        _set_load_result(
-            result.store,
-            provenance="primary",
-            diagnostics=(diagnostic,),
-        ),
-        "partial",
+    return _load_result(
+        result.store,
+        status="partial",
+        provenance="primary",
+        diagnostics=(diagnostic,),
     )
 
 
-def _invalid_read_result(path: Path, error: Exception) -> ParamStoreReadResult:
+def _invalid_read_result(path: Path, error: Exception) -> ParamStoreLoadResult:
     """decode できない原本を残し、空 store と診断を返す。"""
 
     diagnostic = ParamStoreLoadDiagnostic(
@@ -104,27 +115,26 @@ def _invalid_read_result(path: Path, error: Exception) -> ParamStoreReadResult:
         path,
         error,
     )
-    return ParamStoreReadResult(
-        _set_load_result(
-            ParamStore(),
-            provenance="primary",
-            diagnostics=(diagnostic,),
-        ),
-        "invalid",
-        error,
+    return _load_result(
+        ParamStore(),
+        status="invalid",
+        provenance="primary",
+        diagnostics=(diagnostic,),
+        error=error,
     )
 
 
-def read_param_store(path: Path) -> ParamStoreReadResult:
+def read_param_store(path: Path) -> ParamStoreLoadResult:
     """JSON を読み込み、rename、write、unlink を行わず結果を返す。"""
 
     source = Path(path)
     try:
         payload = source.read_text(encoding="utf-8")
     except FileNotFoundError:
-        return ParamStoreReadResult(
-            _set_load_result(ParamStore(), provenance="primary"),
-            "missing",
+        return _load_result(
+            ParamStore(),
+            status="missing",
+            provenance="primary",
         )
     except UnicodeError as error:
         return _invalid_read_result(source, error)
@@ -155,11 +165,15 @@ def _finish_recovered_store(
     source: Path,
     provenance: LoadProvenance,
     repaired_recovery_path: Path | None = None,
-) -> ParamStore:
+) -> ParamStoreLoadResult:
     """partial decode の原本を退避し、修復済み journal を確定する。"""
 
     if not result.issues:
-        return _set_load_result(result.store, provenance=provenance)
+        return _load_result(
+            result.store,
+            status="loaded",
+            provenance=provenance,
+        )
 
     backup_path = _quarantine_path(source)
     os.replace(source, backup_path)
@@ -181,19 +195,20 @@ def _finish_recovered_store(
         len(result.issues),
         details,
     )
-    store = _set_load_result(
+    loaded = _load_result(
         result.store,
+        status="partial",
         provenance="quarantined",
         diagnostics=(diagnostic,),
     )
     if repaired_recovery_path is not None:
         try:
-            write_param_store_recovery(store, repaired_recovery_path)
+            write_param_store_recovery(loaded.store, repaired_recovery_path)
         except Exception:
             # journal 確定前の失敗では、元の source を即座に戻す。
             os.replace(backup_path, source)
             raise
-    return store
+    return loaded
 
 
 def _quarantine_failure(
@@ -213,7 +228,10 @@ def _quarantine_failure(
     )
 
 
-def _quarantine_primary_and_return_empty(path: Path, error: Exception) -> ParamStore:
+def _quarantine_primary_and_return_empty(
+    path: Path,
+    error: Exception,
+) -> ParamStoreLoadResult:
     backup_path, diagnostic = _quarantine_failure(
         source=path,
         error=error,
@@ -226,21 +244,27 @@ def _quarantine_primary_and_return_empty(path: Path, error: Exception) -> ParamS
         backup_path,
         error,
     )
-    return _set_load_result(
+    return _load_result(
         ParamStore(),
+        status="invalid",
         provenance="quarantined",
         diagnostics=(diagnostic,),
+        error=error,
     )
 
 
-def recover_primary_param_store(path: Path) -> ParamStore:
-    """primary の破損を明示的に quarantine/recovery し、store を返す。"""
+def recover_primary_param_store(path: Path) -> ParamStoreLoadResult:
+    """primary の破損を明示的に quarantine/recovery し、結果を返す。"""
 
     primary = Path(path)
     try:
         payload = primary.read_text(encoding="utf-8")
     except FileNotFoundError:
-        return _set_load_result(ParamStore(), provenance="primary")
+        return _load_result(
+            ParamStore(),
+            status="missing",
+            provenance="primary",
+        )
     except UnicodeError as error:
         return _quarantine_primary_and_return_empty(primary, error)
 
@@ -282,7 +306,7 @@ def _quarantine_recovery_and_load_primary(
     recovery: Path,
     primary: Path,
     error: Exception,
-) -> ParamStore:
+) -> ParamStoreLoadResult:
     """壊れた recovery を退避し、primary へフォールバックする。"""
 
     corrupt_path, diagnostic = _quarantine_failure(
@@ -298,15 +322,17 @@ def _quarantine_recovery_and_load_primary(
         corrupt_path,
         error,
     )
-    store = recover_primary_param_store(primary)
-    return _set_load_result(
-        store,
+    primary_result = recover_primary_param_store(primary)
+    return _load_result(
+        primary_result.store,
+        status="invalid",
         provenance="quarantined",
-        diagnostics=(diagnostic, *store.load_diagnostics),
+        diagnostics=(diagnostic, *primary_result.load_state.diagnostics),
+        error=error,
     )
 
 
-def recover_param_store_session(path: Path) -> ParamStore:
+def recover_param_store_session(path: Path) -> ParamStoreLoadResult:
     """明示的に primary/recovery を選択し、破損時は quarantine する。"""
 
     primary = Path(path)
@@ -350,14 +376,14 @@ def recover_param_store_session(path: Path) -> ParamStore:
             error=error,
         )
 
-    store = _finish_recovered_store(
+    loaded = _finish_recovered_store(
         result,
         source=recovery,
         provenance="session_recovery",
         repaired_recovery_path=recovery,
     )
     _logger.warning("未完了 session の ParamStore を復元しました: %s", recovery)
-    return store
+    return loaded
 
 
 def write_param_store(store: ParamStore, path: Path) -> None:
@@ -404,12 +430,20 @@ def finalize_parameter_session(
 
     primary = Path(path)
     write_param_store(store, primary)
-    discard_param_store_recovery(primary)
+    try:
+        discard_param_store_recovery(primary)
+    except OSError:
+        # primary の atomic commit は完了している。旧 recovery の削除失敗は
+        # commit 自体を失敗扱いにせず、次回 retry 可能な cleanup failure として残す。
+        _logger.exception(
+            "primary commit 後に ParamStore session recovery を削除できませんでした: %s",
+            param_store_recovery_path(primary),
+        )
 
 
 __all__ = [
-    "ParamStoreReadResult",
-    "ParamStoreReadStatus",
+    "ParamStoreLoadResult",
+    "ParamStoreLoadStatus",
     "discard_param_store_recovery",
     "finalize_parameter_session",
     "param_store_recovery_path",

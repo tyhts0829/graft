@@ -16,6 +16,7 @@ from grafix.core.operation_selector import (
     effect_selector_op,
     selector_param_key,
     selector_spec,
+    validated_effect_selector,
     validate_effect_selector_n_inputs,
     validate_selector_target,
 )
@@ -26,7 +27,7 @@ from ._op_validation import validate_operation_kwargs
 from ._param_resolution import resolve_api_params
 
 ParamsByTarget: TypeAlias = Mapping[str, Mapping[str, Any]] | None
-FrozenParamsByTarget: TypeAlias = tuple[
+FrozenTargetParams: TypeAlias = tuple[
     tuple[str, tuple[tuple[str, Any], ...]],
     ...,
 ]
@@ -44,29 +45,34 @@ class ResolvedSelection:
         object.__setattr__(self, "params", MappingProxyType(dict(self.params)))
 
 
+@dataclass(frozen=True, slots=True)
+class FrozenParamsByTarget:
+    """一つの catalog/selector に対して固定した target 別引数。"""
+
+    catalog: OperationCatalog
+    selector: SelectorSpec
+    values: FrozenTargetParams
+
+    def __post_init__(self) -> None:
+        if type(self.catalog) is not OperationCatalog:
+            raise TypeError("catalog は exact OperationCatalog です")
+        if type(self.selector) is not SelectorSpec:
+            raise TypeError("selector は exact SelectorSpec です")
+        if type(self.values) is not tuple:
+            raise TypeError("values は tuple です")
+
+    def __hash__(self) -> int:
+        """catalog object identity に依存しない immutable hash を返す。"""
+
+        return hash((self.selector.fingerprint, self.values))
+
+
 def _selected_catalog(catalog: OperationCatalog | None) -> OperationCatalog:
     if catalog is None:
         return current_operation_catalog()
     if type(catalog) is not OperationCatalog:
         raise TypeError("catalog は exact OperationCatalog または None です")
     return catalog
-
-
-def _selector_for(
-    catalog: OperationCatalog,
-    *,
-    kind: SelectorKind,
-    n_inputs: int,
-    spec: SelectorSpec | None,
-) -> SelectorSpec:
-    expected = selector_spec(catalog, kind=kind, n_inputs=n_inputs)
-    if spec is None:
-        return expected
-    if type(spec) is not SelectorSpec:
-        raise TypeError("selector は exact SelectorSpec または None です")
-    if spec.fingerprint != expected.fingerprint:
-        raise LookupError("selector schema と operation catalog が一致しません")
-    return spec
 
 
 def _target_declaration(
@@ -102,15 +108,69 @@ def freeze_params_by_target(
         if n_inputs is None:
             raise ValueError("effect selector には n_inputs が必要です")
         count = validate_effect_selector_n_inputs(n_inputs)
-    selected_selector = _selector_for(
+    expected_selector = selector_spec(
         selected_catalog,
         kind=kind,
         n_inputs=count,
-        spec=selector,
+    )
+    if selector is None:
+        selected_selector = expected_selector
+    else:
+        if type(selector) is not SelectorSpec:
+            raise TypeError("selector は exact SelectorSpec または None です")
+        if (
+            selector.kind != kind
+            or selector.n_inputs != count
+            or selector.fingerprint != expected_selector.fingerprint
+        ):
+            raise LookupError("selector schema と operation catalog が一致しません")
+        selected_selector = selector
+    return _freeze_params_by_target(
+        params_by_target,
+        catalog=selected_catalog,
+        selector=selected_selector,
+        kind=kind,
+        n_inputs=n_inputs,
     )
 
+
+def freeze_effect_params_by_target(
+    target: str,
+    params_by_target: ParamsByTarget,
+    *,
+    n_inputs: int,
+    catalog: OperationCatalog | None = None,
+) -> tuple[str, FrozenParamsByTarget]:
+    """effect target と target 別引数を一つの selector snapshot に固定する。"""
+
+    count = validate_effect_selector_n_inputs(n_inputs)
+    selected_catalog = _selected_catalog(catalog)
+    selected_target, selected_selector = validated_effect_selector(
+        target,
+        n_inputs=count,
+        catalog=selected_catalog,
+    )
+    return selected_target, _freeze_params_by_target(
+        params_by_target,
+        catalog=selected_catalog,
+        selector=selected_selector,
+        kind="effect",
+        n_inputs=count,
+    )
+
+
+def _freeze_params_by_target(
+    params_by_target: ParamsByTarget,
+    *,
+    catalog: OperationCatalog,
+    selector: SelectorSpec,
+    kind: SelectorKind,
+    n_inputs: int | None,
+) -> FrozenParamsByTarget:
+    """検証済み selector に target 別 kwargs を固定する。"""
+
     if params_by_target is None:
-        return ()
+        return FrozenParamsByTarget(catalog, selector, ())
     if not isinstance(params_by_target, Mapping):
         raise TypeError("params_by_target は mapping または None である必要があります")
 
@@ -119,7 +179,7 @@ def freeze_params_by_target(
         target = validate_selector_target(
             kind=kind,
             target=identity_string(raw_target, name="params_by_target target"),
-            selector_spec=selected_selector,
+            selector_spec=selector,
             n_inputs=n_inputs,
         )
         if not isinstance(raw_params, Mapping):
@@ -128,8 +188,8 @@ def freeze_params_by_target(
         if any(type(name) is not str for name in params):
             raise TypeError("target parameter 名は str である必要があります")
         declaration = _target_declaration(
-            catalog=selected_catalog,
-            selector=selected_selector,
+            catalog=catalog,
+            selector=selector,
             kind=kind,
             target=target,
         )
@@ -140,11 +200,15 @@ def freeze_params_by_target(
         )
         frozen.append((target, tuple(sorted(canonical.items()))))
     frozen.sort(key=lambda item: item[0])
-    return tuple(frozen)
+    return FrozenParamsByTarget(
+        catalog,
+        selector,
+        tuple(frozen),
+    )
 
 
 def _params_for_target(frozen: FrozenParamsByTarget, target: str) -> dict[str, Any]:
-    for name, items in frozen:
+    for name, items in frozen.values:
         if name == target:
             return dict(items)
     return {}
@@ -242,18 +306,15 @@ def resolve_primitive_selection(
     target_explicit: bool,
     params_by_target: FrozenParamsByTarget,
     site_id: str,
-    catalog: OperationCatalog | None = None,
-    selector: SelectorSpec | None = None,
 ) -> ResolvedSelection:
     """primitive selector を exact catalog entry へ lower する。"""
 
-    selected_catalog = _selected_catalog(catalog)
-    selected_selector = _selector_for(
-        selected_catalog,
-        kind="primitive",
-        n_inputs=0,
-        spec=selector,
-    )
+    if type(params_by_target) is not FrozenParamsByTarget:
+        raise TypeError("params_by_target は exact FrozenParamsByTarget です")
+    selected_catalog = params_by_target.catalog
+    selected_selector = params_by_target.selector
+    if selected_selector.kind != "primitive" or selected_selector.n_inputs != 0:
+        raise LookupError("primitive selector schema が一致しません")
     return _resolve_selection(
         kind="primitive",
         selector=selected_selector,
@@ -273,19 +334,16 @@ def resolve_effect_selection(
     n_inputs: int,
     params_by_target: FrozenParamsByTarget,
     site_id: str,
-    catalog: OperationCatalog | None = None,
-    selector: SelectorSpec | None = None,
 ) -> ResolvedSelection:
     """effect selector を exact catalog entry へ lower する。"""
 
     count = validate_effect_selector_n_inputs(n_inputs)
-    selected_catalog = _selected_catalog(catalog)
-    selected_selector = _selector_for(
-        selected_catalog,
-        kind="effect",
-        n_inputs=count,
-        spec=selector,
-    )
+    if type(params_by_target) is not FrozenParamsByTarget:
+        raise TypeError("params_by_target は exact FrozenParamsByTarget です")
+    selected_catalog = params_by_target.catalog
+    selected_selector = params_by_target.selector
+    if selected_selector.kind != "effect" or selected_selector.n_inputs != count:
+        raise LookupError("effect selector schema または n_inputs が一致しません")
     return _resolve_selection(
         kind="effect",
         selector=selected_selector,
@@ -304,6 +362,7 @@ __all__ = [
     "ParamsByTarget",
     "ResolvedSelection",
     "effect_selector_op",
+    "freeze_effect_params_by_target",
     "freeze_params_by_target",
     "resolve_effect_selection",
     "resolve_primitive_selection",

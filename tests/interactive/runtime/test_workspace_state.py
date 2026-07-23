@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 import grafix.interactive.runtime.workspace_state as workspace_module
+from grafix.runtime_config_loader import runtime_config
 from grafix.interactive.runtime.window_layout import WindowRect
 from grafix.interactive.runtime.workspace_state import (
     WORKSPACE_STATE_SCHEMA_VERSION,
@@ -132,6 +133,7 @@ def test_default_workspace_path_keeps_sketch_and_run_identity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[dict[str, object]] = []
+    config = runtime_config()
 
     def fake_output_path_for_draw(**kwargs: object) -> Path:
         calls.append(dict(kwargs))
@@ -142,7 +144,7 @@ def test_default_workspace_path_keeps_sketch_and_run_identity(
     def draw(_t: float) -> object:
         return None
 
-    assert default_workspace_state_path(draw, run_id="v2") == Path(
+    assert default_workspace_state_path(draw, run_id="v2", config=config) == Path(
         "out/workspace/sketch_v2.json"
     )
     assert calls == [
@@ -151,5 +153,11 @@ def test_default_workspace_path_keeps_sketch_and_run_identity(
             "ext": "json",
             "draw": draw,
             "run_id": "v2",
+            "config": config,
         }
     ]
+
+
+def test_default_workspace_path_requires_explicit_config() -> None:
+    with pytest.raises(TypeError, match="config"):
+        default_workspace_state_path(lambda _t: None)  # type: ignore[call-arg]

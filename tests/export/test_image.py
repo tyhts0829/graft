@@ -22,10 +22,24 @@ def test_default_png_output_path_uses_script_stem_and_output_size():
     def draw(t: float) -> None:
         return None
 
-    path = image.default_png_output_path(draw, scale=8.0, canvas_size=(800, 600))
+    path = image.default_png_output_path(
+        draw,
+        scale=8.0,
+        canvas_size=(800, 600),
+        config=runtime_config(),
+    )
     assert path.parts[:3] == ("data", "output", "png")
     assert path.name == f"{Path(__file__).stem}_6400x4800.png"
     assert path.suffix == ".png"
+
+
+def test_default_png_output_path_requires_explicit_config() -> None:
+    with pytest.raises(TypeError, match="config"):
+        image.default_png_output_path(
+            lambda _t: None,
+            scale=1.0,
+            canvas_size=(100, 100),
+        )  # type: ignore[call-arg]
 
 
 def test_png_output_size_scales_canvas_by_png_scale():

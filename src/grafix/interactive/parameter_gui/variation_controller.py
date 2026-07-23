@@ -33,7 +33,7 @@ from .variation_panel import (
 )
 
 if TYPE_CHECKING:
-    from .store_bridge import ParameterTableView
+    from .table_view import ParameterTableView
 
 
 class VariationController:

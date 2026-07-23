@@ -18,8 +18,8 @@
 
 ### 公開 API（スケッチ作者が触る層）
 
-- `src/grafix/__init__.py`（再エクスポート: `G/E/L/P/run/cc`）
-- `src/grafix/api/__init__.py`（公開 API パッケージ）
+- `src/grafix/__init__.py`（lazy root facade: `G/E/L/P/run/render/export/cc`）
+- `src/grafix/api/__init__.py`（公開 API facade。render/export/variation/runner を遅延解決）
 - `src/grafix/api/primitives.py`（`G.*`）
 - `src/grafix/api/effects.py`（`E.*`）
 - `src/grafix/api/operation_info.py`（evaluator-free な公開 catalog inspection value）
@@ -33,7 +33,9 @@
 
 - `src/grafix/core/geometry.py`（Geometry: レシピ DAG / 署名）
 - `src/grafix/core/operation_authoring.py` / `src/grafix/core/operation_declaration.py`（decorator / immutable declaration）
-- `src/grafix/core/authoring_definitions.py` / `src/grafix/core/authoring_loader.py`（registration target / session snapshot）
+- `src/grafix/core/authoring_definitions.py` / `authoring_recipe.py`（registration target / immutable recipe・snapshot）
+- `src/grafix/authoring_loader.py`（config authoring source の filesystem capture / candidate catalog）
+- `src/grafix/_snapshot_import.py`（config/reload が共有する temporary import transaction。private infrastructure）
 - `src/grafix/core/operation_catalog.py` / `src/grafix/core/preset_catalog.py`（immutable catalog）
 - `src/grafix/core/evaluation_config.py` / `evaluation_context.py`（評価専用 config、quality、external dependency contract）
 - `src/grafix/core/realize.py`（`RealizeSession` / omitted-owned・explicit-borrowed dependency / inflight）
@@ -44,8 +46,18 @@
 - `src/grafix/core/font_resources.py`（font asset fingerprint / bounded resource owner）
 - `src/grafix/core/geometry_kernels/`（effect 共通の pure numeric kernel）
 - `src/grafix/core/parameters/`（GUI/CC の param domain、codec、immutable snapshot）
-- `src/grafix/parameter_storage.py`（parameter file read/recovery/atomic commit）
+- `src/grafix/parameter_storage.py`（`ParamStoreLoadResult`、parameter file read/recovery/atomic commit）
 - `src/grafix/runtime_config_loader.py`（YAML/package resource、CWD/HOME discovery、fallback）
+
+### Import boundary を確認したい
+
+- sketch/public extension は `from grafix import ...` を正規入口にする。
+- root と `grafix.api` は lazy facade であり、公開 object identity は一度解決すると固定される。
+- `run` の参照だけでは `api.runner` を load せず、call 時に初期化する。
+- `import grafix.core.<module>` は `grafix.api`、`grafix.export`、parameter storage、config loader を
+  初期化しない。core module から outer capability を得るために root facade を importしない。
+- facade の import contract は `tests/api/test_lazy_facade.py`、dependency direction は
+  `tests/architecture/` を先に読む。
 
 ## 変更パターン別 “触る場所”
 
@@ -73,21 +85,86 @@
 ### Parameter GUI（param 解決/表示/永続）を触りたい
 
 - コア（値解決・履歴・snapshot）: `src/grafix/core/parameters/`
-- storage（read/recovery/commit）: `src/grafix/parameter_storage.py`
+- storage（unified load result / read/recovery/commit）: `src/grafix/parameter_storage.py`
+- current load-state owner: `src/grafix/interactive/runtime/parameter_session.py`
 - GUI 実装: `src/grafix/interactive/parameter_gui/`
 - GUI 起動と連携: `src/grafix/interactive/runtime/parameter_gui_system.py` / `src/grafix/api/runner.py`
 - schema snapshot: `src/grafix/interactive/parameter_gui/catalog.py`
-- renderer は `TableRenderInput -> TableEdits` に限定し、変更は store bridge/controller から core command へ渡す
+- table query/cache: `src/grafix/interactive/parameter_gui/table_view.py`
+- effective source badge: `src/grafix/interactive/parameter_gui/source_badge.py`
+- table edit commit: `src/grafix/interactive/parameter_gui/table_commit.py`
+- session cache/widget lifetime: `src/grafix/interactive/parameter_gui/session_state.py`
+- renderer は `TableRenderInput -> TableEdits` に限定し、`table_commit` / controller から core command へ渡す
+
+`ParameterTableViewCache` は `ParameterGuiSessionState` が instance ごとに所有する。
+`parameter_table_view_for_store(..., cache=...)` へ明示注入し、module-global cache/default catalog/build
+counter を追加しない。catalog 交換・GUI close はその session の cache だけを clear する。
+
+parameter file を読む extension は store だけを戻り値とみなさず、統一 result を扱う。
+
+```python
+from grafix.parameter_storage import (
+    read_param_store,
+    recover_param_store_session,
+)
+
+read_result = read_param_store(path)  # 原本を変更しない
+store = read_result.store
+status = read_result.status
+provenance = read_result.load_state.provenance
+diagnostics = read_result.load_state.diagnostics
+
+recovery_result = recover_param_store_session(path)  # quarantine し得る明示経路
+recovered_store = recovery_result.store
+```
+
+`ParamStore` / `ParamStoreRuntime` は load provenance/diagnostics を保持しない。interactive は
+`ParameterSession.load_state` を Keep/Discard のたびに一箇所で更新し、headless
+`RenderSession.metadata.parameter_load_state` は構築時 result に固定する。
 
 ### Export（headless 出力）を触りたい
 
 - render/store/config/cache: `src/grafix/api/render.py`
+- variation request/render/partial failure: `src/grafix/api/variation_batch.py`
+- variation directory transaction: `src/grafix/export/variation_batch.py`
 - encode/no-clobber/manifest: `src/grafix/export/capture.py`
 - staging/publish: `src/grafix/export/capture_staging.py` / `src/grafix/export/capture_publish.py`
 - output path policy: `src/grafix/export/output_paths.py`
 - 入口 API: `src/grafix/api/export.py`
 - フォーマット別: `src/grafix/export/svg.py` / `src/grafix/export/image.py` / `src/grafix/export/gcode.py`
 - 共通パイプライン: `src/grafix/core/pipeline.py`
+
+API variation batch は variation 順、item ごとの transient rollback、render/capture callback、partial
+failure だけを持つ。private workspace、manifest relocation、contact sheet/summary encode、no-clobber
+retry、overwrite failure 時の旧 generation 復元は export transaction が一括所有する。API に
+fsync/link/replace/staging codec を追加せず、export から API/interactive を importしない。
+
+output path helper は ambient config を探索しない。すべて composition root で解決済みの
+`RuntimeConfig` を渡す。
+
+```python
+from grafix.export.image import default_png_output_path
+from grafix.export.output_paths import default_param_store_path, output_path_for_draw
+from grafix.runtime_config_loader import load_runtime_config
+
+config = load_runtime_config(".grafix/config.yaml")
+svg_path = output_path_for_draw(
+    kind="svg",
+    ext="svg",
+    draw=draw,
+    config=config,
+)
+parameter_path = default_param_store_path(draw, config=config)
+png_path = default_png_output_path(
+    draw,
+    scale=3.0,
+    canvas_size=(300, 300),
+    config=config,
+)
+```
+
+`default_video_output_path()` と `default_workspace_state_path()` も同じく `config=` が必須である。
+`config=None` fallback や export layer から config loader を呼ぶ経路を戻さない。
 
 ### Interactive runtime / reload / diagnostics を触りたい
 
@@ -99,6 +176,7 @@
 - recording lifecycle: `src/grafix/interactive/runtime/recording_session.py`
 - window policy: `src/grafix/interactive/runtime/workspace_window_controller.py`
 - parameter session: `src/grafix/interactive/runtime/parameter_session.py`
+- variation thumbnail export adapter: `src/grafix/interactive/runtime/variation_thumbnail_capture.py`
 - 共通診断stream: `src/grafix/interactive/diagnostics.py`
 - transport contract: `src/grafix/interactive/transport.py`
 - resource/profiler表示: `src/grafix/interactive/runtime/perf.py` / `parameter_gui/profiler_panel.py`
@@ -108,6 +186,15 @@ reload candidate は source bytes と local relative-import helper を隔離し�
 `RegistrationTarget` から immutable authoring snapshot を構築する。draw signature、catalog、worker
 startup を検証してから同じ frame 境界で generation を交換する。失敗時に default authoring
 definitions を変更したり、last-good worker/catalog を閉じたりしない。
+
+config authoring と source reload は `grafix._snapshot_import` の一つの reentrant lock と cleanup
+transaction を共有する。source discovery/import policy/catalog accept は caller に残し、別の
+`sys.meta_path` / `sys.modules` 操作を実装しない。config directory の capture/load は
+`grafix.authoring_loader` を使い、削除済みの core 内 loader path を importしない。
+
+Parameter GUI leaf は export type/service を importせず、variation thumbnail の capture/preview callable
+だけを受け取る。runtime adapter は要求ごとに live frame provider を呼び、`CaptureService` が返した
+実際の no-clobber path を GUI へ返す。
 
 ### Architecture / cache identity を触りたい
 
@@ -174,3 +261,6 @@ private symbolへ到達しない。依存規則は`tests/architecture/test_bench
 - `python -m grafix stub`（`grafix.api` のスタブ再生成）
 - `python -m grafix export --callable module:attr --t ...`（headless export。詳細は `python -m grafix export -- --help`）
 - `python -m grafix benchmark -- --help`（ベンチ/レポート生成）
+
+破壊的な import/signature/internal owner の変更一覧は
+`docs/migration_2026-07-23.md` を参照する。

@@ -130,13 +130,17 @@ def test_snippet_style_converts_rgb255_to_rgb01_and_maps_keys() -> None:
         raw_label_by_site={(LAYER_STYLE_OP, "layer:1"): "outline"},
     )
 
-    assert out.startswith("    ")
-    assert "dict(" not in out
-    assert "background_color=(1.0, 0.0, 0.0)" in out
-    assert "line_thickness=0.001" in out
-    assert "line_color=(0.0, 0.0, 0.0)" in out
-    assert "color=(0.0, 0.5019607843137255, 1.0)" in out
-    assert "thickness=0.002" in out
+    assert out == (
+        "    # --- run(...) ---\n"
+        "    background_color=(1.0, 0.0, 0.0),\n"
+        "    line_thickness=0.001,\n"
+        "    line_color=(0.0, 0.0, 0.0),\n"
+        "    \n"
+        "    # --- L(name=...).layer(..., color/thickness) ---\n"
+        "    # outline: paste into `L(name='outline').layer(...)`\n"
+        "    color=(0.0, 0.5019607843137255, 1.0),\n"
+        "    thickness=0.002,\n"
+    )
 
 
 def test_snippet_effect_chain_orders_steps_by_step_index() -> None:
@@ -167,8 +171,13 @@ def test_snippet_effect_chain_orders_steps_by_step_index() -> None:
         step_info_by_site=step_info,
     )
 
-    assert out.startswith("    ")
-    assert out.index("E.rotate") < out.index(".scale")
+    assert out == (
+        "    E.rotate(\n"
+        "        rotation=(0.0, 0.0, 45.0),\n"
+        "    ).scale(\n"
+        "        scale=(2.0, 2.0, 2.0),\n"
+        "    )\n"
+    )
 
 
 def test_snippet_component_uses_display_op_call_name() -> None:
@@ -191,9 +200,7 @@ def test_snippet_component_uses_display_op_call_name() -> None:
         last_effective_by_key={ParameterKey("preset.snippet_logo", "c:1", "x"): 2.0},
     )
 
-    assert out.startswith("    ")
-    assert "P.snippet_logo(" in out
-    assert "x=2.0" in out
+    assert out == "    P.snippet_logo(\n        x=2.0,\n    )\n"
 
 
 def test_snippet_primitive_includes_name_when_raw_label_exists() -> None:
@@ -214,8 +221,7 @@ def test_snippet_primitive_includes_name_when_raw_label_exists() -> None:
         raw_label_by_site={("text", "p:1"): "title1"},
     )
 
-    assert out.startswith("    ")
-    assert "G(name='title1').text(" in out
+    assert out == ("    G(name='title1').text(\n        text='Hello',\n        scale=2.0,\n    )\n")
 
 
 def test_snippet_primitive_does_not_include_name_without_raw_label() -> None:

@@ -9,7 +9,6 @@ from typing import Any, Callable
 
 from grafix.core.geometry import Geometry
 from grafix.core.operation_catalog import current_operation_catalog
-from grafix.core.operation_selector import selector_spec as build_selector_spec
 from grafix.core.parameters import caller_site_id
 from grafix.core.parameters.identity import identity_string
 
@@ -105,12 +104,10 @@ class PrimitiveNamespace:
         """
 
         catalog = current_operation_catalog()
-        selector = build_selector_spec(catalog, kind="primitive", n_inputs=0)
         frozen_params = freeze_params_by_target(
             params_by_target,
             kind="primitive",
             catalog=catalog,
-            selector=selector,
         )
         site_id = caller_site_id(
             skip=1,
@@ -129,8 +126,6 @@ class PrimitiveNamespace:
             target_explicit=target_explicit,
             params_by_target=frozen_params,
             site_id=site_id,
-            catalog=catalog,
-            selector=selector,
         )
         set_api_label(
             op=selected.selector_op,

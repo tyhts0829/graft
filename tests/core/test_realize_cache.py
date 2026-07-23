@@ -1228,6 +1228,52 @@ def test_session_closes_only_resources_and_store_omitted_by_the_caller() -> None
     borrowed_store.close()
 
 
+def test_realize_helper_delegates_standalone_dependency_ownership_to_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    body_error = RuntimeError("realization failed")
+    resource_close_error = OSError("resources failed")
+    store_close_error = KeyboardInterrupt("store failed")
+    calls: list[str] = []
+    original_realize = RealizeSession.realize
+    original_resources_close = EvaluationResources.close
+    original_store_close = RealizeCacheStore.close
+
+    def fail_realize(
+        _session: RealizeSession,
+        _geometry: Geometry,
+    ) -> RealizedGeometry:
+        raise body_error
+
+    def close_resources(resources: EvaluationResources) -> None:
+        calls.append("resources")
+        original_resources_close(resources)
+        raise resource_close_error
+
+    def close_store(store: RealizeCacheStore) -> None:
+        calls.append("store")
+        original_store_close(store)
+        raise store_close_error
+
+    monkeypatch.setattr(RealizeSession, "realize", fail_realize)
+    monkeypatch.setattr(EvaluationResources, "close", close_resources)
+    monkeypatch.setattr(RealizeCacheStore, "close", close_store)
+    try:
+        with pytest.raises(RuntimeError) as exc_info:
+            realize(Geometry.create(op="concat"))
+    finally:
+        monkeypatch.setattr(RealizeSession, "realize", original_realize)
+
+    assert exc_info.value is body_error
+    assert calls == ["resources", "store"]
+    assert body_error.__notes__ == [
+        "Secondary cleanup failure (close realize session): "
+        "OSError: resources failed",
+        "Secondary cleanup failure (close owned realize cache store): "
+        "KeyboardInterrupt: store failed",
+    ]
+
+
 def test_owned_close_attempts_every_dependency_and_preserves_first_base_exception(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1266,6 +1312,10 @@ def test_owned_close_attempts_every_dependency_and_preserves_first_base_exceptio
     assert calls == ["resources", "store"]
     assert resources.closed is True
     assert store.closed is True
+    assert first_error.__notes__ == [
+        "Secondary cleanup failure (close owned realize cache store): "
+        "SecondCloseFailure: store"
+    ]
     session.close()
     assert calls == ["resources", "store"]
 

@@ -127,6 +127,282 @@ def _pack_uniform_two_point_lines(
     return out_coords, out_offsets
 
 
+def _probability_parameters(
+    probability_base: tuple[float, float, float],
+    probability_slope: tuple[float, float, float],
+) -> tuple[tuple[float, float, float], tuple[float, float, float], bool]:
+    """確率 field の clamp 済み係数と有効状態を返す。"""
+
+    def clamp_component(value: float) -> float:
+        # 比較分岐により finite な範囲外値だけを clamp する。NaN は従来どおり
+        # 保持し、後段の確率比較を常に False にする。
+        if value < 0.0:
+            return 0.0
+        if value > 1.0:
+            return 1.0
+        return value
+
+    base = tuple(clamp_component(value) for value in probability_base)
+    slope = tuple(probability_slope)
+    enabled = any(value != 0.0 for value in (*base, *slope))
+    return (base[0], base[1], base[2]), (slope[0], slope[1], slope[2]), enabled
+
+
+def _probability_space(coords: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """bbox 中心と正規化座標へ変換する逆半径を返す。"""
+
+    min_v = coords.min(axis=0).astype(np.float64, copy=False)
+    max_v = coords.max(axis=0).astype(np.float64, copy=False)
+    center = (min_v + max_v) * 0.5
+    extent = (max_v - min_v) * 0.5
+    inv_extent = np.zeros((3,), dtype=np.float64)
+    for axis in range(3):
+        half_extent = float(extent[axis])
+        inv_extent[axis] = 0.0 if half_extent < 1e-9 else 1.0 / half_extent
+    return center, inv_extent
+
+
+def _effective_probability_for_range(
+    coords: np.ndarray,
+    start: int,
+    end: int,
+    base: tuple[float, float, float],
+    slope: tuple[float, float, float],
+    center: np.ndarray,
+    inv_extent: np.ndarray,
+) -> float:
+    """一つの packed range の centroid における合成確率を返す。"""
+
+    base_x, base_y, base_z = base
+    slope_x, slope_y, slope_z = slope
+    if end <= start:
+        p_x, p_y, p_z = base
+    else:
+        centroid = coords[start:end].mean(axis=0, dtype=np.float64)
+        normalized = (centroid - center) * inv_extent
+        tx = float(normalized[0])
+        ty = float(normalized[1])
+        tz = float(normalized[2])
+        if tx < -1.0:
+            tx = -1.0
+        elif tx > 1.0:
+            tx = 1.0
+        if ty < -1.0:
+            ty = -1.0
+        elif ty > 1.0:
+            ty = 1.0
+        if tz < -1.0:
+            tz = -1.0
+        elif tz > 1.0:
+            tz = 1.0
+        p_x = base_x + slope_x * tx
+        p_y = base_y + slope_y * ty
+        p_z = base_z + slope_z * tz
+        if p_x < 0.0:
+            p_x = 0.0
+        elif p_x > 1.0:
+            p_x = 1.0
+        if p_y < 0.0:
+            p_y = 0.0
+        elif p_y > 1.0:
+            p_y = 1.0
+        if p_z < 0.0:
+            p_z = 0.0
+        elif p_z > 1.0:
+            p_z = 1.0
+    return 1.0 - (1.0 - p_x) * (1.0 - p_y) * (1.0 - p_z)
+
+
+def _select_uniform_two_point_lines(
+    coords: np.ndarray,
+    *,
+    n_lines: int,
+    interval: int | None,
+    index_offset: int,
+    min_length: float,
+    max_length: float,
+    use_min: bool,
+    use_max: bool,
+    base: tuple[float, float, float],
+    slope: tuple[float, float, float],
+    center: np.ndarray,
+    inv_extent: np.ndarray,
+    rng: np.random.Generator | None,
+) -> np.ndarray:
+    """一様な 2 点 line を vectorized path で選択する。"""
+
+    selected = np.zeros((n_lines,), dtype=bool)
+    if interval is not None and index_offset < n_lines:
+        selected[index_offset::interval] = True
+
+    points = coords.reshape(n_lines, 2, 3)
+    if use_min or use_max:
+        delta = np.subtract(points[:, 1, :], points[:, 0, :], dtype=np.float64)
+        lengths = np.sqrt(np.sum(delta * delta, axis=1))
+        if use_min:
+            selected |= lengths <= min_length
+        if use_max:
+            selected |= lengths >= max_length
+
+    if rng is not None:
+        base_x, base_y, base_z = base
+        slope_x, slope_y, slope_z = slope
+        centroids = np.add(points[:, 0, :], points[:, 1, :], dtype=np.float64)
+        centroids *= 0.5
+        tx = (centroids[:, 0] - center[0]) * inv_extent[0]
+        ty = (centroids[:, 1] - center[1]) * inv_extent[1]
+        tz = (centroids[:, 2] - center[2]) * inv_extent[2]
+        np.clip(tx, -1.0, 1.0, out=tx)
+        np.clip(ty, -1.0, 1.0, out=ty)
+        np.clip(tz, -1.0, 1.0, out=tz)
+
+        p_x = base_x + slope_x * tx
+        p_y = base_y + slope_y * ty
+        p_z = base_z + slope_z * tz
+        np.clip(p_x, 0.0, 1.0, out=p_x)
+        np.clip(p_y, 0.0, 1.0, out=p_y)
+        np.clip(p_z, 0.0, 1.0, out=p_z)
+        p_eff = 1.0 - (1.0 - p_x) * (1.0 - p_y) * (1.0 - p_z)
+        selected |= rng.random(n_lines) < p_eff
+    return selected
+
+
+def _select_lines(
+    coords: np.ndarray,
+    offsets: np.ndarray,
+    *,
+    interval: int | None,
+    index_offset: int,
+    min_length: float,
+    max_length: float,
+    use_min: bool,
+    use_max: bool,
+    base: tuple[float, float, float],
+    slope: tuple[float, float, float],
+    center: np.ndarray,
+    inv_extent: np.ndarray,
+    rng: np.random.Generator | None,
+) -> np.ndarray:
+    """generic packed line path の選択 mask を返す。"""
+
+    n_lines = int(offsets.size) - 1
+    lengths = (
+        _compute_polyline_lengths(coords, offsets, close=False)
+        if use_min or use_max
+        else None
+    )
+    selected = np.zeros((n_lines,), dtype=bool)
+    for line_index in range(n_lines):
+        condition = interval is not None and (
+            (line_index - index_offset) % interval == 0
+        )
+        if lengths is not None:
+            length = float(lengths[line_index])
+            condition = condition or (use_min and length <= min_length)
+            condition = condition or (use_max and length >= max_length)
+        # 他条件の有無で結果を変えないため、有効時は全 line で乱数を消費する。
+        if rng is not None:
+            probability = _effective_probability_for_range(
+                coords,
+                int(offsets[line_index]),
+                int(offsets[line_index + 1]),
+                base,
+                slope,
+                center,
+                inv_extent,
+            )
+            probability_selected = float(rng.random()) < probability
+            condition = condition or probability_selected
+        selected[line_index] = condition
+    return selected
+
+
+def _select_faces(
+    coords: np.ndarray,
+    offsets: np.ndarray,
+    *,
+    interval: int | None,
+    index_offset: int,
+    min_length: float,
+    max_length: float,
+    use_min: bool,
+    use_max: bool,
+    base: tuple[float, float, float],
+    slope: tuple[float, float, float],
+    center: np.ndarray,
+    inv_extent: np.ndarray,
+    rng: np.random.Generator | None,
+) -> np.ndarray | None:
+    """3 点以上の face ring だけを選択する。face がなければ None を返す。"""
+
+    n_lines = int(offsets.size) - 1
+    if not any(
+        int(offsets[index + 1]) - int(offsets[index]) >= 3
+        for index in range(n_lines)
+    ):
+        return None
+    lengths = (
+        _compute_polyline_lengths(coords, offsets, close=True)
+        if use_min or use_max
+        else None
+    )
+    selected = np.zeros((n_lines,), dtype=bool)
+    face_index = 0
+    for line_index in range(n_lines):
+        start = int(offsets[line_index])
+        end = int(offsets[line_index + 1])
+        if end - start < 3:
+            continue
+        condition = interval is not None and (
+            (face_index - index_offset) % interval == 0
+        )
+        if lengths is not None:
+            length = float(lengths[line_index])
+            condition = condition or (use_min and length <= min_length)
+            condition = condition or (use_max and length >= max_length)
+        if rng is not None:
+            probability = _effective_probability_for_range(
+                coords,
+                start,
+                end,
+                base,
+                slope,
+                center,
+                inv_extent,
+            )
+            probability_selected = float(rng.random()) < probability
+            condition = condition or probability_selected
+        selected[line_index] = condition
+        face_index += 1
+    return selected
+
+
+def _pack_lines(
+    coords: np.ndarray,
+    offsets: np.ndarray,
+    keep_mask: np.ndarray,
+) -> GeomTuple:
+    """keep mask の packed ranges を入力順に詰め直す。"""
+
+    out_coords: list[np.ndarray] = []
+    out_offsets = [0]
+    cursor = 0
+    for line_index, keep in enumerate(keep_mask):
+        if not keep:
+            continue
+        start = int(offsets[line_index])
+        end = int(offsets[line_index + 1])
+        if end <= start:
+            continue
+        segment = coords[start:end]
+        out_coords.append(segment)
+        cursor += int(segment.shape[0])
+        out_offsets.append(cursor)
+    if len(out_offsets) == 1:
+        return empty_packed_geometry()
+    return np.concatenate(out_coords, axis=0), np.asarray(out_offsets, dtype=np.int32)
+
+
 @effect(meta=drop_meta)
 def drop(
     g: GeomTuple,
@@ -190,68 +466,38 @@ def drop(
     """
     if interval < 0:
         raise ValueError("drop: interval は 0 以上である必要がある")
-
-    eff_interval = interval if interval >= 1 else None
-    effective_index_offset = index_offset
-    if eff_interval is not None:
-        effective_index_offset %= eff_interval
     if seed < 0:
         raise ValueError("drop: seed は 0 以上である必要がある")
 
+    effective_interval = interval if interval >= 1 else None
+    effective_index_offset = index_offset
+    if effective_interval is not None:
+        effective_index_offset %= effective_interval
     use_min = min_length >= 0.0
     use_max = max_length >= 0.0
-
-    base_px, base_py, base_pz = probability_base
-
-    if base_px < 0.0:
-        base_px = 0.0
-    elif base_px > 1.0:
-        base_px = 1.0
-    if base_py < 0.0:
-        base_py = 0.0
-    elif base_py > 1.0:
-        base_py = 1.0
-    if base_pz < 0.0:
-        base_pz = 0.0
-    elif base_pz > 1.0:
-        base_pz = 1.0
-
-    slope_x, slope_y, slope_z = probability_slope
-
-    prob_enabled = (
-        (base_px != 0.0)
-        or (base_py != 0.0)
-        or (base_pz != 0.0)
-        or (slope_x != 0.0)
-        or (slope_y != 0.0)
-        or (slope_z != 0.0)
+    base, slope, probability_enabled = _probability_parameters(
+        probability_base,
+        probability_slope,
     )
 
     coords, offsets = g
-    if coords.shape[0] == 0:
-        return coords, offsets
-
     n_lines = int(offsets.size) - 1
-    if n_lines <= 0:
+    if coords.shape[0] == 0 or n_lines <= 0:
+        return coords, offsets
+    if (
+        effective_interval is None
+        and not use_min
+        and not use_max
+        and not probability_enabled
+    ):
         return coords, offsets
 
-    if eff_interval is None and not use_min and not use_max and not prob_enabled:
-        return coords, offsets
-
-    rng = None
-    if prob_enabled:
-        rng = np.random.default_rng(seed)
-
-    center = np.zeros((3,), dtype=np.float64)
-    inv_extent = np.zeros((3,), dtype=np.float64)
-    if prob_enabled:
-        min_v = coords.min(axis=0).astype(np.float64, copy=False)
-        max_v = coords.max(axis=0).astype(np.float64, copy=False)
-        center = (min_v + max_v) * 0.5
-        extent = (max_v - min_v) * 0.5
-        for k in range(3):
-            e = float(extent[k])
-            inv_extent[k] = 0.0 if e < 1e-9 else 1.0 / e
+    rng = np.random.default_rng(seed) if probability_enabled else None
+    if probability_enabled:
+        center, inv_extent = _probability_space(coords)
+    else:
+        center = np.zeros((3,), dtype=np.float64)
+        inv_extent = np.zeros((3,), dtype=np.float64)
 
     uniform_two_point_lines = by == "line" and _has_uniform_two_point_lines(
         coords,
@@ -259,196 +505,68 @@ def drop(
         n_lines=n_lines,
     )
     if uniform_two_point_lines:
-        selected = np.zeros((n_lines,), dtype=bool)
-
-        if eff_interval is not None and effective_index_offset < n_lines:
-            selected[effective_index_offset::eff_interval] = True
-
-        points = coords.reshape(n_lines, 2, 3)
-        if use_min or use_max:
-            delta = np.subtract(
-                points[:, 1, :],
-                points[:, 0, :],
-                dtype=np.float64,
-            )
-            two_point_lengths = np.sqrt(np.sum(delta * delta, axis=1))
-            if use_min:
-                selected |= two_point_lengths <= min_length
-            if use_max:
-                selected |= two_point_lengths >= max_length
-
-        if rng is not None:
-            centroids = np.add(
-                points[:, 0, :],
-                points[:, 1, :],
-                dtype=np.float64,
-            )
-            centroids *= 0.5
-
-            tx = (centroids[:, 0] - center[0]) * inv_extent[0]
-            ty = (centroids[:, 1] - center[1]) * inv_extent[1]
-            tz = (centroids[:, 2] - center[2]) * inv_extent[2]
-            np.clip(tx, -1.0, 1.0, out=tx)
-            np.clip(ty, -1.0, 1.0, out=ty)
-            np.clip(tz, -1.0, 1.0, out=tz)
-
-            p_x = base_px + slope_x * tx
-            p_y = base_py + slope_y * ty
-            p_z = base_pz + slope_z * tz
-            np.clip(p_x, 0.0, 1.0, out=p_x)
-            np.clip(p_y, 0.0, 1.0, out=p_y)
-            np.clip(p_z, 0.0, 1.0, out=p_z)
-
-            p_eff = 1.0 - (1.0 - p_x) * (1.0 - p_y) * (1.0 - p_z)
-            selected |= rng.random(n_lines) < p_eff
-
+        selected = _select_uniform_two_point_lines(
+            coords,
+            n_lines=n_lines,
+            interval=effective_interval,
+            index_offset=effective_index_offset,
+            min_length=min_length,
+            max_length=max_length,
+            use_min=use_min,
+            use_max=use_max,
+            base=base,
+            slope=slope,
+            center=center,
+            inv_extent=inv_extent,
+            rng=rng,
+        )
         keep_mask = ~selected if keep_mode == "drop" else selected
         return _pack_uniform_two_point_lines(coords, keep_mask)
 
-    def _p_eff_for_range(start: int, end: int) -> float:
-        if end <= start:
-            p_x = base_px
-            p_y = base_py
-            p_z = base_pz
-        else:
-            c = coords[start:end].mean(axis=0, dtype=np.float64)
-            t = (c - center) * inv_extent
-            tx = float(t[0])
-            ty = float(t[1])
-            tz = float(t[2])
-            if tx < -1.0:
-                tx = -1.0
-            elif tx > 1.0:
-                tx = 1.0
-            if ty < -1.0:
-                ty = -1.0
-            elif ty > 1.0:
-                ty = 1.0
-            if tz < -1.0:
-                tz = -1.0
-            elif tz > 1.0:
-                tz = 1.0
-
-            p_x = base_px + slope_x * tx
-            p_y = base_py + slope_y * ty
-            p_z = base_pz + slope_z * tz
-
-            if p_x < 0.0:
-                p_x = 0.0
-            elif p_x > 1.0:
-                p_x = 1.0
-            if p_y < 0.0:
-                p_y = 0.0
-            elif p_y > 1.0:
-                p_y = 1.0
-            if p_z < 0.0:
-                p_z = 0.0
-            elif p_z > 1.0:
-                p_z = 1.0
-
-        return 1.0 - (1.0 - p_x) * (1.0 - p_y) * (1.0 - p_z)
-
     if by == "line":
-        lengths: np.ndarray | None = None
-        if use_min or use_max:
-            lengths = _compute_polyline_lengths(coords, offsets, close=False)
-
-        keep_mask = np.zeros((n_lines,), dtype=bool)
-        for i in range(n_lines):
-            cond = False
-
-            if eff_interval is not None:
-                cond = cond or (((i - effective_index_offset) % eff_interval) == 0)
-
-            if lengths is not None:
-                L = float(lengths[i])
-                if use_min and L <= min_length:
-                    cond = True
-                if use_max and L >= max_length:
-                    cond = True
-
-            # 他条件の有無で確率判定が変わらないよう、乱数は全行で消費する。
-            if rng is not None:
-                start = int(offsets[i])
-                end = int(offsets[i + 1])
-                p_eff = _p_eff_for_range(start, end)
-                if float(rng.random()) < p_eff:
-                    cond = True
-
-            if keep_mode == "drop":
-                keep_mask[i] = not cond
-            else:
-                keep_mask[i] = cond
-
+        selected = _select_lines(
+            coords,
+            offsets,
+            interval=effective_interval,
+            index_offset=effective_index_offset,
+            min_length=min_length,
+            max_length=max_length,
+            use_min=use_min,
+            use_max=use_max,
+            base=base,
+            slope=slope,
+            center=center,
+            inv_extent=inv_extent,
+            rng=rng,
+        )
+        keep_mask = ~selected if keep_mode == "drop" else selected
     else:
-        face_count = 0
-        for i in range(n_lines):
-            start = int(offsets[i])
-            end = int(offsets[i + 1])
-            if end - start >= 3:
-                face_count += 1
-        if face_count <= 0:
+        selected_faces = _select_faces(
+            coords,
+            offsets,
+            interval=effective_interval,
+            index_offset=effective_index_offset,
+            min_length=min_length,
+            max_length=max_length,
+            use_min=use_min,
+            use_max=use_max,
+            base=base,
+            slope=slope,
+            center=center,
+            inv_extent=inv_extent,
+            rng=rng,
+        )
+        if selected_faces is None:
             return coords, offsets
-
-        lengths = None
-        if use_min or use_max:
-            lengths = _compute_polyline_lengths(coords, offsets, close=True)
-
+        # face 対象外の 0〜2 点 line は常に残す。
         keep_mask = np.ones((n_lines,), dtype=bool)
-        face_index = 0
-        for i in range(n_lines):
-            start = int(offsets[i])
-            end = int(offsets[i + 1])
-            if end - start < 3:
-                continue
-
-            cond = False
-            if eff_interval is not None:
-                cond = cond or (
-                    ((face_index - effective_index_offset) % eff_interval) == 0
-                )
-
-            if lengths is not None:
-                L = float(lengths[i])
-                if use_min and L <= min_length:
-                    cond = True
-                if use_max and L >= max_length:
-                    cond = True
-
-            if rng is not None:
-                p_eff = _p_eff_for_range(start, end)
-                if float(rng.random()) < p_eff:
-                    cond = True
-
-            if keep_mode == "drop":
-                keep_mask[i] = not cond
-            else:
-                keep_mask[i] = cond
-
-            face_index += 1
+        face_mask = np.diff(offsets) >= 3
+        keep_mask[face_mask] = (
+            ~selected_faces[face_mask]
+            if keep_mode == "drop"
+            else selected_faces[face_mask]
+        )
 
     if not np.any(keep_mask):
         return empty_packed_geometry()
-
-    out_coords_list: list[np.ndarray] = []
-    out_offsets_list: list[int] = [0]
-    cursor = 0
-
-    for i in range(n_lines):
-        if not keep_mask[i]:
-            continue
-        start = int(offsets[i])
-        end = int(offsets[i + 1])
-        if end <= start:
-            continue
-        seg = coords[start:end]
-        out_coords_list.append(seg)
-        cursor += int(seg.shape[0])
-        out_offsets_list.append(cursor)
-
-    if len(out_offsets_list) == 1:
-        return empty_packed_geometry()
-
-    out_coords = np.concatenate(out_coords_list, axis=0)
-    out_offsets = np.asarray(out_offsets_list, dtype=np.int32)
-    return out_coords, out_offsets
+    return _pack_lines(coords, offsets, keep_mask)

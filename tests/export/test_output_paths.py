@@ -190,7 +190,7 @@ def test_project_root_lookup_only_handles_shallow_ancestor_chain() -> None:
     )
 
 
-def test_output_path_for_draw_uses_explicit_config_without_changing_default(
+def test_output_path_for_draw_keeps_explicit_configs_isolated(
     tmp_path: Path,
 ) -> None:
     def draw(_t: float) -> None:
@@ -202,11 +202,6 @@ def test_output_path_for_draw_uses_explicit_config_without_changing_default(
     config_b_path.write_text("paths:\n  output_dir: output-b\n", encoding="utf-8")
     config_a = load_runtime_config(config_a_path)
     config_b = load_runtime_config(config_b_path)
-    default_before = output_paths.output_path_for_draw(
-        kind="svg",
-        ext="svg",
-        draw=draw,
-    )
 
     path_a = output_paths.output_path_for_draw(
         kind="svg",
@@ -223,11 +218,19 @@ def test_output_path_for_draw_uses_explicit_config_without_changing_default(
 
     assert path_a.is_relative_to((tmp_path / "output-a").resolve())
     assert path_b.is_relative_to((tmp_path / "output-b").resolve())
-    assert output_paths.output_path_for_draw(
-        kind="svg",
-        ext="svg",
-        draw=draw,
-    ) == default_before
+
+
+def test_output_path_for_draw_requires_explicit_config() -> None:
+    with pytest.raises(TypeError, match="config"):
+        output_paths.output_path_for_draw(
+            kind="svg",
+            ext="svg",
+            draw=lambda _t: None,
+        )  # type: ignore[call-arg]
+    with pytest.raises(TypeError, match="config"):
+        output_paths.default_param_store_path(
+            lambda _t: None,
+        )  # type: ignore[call-arg]
 
 
 @pytest.mark.parametrize(
@@ -258,6 +261,7 @@ def test_output_path_for_draw_rejects_implicit_conversions(
         "kind": "svg",
         "ext": "svg",
         "draw": draw,
+        "config": load_runtime_config(),
     }
     arguments.update(kwargs)
 

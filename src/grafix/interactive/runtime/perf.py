@@ -14,6 +14,7 @@ from collections import OrderedDict, deque
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
+from grafix.core.lifecycle import CleanupErrors
 from grafix.interactive.telemetry import (
     PerfDurationDistribution,
     PerfEvent,
@@ -557,37 +558,55 @@ class PerfCollector:
         if self._closed:
             return
         self._closed = True
-        while self._pending_frame_elapsed_ns:
-            self.finish_frame()
         writer = self._trace_writer
+        errors = CleanupErrors()
+
+        def finish_pending_frames() -> None:
+            while self._pending_frame_elapsed_ns:
+                self.finish_frame()
+
+        errors.attempt(finish_pending_frames, "finish pending performance frames")
+
+        footer: str | None = None
         if writer is not None:
-            if (
-                self._window_frames > 0
-                or self._events
-                or self._duration_samples_ns
-                or self._input_to_present_ns
-            ):
-                self._refresh_snapshot(include_events=True)
-                self._emit_window()
-            footer = (
-                json.dumps(
-                    {
-                        "schema": "grafix.performance.trace.v2",
-                        "record_type": "footer",
-                        "timestamp_ns": time.monotonic_ns(),
-                        "frame_index": self._frame_index,
-                        "records": self._trace_records_emitted,
-                        "dropped_records": writer.dropped,
-                        "unflushed_records": 0,
-                    },
-                    ensure_ascii=False,
-                    sort_keys=True,
-                    separators=(",", ":"),
+
+            def finish_trace_window() -> None:
+                nonlocal footer
+                if (
+                    self._window_frames > 0
+                    or self._events
+                    or self._duration_samples_ns
+                    or self._input_to_present_ns
+                ):
+                    self._refresh_snapshot(include_events=True)
+                    self._emit_window()
+                footer = (
+                    json.dumps(
+                        {
+                            "schema": "grafix.performance.trace.v2",
+                            "record_type": "footer",
+                            "timestamp_ns": time.monotonic_ns(),
+                            "frame_index": self._frame_index,
+                            "records": self._trace_records_emitted,
+                            "dropped_records": writer.dropped,
+                            "unflushed_records": 0,
+                        },
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    )
+                    + "\n"
                 )
-                + "\n"
-            )
+
+            errors.attempt(finish_trace_window, "flush performance trace window")
+            # collector が closed になった時点で writer 参照を切る。flush 自体が
+            # 失敗していても、local owner から writer.close() を必ず試せる。
             self._trace_writer = None
-            writer.close(footer=footer)
+            errors.attempt(
+                lambda: writer.close(footer=footer),
+                "close performance trace writer",
+            )
+        errors.raise_if_any()
 
     def record_operation(self, name: str, elapsed_ns: int) -> None:
         """1 operation evaluator の実行時間を記録する。"""

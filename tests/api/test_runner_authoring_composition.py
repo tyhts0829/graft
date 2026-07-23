@@ -13,11 +13,15 @@ pyglet.options["shadow_window"] = False
 
 import grafix.api.runner as runner_module
 import grafix.interactive.parameter_gui.catalog as gui_catalog_module
-import grafix.interactive.parameter_gui.variation_thumbnail as thumbnail_module
 import grafix.interactive.runtime.parameter_gui_system as gui_system_module
+import grafix.interactive.runtime.variation_thumbnail_capture as thumbnail_capture_module
 from grafix.core.authoring_definitions import AuthoringDefinitionsSnapshot
 from grafix.core.operation_catalog import OperationCatalog
-from grafix.core.parameters import KnownOperationSchemaSnapshot, ParamStore
+from grafix.core.parameters import (
+    KnownOperationSchemaSnapshot,
+    ParameterLoadState,
+    ParamStore,
+)
 from grafix.core.preset_catalog import PresetCatalog
 from grafix.core.runtime_config import RuntimeConfig
 from grafix.runtime_config_loader import runtime_config
@@ -141,6 +145,7 @@ class _RunnerCompositionHarness:
                 self.primary_path = primary_path
                 self.gui_enabled = gui_enabled
                 self.store = ParamStore()
+                self.load_state = ParameterLoadState()
                 self.history = None
                 self.snapshot_slots = None
                 self.autosave = None
@@ -308,11 +313,10 @@ class _RunnerCompositionHarness:
             ParameterGUIWindowSystem,
         )
         monkeypatch.setattr(
-            thumbnail_module,
-            "variation_thumbnail_callbacks",
+            thumbnail_capture_module,
+            "make_variation_thumbnail_capture",
             lambda *_args, **_kwargs: (
-                lambda *_callback_args, **_callback_kwargs: None,
-                lambda *_callback_args, **_callback_kwargs: None,
+                lambda *_callback_args, **_callback_kwargs: None
             ),
         )
         monkeypatch.setattr(runner_module.pyglet.clock, "schedule_once", lambda *_args: None)
@@ -336,6 +340,35 @@ def _assert_projection_source(
     operations, presets, _projected = projection
     assert operations is definitions.operations
     assert presets is definitions.presets
+
+
+def test_runner_normal_lifetime_persists_then_closes_owned_resources(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """公開 run の正常経路が acquisition 済み resource を最後まで解放する。"""
+
+    harness = _RunnerCompositionHarness(
+        monkeypatch=monkeypatch,
+        tmp_path=tmp_path,
+        definitions=_definitions(),
+        gui_enabled=True,
+    )
+
+    harness.run(lambda _t: None)
+
+    session = harness.parameter_session
+    assert session is not None
+    assert len(session.persisted) == 1
+    assert session.persisted[0][1] is True
+    assert harness.calls[-5:] == [
+        "persist parameters",
+        "persist workspace",
+        "close gui",
+        "close draw",
+        "close midi",
+    ]
+    assert harness.midi_close_count == 1
 
 
 def test_runner_projects_one_config_snapshot_and_switches_gui_by_generation_identity(
@@ -373,6 +406,11 @@ def test_runner_projects_one_config_snapshot_and_switches_gui_by_generation_iden
     assert harness.draw_window_kwargs is not None
     assert harness.draw_window_kwargs["definitions"] is initial
     assert harness.draw_window_kwargs["effective_config"] is harness.config
+    provenance_provider = cast(
+        Callable[[], str],
+        harness.draw_window_kwargs["parameter_load_provenance"],
+    )
+    assert provenance_provider() == "primary"
     assert len(harness.schema_projections) == 2
     assert len(harness.gui_projections) == 2
     _assert_projection_source(harness.schema_projections[0], initial)
@@ -382,6 +420,8 @@ def test_runner_projects_one_config_snapshot_and_switches_gui_by_generation_iden
 
     session = harness.parameter_session
     assert session is not None
+    session.load_state = ParameterLoadState(provenance="session_recovery")
+    assert provenance_provider() == "session_recovery"
     initial_schema = harness.schema_projections[0][2]
     reloaded_schema = harness.schema_projections[1][2]
     assert session.initial_known_operations is initial_schema

@@ -964,7 +964,7 @@ def generate_stubs_str(
     - 注入 catalog がある場合は、その immutable snapshot だけを読む。
     - presets は config preset directory または source_roots 配下だけを採用する。
     """
-    from grafix.core.authoring_loader import load_config_authoring_definitions
+    from grafix.authoring_loader import load_config_authoring_definitions
     from grafix.core.runtime_config import RuntimeConfig
     from grafix.runtime_config_loader import runtime_config
 

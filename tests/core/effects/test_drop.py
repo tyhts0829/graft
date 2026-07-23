@@ -163,6 +163,24 @@ def test_drop_probability_is_deterministic_for_same_seed() -> None:
     assert r2.offsets.tolist() == r1.offsets.tolist()
 
 
+def test_drop_probability_seeded_output_characterization() -> None:
+    coords = np.array(
+        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0],
+         [3.0, 0.0, 0.0], [4.0, 0.0, 0.0], [5.0, 0.0, 0.0]],
+        dtype=np.float32,
+    )
+    offsets = np.array([0, 2, 4, 6], dtype=np.int32)
+
+    out_coords, out_offsets = drop_impl(
+        (coords, offsets),
+        probability_base=(0.45, 0.0, 0.0),
+        seed=17,
+    )
+
+    np.testing.assert_array_equal(out_coords, coords[[0, 1, 4, 5]])
+    np.testing.assert_array_equal(out_offsets, np.array([0, 2, 4], dtype=np.int32))
+
+
 def test_drop_all_dropped_returns_empty_geometry() -> None:
     g = G.drop_test_lines5()
     out = E.drop(interval=1, keep_mode="drop")(g)
@@ -196,6 +214,19 @@ def test_drop_probability_clamps_range() -> None:
     )
     assert out_over.coords.shape == (0, 3)
     assert out_over.offsets.tolist() == [0]
+
+
+def test_drop_nan_probability_component_keeps_legacy_non_selection() -> None:
+    coords, offsets = _many_two_point_lines(10)
+
+    out_coords, out_offsets = drop_impl(
+        (coords, offsets),
+        probability_base=(float("nan"), 0.5, 0.0),
+        seed=0,
+    )
+
+    np.testing.assert_array_equal(out_coords, coords)
+    np.testing.assert_array_equal(out_offsets, offsets)
 
 
 def test_drop_unknown_keep_mode_is_rejected_eagerly() -> None:

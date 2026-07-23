@@ -8,6 +8,7 @@ import pytest
 from grafix import E, G
 from grafix.api._operation_selector import (
     PRIMITIVE_SELECTOR_OP,
+    freeze_params_by_target,
     resolve_effect_selection,
     resolve_primitive_selection,
 )
@@ -18,7 +19,10 @@ from grafix.core.operation_catalog import (
     bind_operation_catalog,
     current_operation_catalog,
 )
-from grafix.core.operation_selector import ensure_primitive_selector_spec
+from grafix.core.operation_selector import (
+    ensure_primitive_selector_spec,
+    selector_spec,
+)
 from grafix.core.parameters.meta import ParamMeta
 from grafix.core.realized_geometry import GeomTuple
 
@@ -207,11 +211,13 @@ def test_e_select_rejects_non_positive_arity(n_inputs: int) -> None:
 def test_selector_resolution_rejects_non_bool_target_explicit(
     invalid: object,
 ) -> None:
+    primitive_params = freeze_params_by_target(None, kind="primitive")
+    effect_params = freeze_params_by_target(None, kind="effect", n_inputs=1)
     with pytest.raises(TypeError, match="target_explicit.*bool"):
         resolve_primitive_selection(
             target="circle",
             target_explicit=invalid,  # type: ignore[arg-type]
-            params_by_target=(),
+            params_by_target=primitive_params,
             site_id="strict-primitive-selector",
         )
 
@@ -220,21 +226,73 @@ def test_selector_resolution_rejects_non_bool_target_explicit(
             target="rotate",
             target_explicit=invalid,  # type: ignore[arg-type]
             n_inputs=1,
-            params_by_target=(),
+            params_by_target=effect_params,
             site_id="strict-effect-selector",
         )
 
 
 def test_resolved_selection_params_are_read_only() -> None:
+    frozen_params = freeze_params_by_target(None, kind="primitive")
     selected = resolve_primitive_selection(
         target="circle",
         target_explicit=True,
-        params_by_target=(),
+        params_by_target=frozen_params,
         site_id="immutable-primitive-selector",
     )
 
     with pytest.raises(TypeError):
         selected.params["radius"] = 2.0  # type: ignore[index]
+
+
+def test_frozen_selector_params_bind_one_catalog_and_selector() -> None:
+    catalog = current_operation_catalog()
+    frozen = freeze_params_by_target(
+        {"circle": {"radius": 2.0}},
+        kind="primitive",
+        catalog=catalog,
+    )
+
+    selected = resolve_primitive_selection(
+        target="circle",
+        target_explicit=True,
+        params_by_target=frozen,
+        site_id="bound-primitive-selector",
+    )
+
+    assert frozen.selector is ensure_primitive_selector_spec()
+    assert frozen.catalog is catalog
+    assert selected.target == "circle"
+    assert selected.params["radius"] == 2.0
+
+
+def test_effect_resolution_rejects_frozen_selector_with_other_arity() -> None:
+    frozen = freeze_params_by_target(None, kind="effect", n_inputs=1)
+
+    with pytest.raises(LookupError, match="n_inputs"):
+        resolve_effect_selection(
+            target="boolean",
+            target_explicit=True,
+            n_inputs=2,
+            params_by_target=frozen,
+            site_id="wrong-arity-selector",
+        )
+
+
+def test_freeze_rejects_selector_from_stale_catalog_generation() -> None:
+    original = current_operation_catalog()
+    stale_selector = selector_spec(original, kind="primitive", n_inputs=0)
+    reduced_builder = OperationCatalogBuilder()
+    for entry in original.entries():
+        if entry.kind != "primitive" or entry.name != "arc":
+            reduced_builder.register(entry.declaration)
+
+    with pytest.raises(LookupError, match="catalog"):
+        freeze_params_by_target(
+            None,
+            kind="primitive",
+            catalog=reduced_builder.freeze(),
+            selector=stale_selector,
+        )
 
 
 @pytest.mark.parametrize("invalid", [0, 1, "", None, object()])

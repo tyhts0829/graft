@@ -17,6 +17,8 @@ flowchart LR
     api["grafix.api<br/>G / E / L / P / run / render / export"]
     core["grafix.core<br/>domain contracts"]
     kernels["grafix.core.geometry_kernels<br/>pure numeric kernels"]
+    authoring["grafix.authoring_loader<br/>source capture / candidate catalog"]
+    snapshot["grafix._snapshot_import<br/>temporary import transaction"]
     configio["grafix.runtime_config_loader<br/>YAML / discovery / merge"]
     paramio["grafix.parameter_storage<br/>read / recover / commit"]
     export["grafix.export<br/>encode / staging / publish"]
@@ -29,16 +31,22 @@ flowchart LR
     api --> core
     api --> configio
     api --> paramio
+    api --> authoring
     api --> runtime
     api --> export
     runtime --> core
     runtime --> paramio
+    runtime --> authoring
+    runtime --> snapshot
     runtime --> export
     runtime --> leaf
     runtime --> neutral
     leaf --> core
     leaf --> neutral
     core --> kernels
+    authoring --> snapshot
+    authoring --> core
+    snapshot --> core
     configio --> core
     paramio --> core
     export --> core
@@ -50,13 +58,39 @@ flowchart LR
 
 禁止する逆依存:
 
-- `core -> api/export/interactive/runtime_config_loader/parameter_storage`
+- `core -> api/export/interactive/runtime_config_loader/parameter_storage/authoring_loader`
 - `export -> api/interactive`
 - `interactive -> api`
 - `interactive` の GL/MIDI/GUI leaf `-> interactive.runtime`
-- `core -> YAML/filesystem discovery、ParamStore mutation、subprocess/fsync/publish/output-path policy`
+- `core -> YAML/filesystem discovery、candidate compile/exec、ParamStore mutation、subprocess/fsync/publish/output-path policy`
+
+config authoring の filesystem capture は `grafix.authoring_loader`、config authoring/source reload が
+共有する `sys.meta_path` / `sys.modules` transaction は `grafix._snapshot_import` が所有する。export の
+output path helper は config discovery を行わず、composition root から `RuntimeConfig` を受け取る。
 
 `tests/architecture/test_dependency_boundaries.py` が import と主要 private reach-through を検査する。
+
+### Lazy facade と core-only import
+
+```mermaid
+flowchart LR
+    root["import grafix<br/>lazy root facade"]
+    dsl["G / E / L / P"]
+    apiheavy["render / export / variation batch"]
+    runwrapper["run wrapper"]
+    runner["interactive runner"]
+    coreimport["import grafix.core.geometry"]
+    outer["api / export / parameter storage / config loader"]
+
+    root -->|"name requested"| dsl
+    root -.->|"deferred until requested"| apiheavy
+    root -->|"stable callable identity"| runwrapper
+    runwrapper -.->|"deferred until call"| runner
+    coreimport -.->|"must not initialize"| outer
+```
+
+公開名と同名の submodule を先に import しても API の `render` / `export`、root の `export` / `cc` は
+module object に置き換わらない。`grafix.core` package initializer は outer capability を importしない。
 
 ## 2. Authoring から immutable catalog まで
 
@@ -93,6 +127,30 @@ flowchart TB
     opcat --> session
     presetcat --> session
 ```
+
+candidate source の capability flow:
+
+```mermaid
+flowchart LR
+    dirs["Config authoring directories"]
+    loader["grafix.authoring_loader<br/>discover + capture bytes"]
+    recipe["AuthoringDefinitionsRecipe"]
+    reload["Source reload<br/>reachable relative imports"]
+    plan["SnapshotImportPlan"]
+    importer["grafix._snapshot_import<br/>shared RLock"]
+    target["Scoped RegistrationTarget"]
+    accepted["Accepted immutable generation"]
+    cleanup["Finder/candidate cleanup<br/>including BaseException"]
+
+    dirs --> loader --> recipe --> plan
+    reload --> plan
+    plan --> importer --> target --> accepted
+    importer --> cleanup
+```
+
+source discovery、relative-import policy、registration、accept/rollback は caller が所有する。
+`_snapshot_import` は確定済み bytes の temporary namespace/finder/module transaction だけを持つ。
+config candidate は実行後に module を除去し、reload は採用中 generation だけを保持する。
 
 重要な規則:
 
@@ -151,7 +209,9 @@ flowchart LR
 `GeometryId` は使用した operation ref を推移的に含む。realize は catalog の exact ref を検証し、
 同名別 version へ fallback しない。schema だけの変更や未使用 operation の変更は geometry cache
 identity に含めない。full `RuntimeConfig` は DAG evaluator へ入れず、現行では `font_dirs` だけを
-`EvaluationConfig` へ射影する。YAML/探索は `runtime_config_loader` が所有する。
+`EvaluationConfig` へ射影する。YAML/探索は `runtime_config_loader` が所有する。output/parameter/video/
+workspace path helper は ambient discovery を行わず、entry point が解決した同じ `RuntimeConfig` を
+必須 `config=` で受け取る。
 
 ## 4. Session / generation の resource ownership
 
@@ -178,9 +238,10 @@ flowchart TB
     resources -.->|"borrowed"| child
 ```
 
-close 順は `RealizeSession -> EvaluationResources -> RealizeCacheStore`。
-`RenderSession` の公開 property は `options`、`param_store`、`config`、`runtime_limits`、`metadata` のみ。
-catalog/context/session/cache/resource child owner は内部に保つ。
+close 順は `RealizeSession -> RealizeCacheStore -> EvaluationResources`。
+`RenderSession` の公開 property は `options`、`param_store`、`config`、`runtime_limits`、`metadata` などの
+immutable metadata/session view に限定する。派生 view は追加できるが、catalog/context/session/cache/
+resource のように独自の `close()` capability を持つ child owner は内部に保つ。
 
 ### Low-level RealizeSession
 
@@ -237,7 +298,7 @@ flowchart LR
     factory["injected _MpDrawFactory"]
     client["_MpDrawClient Protocol"]
     mp["MpDraw<br/>process / Queue / restart / close"]
-    state["_MpDrawState<br/>ACK / latest / stale transitions"]
+    state["transition state<br/>ACK / latest / stale transitions"]
 
     sr -->|"initial and reload"| factory --> client
     client -.->|"default implementation"| mp
@@ -245,7 +306,7 @@ flowchart LR
 ```
 
 test fake は constructor の `mp_draw_factory` から渡し、`SceneRunner._mp_draw` を直接差し替えない。
-`_MpDrawState` は process、Queue、thread、clock、close capability を所有しない。
+transition state は process、Queue、thread、clock、close capability を所有しない。
 
 ## 5. Parameter の読み取りと更新
 
@@ -256,8 +317,9 @@ sequenceDiagram
     participant Store as "ParamStore"
     participant DSL as "G / E / P / Layer style"
     participant Buffer as "FrameParamsBuffer"
+    participant View as "table_view / session cache"
     participant GUI as "Parameter GUI renderer"
-    participant Bridge as "store_bridge / controllers"
+    participant Commit as "table_commit / controllers"
 
     App->>Ctx: enter(store, cc snapshot)
     Ctx->>Store: capture immutable ParamSnapshot
@@ -268,11 +330,29 @@ sequenceDiagram
     Ctx->>Store: merge successful frame records
     Ctx-->>App: exit
 
-    Store->>Bridge: immutable query / ParameterTableView
-    Bridge->>GUI: TableRenderInput
-    GUI-->>Bridge: immutable TableEdits
-    Bridge->>Store: narrow command
+    Store->>View: immutable query + explicit cache
+    View->>GUI: TableRenderInput
+    GUI-->>Commit: immutable TableEdits
+    Commit->>Store: narrow command
 ```
+
+GUI table cache の lifetime:
+
+```mermaid
+flowchart LR
+    session["ParameterGuiSessionState"]
+    catalog["Immutable ParameterGuiCatalog"]
+    cache["ParameterTableViewCache"]
+    owned["model / view / visibility / search corpus / counts"]
+    close["replace catalog or close"]
+
+    session --> catalog
+    session --> cache --> owned
+    close -->|"clear only this session"| cache
+```
+
+query は `cache=` を必須とし、module-global cache/default catalog/counter を参照しない。同じ store を
+表示する二 GUI session でも cache identity と invalidation は独立する。
 
 通常 command:
 
@@ -323,18 +403,28 @@ value だけを持つ。live `ParamState` / mutable mapping や旧 `ParamStoreMe
 ```mermaid
 flowchart LR
     file["ParamStore JSON / session journal"]
-    read["read_param_store<br/>non-mutating result"]
+    read["read_param_store<br/>non-mutating"]
     recover["recover_*<br/>explicit quarantine policy"]
+    result["ParamStoreLoadResult<br/>store / status / load_state / error"]
+    loadstate["ParameterLoadState<br/>provenance / diagnostics"]
     commit["write_* / finalize_parameter_session<br/>atomic commit"]
     store2["ParamStore"]
+    interactive["ParameterSession<br/>current state owner"]
+    headless["RenderSession metadata<br/>construction-time fixed"]
 
-    file --> read --> store2
-    file --> recover --> store2
+    file --> read --> result
+    file --> recover --> result
+    result --> store2
+    result --> loadstate
+    loadstate --> interactive
+    loadstate --> headless
     store2 --> commit --> file
 ```
 
 この filesystem 境界は `grafix.parameter_storage` が所有する。read は rename/write/unlink をせず、
-recovery と commit は呼び出し側が明示的に選ぶ。
+recovery と commit は呼び出し側が明示的に選ぶ。load metadata は `ParamStore` / runtime/history/
+rollback に格納しない。interactive の Keep/Discard は新 result を session が一箇所で採用し、capture は
+current provider を frame ごとに読む。headless は構築時 state を metadata/provenance に固定する。
 
 ## 6. Interactive の一 frame
 
@@ -397,9 +487,30 @@ sequenceDiagram
 revision/frame ID、fresh serial、export snapshot、provenance token は `PresentedFrameState` が一括して
 accept/prepare/publish する。
 
-Parameter GUI の `ParameterGuiSessionState` は instance ごとの `WidgetSessionState` を所有する。
-font/choice filter と snippet popup text/focus は widgets/table へ明示的に渡され、module-global dict や
-global reset path はない。
+Parameter GUI の `ParameterGuiSessionState` は instance ごとの `WidgetSessionState` と
+`ParameterTableViewCache` を所有する。font/choice filter、snippet popup、catalog/table view/cache は
+widgets/table へ明示的に渡され、module-global dict/cache/counter や global reset path はない。
+
+variation thumbnail adapter:
+
+```mermaid
+flowchart LR
+    gui["Parameter GUI leaf<br/>capture callback + preview only"]
+    runtime["runtime thumbnail adapter"]
+    provider["live frame provider"]
+    capture["CaptureService"]
+    policy["export filename policy"]
+    path["actual no-clobber PNG path"]
+
+    gui -->|"name"| runtime
+    runtime -->|"each request"| provider
+    runtime --> capture
+    runtime --> policy
+    capture --> path --> gui
+```
+
+GL/MIDI/Parameter GUI leaf は `grafix.export` を importしない。adapter は古い frame を固定せず、
+`CaptureService` が実際に公開した path を GUI へ返す。
 
 ## 7. Render と capture publish
 
@@ -407,6 +518,7 @@ global reset path はない。
 flowchart LR
     draw["draw(t) -> SceneItem<br/>Geometry / Layer / list / tuple"]
     render["RenderSession<br/>final evaluation"]
+    load["construction-time ParameterLoadState"]
     frame["Immutable Frame"]
     adapter["grafix.export API adapter"]
     service["CaptureService"]
@@ -416,6 +528,7 @@ flowchart LR
     files["Artifact family + capture manifest"]
 
     draw --> render --> frame
+    load --> render
     frame --> adapter --> service
     service --> encoder --> staging --> publish --> files
 ```
@@ -424,6 +537,23 @@ flowchart LR
 late collision では再 encode せず別 version を試す。失敗時は今回の generation だけを rollback する。
 `SceneItem` の再帰 container は list/tuple だけで、custom `Sequence`、set、generator、str/bytes は
 runtime/type contract の対象外である。
+
+named variation batch の transaction boundary:
+
+```mermaid
+flowchart LR
+    request["API<br/>order / request validation"]
+    rollback["item transient rollback"]
+    callback["render + capture callback<br/>partial failure"]
+    exporttx["export.variation_batch<br/>private workspace transaction"]
+    encode["relocate manifests<br/>contact sheet + summary"]
+    publish["no-clobber retry<br/>or overwrite restore"]
+
+    request --> rollback --> callback --> exporttx --> encode --> publish
+```
+
+API は fsync/link/replace/staging codec を持たず、export transaction は API/interactive を importしない。
+batch directory 全体を一 generation として公開する。
 
 ## 8. G-code の semantic boundary
 
@@ -515,20 +645,24 @@ benchmark CLI で検査する。正本は `docs/agent_docs/testing.md`。
 
 | 概念 | 正本 |
 |---|---|
+| lazy public facade / core-only import | `grafix/__init__.py`, `api/__init__.py`, `core/__init__.py` |
 | operation authoring | `core/operation_authoring.py`, `core/operation_declaration.py` |
-| registration/snapshot | `core/authoring_definitions.py`, `core/authoring_loader.py` |
+| registration / immutable snapshot | `core/authoring_definitions.py`, `core/authoring_recipe.py` |
+| authoring source capture / temporary import | `authoring_loader.py`, `_snapshot_import.py` |
 | operation/preset catalog | `core/operation_catalog.py`, `core/preset_catalog.py` |
 | public operation inspection | `api/operation_info.py`, `api/_operation_info.py` |
 | runtime config loading / evaluation config | `runtime_config_loader.py`, `core/runtime_config.py`, `core/evaluation_config.py` |
 | evaluation/cache/resource | `core/evaluation_context.py`, `core/realize.py`, `core/font_resources.py` |
-| parameters / filesystem storage | `core/parameters/`, `parameter_storage.py` |
+| parameters / filesystem load state | `core/parameters/`, `parameter_storage.py`, `interactive/runtime/parameter_session.py` |
 | parameter adjustment snapshot | `core/parameters/adjustment_snapshot.py`, `core/parameters/store.py` |
 | SceneItem / scene pipeline | `core/scene.py`, `core/pipeline.py` |
 | headless session public surface | `api/render.py`, `api/__init__.pyi` |
 | interactive composition / MP seam | `api/runner.py`, `interactive/runtime/scene_runner.py`, `interactive/runtime/mp_draw.py` |
 | presented frame state | `interactive/runtime/presented_frame.py` |
-| GUI schema / widget state | `interactive/parameter_gui/catalog.py`, `interactive/parameter_gui/session_state.py` |
+| GUI schema / effective-source badge / session-owned table cache | `interactive/parameter_gui/catalog.py`, `source_badge.py`, `session_state.py`, `table_view.py` |
+| GUI table rendering / commit | `interactive/parameter_gui/table.py`, `table_commit.py` |
 | capture lifecycle | `export/capture.py`, `export/capture_staging.py`, `export/capture_publish.py` |
+| variation batch transaction / thumbnail adapter | `export/variation_batch.py`, `interactive/runtime/variation_thumbnail_capture.py` |
 | numeric kernels / grid diagnostic adapter | `core/geometry_kernels/`, `core/operation_diagnostics.py` |
 | validation owner | `interactive/runtime/mp_draw.py`, `interactive/runtime/export_job_system.py` |
 | test taxonomy | `docs/agent_docs/testing.md`, `pyproject.toml`, `.github/workflows/ci.yml` |

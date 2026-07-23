@@ -32,7 +32,7 @@ from .labeling import (
     humanize_identifier,
     operation_display_name,
 )
-from .midi_learn import MidiLearnState
+from .midi_learn import MidiLearnCommand, MidiLearnState, transition_midi_learn
 from .pyglet_backend import content_region_available_width
 from .rules import RowUiRules, ui_rules_for_row
 from .session_state import WidgetSessionState
@@ -206,6 +206,19 @@ class TableEdits:
             "effect_order_commands",
             tuple(self.effect_order_commands),
         )
+
+
+@dataclass(slots=True)
+class _TableRenderState:
+    """section helper 間で引き継ぐ一 frame の描画結果。"""
+
+    collapsed_headers: set[CollapsedHeaderKey]
+    midi_learn_state: MidiLearnState | None
+    updated_rows: list[ParameterRow]
+    effect_order_commands: list[EffectOrderCommand]
+    drew_column_headers: bool = False
+    want_open_snippet_popup: bool = False
+    snippet_popup_text_new: str | None = None
 
 
 def _encode_effect_step_drag_payload(
@@ -393,28 +406,6 @@ def _row_id(row: ParameterRow) -> str:
     """ImGui の `push_id()` 用に、行の安定 ID を返す。"""
 
     return f"{row.op}#{row.ordinal}:{row.arg}"
-
-
-def source_badge_for_row(row: ParameterRow, last_source: ValueSource | None) -> str:
-    """行の現在の有効値ソースを、製品 UI 用の短い表記で返す。"""
-
-    # last_source は直近に実現した frame の観測値。Undo/Redo や
-    # Snapshot Load の直後は row だけが新状態に進んでいるため、
-    # 現在の control 状態と両立する観測値だけを使う。
-    cc_can_be_source = (isinstance(row.cc_key, int) and row.kind in {"float", "int", "choice"}) or (
-        isinstance(row.cc_key, tuple)
-        and row.kind == "vec3"
-        and any(cc is not None for cc in row.cc_key)
-    )
-    if last_source in {"midi_live", "midi_frozen"} and cc_can_be_source:
-        return "MIDI LIVE" if last_source == "midi_live" else "MIDI FROZEN"
-    if last_source == "ui" and row.override:
-        return "UI"
-    if last_source == "code" and not row.override:
-        return "CODE"
-    if row.override:
-        return "UI"
-    return "CODE"
 
 
 def _set_item_tooltip(imgui: ModuleType, text: str) -> None:
@@ -1144,6 +1135,21 @@ def _snippet_popup_geometry(
     return center_x, center_y, popup_width, popup_height
 
 
+def _apply_midi_learn_command(
+    cc_key: int | tuple[int | None, int | None, int | None] | None,
+    command: MidiLearnCommand,
+) -> int | tuple[int | None, int | None, int | None] | None:
+    """pure transition の component command を row の ``cc_key`` へ反映する。"""
+
+    if command.component is None:
+        return command.cc
+    current = cc_key if isinstance(cc_key, tuple) else (None, None, None)
+    components = [current[0], current[1], current[2]]
+    components[int(command.component)] = command.cc
+    updated = (components[0], components[1], components[2])
+    return None if updated == (None, None, None) else updated
+
+
 def _render_cc_cell(
     imgui: ModuleType,
     *,
@@ -1175,58 +1181,7 @@ def _render_cc_cell(
         # looks like an error state throughout the table.
         return changed_any, cc_key, learn_state
 
-    def _set_scalar(value: int | None) -> int | None:
-        if value is None:
-            return None
-        return int(value)
-
-    def _set_component(
-        current: object, *, index: int, value: int | None
-    ) -> tuple[int | None, int | None, int | None] | None:
-        if isinstance(current, tuple):
-            a, b, c = current
-        else:
-            a, b, c = None, None, None
-        items = [a, b, c]
-        items[int(index)] = None if value is None else int(value)
-        out = (items[0], items[1], items[2])
-        return None if out == (None, None, None) else out
-
-    def _key_for_row(target_row: ParameterRow) -> ParameterKey:
-        return ParameterKey(
-            op=target_row.op,
-            site_id=target_row.site_id,
-            arg=target_row.arg,
-        )
-
-    def _is_active(*, key: ParameterKey, component: int | None) -> bool:
-        state = learn_state
-        if state is None:
-            return False
-        return state.active_target == key and state.active_component == component
-
-    def _enter_learn(*, key: ParameterKey, component: int | None) -> None:
-        nonlocal learn_state
-        if learn_state is None:
-            return
-        learn_state = replace(
-            learn_state,
-            active_target=key,
-            active_component=component,
-            last_seen_cc_seq=(0 if midi_last_cc_change is None else int(midi_last_cc_change[0])),
-        )
-
-    def _cancel_learn() -> None:
-        nonlocal learn_state
-        if learn_state is None:
-            return
-        learn_state = replace(
-            learn_state,
-            active_target=None,
-            active_component=None,
-        )
-
-    key = _key_for_row(row)
+    key = ParameterKey(op=row.op, site_id=row.site_id, arg=row.arg)
     midi_is_driving = last_source in {"midi_live", "midi_frozen"}
 
     if rules.cc_key == "int3":
@@ -1239,18 +1194,21 @@ def _render_cc_cell(
         compact_components = component_width < 44.0 * metric_scale
         for i in range(3):
             component_cc = current_tuple[i]
-            active = _is_active(key=key, component=int(i))
-
-            if active and learn_state is not None and midi_last_cc_change is not None:
-                seq, learned_cc = midi_last_cc_change
-                if int(seq) > int(learn_state.last_seen_cc_seq):
-                    cc_key = _set_component(cc_key, index=int(i), value=int(learned_cc))
-                    learn_state = replace(learn_state, last_seen_cc_seq=int(seq))
-                    _cancel_learn()
-                    changed_any = True
-                    current_tuple = cc_key if isinstance(cc_key, tuple) else (None, None, None)
-                    component_cc = current_tuple[i]
-                    active = False
+            transition = transition_midi_learn(
+                learn_state,
+                target=key,
+                component=int(i),
+                current_cc=component_cc,
+                last_cc_change=midi_last_cc_change,
+                clicked=False,
+            )
+            learn_state = transition.state
+            component_cc = transition.current_cc
+            active = transition.active
+            if transition.command is not None:
+                cc_key = _apply_midi_learn_command(cc_key, transition.command)
+                changed_any = True
+                current_tuple = cc_key if isinstance(cc_key, tuple) else (None, None, None)
 
             if active:
                 label_text = f"{component_names[i]}..."
@@ -1295,31 +1253,35 @@ def _render_cc_cell(
                     f"Remove {component_names[i]} MIDI CC mapping; keep its effective value in UI",
                 )
             if clicked:
-                # 新規操作で learn は 1 件に限定する（別ターゲットがあればキャンセル）。
-                if learn_state is not None and learn_state.active_target is not None and not active:
-                    _cancel_learn()
-
-                if active:
-                    _cancel_learn()
-                elif component_cc is not None:
-                    cc_key = _set_component(cc_key, index=int(i), value=None)
+                transition = transition_midi_learn(
+                    learn_state,
+                    target=key,
+                    component=int(i),
+                    current_cc=component_cc,
+                    last_cc_change=midi_last_cc_change,
+                    clicked=True,
+                )
+                learn_state = transition.state
+                if transition.command is not None:
+                    cc_key = _apply_midi_learn_command(cc_key, transition.command)
                     changed_any = True
-                else:
-                    _enter_learn(key=key, component=int(i))
 
     else:
         current_cc = cc_key if isinstance(cc_key, int) else None
-        active = _is_active(key=key, component=None)
-
-        if active and learn_state is not None and midi_last_cc_change is not None:
-            seq, learned_cc = midi_last_cc_change
-            if int(seq) > int(learn_state.last_seen_cc_seq):
-                cc_key = _set_scalar(int(learned_cc))
-                learn_state = replace(learn_state, last_seen_cc_seq=int(seq))
-                _cancel_learn()
-                changed_any = True
-                current_cc = cc_key if isinstance(cc_key, int) else None
-                active = False
+        transition = transition_midi_learn(
+            learn_state,
+            target=key,
+            component=None,
+            current_cc=current_cc,
+            last_cc_change=midi_last_cc_change,
+            clicked=False,
+        )
+        learn_state = transition.state
+        current_cc = transition.current_cc
+        active = transition.active
+        if transition.command is not None:
+            cc_key = _apply_midi_learn_command(cc_key, transition.command)
+            changed_any = True
 
         if active:
             label_text = "V..."
@@ -1358,16 +1320,18 @@ def _render_cc_cell(
         else:
             _set_item_tooltip(imgui, "Remove MIDI CC mapping; keep its effective value in UI")
         if clicked:
-            if learn_state is not None and learn_state.active_target is not None and not active:
-                _cancel_learn()
-
-            if active:
-                _cancel_learn()
-            elif current_cc is not None:
-                cc_key = None
+            transition = transition_midi_learn(
+                learn_state,
+                target=key,
+                component=None,
+                current_cc=current_cc,
+                last_cc_change=midi_last_cc_change,
+                clicked=True,
+            )
+            learn_state = transition.state
+            if transition.command is not None:
+                cc_key = _apply_midi_learn_command(cc_key, transition.command)
                 changed_any = True
-            else:
-                _enter_learn(key=key, component=None)
 
     return changed_any, cc_key, learn_state
 
@@ -1507,7 +1471,7 @@ def render_parameter_row_4cols(
 
     if not changed_any:
         # steady frame では全 visible row の dataclass を作り直さない。
-        # store bridge は object identity で sparse change を判定できる。
+        # table commit は object identity で sparse change を判定できる。
         return False, row, midi_learn_state
 
     # ローカル変数へ反映した結果を、新しい ParameterRow として返す。
@@ -1525,227 +1489,211 @@ def render_parameter_row_4cols(
     return changed_any, updated, midi_learn_state
 
 
-def render_parameter_table(
+def _effect_chain_state_for_block(
+    block: GroupBlockLayout,
+    render_input: TableRenderInput,
+) -> EffectChainTableState | None:
+    """effect-chain block の immutable order state を返す。"""
+
+    if (
+        block.group_id[0] is not GroupType.EFFECT_CHAIN
+        or render_input.effect_chain_state_by_id is None
+    ):
+        return None
+    return render_input.effect_chain_state_by_id.get(str(block.group_id[1]))
+
+
+def _append_unchanged_block_rows(
+    block: GroupBlockLayout,
+    model_rows: Sequence[ParameterRow],
+    state: _TableRenderState,
+) -> None:
+    """非描画 block の rows を identity のまま返却列へ足す。"""
+
+    state.updated_rows.extend(model_rows[item.row_index] for item in block.items)
+
+
+def _render_effect_order_controls(
+    imgui: ModuleType,
+    chain_state: EffectChainTableState | None,
+    state: _TableRenderState,
+) -> None:
+    """effect chain の UI-order 表示と reset command を描画する。"""
+
+    if chain_state is None or not chain_state.order_overridden:
+        return
+    imgui.text_colored(
+        "UI order",
+        *PARAMETER_GUI_PALETTE["success"],
+    )
+    imgui.same_line()
+    if imgui.small_button("Reset##effect_order_reset"):
+        state.effect_order_commands.append(EffectOrderCommand.reset(chain_id=chain_state.chain_id))
+    _set_item_tooltip(imgui, "Reset this chain to code order.")
+    imgui.same_line()
+
+
+def _render_group_header(
+    imgui: ModuleType,
+    block: GroupBlockLayout,
+    render_input: TableRenderInput,
+    state: _TableRenderState,
+) -> bool:
+    """group header、collapse、Code/effect-order controls を描画する。"""
+
+    if not block.header:
+        return True
+
+    first_row = None if not block.items else render_input.model_rows[block.items[0].row_index]
+    collapse_key = _collapse_key_for_group(block.group_id, first_row)
+    if collapse_key is not None:
+        imgui.set_next_item_open(
+            collapse_key not in state.collapsed_headers,
+            imgui.ALWAYS,
+        )
+
+    header_kind = _header_kind_for_group_id(block.group_id)
+    base = _rgba01_from_rgba255(GROUP_HEADER_BASE_COLORS_RGBA[header_kind])
+    normal, hovered, active = _derive_header_colors(base)
+    imgui.push_style_color(imgui.COLOR_HEADER, *normal)
+    imgui.push_style_color(imgui.COLOR_HEADER_HOVERED, *hovered)
+    imgui.push_style_color(imgui.COLOR_HEADER_ACTIVE, *active)
+    try:
+        group_open, _visible = imgui.collapsing_header(
+            f"{humanize_identifier(block.header)}##group_header",
+            None,
+            flags=(imgui.TREE_NODE_DEFAULT_OPEN | imgui.TREE_NODE_ALLOW_ITEM_OVERLAP),
+        )
+        imgui.set_item_allow_overlap()
+    finally:
+        imgui.pop_style_color(3)
+
+    chain_state = _effect_chain_state_for_block(block, render_input)
+    button_label = "Code"
+    text_w, _text_h = imgui.calc_text_size(button_label)
+    button_w = float(text_w) + 24.0
+    count_label = f"{len(block.items)} parameters"
+    count_w, _count_h = imgui.calc_text_size(count_label)
+    cluster_w = float(count_w) + 12.0 + float(button_w)
+    if chain_state is not None and chain_state.order_overridden:
+        ui_order_w, _ui_order_h = imgui.calc_text_size("UI order")
+        reset_w, _reset_h = imgui.calc_text_size("Reset")
+        cluster_w += float(ui_order_w) + float(reset_w) + 36.0
+    pos_x = float(imgui.get_window_width()) - cluster_w - 16.0
+    if pos_x > 0.0:
+        imgui.same_line(position=pos_x)
+    else:
+        imgui.same_line()
+
+    _render_effect_order_controls(imgui, chain_state, state)
+    imgui.text_disabled(count_label)
+    imgui.same_line()
+    if imgui.small_button(button_label):
+        state.snippet_popup_text_new = snippet_for_block(
+            block,
+            render_input.model_rows,
+            catalog=render_input.catalog,
+            last_effective_by_key=render_input.last_effective_by_key,
+            step_info_by_site=render_input.step_info_by_site,
+            raw_label_by_site=render_input.raw_label_by_site,
+        )
+        state.want_open_snippet_popup = True
+
+    if collapse_key is not None:
+        if group_open:
+            state.collapsed_headers.discard(collapse_key)
+        else:
+            state.collapsed_headers.add(collapse_key)
+    return bool(group_open)
+
+
+def _render_group_row_table(
+    imgui: ModuleType,
+    block: GroupBlockLayout,
     render_input: TableRenderInput,
     *,
     widget_state: WidgetSessionState,
-    on_help_row: Callable[[ParameterRow, bool], None] | None = None,
-) -> TableEdits:
-    """immutable snapshot を描画し、immutable edit 集合を返す。"""
+    state: _TableRenderState,
+    on_help_row: Callable[[ParameterRow, bool], None] | None,
+) -> None:
+    """open group の effect headings と 4-column parameter rows を描画する。"""
 
-    import imgui
+    table_flags = (
+        imgui.TABLE_SIZING_FIXED_FIT
+        | imgui.TABLE_ROW_BACKGROUND
+        | imgui.TABLE_BORDERS_INNER_VERTICAL
+    )
+    table = imgui.begin_table("##parameters", 4, table_flags)
+    if not table.opened:
+        _append_unchanged_block_rows(block, render_input.model_rows, state)
+        return
 
-    group_layout = render_input.group_layout
-    model_rows = render_input.model_rows
-    catalog = render_input.catalog
-    metric_scale = render_input.metric_scale
-    step_info_by_site = render_input.step_info_by_site
-    effect_chain_state_by_id = render_input.effect_chain_state_by_id
-    last_effective_by_key = render_input.last_effective_by_key
-    last_source_by_key = render_input.last_source_by_key
-    raw_label_by_site = render_input.raw_label_by_site
-    midi_learn_state = render_input.midi_learn_state
-    midi_last_cc_change = render_input.midi_last_cc_change
-    collapsed_headers = set(render_input.collapsed_headers)
-    effect_order_commands: list[EffectOrderCommand] = []
-    # 返り値として「更新後の row 群」を返すため、描画しながら新しい row を貯める。
-    # 注: グループを折りたたんで行を描画しない場合でも、group_layout の行と
-    # 1:1 で揃える（store_bridge が strict zip で差分適用するため）。
-    updated_rows: list[ParameterRow] = []
+    try:
+        _setup_parameter_table_columns(
+            imgui,
+            metric_scale=render_input.metric_scale,
+        )
+        if not state.drew_column_headers:
+            imgui.table_headers_row()
+            state.drew_column_headers = True
 
-    # --- Code（ポップアップ出力）---
-    # “トリガ（ボタン）” と “表示（ポップアップ）” を分離し、コピペ用途に寄せる。
-    want_open_snippet_popup = False
-    snippet_popup_text_new: str | None = None
-
-    # 列ヘッダ（label/control/min-max/cc）は繰り返すとノイズになるので、
-    # 最初に開いたグループのテーブルで 1 回だけ描画する。
-    drew_column_headers = False
-
-    for block_index, block in enumerate(group_layout):
-        if block_index > 0 and block.header:
-            imgui.spacing()
-        # 折りたたみ状態の永続化と ID 衝突回避のため、group 固有 ID で push_id する。
-        # - collapsing_header の state（open/close）
-        # - begin_table の内部 ID
-        # の両方をブロック単位で分離できる。
-        imgui.push_id(block.header_id)
-        try:
-            # collapsing_header は (expanded, visible) を返す。
-            # visible=None なので close ボタン無しで常に表示する。
-            group_open = True
-            if block.header:
-                first_row = None if not block.items else model_rows[block.items[0].row_index]
-                collapse_key = _collapse_key_for_group(block.group_id, first_row)
-                if collapse_key is not None:
-                    want_open = collapse_key not in collapsed_headers
-                    imgui.set_next_item_open(bool(want_open), imgui.ALWAYS)
-
-                color_count = 0
-                header_kind = _header_kind_for_group_id(block.group_id)
-                base_rgba255 = GROUP_HEADER_BASE_COLORS_RGBA[header_kind]
-                base = _rgba01_from_rgba255(base_rgba255)
-                normal, hovered, active = _derive_header_colors(base)
-                imgui.push_style_color(imgui.COLOR_HEADER, *normal)
-                imgui.push_style_color(imgui.COLOR_HEADER_HOVERED, *hovered)
-                imgui.push_style_color(imgui.COLOR_HEADER_ACTIVE, *active)
-                color_count = 3
-                try:
-                    group_open, _visible = imgui.collapsing_header(
-                        f"{humanize_identifier(block.header)}##group_header",
-                        None,
-                        flags=(imgui.TREE_NODE_DEFAULT_OPEN | imgui.TREE_NODE_ALLOW_ITEM_OVERLAP),
-                    )
-                    imgui.set_item_allow_overlap()
-                finally:
-                    if color_count:
-                        imgui.pop_style_color(color_count)
-
-                # ヘッダ行の右側に件数と Code ボタンを置く。
-                # collapsing_header は幅いっぱいを使うため、same_line(position=...) で明示配置する。
-                chain_state: EffectChainTableState | None = None
-                if (
-                    block.group_id[0] is GroupType.EFFECT_CHAIN
-                    and effect_chain_state_by_id is not None
-                ):
-                    chain_state = effect_chain_state_by_id.get(str(block.group_id[1]))
-                button_label = "Code"
-                text_w, _text_h = imgui.calc_text_size(button_label)
-                button_w = float(text_w) + 24.0
-                count_label = f"{len(block.items)} parameters"
-                count_w, _count_h = imgui.calc_text_size(count_label)
-                cluster_w = float(count_w) + 12.0 + float(button_w)
-                if chain_state is not None and chain_state.order_overridden:
-                    ui_order_w, _ui_order_h = imgui.calc_text_size("UI order")
-                    reset_w, _reset_h = imgui.calc_text_size("Reset")
-                    cluster_w += float(ui_order_w) + float(reset_w) + 36.0
-                pos_x = float(imgui.get_window_width()) - cluster_w - 16.0
-                if pos_x > 0.0:
-                    imgui.same_line(position=pos_x)
-                else:
-                    imgui.same_line()
-                if chain_state is not None and chain_state.order_overridden:
-                    imgui.text_colored(
-                        "UI order",
-                        *PARAMETER_GUI_PALETTE["success"],
-                    )
-                    imgui.same_line()
-                    if imgui.small_button("Reset##effect_order_reset"):
-                        effect_order_commands.append(
-                            EffectOrderCommand.reset(chain_id=chain_state.chain_id)
-                        )
-                    _set_item_tooltip(imgui, "Reset this chain to code order.")
-                    imgui.same_line()
-                imgui.text_disabled(count_label)
-                imgui.same_line()
-                if imgui.small_button(button_label):
-                    snippet_popup_text_new = snippet_for_block(
-                        block,
-                        model_rows,
-                        catalog=catalog,
-                        last_effective_by_key=last_effective_by_key,
-                        step_info_by_site=step_info_by_site,
-                        raw_label_by_site=raw_label_by_site,
-                    )
-                    want_open_snippet_popup = True
-
-                if collapse_key is not None:
-                    if group_open:
-                        collapsed_headers.discard(collapse_key)
-                    else:
-                        collapsed_headers.add(collapse_key)
-
-            if not group_open:
-                # 折りたたみ中は描画しないが、rows_after の長さを揃えるため “変更なし” として返す。
-                for item in block.items:
-                    updated_rows.append(model_rows[item.row_index])
-                continue
-
-            # --- open のときだけ、当該グループの行を 4 列テーブルとして描く ---
-            #
-            table_flags = (
-                imgui.TABLE_SIZING_FIXED_FIT
-                | imgui.TABLE_ROW_BACKGROUND
-                | imgui.TABLE_BORDERS_INNER_VERTICAL
+        effect_heading_by_step = (
+            _effect_step_heading_by_rows(
+                [render_input.model_rows[item.row_index] for item in block.items]
             )
-            table = imgui.begin_table("##parameters", 4, table_flags)
-            if not table.opened:
-                for item in block.items:
-                    updated_rows.append(model_rows[item.row_index])
-                continue
-
-            try:
-                # Source / Range / MIDI は logical px 固定、Value だけが残り幅を受け取る。
-                _setup_parameter_table_columns(
+            if block.group_id[0] is GroupType.EFFECT_CHAIN
+            else {}
+        )
+        previous_effect_step: EffectStepKey | None = None
+        chain_state = _effect_chain_state_for_block(block, render_input)
+        for item in block.items:
+            row = render_input.model_rows[item.row_index]
+            item_step = (row.op, row.site_id)
+            if effect_heading_by_step and item_step != previous_effect_step:
+                command = _render_effect_step_heading(
                     imgui,
-                    metric_scale=metric_scale,
+                    effect_heading_by_step[item_step],
+                    step=item_step,
+                    state=chain_state,
                 )
-                if not drew_column_headers:
-                    # カラム名（label/control/min-max/cc）をヘッダ行として描画する（1回だけ）。
-                    imgui.table_headers_row()
-                    drew_column_headers = True
+                if command is not None:
+                    state.effect_order_commands.append(command)
+                previous_effect_step = item_step
 
-                effect_heading_by_step = (
-                    _effect_step_heading_by_rows(
-                        [model_rows[item.row_index] for item in block.items]
-                    )
-                    if block.group_id[0] is GroupType.EFFECT_CHAIN
-                    else {}
-                )
-                previous_effect_step: EffectStepKey | None = None
-                chain_state = (
+            row_key = ParameterKey(op=row.op, site_id=row.site_id, arg=row.arg)
+            _row_changed, updated, state.midi_learn_state = render_parameter_row_4cols(
+                row,
+                widget_state=widget_state,
+                catalog=render_input.catalog,
+                visible_label=item.visible_label,
+                midi_learn_state=state.midi_learn_state,
+                midi_last_cc_change=render_input.midi_last_cc_change,
+                last_source=(
                     None
-                    if block.group_id[0] is not GroupType.EFFECT_CHAIN
-                    or effect_chain_state_by_id is None
-                    else effect_chain_state_by_id.get(str(block.group_id[1]))
-                )
-                for item in block.items:
-                    row = model_rows[item.row_index]
-                    item_step = (row.op, row.site_id)
-                    if effect_heading_by_step and item_step != previous_effect_step:
-                        command = _render_effect_step_heading(
-                            imgui,
-                            effect_heading_by_step[item_step],
-                            step=item_step,
-                            state=chain_state,
-                        )
-                        if command is not None:
-                            effect_order_commands.append(command)
-                        previous_effect_step = item_step
-                    row_key = ParameterKey(
-                        op=row.op,
-                        site_id=row.site_id,
-                        arg=row.arg,
-                    )
-                    _row_changed, updated, midi_learn_state = render_parameter_row_4cols(
-                        row,
-                        widget_state=widget_state,
-                        catalog=catalog,
-                        visible_label=item.visible_label,
-                        midi_learn_state=midi_learn_state,
-                        midi_last_cc_change=midi_last_cc_change,
-                        last_source=(
-                            None if last_source_by_key is None else last_source_by_key.get(row_key)
-                        ),
-                        on_help_row=on_help_row,
-                    )
-                    updated_rows.append(updated)
-            finally:
-                imgui.end_table()
-        finally:
-            imgui.pop_id()
+                    if render_input.last_source_by_key is None
+                    else render_input.last_source_by_key.get(row_key)
+                ),
+                on_help_row=on_help_row,
+            )
+            state.updated_rows.append(updated)
+    finally:
+        imgui.end_table()
 
-    # --- Code popup ---
-    #
-    # open_popup と begin_popup_modal は “同じ ID スタック” が必要なので、push_id の外で扱う。
-    if want_open_snippet_popup and snippet_popup_text_new is not None:
-        widget_state.snippet_popup_text = str(snippet_popup_text_new)
+
+def _render_snippet_modal(
+    imgui: ModuleType,
+    *,
+    widget_state: WidgetSessionState,
+    state: _TableRenderState,
+) -> None:
+    """Code popup の open trigger と modal editor を描画する。"""
+
+    if state.want_open_snippet_popup and state.snippet_popup_text_new is not None:
+        widget_state.snippet_popup_text = str(state.snippet_popup_text_new)
         widget_state.snippet_popup_focus_next = True
         imgui.open_popup("Code##snippet_popup")
 
     popup_x, popup_y, popup_width, popup_height = _snippet_popup_geometry(imgui)
-    # 親 window が 600px 程度でも modal を viewport 内へ収める。ALWAYS にして
-    # popup を開いたまま OS window が resize された場合にも追従させる。
     imgui.set_next_window_position(
         popup_x,
         popup_y,
@@ -1759,40 +1707,79 @@ def render_parameter_table(
         condition=imgui.ALWAYS,
     )
     with imgui.begin_popup_modal("Code##snippet_popup") as popup:
-        if popup.opened:
-            if imgui.button("Close"):
-                imgui.close_current_popup()
-            imgui.same_line()
-            if imgui.button("Copy"):
+        if not popup.opened:
+            return
+        if imgui.button("Close"):
+            imgui.close_current_popup()
+        imgui.same_line()
+        if imgui.button("Copy"):
+            imgui.set_clipboard_text(str(widget_state.snippet_popup_text))
+            imgui.close_current_popup()
+            widget_state.snippet_popup_focus_next = False
+        imgui.same_line()
+        imgui.text_disabled("macOS Cmd+A→Cmd+C / Win/Linux Ctrl+A→Ctrl+C")
+
+        if widget_state.snippet_popup_focus_next:
+            imgui.set_keyboard_focus_here()
+            widget_state.snippet_popup_focus_next = False
+
+        avail_w, avail_h = imgui.get_content_region_available()
+        editor_width = max(1.0, float(avail_w))
+        editor_height = max(1.0, float(avail_h) - 8.0)
+        _changed, _text_out = imgui.input_text_multiline(
+            "##snippet_text",
+            str(widget_state.snippet_popup_text),
+            -1,
+            editor_width,
+            editor_height,
+            flags=imgui.INPUT_TEXT_READ_ONLY | imgui.INPUT_TEXT_AUTO_SELECT_ALL,
+        )
+        if imgui.is_item_focused() or imgui.is_item_active():
+            io = imgui.get_io()
+            if (io.key_ctrl or io.key_super) and imgui.is_key_pressed(imgui.KEY_C, False):
                 imgui.set_clipboard_text(str(widget_state.snippet_popup_text))
-                imgui.close_current_popup()
-                widget_state.snippet_popup_focus_next = False
-            imgui.same_line()
-            imgui.text_disabled("macOS Cmd+A→Cmd+C / Win/Linux Ctrl+A→Ctrl+C")
 
-            if widget_state.snippet_popup_focus_next:
-                imgui.set_keyboard_focus_here()
-                widget_state.snippet_popup_focus_next = False
 
-            avail_w, avail_h = imgui.get_content_region_available()
-            editor_width = max(1.0, float(avail_w))
-            editor_height = max(1.0, float(avail_h) - 8.0)
-            _changed, _text_out = imgui.input_text_multiline(
-                "##snippet_text",
-                str(widget_state.snippet_popup_text),
-                -1,
-                editor_width,
-                editor_height,
-                flags=imgui.INPUT_TEXT_READ_ONLY | imgui.INPUT_TEXT_AUTO_SELECT_ALL,
+def render_parameter_table(
+    render_input: TableRenderInput,
+    *,
+    widget_state: WidgetSessionState,
+    on_help_row: Callable[[ParameterRow, bool], None] | None = None,
+) -> TableEdits:
+    """immutable snapshot を section 順に描画し、immutable edit 集合を返す。"""
+
+    import imgui
+
+    state = _TableRenderState(
+        collapsed_headers=set(render_input.collapsed_headers),
+        midi_learn_state=render_input.midi_learn_state,
+        updated_rows=[],
+        effect_order_commands=[],
+    )
+
+    for block_index, block in enumerate(render_input.group_layout):
+        if block_index > 0 and block.header:
+            imgui.spacing()
+        imgui.push_id(block.header_id)
+        try:
+            if not _render_group_header(imgui, block, render_input, state):
+                _append_unchanged_block_rows(block, render_input.model_rows, state)
+                continue
+            _render_group_row_table(
+                imgui,
+                block,
+                render_input,
+                widget_state=widget_state,
+                state=state,
+                on_help_row=on_help_row,
             )
-            if imgui.is_item_focused() or imgui.is_item_active():
-                io = imgui.get_io()
-                if (io.key_ctrl or io.key_super) and imgui.is_key_pressed(imgui.KEY_C, False):
-                    imgui.set_clipboard_text(str(widget_state.snippet_popup_text))
+        finally:
+            imgui.pop_id()
 
+    _render_snippet_modal(imgui, widget_state=widget_state, state=state)
     return TableEdits(
-        rows=tuple(updated_rows),
-        collapsed_headers=frozenset(collapsed_headers),
-        midi_learn_state=midi_learn_state,
-        effect_order_commands=tuple(effect_order_commands),
+        rows=tuple(state.updated_rows),
+        collapsed_headers=frozenset(state.collapsed_headers),
+        midi_learn_state=state.midi_learn_state,
+        effect_order_commands=tuple(state.effect_order_commands),
     )

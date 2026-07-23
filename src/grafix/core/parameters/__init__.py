@@ -29,7 +29,12 @@ from .known_operations import KnownOperationSchemaSnapshot
 from .meta import ParamMeta, ParamScale
 from .state import ParamState
 from .store import ParamStore, ParamStoreRollback
-from .runtime import LoadProvenance, ParamRuntimeView, ParamStoreLoadDiagnostic
+from .runtime import (
+    LoadProvenance,
+    ParameterLoadState,
+    ParamRuntimeView,
+    ParamStoreLoadDiagnostic,
+)
 from .reconcile import ReconcileOrphan, ReconcileOrphanReason
 from .reconcile_ops import list_reconcile_orphans, manual_migrate_orphan
 from .source import MidiFrameSnapshot, MidiValueSource, ValueSource
@@ -96,6 +101,7 @@ __all__ = [
     "ParamStore",
     "ParamStoreRollback",
     "LoadProvenance",
+    "ParameterLoadState",
     "ParamRuntimeView",
     "MidiFrameSnapshot",
     "MidiValueSource",

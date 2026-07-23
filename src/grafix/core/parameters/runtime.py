@@ -15,6 +15,8 @@ from .reconcile import ReconcileOrphan
 from .source import ValueSource
 
 LoadProvenance = Literal["primary", "session_recovery", "quarantined"]
+
+
 @dataclass(slots=True)
 class _GroupVisibilityTracker:
     revision: int = 0
@@ -119,6 +121,28 @@ class ParamStoreLoadDiagnostic:
 
 
 @dataclass(frozen=True, slots=True)
+class ParameterLoadState:
+    """filesystem load が確定した provenance と診断。"""
+
+    provenance: LoadProvenance = "primary"
+    diagnostics: tuple[ParamStoreLoadDiagnostic, ...] = ()
+
+    def __post_init__(self) -> None:
+        if type(self.provenance) is not str or self.provenance not in {
+            "primary",
+            "session_recovery",
+            "quarantined",
+        }:
+            raise ValueError("provenance は定義済み LoadProvenance です")
+        if type(self.diagnostics) is not tuple or any(
+            type(item) is not ParamStoreLoadDiagnostic for item in self.diagnostics
+        ):
+            raise TypeError(
+                "diagnostics は ParamStoreLoadDiagnostic の tuple です"
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class ParamRuntimeView:
     """outer layer が参照する ParamStore runtime の read-only view。"""
 
@@ -150,8 +174,6 @@ class ParamStoreRuntime:
     last_effective_by_key: dict[ParameterKey, object] = field(default_factory=dict)
     warned_unknown_args: set[tuple[str, str]] = field(default_factory=set)
     last_source_by_key: dict[ParameterKey, ValueSource] = field(default_factory=dict)
-    load_provenance: LoadProvenance = "primary"
-    load_diagnostics: tuple[ParamStoreLoadDiagnostic, ...] = ()
     reconcile_orphans: dict[GroupKey, ReconcileOrphan] = field(
         default_factory=dict
     )
@@ -248,6 +270,7 @@ class ParamStoreRuntime:
 
 __all__ = [
     "LoadProvenance",
+    "ParameterLoadState",
     "ParamRuntimeView",
     "ParamStoreLoadDiagnostic",
     "ParamStoreRuntime",

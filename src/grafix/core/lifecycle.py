@@ -26,6 +26,8 @@ class CleanupErrors:
             f"Secondary cleanup failure ({label}): "
             f"{type(error).__name__}: {error}"
         )
+        for note in getattr(error, "__notes__", ()):
+            self._first_error.add_note(note)
         if self._report_secondary is not None:
             self._report_secondary(label)
 

@@ -24,8 +24,8 @@ def default_png_output_path(
     *,
     scale: float,
     canvas_size: tuple[int, int],
+    config: RuntimeConfig,
     run_id: str | None = None,
-    config: RuntimeConfig | None = None,
 ) -> Path:
     """draw の定義元に基づく PNG の既定保存パスを返す。
 

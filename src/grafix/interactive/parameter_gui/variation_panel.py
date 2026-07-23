@@ -20,14 +20,11 @@ from grafix.core.parameters.variations import (
 )
 
 if TYPE_CHECKING:
-    from grafix.export.capture import CaptureFrame, CaptureService
-
-    from .store_bridge import ParameterTableView
+    from .table_view import ParameterTableView
 
 VariationScope = Literal["filtered", "favorites"]
 VariationThumbnailCapture: TypeAlias = Callable[[str], str | Path | None]
 VariationThumbnailPreview: TypeAlias = Callable[[object, Path], None]
-VariationThumbnailPath: TypeAlias = Callable[[str], str | Path]
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,35 +166,6 @@ def normalize_variation_selection(
     return ordered[0] if ordered else None
 
 
-def make_capture_service_thumbnail_capture(
-    capture_service: CaptureService,
-    *,
-    frame_provider: Callable[[], CaptureFrame | None],
-    output_path_for_name: VariationThumbnailPath,
-    output_size: tuple[int, int] | None = None,
-) -> VariationThumbnailCapture:
-    """Phase 6 ``CaptureService`` を GUI thumbnail callback へ適合する。
-
-    Parameter GUI は preview frame を所有しないため、描画側が immutable snapshot と
-    保存先を供給する。この境界により GUI は GL/encode を抱えず、CaptureService の
-    no-clobber publish 契約をそのまま利用できる。
-    """
-
-    def capture(name: str) -> Path:
-        frame = frame_provider()
-        if frame is None:
-            raise RuntimeError("No rendered frame is available for a thumbnail.")
-        result = capture_service.export(
-            frame,
-            output_path_for_name(str(name)),
-            overwrite=False,
-            output_size=output_size,
-        )
-        return result.path
-
-    return capture
-
-
 __all__ = [
     "VariationListItem",
     "VariationPanelModel",
@@ -205,12 +173,10 @@ __all__ = [
     "VariationScope",
     "VariationScopeSummary",
     "VariationThumbnailCapture",
-    "VariationThumbnailPath",
     "VariationThumbnailPreview",
     "filtered_parameter_keys",
     "format_variation_timestamp",
     "normalize_variation_selection",
-    "make_capture_service_thumbnail_capture",
     "variation_panel_model",
     "variation_scope_summary",
 ]

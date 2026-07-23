@@ -154,6 +154,64 @@ def test_displace_deterministic_for_same_inputs() -> None:
     assert out1_offsets.tolist() == out2_offsets.tolist()
 
 
+def test_displace_fixed_input_output_characterization() -> None:
+    base = realize(G.displace_test_polyline())
+
+    out_coords, out_offsets = displace_impl(
+        (base.coords, base.offsets),
+        amplitude=(2.0, 3.0, 4.0),
+        spatial_freq=(0.07, 0.05, 0.03),
+        amplitude_gradient=(0.5, -0.25, 0.75),
+        frequency_gradient=(0.2, 0.1, -0.1),
+        gradient_center_offset=(0.1, -0.2, 0.0),
+        min_gradient_factor=0.2,
+        max_gradient_factor=2.5,
+        t=0.375,
+    )
+
+    expected = np.array(
+        [
+            [-0.019935915, 0.28738573, -0.98359835],
+            [5.381473, 0.81586874, -0.9492474],
+            [10.936907, 3.8023105, -0.09292004],
+            [13.466412, 9.606008, 1.2416333],
+        ],
+        dtype=np.float32,
+    )
+    np.testing.assert_array_equal(out_coords, expected)
+    np.testing.assert_array_equal(out_offsets, base.offsets)
+
+
+def test_displace_radial_gradient_output_characterization() -> None:
+    base = realize(G.displace_test_polyline())
+
+    out_coords, out_offsets = displace_impl(
+        (base.coords, base.offsets),
+        amplitude=(2.3, -4.1, 1.2),
+        spatial_freq=(0.03, 0.07, -0.02),
+        amplitude_gradient=(1.7, -2.8, 0.3),
+        frequency_gradient=(2.7, -5.8, 0.3),
+        gradient_center_offset=(0.2, -0.1, 0.4),
+        gradient_profile="radial",
+        gradient_radius=(0.3, 0.7, 1.2),
+        min_gradient_factor=0.0,
+        max_gradient_factor=4.0,
+        t=0.25,
+    )
+
+    expected = np.array(
+        [
+            [0.1, 0.0945662, 0.37714347],
+            [5.1, 0.0, 0.1784323],
+            [10.2, 5.048712, -0.42965135],
+            [12.3, 6.7496, -0.09342495],
+        ],
+        dtype=np.float32,
+    )
+    np.testing.assert_allclose(out_coords, expected, rtol=0.0, atol=1e-6)
+    np.testing.assert_array_equal(out_offsets, base.offsets)
+
+
 def test_displace_time_changes_output() -> None:
     g = G.displace_test_polyline()
     base = realize(g)

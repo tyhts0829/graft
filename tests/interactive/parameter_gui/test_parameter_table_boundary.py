@@ -12,8 +12,9 @@ from grafix.core.parameters.merge_ops import merge_frame_params
 from grafix.core.parameters.meta import ParamMeta
 from grafix.core.parameters.store import ParamStore
 from grafix.interactive.parameter_gui.midi_learn import MidiLearnState
-from grafix.interactive.parameter_gui.store_bridge import (
-    commit_table_edits,
+from grafix.interactive.parameter_gui.table_commit import commit_table_edits
+from grafix.interactive.parameter_gui.table_view import (
+    ParameterTableViewCache,
     parameter_table_view_for_store,
 )
 from grafix.interactive.parameter_gui.table import TableEdits, TableRenderInput
@@ -51,9 +52,15 @@ def _visible_rows(view) -> tuple:
     )
 
 
-def test_table_boundary_values_are_frozen_and_container_free() -> None:
+def test_table_boundary_values_are_frozen_and_container_free(
+    parameter_table_cache: ParameterTableViewCache,
+) -> None:
     store, _keys = _store_with_rows(1)
-    view = parameter_table_view_for_store(store, show_inactive_params=True)
+    view = parameter_table_view_for_store(
+        store,
+        cache=parameter_table_cache,
+        show_inactive_params=True,
+    )
     rows = _visible_rows(view)
     render_input = TableRenderInput(
         group_layout=view.group_layout,
@@ -82,9 +89,15 @@ def test_table_boundary_values_are_frozen_and_container_free() -> None:
         render_input.midi_learn_state.active_target = None  # type: ignore[misc,union-attr]
 
 
-def test_multiple_row_edits_commit_as_one_revision_and_one_history_unit() -> None:
+def test_multiple_row_edits_commit_as_one_revision_and_one_history_unit(
+    parameter_table_cache: ParameterTableViewCache,
+) -> None:
     store, keys = _store_with_rows(2)
-    view = parameter_table_view_for_store(store, show_inactive_params=True)
+    view = parameter_table_view_for_store(
+        store,
+        cache=parameter_table_cache,
+        show_inactive_params=True,
+    )
     rows = _visible_rows(view)
     history = ParamStoreHistory(store)
     revision = store.revision
@@ -106,9 +119,15 @@ def test_multiple_row_edits_commit_as_one_revision_and_one_history_unit() -> Non
     assert [store.get_state(key).ui_value for key in keys] == [0.0, 1.0]  # type: ignore[union-attr]
 
 
-def test_noop_table_result_does_not_change_revision_or_history() -> None:
+def test_noop_table_result_does_not_change_revision_or_history(
+    parameter_table_cache: ParameterTableViewCache,
+) -> None:
     store, _keys = _store_with_rows(1)
-    view = parameter_table_view_for_store(store, show_inactive_params=True)
+    view = parameter_table_view_for_store(
+        store,
+        cache=parameter_table_cache,
+        show_inactive_params=True,
+    )
     history = ParamStoreHistory(store)
     revision = store.revision
     edits = TableEdits(
@@ -122,9 +141,15 @@ def test_noop_table_result_does_not_change_revision_or_history() -> None:
     assert history.undo_depth == 0
 
 
-def test_midi_assignment_is_one_discrete_history_unit() -> None:
+def test_midi_assignment_is_one_discrete_history_unit(
+    parameter_table_cache: ParameterTableViewCache,
+) -> None:
     store, keys = _store_with_rows(1)
-    view = parameter_table_view_for_store(store, show_inactive_params=True)
+    view = parameter_table_view_for_store(
+        store,
+        cache=parameter_table_cache,
+        show_inactive_params=True,
+    )
     history = ParamStoreHistory(store)
     row = _visible_rows(view)[0]
     edits = TableEdits(
@@ -137,7 +162,11 @@ def test_midi_assignment_is_one_discrete_history_unit() -> None:
     assert history.undo_depth == 1
     assert store.get_state(keys[0]).cc_key == 74  # type: ignore[union-attr]
 
-    next_view = parameter_table_view_for_store(store, show_inactive_params=True)
+    next_view = parameter_table_view_for_store(
+        store,
+        cache=parameter_table_cache,
+        show_inactive_params=True,
+    )
     next_row = _visible_rows(next_view)[0]
     assert commit_table_edits(
         store,
@@ -156,9 +185,15 @@ def test_midi_assignment_is_one_discrete_history_unit() -> None:
     assert store.get_state(keys[0]).cc_key is None  # type: ignore[union-attr]
 
 
-def test_collapse_edit_is_one_history_unit_and_noop_is_stable() -> None:
+def test_collapse_edit_is_one_history_unit_and_noop_is_stable(
+    parameter_table_cache: ParameterTableViewCache,
+) -> None:
     store, _keys = _store_with_rows(1)
-    view = parameter_table_view_for_store(store, show_inactive_params=True)
+    view = parameter_table_view_for_store(
+        store,
+        cache=parameter_table_cache,
+        show_inactive_params=True,
+    )
     history = ParamStoreHistory(store)
     header = primitive_collapsed_header_key(("circle", "site-0"))
     edits = TableEdits(

@@ -4,13 +4,9 @@ from __future__ import annotations
 
 import ast
 import contextlib
-import builtins
 import hashlib
-import importlib.abc
-import importlib.machinery
-import importlib.util
+import importlib
 import inspect
-import sys
 import traceback
 import types
 from collections.abc import Callable, Iterator
@@ -24,13 +20,20 @@ from grafix.core.authoring_definitions import (
     RegistrationTarget,
     registration_scope,
 )
-from grafix.core.authoring_loader import (
+from grafix._snapshot_import import (
+    SnapshotImportGuard,
+    SnapshotImportModule,
+    SnapshotImportPlan,
+    SnapshotModuleSource,
+    remove_snapshot_modules,
+    snapshot_import_context,
+)
+from grafix.authoring_loader import (
     default_session_authoring_definitions,
     load_authoring_definitions_recipe,
     load_config_authoring_definitions,
 )
 from grafix.core.authoring_recipe import AuthoringDefinitionsRecipe
-from grafix.core.definition_fingerprint import attach_module_content_fingerprint
 from grafix.core.operation_catalog import OperationCatalog, bind_operation_catalog
 from grafix.core.preset_catalog import PresetCatalog, bind_preset_catalog
 from grafix.core.runtime_config import RuntimeConfig, bind_runtime_config
@@ -373,140 +376,61 @@ def _source_module_name(package_name: str, relative_path: str, *, main: bool) ->
     return ".".join((package_name, *parts))
 
 
-class _SourceSnapshotLoader(importlib.abc.Loader):
-    """snapshot bytes を実行し、local absolute import を明示的に拒否する。"""
+def _source_import_guard(local_roots: tuple[str, ...]) -> SnapshotImportGuard:
+    roots = frozenset(local_roots)
 
-    def __init__(
-        self,
-        source: _SourceModuleSnapshot,
-        *,
-        canonical_name: str,
-        local_roots: frozenset[str],
-    ) -> None:
-        self._source = source
-        self._canonical_name = canonical_name
-        self._local_roots = local_roots
-
-    def create_module(
-        self,
-        spec: importlib.machinery.ModuleSpec,
-    ) -> types.ModuleType | None:
-        return None
-
-    def exec_module(self, module: types.ModuleType) -> None:
-        source = self._source
-        original_import = builtins.__import__
-        local_roots = self._local_roots
-
-        def isolated_import(
-            name: str,
-            globals: dict[str, object] | None = None,
-            locals: dict[str, object] | None = None,
-            fromlist: tuple[str, ...] = (),
-            level: int = 0,
-        ) -> object:
-            if level == 0 and name.partition(".")[0] in local_roots:
-                raise ImportError(
-                    "source generation 内の helper は relative import を使用してください: "
-                    f"from .{name.partition('.')[0]} import ..."
-                )
-            return original_import(name, globals, locals, fromlist, level)
-
-        module.__dict__["__builtins__"] = {
-            **vars(builtins),
-            "__import__": isolated_import,
-        }
-        module.__dict__["__grafix_source_owner__"] = self._canonical_name
-        attach_module_content_fingerprint(module, source.content)
-        code = compile(source.content, str(source.source_path), "exec", dont_inherit=True)
-        exec(code, module.__dict__)
-
-
-class _SourceSnapshotFinder(importlib.abc.MetaPathFinder):
-    """一 source generation の unique package 内だけを解決する finder。"""
-
-    def __init__(self, package_name: str, snapshot: _SourcePackageSnapshot) -> None:
-        modules: dict[str, _SourceModuleSnapshot] = {}
-        canonical_names: dict[str, str] = {}
-        namespaces: set[str] = set()
-        package_depth = len(package_name.split("."))
-        for source in snapshot.modules:
-            is_main = source.relative_path == snapshot.main_relative_path
-            module_name = _source_module_name(
-                package_name,
-                source.relative_path,
-                main=is_main,
+    def reject_local_absolute_import(name: str, level: int) -> None:
+        if level == 0 and name.partition(".")[0] in roots:
+            raise ImportError(
+                "source generation 内の helper は relative import を使用してください: "
+                f"from .{name.partition('.')[0]} import ..."
             )
-            if module_name == package_name:
-                # synthetic root package は path に依存しない namespace として扱う。
-                continue
-            if module_name in modules:
-                raise ValueError(
-                    f"同じ source module 名へ解決される path があります: {module_name}"
-                )
-            modules[module_name] = source
-            canonical_names[module_name] = (
-                _CANONICAL_SOURCE_PACKAGE
-                + module_name.removeprefix(package_name)
-            )
-            parts = module_name.split(".")
-            namespaces.update(
-                ".".join(parts[:depth])
-                for depth in range(package_depth + 1, len(parts))
-            )
-        self._modules = modules
-        self._canonical_names = canonical_names
-        self._namespaces = namespaces - modules.keys()
-        self._local_roots = frozenset(snapshot.local_roots)
 
-    def find_spec(
-        self,
-        fullname: str,
-        path: object = None,
-        target: types.ModuleType | None = None,
-    ) -> importlib.machinery.ModuleSpec | None:
-        del path, target
-        source = self._modules.get(fullname)
-        if source is not None:
-            is_package = source.relative_path.endswith("/__init__.py")
-            search_locations = [f"<grafix-source:{fullname}>"] if is_package else None
-            return importlib.util.spec_from_file_location(
-                fullname,
-                source.source_path,
-                loader=_SourceSnapshotLoader(
-                    source,
-                    canonical_name=self._canonical_names[fullname],
-                    local_roots=self._local_roots,
+    return reject_local_absolute_import
+
+
+def _source_import_plan(
+    package_name: str,
+    snapshot: _SourcePackageSnapshot,
+) -> SnapshotImportPlan:
+    modules: list[SnapshotImportModule] = []
+    for source in snapshot.modules:
+        is_main = source.relative_path == snapshot.main_relative_path
+        module_name = _source_module_name(
+            package_name,
+            source.relative_path,
+            main=is_main,
+        )
+        if module_name == package_name:
+            continue
+        modules.append(
+            SnapshotImportModule(
+                name=module_name,
+                source=SnapshotModuleSource(
+                    path=source.source_path,
+                    content=source.content,
+                    is_package=(
+                        not is_main and Path(source.relative_path).name == "__init__.py"
+                    ),
+                    canonical_name=(
+                        _CANONICAL_SOURCE_PACKAGE
+                        + module_name.removeprefix(package_name)
+                    ),
                 ),
-                submodule_search_locations=search_locations,
             )
-        if fullname not in self._namespaces:
-            return None
-        spec = importlib.machinery.ModuleSpec(fullname, loader=None, is_package=True)
-        spec.submodule_search_locations = [f"<grafix-source:{fullname}>"]
-        return spec
-
-
-def _install_source_package(name: str) -> None:
-    package = types.ModuleType(name)
-    package.__package__ = name
-    package.__path__ = [f"<grafix-source:{name}>"]  # type: ignore[attr-defined]
-    package.__file__ = None
-    package.__grafix_fingerprint_name__ = _CANONICAL_SOURCE_PACKAGE  # type: ignore[attr-defined]
-    package.__grafix_source_owner__ = _CANONICAL_SOURCE_PACKAGE  # type: ignore[attr-defined]
-    spec = importlib.machinery.ModuleSpec(name, loader=None, is_package=True)
-    spec.submodule_search_locations = list(package.__path__)
-    package.__spec__ = spec
-    sys.modules[name] = package
+        )
+    return SnapshotImportPlan(
+        package_names=(package_name,),
+        modules=tuple(modules),
+        canonical_package_name=_CANONICAL_SOURCE_PACKAGE,
+        display_name="grafix-source",
+    )
 
 
 def _remove_source_modules(package_name: str | None) -> None:
     if package_name is None:
         return
-    prefix = f"{package_name}."
-    for module_name in tuple(sys.modules):
-        if module_name == package_name or module_name.startswith(prefix):
-            sys.modules.pop(module_name, None)
+    remove_snapshot_modules((package_name,))
 
 
 def _authoring_baseline(config: RuntimeConfig | None) -> AuthoringDefinitionsSnapshot:
@@ -585,7 +509,6 @@ def _validate_draw(module: types.ModuleType, *, attribute: str) -> Callable[[flo
 
 def _execute_source_generation(
     *,
-    path: Path,
     source_package: _SourcePackageSnapshot,
     module_name: str,
     draw_attribute: str,
@@ -604,12 +527,13 @@ def _execute_source_generation(
     )
     if type(source_package) is not _SourcePackageSnapshot:
         raise TypeError("source_package は exact _SourcePackageSnapshot です")
-    finder = _SourceSnapshotFinder(module_name, source_package)
+    plan = _source_import_plan(module_name, source_package)
     entry_module_name = f"{module_name}.{_ENTRY_MODULE_NAME}"
-    _remove_source_modules(module_name)
-    _install_source_package(module_name)
-    sys.meta_path.insert(0, finder)
-    try:
+    with snapshot_import_context(
+        plan,
+        retain_modules=True,
+        import_guard=_source_import_guard(source_package.local_roots),
+    ):
         config_scope = (
             contextlib.nullcontext()
             if config is None
@@ -622,11 +546,6 @@ def _execute_source_generation(
             module = importlib.import_module(entry_module_name)
             loaded_draw = _validate_draw(module, attribute=draw_attribute)
         definitions = target.snapshot(recipe=baseline.recipe)
-    except BaseException:
-        _remove_source_modules(module_name)
-        raise
-    finally:
-        sys.meta_path.remove(finder)
     return module, loaded_draw, definitions
 
 
@@ -699,7 +618,6 @@ class ReloadedDraw:
                 main_source_bytes=self._source_bytes,
             )
         _module, draw, definitions = _execute_source_generation(
-            path=self._path,
             source_package=source_package,
             module_name=f"{self._module_name}_worker",
             draw_attribute=self._draw_attribute,
@@ -957,7 +875,6 @@ class SourceReloadController:
             source_package = _snapshot_source_package(self._path)
             source_bytes = source_package.main_source.content
             _module, loaded_draw, definitions = _execute_source_generation(
-                path=self._path,
                 source_package=source_package,
                 module_name=module_name,
                 draw_attribute=self._draw_attribute,

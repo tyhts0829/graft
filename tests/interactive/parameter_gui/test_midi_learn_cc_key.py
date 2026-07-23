@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import pytest
+
 from grafix.core.parameters.key import ParameterKey
 from grafix.core.parameters.view import ParameterRow
-from grafix.interactive.parameter_gui.midi_learn import MidiLearnState
+from grafix.interactive.parameter_gui.midi_learn import (
+    MidiLearnCommand,
+    MidiLearnState,
+    transition_midi_learn,
+)
 from grafix.interactive.parameter_gui.rules import ui_rules_for_row
 from grafix.interactive.parameter_gui.table import _render_cc_cell
 
@@ -65,6 +71,89 @@ def _row(*, kind: str, cc_key, override: bool = False) -> ParameterRow:
         override=override,
         ordinal=1,
     )
+
+
+@pytest.mark.parametrize("component", (None, 1))
+def test_midi_learn_transition_is_shared_by_scalar_and_vec3_components(
+    component: int | None,
+) -> None:
+    target = ParameterKey(op="op", site_id="site", arg="value")
+
+    entered = transition_midi_learn(
+        MidiLearnState(),
+        target=target,
+        component=component,
+        current_cc=None,
+        last_cc_change=(10, 7),
+        clicked=True,
+    )
+    assert entered.state == MidiLearnState(
+        active_target=target,
+        active_component=component,
+        last_seen_cc_seq=10,
+    )
+    assert entered.active is True
+    assert entered.command is None
+
+    stale = transition_midi_learn(
+        entered.state,
+        target=target,
+        component=component,
+        current_cc=None,
+        last_cc_change=(10, 99),
+        clicked=False,
+    )
+    assert stale == entered
+
+    learned = transition_midi_learn(
+        stale.state,
+        target=target,
+        component=component,
+        current_cc=stale.current_cc,
+        last_cc_change=(11, 64),
+        clicked=False,
+    )
+    assert learned.state == MidiLearnState(last_seen_cc_seq=11)
+    assert learned.current_cc == 64
+    assert learned.active is False
+    assert learned.command == MidiLearnCommand(component=component, cc=64)
+
+    removed = transition_midi_learn(
+        learned.state,
+        target=target,
+        component=component,
+        current_cc=learned.current_cc,
+        last_cc_change=(11, 64),
+        clicked=True,
+    )
+    assert removed.current_cc is None
+    assert removed.command == MidiLearnCommand(component=component, cc=None)
+
+
+@pytest.mark.parametrize("component", (None, 2))
+def test_midi_learn_transition_cancels_active_target_without_cc_command(
+    component: int | None,
+) -> None:
+    target = ParameterKey(op="op", site_id="site", arg="value")
+    state = MidiLearnState(
+        active_target=target,
+        active_component=component,
+        last_seen_cc_seq=4,
+    )
+
+    cancelled = transition_midi_learn(
+        state,
+        target=target,
+        component=component,
+        current_cc=None,
+        last_cc_change=(4, 12),
+        clicked=True,
+    )
+
+    assert cancelled.state == MidiLearnState(last_seen_cc_seq=4)
+    assert cancelled.current_cc is None
+    assert cancelled.active is False
+    assert cancelled.command is None
 
 
 def test_scalar_learn_assign_and_clear() -> None:

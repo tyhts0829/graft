@@ -893,18 +893,11 @@ def realize(
         if context is None
         else context
     )
-    resources = EvaluationResources()
-    store = RealizeCacheStore.from_runtime_limits(DEFAULT_FINAL_RUNTIME_LIMITS)
-    try:
-        with RealizeSession(
-            context=selected_context,
-            resources=resources,
-            cache_store=store,
-        ) as owned_session:
-            return owned_session.realize(geometry)
-    finally:
-        resources.close()
-        store.close()
+    # 省略 dependency の owner は RealizeSession に一意化する。helper 側で
+    # resource/store を別途生成すると、body error と複数 close error の集約が
+    # session の lifecycle contract から外れてしまうためである。
+    with RealizeSession(context=selected_context) as owned_session:
+        return owned_session.realize(geometry)
 
 
 __all__ = [

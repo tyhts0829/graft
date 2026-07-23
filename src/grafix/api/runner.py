@@ -14,7 +14,7 @@ import pyglet
 
 from grafix.api.render import RenderOptions
 from grafix.core.authoring_definitions import AuthoringDefinitionsSnapshot
-from grafix.core.authoring_loader import authoring_definitions_for_draw
+from grafix.authoring_loader import authoring_definitions_for_draw
 from grafix.core.lifecycle import CleanupErrors
 from grafix.core.runtime_limits import (
     DEFAULT_RUNTIME_LIMIT_PROFILES,
@@ -275,6 +275,9 @@ class _InteractiveApplication:
             source_reload=current_source_reload(),
             definitions=definitions,
             effective_config=self._config,
+            parameter_load_provenance=(
+                lambda: parameter_session.load_state.provenance
+            ),
             parameter_source=parameter_session.source,
             parameter_store_path=param_store_path,
             seed=self._capture_seed,
@@ -367,10 +370,13 @@ class _InteractiveApplication:
 
         from grafix.interactive.parameter_gui.catalog import ParameterGuiCatalog
         from grafix.interactive.parameter_gui.variation_thumbnail import (
-            variation_thumbnail_callbacks,
+            draw_variation_thumbnail_status,
         )
         from grafix.interactive.runtime.parameter_gui_system import (
             ParameterGUIWindowSystem,
+        )
+        from grafix.interactive.runtime.variation_thumbnail_capture import (
+            make_variation_thumbnail_capture,
         )
 
         definitions = self._definitions
@@ -391,7 +397,7 @@ class _InteractiveApplication:
             canvas_size=self._options.canvas_size,
             config=self._config,
         )
-        thumbnail_capture, thumbnail_preview = variation_thumbnail_callbacks(
+        thumbnail_capture = make_variation_thumbnail_capture(
             draw_window.capture_service,
             frame_provider=draw_window.final_capture_frame,
             base_path=thumbnail_base,
@@ -416,7 +422,7 @@ class _InteractiveApplication:
             autosave=parameter_session.autosave,
             is_recording=self._is_recording,
             variation_thumbnail_capture=thumbnail_capture,
-            variation_thumbnail_preview=thumbnail_preview,
+            variation_thumbnail_preview=draw_variation_thumbnail_status,
             ui_scale=workspace.ui_scale,
             catalog=gui_catalog,
             catalog_provider=self._current_parameter_gui_catalog,

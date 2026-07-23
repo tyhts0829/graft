@@ -19,7 +19,11 @@ from grafix.core.parameters.variations import (
     set_parameters_locked,
 )
 from grafix.interactive.parameter_gui.parameter_filter import ParameterFilterState
-from grafix.interactive.parameter_gui.store_bridge import parameter_table_view_for_store
+from grafix.interactive.parameter_gui.catalog import current_parameter_gui_catalog
+from grafix.interactive.parameter_gui.table_view import (
+    ParameterTableViewCache,
+    parameter_table_view_for_store,
+)
 from grafix.interactive.parameter_gui.variation_controller import VariationController
 from grafix.interactive.transport import TransportClock
 
@@ -78,6 +82,7 @@ def _scope_view(
 ):
     return parameter_table_view_for_store(
         store,
+        cache=ParameterTableViewCache(current_parameter_gui_catalog()),
         show_inactive_params=True,
         filter_state=ParameterFilterState(query=query),
     )

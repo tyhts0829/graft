@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import builtins
 import os
 import pickle
 import py_compile
@@ -7,6 +8,7 @@ import sys
 from concurrent.futures import Future
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Event
 
 import pytest
 
@@ -17,7 +19,7 @@ from grafix.core.authoring_definitions import (
     RegistrationTarget,
     registration_scope,
 )
-from grafix.core.authoring_loader import (
+from grafix.authoring_loader import (
     capture_authoring_definitions_recipe,
     default_session_authoring_definitions,
     load_authoring_definitions_recipe,
@@ -27,6 +29,7 @@ from grafix.core.preset_catalog import bind_preset_catalog
 from grafix.core.geometry import Geometry
 from grafix.core.operation_catalog import bind_operation_catalog
 from grafix.core.runtime_config import RuntimeConfig
+from grafix.interactive.runtime.source_reload import SourceReloadController
 from grafix.runtime_config_loader import load_runtime_config
 
 
@@ -268,6 +271,129 @@ def test_relative_helper_import_is_isolated_and_removed_from_sys_modules(
 
     assert _preset_value(snapshot, "relative_helper_preset") == 17
     assert not any(name.startswith("_grafix_config_authoring_") for name in sys.modules)
+
+
+def test_nested_package_and_namespace_relative_imports_share_one_snapshot(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "nested"
+    (root / "package").mkdir(parents=True)
+    (root / "namespace" / "deep").mkdir(parents=True)
+    (root / "package" / "__init__.py").write_text(
+        "OFFSET = 4\n",
+        encoding="utf-8",
+    )
+    (root / "package" / "helper.py").write_text(
+        "from . import OFFSET\n\ndef package_value():\n    return OFFSET + 5\n",
+        encoding="utf-8",
+    )
+    (root / "namespace" / "deep" / "helper.py").write_text(
+        "def namespace_value():\n    return 8\n",
+        encoding="utf-8",
+    )
+    (root / "candidate.py").write_text(
+        "from .package.helper import package_value\n"
+        "from .namespace.deep.helper import namespace_value\n"
+        "from grafix.api import preset\n"
+        "from grafix.core.geometry import Geometry\n"
+        "@preset(meta={})\n"
+        "def nested_import_preset():\n"
+        "    return Geometry.create(\n"
+        "        op='concat',\n"
+        "        params={'value': package_value() + namespace_value()},\n"
+        "    )\n",
+        encoding="utf-8",
+    )
+
+    snapshot = load_config_authoring_definitions(
+        _config_for_dirs(tmp_path, "nested", (root,))
+    )
+
+    assert _preset_value(snapshot, "nested_import_preset") == 17
+    assert not any(name.startswith("_grafix_config_authoring_") for name in sys.modules)
+
+
+@pytest.mark.parametrize("exception_type", [KeyboardInterrupt, SystemExit])
+def test_process_control_during_candidate_import_restores_global_import_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    exception_type: type[BaseException],
+) -> None:
+    process_control = exception_type("stop")
+    monkeypatch.setattr(
+        builtins,
+        "_grafix_test_authoring_process_control",
+        process_control,
+        raising=False,
+    )
+    config = _config(
+        tmp_path,
+        f"process-control-{exception_type.__name__}",
+        "import builtins\nraise builtins._grafix_test_authoring_process_control\n",
+    )
+    meta_path_before = tuple(sys.meta_path)
+
+    with pytest.raises(exception_type, match="stop") as caught:
+        load_config_authoring_definitions(config)
+
+    assert caught.value is process_control
+    assert tuple(sys.meta_path) == meta_path_before
+    assert not any(name.startswith("_grafix_config_authoring_") for name in sys.modules)
+
+
+def test_initial_authoring_and_source_reload_share_one_import_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_started = Event()
+    release_config = Event()
+    reload_started = Event()
+
+    def block_config() -> None:
+        config_started.set()
+        if not release_config.wait(timeout=5.0):
+            raise TimeoutError("test did not release config candidate")
+
+    monkeypatch.setattr(
+        builtins,
+        "_grafix_test_block_config_authoring",
+        block_config,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        builtins,
+        "_grafix_test_note_source_reload",
+        reload_started.set,
+        raising=False,
+    )
+    config = _config(
+        tmp_path,
+        "shared-lock",
+        "import builtins\nbuiltins._grafix_test_block_config_authoring()\n",
+    )
+    source_path = tmp_path / "sketch.py"
+    source_path.write_text(
+        "import builtins\n"
+        "builtins._grafix_test_note_source_reload()\n\n"
+        "def draw(t):\n"
+        "    return ()\n",
+        encoding="utf-8",
+    )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        config_future = executor.submit(load_config_authoring_definitions, config)
+        assert config_started.wait(timeout=5.0)
+        reload_future = executor.submit(SourceReloadController, source_path)
+        try:
+            assert not reload_started.wait(timeout=0.1)
+        finally:
+            release_config.set()
+        config_future.result(timeout=5.0)
+        controller = reload_future.result(timeout=5.0)
+    try:
+        assert reload_started.is_set()
+    finally:
+        controller.close()
 
 
 def test_candidate_declarations_never_reach_default_authoring(

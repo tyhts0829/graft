@@ -8,6 +8,7 @@ from typing import Any, cast
 import pytest
 
 import grafix.interactive.runtime.scene_runner as scene_runner_module
+from grafix.core.evaluation_context import EvaluationResources
 from grafix.core.geometry import Geometry
 from grafix.core.layer import LayerStyleDefaults
 from grafix.core.parameters import (
@@ -27,10 +28,12 @@ from grafix.core.parameters.layer_style import (
 )
 from grafix.core.parameters.ui_ops import update_state_from_ui
 from grafix.core.preview_quality import PreviewQuality, current_preview_quality
+from grafix.core.realize import RealizeCacheStore, RealizeSession
 from grafix.core.resource_budget import ResourceBudget
 from grafix.core.runtime_config import current_runtime_config
 from grafix.core.runtime_limits import RuntimeLimitProfiles, RuntimeLimits
 from grafix.core.scene import normalize_scene
+from grafix.interactive.diagnostics import DiagnosticCenter
 from grafix.interactive.runtime.mp_draw import (
     DrawResult,
     MpDrawWorkerError,
@@ -441,6 +444,225 @@ def test_scene_runner_replace_draw_failure_keeps_current_worker() -> None:
     assert current_worker.close_calls == 0
     runner.close()
     assert current_worker.close_calls == 1
+
+
+def test_scene_runner_constructor_failure_attempts_all_generation_cleanup_and_keeps_root_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root_error = RuntimeError("spawn failed")
+    calls: list[str] = []
+    original_session_close = RealizeSession.close
+    original_resources_close = EvaluationResources.close
+    original_store_close = RealizeCacheStore.close
+
+    def close_session(session: RealizeSession) -> None:
+        calls.append("session")
+        original_session_close(session)
+        raise OSError(f"session cleanup {calls.count('session')}")
+
+    def close_resources(resources: EvaluationResources) -> None:
+        calls.append("resources")
+        original_resources_close(resources)
+        raise KeyboardInterrupt("resources cleanup")
+
+    def close_store(store: RealizeCacheStore) -> None:
+        calls.append("store")
+        original_store_close(store)
+        raise SystemExit("store cleanup")
+
+    monkeypatch.setattr(RealizeSession, "close", close_session)
+    monkeypatch.setattr(EvaluationResources, "close", close_resources)
+    monkeypatch.setattr(RealizeCacheStore, "close", close_store)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        _scene_runner(
+            _empty_draw,
+            perf=PerfCollector(enabled=False),
+            n_worker=1,
+            mp_draw_factory=MpDrawFactoryFixture(root_error),
+        )
+
+    assert exc_info.value is root_error
+    assert calls == ["session", "session", "resources", "store"]
+    assert root_error.__notes__ == [
+        "Secondary cleanup failure (close evaluation session 1): "
+        "OSError: session cleanup 1",
+        "Secondary cleanup failure (close evaluation session 2): "
+        "OSError: session cleanup 2",
+        "Secondary cleanup failure (close evaluation resources): "
+        "KeyboardInterrupt: resources cleanup",
+        "Secondary cleanup failure (close scene realize cache store): "
+        "SystemExit: store cleanup",
+    ]
+
+
+def test_scene_runner_replacement_startup_failure_attempts_worker_and_generation_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root_error = RuntimeError("replacement epoch failed")
+    calls: list[str] = []
+
+    class FailingReplacement(_IdleMpDraw):
+        def begin_epoch(self, epoch: int | None = None) -> int:
+            super().begin_epoch(epoch)
+            raise root_error
+
+        def close(self) -> None:
+            super().close()
+            calls.append("replacement")
+            raise OSError("replacement cleanup")
+
+    current_worker = _IdleMpDraw()
+    replacement = FailingReplacement()
+    runner = _scene_runner(
+        _empty_draw,
+        perf=PerfCollector(enabled=False),
+        n_worker=1,
+        mp_draw_factory=MpDrawFactoryFixture(current_worker, replacement),
+    )
+    original_session_close = RealizeSession.close
+    original_resources_close = EvaluationResources.close
+
+    def close_session(session: RealizeSession) -> None:
+        calls.append("session")
+        original_session_close(session)
+        raise KeyboardInterrupt(f"session cleanup {calls.count('session')}")
+
+    def close_resources(resources: EvaluationResources) -> None:
+        calls.append("resources")
+        original_resources_close(resources)
+        raise SystemExit("resources cleanup")
+
+    try:
+        with monkeypatch.context() as cleanup_patch:
+            cleanup_patch.setattr(RealizeSession, "close", close_session)
+            cleanup_patch.setattr(EvaluationResources, "close", close_resources)
+            with pytest.raises(RuntimeError) as exc_info:
+                runner.replace_draw(lambda _t: Geometry.create(op="concat"))
+
+        assert exc_info.value is root_error
+        assert calls == ["replacement", "session", "session", "resources"]
+        assert replacement.close_calls == 1
+        assert current_worker.close_calls == 0
+        assert root_error.__notes__ == [
+            "Secondary cleanup failure (close replacement draw worker): "
+            "OSError: replacement cleanup",
+            "Secondary cleanup failure (close evaluation session 1): "
+            "KeyboardInterrupt: session cleanup 1",
+            "Secondary cleanup failure (close evaluation session 2): "
+            "KeyboardInterrupt: session cleanup 2",
+            "Secondary cleanup failure (close evaluation resources): "
+            "SystemExit: resources cleanup",
+        ]
+    finally:
+        runner.close()
+
+    assert current_worker.close_calls == 1
+
+
+def test_scene_runner_reload_diagnostic_includes_every_cleanup_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    center = DiagnosticCenter()
+    runner = _scene_runner(
+        _empty_draw,
+        perf=PerfCollector(enabled=False),
+        n_worker=0,
+        diagnostic_center=center,
+    )
+    calls: list[str] = []
+    original_session_close = RealizeSession.close
+    original_resources_close = EvaluationResources.close
+
+    def close_session(session: RealizeSession) -> None:
+        calls.append("session")
+        original_session_close(session)
+        raise OSError(f"session cleanup {calls.count('session')}")
+
+    def close_resources(resources: EvaluationResources) -> None:
+        calls.append("resources")
+        original_resources_close(resources)
+        raise KeyboardInterrupt("resources cleanup")
+
+    try:
+        with monkeypatch.context() as cleanup_patch:
+            cleanup_patch.setattr(RealizeSession, "close", close_session)
+            cleanup_patch.setattr(EvaluationResources, "close", close_resources)
+            runner.replace_draw(_empty_draw)
+
+        assert calls == ["session", "session", "resources"]
+        diagnostic = center.snapshot()[-1]
+        assert diagnostic.summary == "旧 draw generation の終了に失敗しました"
+        assert diagnostic.details.splitlines() == [
+            "OSError: session cleanup 1",
+            "Secondary cleanup failure (close evaluation session 2): "
+            "OSError: session cleanup 2",
+            "Secondary cleanup failure (close evaluation resources): "
+            "KeyboardInterrupt: resources cleanup",
+        ]
+    finally:
+        runner.close()
+
+
+def test_scene_runner_close_attempts_every_owner_and_preserves_worker_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root_error = RuntimeError("worker close failed")
+    calls: list[str] = []
+
+    class FailingWorker(_IdleMpDraw):
+        def close(self) -> None:
+            super().close()
+            calls.append("worker")
+            raise root_error
+
+    worker = FailingWorker()
+    runner = _scene_runner(
+        _empty_draw,
+        perf=PerfCollector(enabled=False),
+        n_worker=1,
+        mp_draw_factory=MpDrawFactoryFixture(worker),
+    )
+    original_session_close = RealizeSession.close
+    original_resources_close = EvaluationResources.close
+    original_store_close = RealizeCacheStore.close
+
+    def close_session(session: RealizeSession) -> None:
+        calls.append("session")
+        original_session_close(session)
+        raise OSError(f"session cleanup {calls.count('session')}")
+
+    def close_resources(resources: EvaluationResources) -> None:
+        calls.append("resources")
+        original_resources_close(resources)
+        raise KeyboardInterrupt("resources cleanup")
+
+    def close_store(store: RealizeCacheStore) -> None:
+        calls.append("store")
+        original_store_close(store)
+        raise SystemExit("store cleanup")
+
+    with monkeypatch.context() as cleanup_patch:
+        cleanup_patch.setattr(RealizeSession, "close", close_session)
+        cleanup_patch.setattr(EvaluationResources, "close", close_resources)
+        cleanup_patch.setattr(RealizeCacheStore, "close", close_store)
+        with pytest.raises(RuntimeError) as exc_info:
+            runner.close()
+
+    assert exc_info.value is root_error
+    assert calls == ["worker", "session", "session", "resources", "store"]
+    assert root_error.__notes__ == [
+        "Secondary cleanup failure (close evaluation session 1): "
+        "OSError: session cleanup 1",
+        "Secondary cleanup failure (close evaluation session 2): "
+        "OSError: session cleanup 2",
+        "Secondary cleanup failure (close evaluation resources): "
+        "KeyboardInterrupt: resources cleanup",
+        "Secondary cleanup failure (close scene realize cache store): "
+        "SystemExit: store cleanup",
+    ]
+    runner.close()
+    assert worker.close_calls == 1
 
 
 def test_scene_runner_zero_runs_synchronously_without_constructing_worker() -> None:

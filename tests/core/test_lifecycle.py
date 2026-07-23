@@ -53,3 +53,25 @@ def test_cleanup_errors_raises_first_cleanup_error_and_notes_later_failures() ->
     assert first_error.__notes__ == [
         "Secondary cleanup failure (second step): OSError: second"
     ]
+
+
+def test_cleanup_errors_propagates_nested_cleanup_notes_to_root_error() -> None:
+    root_error = RuntimeError("root")
+    nested_first = OSError("nested first")
+    nested_second = KeyboardInterrupt("nested second")
+    nested = CleanupErrors()
+    nested.record(nested_first, "nested first step")
+    nested.record(nested_second, "nested second step")
+    outer = CleanupErrors(initial_error=root_error)
+
+    outer.attempt(nested.raise_if_any, "nested cleanup")
+
+    with pytest.raises(RuntimeError) as exc_info:
+        outer.raise_if_any()
+
+    assert exc_info.value is root_error
+    assert root_error.__notes__ == [
+        "Secondary cleanup failure (nested cleanup): OSError: nested first",
+        "Secondary cleanup failure (nested second step): "
+        "KeyboardInterrupt: nested second",
+    ]

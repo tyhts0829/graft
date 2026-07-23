@@ -1,57 +1,50 @@
-"""公開 runner と interactive application lifetime の境界を固定する。"""
+"""runner import が optional GUI capability を初期化しないことを検査する。
+
+application の正常終了・構築失敗・逆順 cleanup は公開 ``run()`` を通す
+``tests/api/test_runner_authoring_composition.py`` が検査する。この module では class 名や
+``run()`` の AST shape ではなく、import 時に実際に得る capability を固定する。
+"""
 
 from __future__ import annotations
 
-import ast
+import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 
-def _runner_tree() -> ast.Module:
-    root = Path(__file__).resolve().parents[2]
-    path = root / "src" / "grafix" / "api" / "runner.py"
-    return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+def test_importing_runner_does_not_initialize_optional_gui_runtime() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    probe = """
+import json
+import sys
+import pyglet
 
+pyglet.options["shadow_window"] = False
+import grafix.api.runner
 
-def test_public_run_delegates_interactive_lifetime_to_one_private_owner() -> None:
-    tree = _runner_tree()
-    public_run = next(
-        node
-        for node in tree.body
-        if isinstance(node, ast.FunctionDef) and node.name == "run"
-    )
-    application_owners = [
-        node
-        for node in tree.body
-        if isinstance(node, ast.ClassDef) and "Application" in node.name
-    ]
-
-    assert [owner.name for owner in application_owners] == [
-        "_InteractiveApplication"
-    ]
-
-    public_names = {
-        node.id for node in ast.walk(public_run) if isinstance(node, ast.Name)
+optional_gui_modules = (
+    "grafix.interactive.parameter_gui.catalog",
+    "grafix.interactive.parameter_gui.gui",
+    "grafix.interactive.runtime.parameter_gui_system",
+)
+print(json.dumps([name for name in optional_gui_modules if name in sys.modules]))
+"""
+    env = {
+        **os.environ,
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONPATH": str(repo_root / "src"),
     }
-    lifecycle_names = {
-        "DrawWindowSystem",
-        "MultiWindowLoop",
-        "ParameterSession",
-        "WorkspaceWindowController",
-        "authoring_definitions_for_draw",
-        "create_midi_session",
-    }
-    assert not public_names & lifecycle_names
-    assert "RenderOptions" in public_names
-    assert "runtime_config_with_fallback" in public_names
-    assert "_InteractiveApplication" in public_names
-    assert not any(
-        isinstance(node, (ast.Try, ast.With, ast.AsyncWith))
-        for node in ast.walk(public_run)
+
+    completed = subprocess.run(
+        (sys.executable, "-c", probe),
+        cwd=repo_root,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
-    owner_names = {
-        node.id
-        for node in ast.walk(application_owners[0])
-        if isinstance(node, ast.Name)
-    }
-    assert lifecycle_names <= owner_names
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout) == []

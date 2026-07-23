@@ -3,7 +3,7 @@ from grafix.core.parameters.history import ParamStoreHistory
 from grafix.core.parameters.merge_ops import merge_frame_params
 from grafix.core.parameters.ui_ops import update_state_from_ui
 from grafix.core.parameters.view import ParameterRow
-from grafix.interactive.parameter_gui.table import source_badge_for_row
+from grafix.interactive.parameter_gui.source_badge import source_badge_for_row
 
 
 def _row(

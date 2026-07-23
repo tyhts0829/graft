@@ -29,7 +29,9 @@
 実装箇所:
 - schema / catalog projection: `src/grafix/core/operation_schema.py` / `src/grafix/interactive/parameter_gui/catalog.py`
 - 可視マスク計算: `src/grafix/interactive/parameter_gui/visibility.py`
-- 表示行だけ `render_parameter_table()` に渡しつつ、`rows_before/after` の 1:1 は維持: `src/grafix/interactive/parameter_gui/store_bridge.py`
+- immutable 表示 view の構築: `src/grafix/interactive/parameter_gui/table_view.py`
+- 表示行だけ `render_parameter_table()` に渡しつつ、`rows_before/after` の 1:1 を維持して commit:
+  `src/grafix/interactive/parameter_gui/table_commit.py`
 
 ## ルールの書き方（API）
 

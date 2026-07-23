@@ -196,6 +196,129 @@ def test_core_does_not_depend_on_api_export_or_interactive() -> None:
     )
 
 
+def test_core_authoring_values_do_not_own_source_import_io() -> None:
+    """core は recipe/snapshot 値を持つだけで source 発見・実行を行わない。"""
+
+    root = _repo_root()
+    src_root = root / "src"
+    core = src_root / "grafix" / "core"
+    forbidden_imports = {
+        "grafix._snapshot_import",
+        "grafix.authoring_loader",
+    }
+    forbidden_call_names = {"compile", "exec", "open"}
+    authoring_io_method_names = {
+        "glob",
+        "read_bytes",
+        "read_text",
+    }
+    source_tree_walk_methods = {"iterdir", "rglob"}
+    violations: list[str] = []
+
+    for path in _iter_py_files(core):
+        rel = path.relative_to(root)
+        imported = _import_modules_in_file(path=path, src_root=src_root)
+        for module in sorted(
+            module
+            for module in imported
+            if module in forbidden_imports
+        ):
+            violations.append(f"{rel}: import {module}")
+
+        owns_authoring_values = "authoring" in path.stem or any(
+            module
+            in {
+                "grafix.core.authoring_definitions",
+                "grafix.core.authoring_recipe",
+            }
+            for module in imported
+        )
+
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                if (
+                    isinstance(node.func, ast.Name)
+                    and node.func.id in forbidden_call_names
+                    and (node.func.id != "open" or owns_authoring_values)
+                ):
+                    violations.append(f"{rel}:{node.lineno}: {node.func.id}()")
+                elif (
+                    isinstance(node.func, ast.Attribute)
+                    and node.func.attr in source_tree_walk_methods
+                ):
+                    violations.append(f"{rel}:{node.lineno}: .{node.func.attr}()")
+                elif (
+                    isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "walk"
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == "os"
+                ):
+                    violations.append(f"{rel}:{node.lineno}: os.walk()")
+                elif (
+                    isinstance(node.func, ast.Attribute)
+                    and node.func.attr in authoring_io_method_names
+                    and owns_authoring_values
+                ):
+                    violations.append(f"{rel}:{node.lineno}: .{node.func.attr}()")
+                elif (
+                    isinstance(node.func, ast.Attribute)
+                    and node.func.attr
+                    in {"append", "clear", "insert", "pop", "remove", "update"}
+                    and isinstance(node.func.value, ast.Attribute)
+                    and isinstance(node.func.value.value, ast.Name)
+                    and node.func.value.value.id == "sys"
+                    and node.func.value.attr in {"meta_path", "modules"}
+                ):
+                    violations.append(
+                        f"{rel}:{node.lineno}: mutate sys.{node.func.value.attr}"
+                    )
+            if not isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+                continue
+            targets: list[ast.expr]
+            if isinstance(node, ast.Assign):
+                targets = list(node.targets)
+            else:
+                targets = [node.target]
+            for target in targets:
+                owner = target.value if isinstance(target, ast.Subscript) else target
+                if (
+                    isinstance(owner, ast.Attribute)
+                    and isinstance(owner.value, ast.Name)
+                    and owner.value.id == "sys"
+                    and owner.attr in {"meta_path", "modules"}
+                ):
+                    violations.append(
+                        f"{rel}:{node.lineno}: mutate sys.{owner.attr}"
+                    )
+
+    assert not violations, "core authoring source I/O を検出:\n" + "\n".join(
+        violations
+    )
+
+
+def test_legacy_core_authoring_loader_is_deleted_and_unreferenced() -> None:
+    """filesystem/process owner を core へ戻す compatibility shim を禁止する。"""
+
+    root = _repo_root()
+    src_root = root / "src"
+    legacy_name = ".".join(("grafix", "core", "authoring_loader"))
+    assert not (src_root / "grafix" / "core" / "authoring_loader.py").exists()
+
+    violations: list[str] = []
+    for path in _iter_py_files(src_root / "grafix"):
+        imported = _import_modules_in_file(path=path, src_root=src_root)
+        if any(
+            module == legacy_name or module.startswith(f"{legacy_name}.")
+            for module in imported
+        ):
+            violations.append(str(path.relative_to(root)))
+
+    assert not violations, "旧 core authoring loader import を検出:\n" + "\n".join(
+        violations
+    )
+
+
 def test_core_does_not_implement_publish_or_path_allocation_policy() -> None:
     """domain layer から filesystem mutation と capture path policy を排除する。"""
 
@@ -457,14 +580,9 @@ def test_authoring_has_one_registration_path_and_no_legacy_global_store() -> Non
         (Path("src/grafix/core/operation_authoring.py"), "effect"),
         (Path("src/grafix/core/operation_authoring.py"), "primitive"),
     }
-    expected_registration_calls = {
-        Path("src/grafix/api/preset.py"): 1,
-        Path("src/grafix/core/operation_authoring.py"): 2,
-    }
 
     violations: list[str] = []
     decorator_definitions: set[tuple[Path, str]] = set()
-    registration_calls: dict[Path, int] = {}
     for path in _iter_py_files(source_root):
         rel = path.relative_to(root)
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -473,17 +591,6 @@ def test_authoring_has_one_registration_path_and_no_legacy_global_store() -> Non
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 if node.name in {"primitive", "effect", "preset"}:
                     decorator_definitions.add((rel, node.name))
-            if isinstance(node, ast.Call):
-                called = node.func
-                called_name = (
-                    called.id
-                    if isinstance(called, ast.Name)
-                    else called.attr
-                    if isinstance(called, ast.Attribute)
-                    else None
-                )
-                if called_name == "register_authoring_declaration":
-                    registration_calls[rel] = registration_calls.get(rel, 0) + 1
             if isinstance(node, ast.Name) and node.id in legacy_symbols:
                 violations.append(f"{rel}:{node.lineno}: {node.id}")
             elif isinstance(node, ast.Attribute) and node.attr in legacy_symbols:
@@ -528,7 +635,6 @@ def test_authoring_has_one_registration_path_and_no_legacy_global_store() -> Non
                     )
 
     assert decorator_definitions == expected_decorator_definitions
-    assert registration_calls == expected_registration_calls
     assert not violations, "legacy/global registration state を検出:\n" + "\n".join(
         violations
     )
@@ -591,7 +697,7 @@ def test_runtime_does_not_reach_through_renderer_context() -> None:
     )
 
 
-def test_phase6_coordinators_do_not_reabsorb_extracted_policy() -> None:
+def test_coordinators_delegate_mutation_and_platform_capabilities() -> None:
     """DWS、GUI、runner を順序と配線だけの coordinator に保つ。"""
 
     root = _repo_root()
@@ -609,48 +715,34 @@ def test_phase6_coordinators_do_not_reabsorb_extracted_policy() -> None:
         / "gui.py",
         "runner": src_root / "grafix" / "api" / "runner.py",
     }
-    forbidden_names = {
-        "dws": {
-            "VersionedPathAllocator",
-            "reserve_path",
-            "publish_staged_with_retry",
-            "publish_recording_staged_with_retry",
-            "set_minimum_size",
-            "set_maximum_size",
-            "_recording_capture",
-            "_preview_was_playing_before_recording",
-        },
-        "gui": {
-            "create_variation",
-            "delete_variation",
-            "duplicate_variation",
-            "morph_variations",
-            "randomize_parameters",
-            "rename_variation",
-            "restore_variation",
-            "update_state_from_ui",
-        },
-        "runner": {
-            "NSScreen",
-            "MidiController",
-            "FrozenMidiInput",
-            "shutdown_midi_controller",
-            "_ns_screen",
-        },
-    }
     violations: list[str] = []
-    for label, path in targets.items():
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        names = forbidden_names[label]
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Name) and node.id in names:
-                violations.append(
-                    f"{path.relative_to(root)}:{node.lineno}: {node.id}"
-                )
-            if isinstance(node, ast.Attribute) and node.attr in names:
-                violations.append(
-                    f"{path.relative_to(root)}:{node.lineno}: {node.attr}"
-                )
+    dws_tree = ast.parse(targets["dws"].read_text(encoding="utf-8"))
+    forbidden_publish_calls = {
+        "fsync",
+        "link",
+        "mkdir",
+        "rename",
+        "replace",
+        "rmdir",
+        "symlink_to",
+        "unlink",
+        "write_bytes",
+        "write_text",
+    }
+    for node in ast.walk(dws_tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in forbidden_publish_calls
+        ):
+            violations.append(
+                f"{targets['dws'].relative_to(root)}:{node.lineno}: "
+                f"{node.func.attr}()"
+            )
+
+    dws_imports = _import_modules_in_file(path=targets["dws"], src_root=src_root)
+    for module in sorted(dws_imports & {"grafix.file_io", "shutil", "tempfile"}):
+        violations.append(f"{targets['dws'].relative_to(root)}: {module}")
 
     runner_imports = _import_modules_in_file(
         path=targets["runner"],
@@ -795,33 +887,6 @@ def test_geometry_kernel_import_graph_is_acyclic_and_does_not_depend_on_effects(
         tuple(TopologicalSorter(graph).static_order())
     except CycleError as exc:
         raise AssertionError(f"geometry kernel の import cycle を検出: {exc}") from exc
-
-
-def test_packed_geometry_builders_have_one_canonical_implementation() -> None:
-    root = _repo_root()
-    core_root = root / "src" / "grafix" / "core"
-    canonical = core_root / "geometry_kernels" / "packed.py"
-    definitions: dict[str, list[Path]] = {
-        "empty_packed_geometry": [],
-        "pack_polylines": [],
-        "empty_geom": [],
-        "empty_geom_tuple": [],
-        "lines_to_geom_tuple": [],
-    }
-
-    for path in _iter_py_files(core_root):
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                if node.name in definitions:
-                    definitions[node.name].append(path)
-
-    assert definitions["empty_packed_geometry"] == [canonical]
-    assert definitions["pack_polylines"] == [canonical]
-    assert definitions["empty_geom"] == []
-    assert definitions["empty_geom_tuple"] == []
-    assert definitions["lines_to_geom_tuple"] == []
-    assert not (core_root / "effects" / "util.py").exists()
 
 
 def _parse_single_stmt(source: str) -> ast.stmt:

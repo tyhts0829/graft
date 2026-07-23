@@ -3,7 +3,7 @@ from grafix.core.parameters.meta import ParamMeta
 from grafix.core.parameters.state import ParamState
 from grafix.core.parameters.store import ParamStore
 from grafix.core.parameters.view import ParameterRow
-from grafix.interactive.parameter_gui.store_bridge import _apply_updated_rows_to_store
+from grafix.interactive.parameter_gui.table_commit import _apply_updated_rows_to_store
 
 
 def _row(

@@ -79,6 +79,12 @@ source generation can be watched and isolated.
 - `ResourceBudget`: per-operation vertex/line/byte limits checked before large allocations
 - `RuntimeLimits` / `RuntimeLimitProfiles`: headless and interactive resource profiles
 
+Use `from grafix import ...` as the canonical public import. The root and `grafix.api`
+facades resolve implementation groups lazily: importing the DSL does not initialize the
+interactive runner, render/export stack, parameter storage, or config discovery. A
+core-only import such as `import grafix.core.geometry` also leaves those outer
+capabilities unloaded.
+
 `G.select` and `E.select` expose the registered operations as a Parameter GUI choice while
 keeping target-specific base arguments separate:
 
@@ -411,6 +417,17 @@ output, GUI, or MIDI settings does not invalidate geometry caches. Two sessions 
 different configs can coexist, and closing either session does not change the other.
 Pass either `config_path=` or an already loaded `config=`, never both.
 
+Lower-level output-path helpers never discover config implicitly. Resolve one immutable
+value at the application boundary and pass it explicitly:
+
+```python
+from grafix.export.output_paths import default_param_store_path
+from grafix.runtime_config_loader import load_runtime_config
+
+config = load_runtime_config(".grafix/config.yaml")
+parameter_path = default_param_store_path(draw, config=config)
+```
+
 Paths support `~` and environment variables like `$HOME`. Relative paths in a user
 config are resolved from that config file's directory. Therefore paths in
 `./.grafix/config.yaml` normally start with `../` when they point into the project root.
@@ -565,8 +582,9 @@ manifest. The same immutable `Frame` may therefore be exported to multiple forma
 `RenderSession` owns its evaluation resources and cache store and injects them into a borrowing
 `RealizeSession`. At the lower-level API, each omitted `resources` or `cache_store` dependency is
 owned and closed by `RealizeSession`; explicitly supplied dependencies remain caller-owned.
-`RenderSession` does not expose those closeable child owners; its public properties are
-limited to `options`, `param_store`, `config`, `runtime_limits`, and `metadata`.
+`RenderSession` does not expose those closeable child owners. Public properties may provide
+immutable metadata or session views such as `options`, `param_store`, `config`,
+`runtime_limits`, and `metadata`, but never a child resource with its own `close()` capability.
 
 ## Troubleshooting
 
@@ -598,4 +616,4 @@ The CLI is the normal benchmark entry point. Harness extensions use the canonica
 adding a workload provider.
 
 See: `architecture.md`, `docs/developer_guide.md`, and
-`docs/migration_2026-07-22.md` for the catalog/session migration.
+`docs/migration_2026-07-23.md` for the current ownership/import migration.

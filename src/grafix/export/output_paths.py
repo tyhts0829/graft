@@ -12,7 +12,6 @@ from collections.abc import Callable
 from pathlib import Path
 
 from grafix.core.runtime_config import RuntimeConfig
-from grafix.runtime_config_loader import runtime_config
 from grafix.core.value_validation import (
     exact_integer,
     exact_string,
@@ -313,7 +312,7 @@ def output_path_for_draw(
     draw: Callable[[float], object],
     run_id: str | None = None,
     canvas_size: tuple[float | int, float | int] | None = None,
-    config: RuntimeConfig | None = None,
+    config: RuntimeConfig,
 ) -> Path:
     """draw の定義元（sketch_dir）に基づき、出力ファイルの保存先パスを返す。
 
@@ -335,9 +334,9 @@ def output_path_for_draw(
     if not callable(draw):
         raise TypeError("draw は callable である必要がある")
 
-    if config is not None and not isinstance(config, RuntimeConfig):
-        raise TypeError("config は RuntimeConfig または None である必要がある")
-    cfg = runtime_config() if config is None else config
+    if not isinstance(config, RuntimeConfig):
+        raise TypeError("config は RuntimeConfig である必要がある")
+    cfg = config
     suffix = _run_id_suffix(run_id)
 
     source_path = _draw_source_path(draw)
@@ -375,7 +374,7 @@ def default_param_store_path(
     draw: Callable[[float], object],
     *,
     run_id: str | None = None,
-    config: RuntimeConfig | None = None,
+    config: RuntimeConfig,
 ) -> Path:
     """draw の定義元に対応する ParamStore の既定保存パスを返す。"""
 

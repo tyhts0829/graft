@@ -1,4 +1,5 @@
-from grafix.interactive.parameter_gui.store_bridge import _order_rows_for_display
+from grafix.interactive.parameter_gui.catalog import current_parameter_gui_catalog
+from grafix.interactive.parameter_gui.table_view import _order_rows_for_display
 from grafix.core.parameters.view import ParameterRow
 
 
@@ -28,6 +29,7 @@ def test_order_rows_for_display_interleaves_primitive_and_effect_by_display_orde
 
     out = _order_rows_for_display(
         rows,
+        catalog=current_parameter_gui_catalog(),
         step_info_by_site={("scale", "e:1"): ("chain:1", 0)},
         display_order_by_group={
             ("polygon", "p:1"): 1,
@@ -52,6 +54,7 @@ def test_order_rows_for_display_effect_chain_is_placed_by_min_step_display_order
 
     out = _order_rows_for_display(
         rows,
+        catalog=current_parameter_gui_catalog(),
         step_info_by_site={
             ("scale", "e:scale"): ("chain:1", 0),
             ("rotate", "e:rotate"): ("chain:1", 1),

@@ -1,7 +1,28 @@
+from dataclasses import FrozenInstanceError
+
 import pytest
 
 from grafix.core.parameters.key import ParameterKey
-from grafix.core.parameters.runtime import ParamStoreRuntime
+from grafix.core.parameters.runtime import (
+    ParameterLoadState,
+    ParamStoreLoadDiagnostic,
+    ParamStoreRuntime,
+)
+
+
+def test_parameter_load_state_is_frozen_and_kept_outside_store_runtime() -> None:
+    diagnostic = ParamStoreLoadDiagnostic(code="partial", summary="partial")
+    state = ParameterLoadState(
+        provenance="session_recovery",
+        diagnostics=(diagnostic,),
+    )
+
+    assert state.provenance == "session_recovery"
+    assert state.diagnostics == (diagnostic,)
+    with pytest.raises(FrozenInstanceError):
+        state.provenance = "primary"  # type: ignore[misc]
+    assert not hasattr(ParamStoreRuntime(), "load_provenance")
+    assert not hasattr(ParamStoreRuntime(), "load_diagnostics")
 
 
 def test_runtime_constructor_is_keyword_only_and_canonicalizes_group_sets() -> None:

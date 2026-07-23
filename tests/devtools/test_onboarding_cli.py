@@ -70,7 +70,7 @@ def test_init_config_paths_resolve_and_build_explicit_authoring_catalog(
     command = "\n".join(
         [
             "from grafix import P",
-            "from grafix.core.authoring_loader import load_config_authoring_definitions",
+            "from grafix.authoring_loader import load_config_authoring_definitions",
             "from grafix.core.operation_catalog import bind_operation_catalog",
             "from grafix.core.preset_catalog import bind_preset_catalog",
             "from grafix.runtime_config_loader import load_runtime_config",

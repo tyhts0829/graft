@@ -13,6 +13,7 @@ from typing import Any
 from grafix.core.operation_catalog import OperationCatalog
 from grafix.core.parameters import (
     KnownOperationSchemaSnapshot,
+    ParameterLoadState,
     ParamSnapshotSlots,
     ParamStore,
     ParamStoreAutosave,
@@ -28,6 +29,7 @@ from grafix.interactive.runtime.parameter_recovery import (
 )
 from grafix.parameter_storage import (
     finalize_parameter_session,
+    ParamStoreLoadResult,
     param_store_recovery_path,
     recover_param_store_session,
     write_param_store_recovery,
@@ -131,6 +133,8 @@ def _install_parameter_diagnostic_actions(
     *,
     monitor: Any,
     store: ParamStore,
+    load_state: ParameterLoadState,
+    adopt_load_result: Callable[[ParamStoreLoadResult], None],
     primary_path: Path | None,
     autosave: ParamStoreAutosave | None,
     history: ParamStoreHistory | None,
@@ -168,12 +172,12 @@ def _install_parameter_diagnostic_actions(
         return None
 
     for event in param_store_load_diagnostic_events(
-        store,
+        load_state.diagnostics,
         primary_path=primary_path,
     ):
         monitor.publish_diagnostic(event)
 
-    if store.load_provenance != "session_recovery":
+    if load_state.provenance != "session_recovery":
         return None
 
     recovery = ParamStoreRecoverySession(store, primary_path, known_operations)
@@ -196,13 +200,17 @@ def _install_parameter_diagnostic_actions(
         center.dismiss(event)
 
     def keep(event: DiagnosticEvent) -> None:
-        recovery.keep()
+        adopt_load_result(recovery.keep())
         finish_decision(event)
 
     def discard(event: DiagnosticEvent) -> None:
-        diagnostics = recovery.discard()
+        loaded = recovery.discard()
+        adopt_load_result(loaded)
         finish_decision(event)
-        for diagnostic in diagnostics:
+        for diagnostic in param_store_load_diagnostic_events(
+            loaded.load_state.diagnostics,
+            primary_path=primary_path,
+        ):
             monitor.publish_diagnostic(diagnostic)
 
     def compare(_event: DiagnosticEvent) -> None:
@@ -230,11 +238,13 @@ class ParameterSession:
             )
         self.primary_path = primary_path
         self.known_operations = known_operations
-        self.store = (
-            recover_param_store_session(primary_path)
-            if primary_path is not None
-            else ParamStore()
-        )
+        if primary_path is None:
+            self.store = ParamStore()
+            self._load_state = ParameterLoadState()
+        else:
+            loaded = recover_param_store_session(primary_path)
+            self.store = loaded.store
+            self._load_state = loaded.load_state
         self.history = ParamStoreHistory(self.store) if gui_enabled else None
         self.snapshot_slots = ParamSnapshotSlots(self.store) if gui_enabled else None
         self.autosave = (
@@ -265,12 +275,28 @@ class ParameterSession:
         self.known_operations = known_operations
 
     @property
+    def load_state(self) -> ParameterLoadState:
+        """現在の session が採用している load metadata を返す。"""
+
+        return self._load_state
+
+    def _adopt_load_result(self, loaded: ParamStoreLoadResult) -> None:
+        """recovery 判断後の detached contents と load state を一度に採用する。"""
+
+        if type(loaded) is not ParamStoreLoadResult:
+            raise TypeError("loaded は exact ParamStoreLoadResult である必要があります")
+        if loaded.store is self.store:
+            raise ValueError("load result は detached ParamStore を指す必要があります")
+        self.store.replace_contents_from(loaded.store)
+        self._load_state = loaded.load_state
+
+    @property
     def source(self) -> ParameterLoadMode:
         """capture provenance に渡す parameter source label を返す。"""
 
         if self.primary_path is None:
             return "code"
-        if self.store.load_provenance == "session_recovery":
+        if self._load_state.provenance == "session_recovery":
             return "recovery"
         return "saved"
 
@@ -280,6 +306,8 @@ class ParameterSession:
         return _install_parameter_diagnostic_actions(
             monitor=monitor,
             store=self.store,
+            load_state=self._load_state,
+            adopt_load_result=self._adopt_load_result,
             primary_path=self.primary_path,
             autosave=self.autosave,
             history=self.history,

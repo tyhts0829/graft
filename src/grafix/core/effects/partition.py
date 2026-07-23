@@ -20,6 +20,7 @@ from grafix.core.realized_geometry import GeomTuple
 from grafix.core.parameters.meta import ParamMeta
 from grafix.core.geometry_kernels.packed import pack_polylines
 from grafix.core.geometry_kernels.planar import (
+    PlanarFrame,
     canonical_planar_frame,
     planarity_threshold,
 )
@@ -209,6 +210,224 @@ def _build_evenodd_groups(
     return ordered
 
 
+def _polygon_inputs(
+    coords_2d: np.ndarray,
+    offsets: np.ndarray,
+) -> tuple[list[np.ndarray], list[BaseGeometry]]:
+    """packed input から有効な閉 ring と polygon を入力順に作る。"""
+
+    rings: list[np.ndarray] = []
+    polygons: list[BaseGeometry] = []
+    for line_index in range(int(offsets.size) - 1):
+        start = int(offsets[line_index])
+        end = int(offsets[line_index + 1])
+        ring = coords_2d[start:end]
+        if ring.shape[0] < 3:
+            continue
+        closed_ring = _ensure_closed_2d(ring)
+        try:
+            polygon = Polygon(closed_ring)
+            if not polygon.is_valid:
+                polygon = polygon.buffer(0)
+        except (GEOSException, ValueError):
+            continue
+        if polygon.is_empty:
+            continue
+        rings.append(closed_ring)
+        polygons.append(polygon)
+    return rings, polygons
+
+
+def _partition_regions(
+    polygons: list[BaseGeometry],
+    rings: list[np.ndarray],
+    *,
+    mode: str,
+) -> list[BaseGeometry]:
+    """mode に従って Voronoi clipping 対象領域を作る。"""
+
+    if mode == "ring":
+        return list(polygons)
+    if mode == "group":
+        regions: list[BaseGeometry] = []
+        for group_indices in _build_evenodd_groups(polygons, rings):
+            region = _combine_evenodd([polygons[index] for index in group_indices])
+            if region is not None and not region.is_empty:
+                regions.append(region)
+        return regions
+    region = _combine_evenodd(polygons)
+    if region is None or region.is_empty:
+        return []
+    return [region]
+
+
+def _density_space(
+    coords: np.ndarray,
+    *,
+    auto_center: bool,
+    pivot: tuple[float, float, float],
+) -> tuple[np.ndarray, np.ndarray]:
+    """density 勾配の pivot と正規化用逆 bbox 半径を返す。"""
+
+    mins = np.min(coords, axis=0).astype(np.float64, copy=False)
+    maxs = np.max(coords, axis=0).astype(np.float64, copy=False)
+    bbox_center = (mins + maxs) * 0.5
+    extent = (maxs - mins) * 0.5
+    inv_extent = np.zeros((3,), dtype=np.float64)
+    for axis in range(3):
+        half_extent = float(extent[axis])
+        inv_extent[axis] = 0.0 if half_extent < 1e-9 else 1.0 / half_extent
+    pivot_3d = bbox_center if auto_center else np.asarray(pivot, dtype=np.float64)
+    return pivot_3d, inv_extent
+
+
+def _density_probabilities(
+    xy: np.ndarray,
+    *,
+    frame: PlanarFrame,
+    pivot: np.ndarray,
+    inv_extent: np.ndarray,
+    base: tuple[float, float, float],
+    slope: tuple[float, float, float],
+) -> np.ndarray:
+    """平面上の候補点ごとの合成採用確率を返す。"""
+
+    points_3d = frame.lift(xy)
+    normalized = (points_3d - pivot[None, :]) * inv_extent[None, :]
+    normalized = np.clip(normalized, -1.0, 1.0)
+    p_x = np.clip(base[0] + slope[0] * normalized[:, 0], 0.0, 1.0)
+    p_y = np.clip(base[1] + slope[1] * normalized[:, 1], 0.0, 1.0)
+    p_z = np.clip(base[2] + slope[2] * normalized[:, 2], 0.0, 1.0)
+    return 1.0 - (1.0 - p_x) * (1.0 - p_y) * (1.0 - p_z)
+
+
+def _sample_region_sites(
+    region: BaseGeometry,
+    *,
+    site_count: int,
+    rng: np.random.Generator,
+    frame: PlanarFrame,
+    density_enabled: bool,
+    density_pivot: np.ndarray,
+    density_inv_extent: np.ndarray,
+    density_base: tuple[float, float, float],
+    density_slope: tuple[float, float, float],
+) -> list[tuple[float, float]]:
+    """region 内の Voronoi site を density 採用と一様 top-up で作る。"""
+
+    min_x, min_y, max_x, max_y = region.bounds
+    width = float(max_x) - float(min_x)
+    height = float(max_y) - float(min_y)
+    points: list[tuple[float, float]] = []
+    if width > 0.0 and height > 0.0:
+        trials_per_phase = max(1000, site_count * 50)
+        batch_size = max(256, site_count * 20)
+
+        def append_points(xs: np.ndarray, ys: np.ndarray) -> None:
+            need = site_count - len(points)
+            if need <= 0:
+                return
+            for x, y in zip(xs[:need], ys[:need], strict=False):
+                points.append((float(x), float(y)))
+
+        trials_left = trials_per_phase
+        while len(points) < site_count and trials_left > 0:
+            count = min(batch_size, trials_left)
+            xs = float(min_x) + rng.random(count) * width
+            ys = float(min_y) + rng.random(count) * height
+            inside = shapely.contains_xy(region, xs, ys)
+            if not np.any(inside):
+                trials_left -= count
+                continue
+            inside_xs = xs[inside]
+            inside_ys = ys[inside]
+            if density_enabled:
+                xy = np.stack([inside_xs, inside_ys], axis=1).astype(
+                    np.float64,
+                    copy=False,
+                )
+                probabilities = _density_probabilities(
+                    xy,
+                    frame=frame,
+                    pivot=density_pivot,
+                    inv_extent=density_inv_extent,
+                    base=density_base,
+                    slope=density_slope,
+                )
+                take = rng.random(int(probabilities.shape[0])) < probabilities
+                append_points(inside_xs[take], inside_ys[take])
+            else:
+                append_points(inside_xs, inside_ys)
+            trials_left -= count
+
+        # density 採用で不足した分だけ、一様サンプリングで同じ順序の top-up を行う。
+        if density_enabled and len(points) < site_count:
+            trials_left = trials_per_phase
+            while len(points) < site_count and trials_left > 0:
+                count = min(batch_size, trials_left)
+                xs = float(min_x) + rng.random(count) * width
+                ys = float(min_y) + rng.random(count) * height
+                inside = shapely.contains_xy(region, xs, ys)
+                if np.any(inside):
+                    append_points(xs[inside], ys[inside])
+                trials_left -= count
+
+    if points:
+        return points
+    try:
+        representative = region.representative_point()
+    except GEOSException:
+        return []
+    return [(float(representative.x), float(representative.y))]
+
+
+def _voronoi_region_loops(
+    region: BaseGeometry,
+    sites: list[tuple[float, float]],
+) -> list[np.ndarray]:
+    """site の Voronoi cell を region で clip して外周を返す。"""
+
+    if len(sites) <= 1:
+        return _collect_polygon_exteriors(region)
+    try:
+        diagram = voronoi_diagram(
+            MultiPoint(sites),
+            envelope=region.envelope,
+            edges=False,
+        )
+    except GEOSException:
+        return []
+    loops: list[np.ndarray] = []
+    for cell in diagram.geoms:
+        try:
+            intersection = cell.intersection(region)
+        except GEOSException:
+            continue
+        if not intersection.is_empty:
+            loops.extend(_collect_polygon_exteriors(intersection))
+    return loops
+
+
+def _pack_partition_loops(
+    loops: list[np.ndarray],
+    *,
+    frame: PlanarFrame,
+) -> GeomTuple | None:
+    """有効な loop を centroid 順に整列し packed 3D geometry に戻す。"""
+
+    valid_loops = [loop for loop in loops if loop.shape[0] >= 4]
+    if not valid_loops:
+        return None
+
+    def sort_key(loop: np.ndarray) -> tuple[float, float]:
+        center = loop[:-1].astype(np.float64, copy=False).mean(axis=0)
+        return float(center[0]), float(center[1])
+
+    valid_loops.sort(key=sort_key)
+    lines = [frame.lift(loop[:, :2]) for loop in valid_loops]
+    return pack_polylines([line for line in lines if line.shape[0] > 0])
+
+
 @effect(meta=partition_meta, ui_visible=partition_ui_visible)
 def partition(
     g: GeomTuple,
@@ -259,13 +478,10 @@ def partition(
     """
     if site_count <= 0:
         raise ValueError("partition: site_count は正の整数である必要がある")
-
-    base_x, base_y, base_z = site_density_base
-    if not all(0.0 <= value <= 1.0 for value in (base_x, base_y, base_z)):
+    if not all(0.0 <= value <= 1.0 for value in site_density_base):
         raise ValueError(
             "partition: site_density_base の各要素は 0.0 以上 1.0 以下である必要がある"
         )
-    slope_x, slope_y, slope_z = site_density_slope
     if seed < 0:
         raise ValueError("partition: seed は 0 以上である必要がある")
 
@@ -276,172 +492,42 @@ def partition(
     if not frame.is_planar(planarity_threshold(coords)):
         return coords, offsets
 
-    coords_2d_all = frame.project(coords)
-    rings_2d: list[np.ndarray] = []
-    polys: list[BaseGeometry] = []
-    for i in range(int(offsets.size) - 1):
-        s = int(offsets[i])
-        e = int(offsets[i + 1])
-        ring = coords_2d_all[s:e]
-        if ring.shape[0] < 3:
-            continue
-        ring_2d = _ensure_closed_2d(ring)
-        try:
-            poly = Polygon(ring_2d)
-            if not poly.is_valid:
-                poly = poly.buffer(0)
-        except (GEOSException, ValueError):
-            continue
-        if poly.is_empty:
-            continue
-        rings_2d.append(ring_2d)
-        polys.append(poly)
-
-    if not polys:
+    rings, polygons = _polygon_inputs(frame.project(coords), offsets)
+    if not polygons:
         return coords, offsets
+    regions = _partition_regions(polygons, rings, mode=mode)
+    if not regions:
+        return coords, offsets
+
+    density_enabled = any(
+        value != 0.0 for value in (*site_density_base, *site_density_slope)
+    )
+    if density_enabled:
+        density_pivot, density_inv_extent = _density_space(
+            coords,
+            auto_center=auto_center,
+            pivot=pivot,
+        )
+    else:
+        density_pivot = np.zeros((3,), dtype=np.float64)
+        density_inv_extent = np.zeros((3,), dtype=np.float64)
 
     rng = np.random.default_rng(seed)
-
-    regions = []
-    if mode == "ring":
-        regions = list(polys)
-    elif mode == "group":
-        groups = _build_evenodd_groups(polys, rings_2d)
-        for group_indices in groups:
-            region = _combine_evenodd([polys[i] for i in group_indices])
-            if region is not None and not region.is_empty:
-                regions.append(region)
-    else:
-        region = _combine_evenodd(polys)
-        if region is None or region.is_empty:
-            return coords, offsets
-        regions = [region]
-
-    density_enabled = (
-        (base_x != 0.0)
-        or (base_y != 0.0)
-        or (base_z != 0.0)
-        or (slope_x != 0.0)
-        or (slope_y != 0.0)
-        or (slope_z != 0.0)
-    )
-
-    if density_enabled:
-        mins3 = np.min(coords, axis=0).astype(np.float64, copy=False)
-        maxs3 = np.max(coords, axis=0).astype(np.float64, copy=False)
-        bbox_center = (mins3 + maxs3) * 0.5
-        extent3 = (maxs3 - mins3) * 0.5
-
-        inv_extent3 = np.zeros((3,), dtype=np.float64)
-        for k in range(3):
-            extent_k = float(extent3[k])
-            inv_extent3[k] = 0.0 if extent_k < 1e-9 else 1.0 / extent_k
-
-        if auto_center:
-            pivot3 = bbox_center
-        else:
-            pivot3 = np.asarray(pivot, dtype=np.float64)
-
-        def _p_eff_for_xy(xy: np.ndarray) -> np.ndarray:
-            p3 = frame.lift(xy)
-            t = (p3 - pivot3[None, :]) * inv_extent3[None, :]
-            t = np.clip(t, -1.0, 1.0)
-            tx = t[:, 0]
-            ty = t[:, 1]
-            tz = t[:, 2]
-
-            p_x = np.clip(base_x + slope_x * tx, 0.0, 1.0)
-            p_y = np.clip(base_y + slope_y * ty, 0.0, 1.0)
-            p_z = np.clip(base_z + slope_z * tz, 0.0, 1.0)
-            return 1.0 - (1.0 - p_x) * (1.0 - p_y) * (1.0 - p_z)
-
-    all_loops_2d: list[np.ndarray] = []
+    loops: list[np.ndarray] = []
     for region in regions:
-        minx, miny, maxx, maxy = region.bounds
-        width = float(maxx) - float(minx)
-        height = float(maxy) - float(miny)
+        sites = _sample_region_sites(
+            region,
+            site_count=site_count,
+            rng=rng,
+            frame=frame,
+            density_enabled=density_enabled,
+            density_pivot=density_pivot,
+            density_inv_extent=density_inv_extent,
+            density_base=site_density_base,
+            density_slope=site_density_slope,
+        )
+        if sites:
+            loops.extend(_voronoi_region_loops(region, sites))
 
-        pts: list[tuple[float, float]] = []
-        if width > 0.0 and height > 0.0:
-            trials_per_phase = max(1000, site_count * 50)
-            batch = max(256, site_count * 20)
-
-            def _append_points(xs: np.ndarray, ys: np.ndarray) -> None:
-                need = site_count - len(pts)
-                if need <= 0:
-                    return
-                for x, y in zip(xs[:need], ys[:need], strict=False):
-                    pts.append((float(x), float(y)))
-
-            trials_left = int(trials_per_phase)
-            while len(pts) < site_count and trials_left > 0:
-                n = min(int(batch), int(trials_left))
-                xs = float(minx) + rng.random(n) * width
-                ys = float(miny) + rng.random(n) * height
-                inside = shapely.contains_xy(region, xs, ys)
-                if not np.any(inside):
-                    trials_left -= n
-                    continue
-
-                xs_in = xs[inside]
-                ys_in = ys[inside]
-                if density_enabled:
-                    xy = np.stack([xs_in, ys_in], axis=1).astype(np.float64, copy=False)
-                    p_eff = _p_eff_for_xy(xy)
-                    take = rng.random(int(p_eff.shape[0])) < p_eff
-                    _append_points(xs_in[take], ys_in[take])
-                else:
-                    _append_points(xs_in, ys_in)
-
-                trials_left -= n
-
-            # top-up: density で足りない場合は、一様サンプリングで埋めて site_count を満たす。
-            if density_enabled and len(pts) < site_count:
-                trials_left = int(trials_per_phase)
-                while len(pts) < site_count and trials_left > 0:
-                    n = min(int(batch), int(trials_left))
-                    xs = float(minx) + rng.random(n) * width
-                    ys = float(miny) + rng.random(n) * height
-                    inside = shapely.contains_xy(region, xs, ys)
-                    if np.any(inside):
-                        _append_points(xs[inside], ys[inside])
-                    trials_left -= n
-
-        if not pts:
-            try:
-                c = region.representative_point()
-                pts = [(float(c.x), float(c.y))]
-            except GEOSException:
-                continue
-
-        if len(pts) <= 1:
-            all_loops_2d.extend(_collect_polygon_exteriors(region))
-            continue
-
-        mp = MultiPoint(pts)
-        try:
-            vd = voronoi_diagram(mp, envelope=region.envelope, edges=False)  # type: ignore[arg-type]
-        except GEOSException:
-            continue
-
-        for cell in vd.geoms:
-            try:
-                inter = cell.intersection(region)
-            except GEOSException:
-                continue
-            if inter.is_empty:
-                continue
-            all_loops_2d.extend(_collect_polygon_exteriors(inter))
-
-    loops_2d = [loop for loop in all_loops_2d if loop.shape[0] >= 4]
-    if not loops_2d:
-        return coords, offsets
-
-    def _sort_key(loop: np.ndarray) -> tuple[float, float]:
-        c = loop[:-1].astype(np.float64, copy=False).mean(axis=0)
-        return (float(c[0]), float(c[1]))
-
-    loops_2d.sort(key=_sort_key)
-
-    lines_3d = [frame.lift(loop[:, :2]) for loop in loops_2d]
-    return pack_polylines([line for line in lines_3d if line.shape[0] > 0])
+    packed = _pack_partition_loops(loops, frame=frame)
+    return (coords, offsets) if packed is None else packed

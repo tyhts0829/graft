@@ -25,8 +25,13 @@ from grafix.devtools.benchmarks.schema import (
     evaluate_contract,
     summarize_distribution,
 )
-from grafix.interactive.parameter_gui import store_bridge
+from grafix.interactive.parameter_gui.catalog import current_parameter_gui_catalog
 from grafix.interactive.parameter_gui.table_model import ParameterTableModel
+from grafix.interactive.parameter_gui.table_view import (
+    ParameterTableViewCache,
+    _parameter_table_model_for_store,
+    parameter_table_view_for_store,
+)
 
 _SCOPE = "core+parameter-table-model(no-imgui)"
 _TARGET_KEY = ParameterKey(
@@ -98,6 +103,7 @@ class ParameterEditScenario:
     key: ParameterKey
     meta: ParamMeta
     history: ParamStoreHistory
+    table_cache: ParameterTableViewCache
     model: ParameterTableModel
 
 
@@ -113,18 +119,19 @@ def make_parameter_edit_scenario(
     if changed_frames < 1:
         raise ValueError("changed_frames は 1 以上である必要があります")
 
-    store_bridge.clear_parameter_table_model_cache()
     store = parameter_store_fixture(rows=rows)
     meta = store.get_meta(_TARGET_KEY)
     if meta is None:
         raise RuntimeError("parameter edit benchmark metadata is missing")
     history = ParamStoreHistory(store)
-    model = store_bridge._parameter_table_model_for_store(store)
+    table_cache = ParameterTableViewCache(current_parameter_gui_catalog())
+    model = _parameter_table_model_for_store(store, cache=table_cache)
     # 実際の slider 操作は Parameter panel が少なくとも 1 frame 描画された後に
     # 始まる。初回 view/layout 構築を changed-frame tail に混ぜず、操作中の
     # cache hit / sparse invalidation を同じ条件で測る。
-    store_bridge.parameter_table_view_for_store(
+    parameter_table_view_for_store(
         store,
+        cache=table_cache,
         show_inactive_params=True,
     )
     return ParameterEditScenario(
@@ -134,6 +141,7 @@ def make_parameter_edit_scenario(
         key=_TARGET_KEY,
         meta=meta,
         history=history,
+        table_cache=table_cache,
         model=model,
     )
 
@@ -154,6 +162,7 @@ def run_parameter_edit_scenario(
     meta = scenario.meta
     changed_frames = scenario.changed_frames
     model = scenario.model
+    table_cache = scenario.table_cache
 
     state_before = store.get_state(key)
     if state_before is None:
@@ -166,7 +175,7 @@ def run_parameter_edit_scenario(
     start_revision = int(store.revision)
     start_table_revision = int(store.table_revision)
     start_value_revision = int(store.value_revision)
-    start_build_count = int(store_bridge.parameter_table_model_build_count())
+    start_build_count = int(table_cache.model_build_count)
 
     history_patch_ms: list[float] = []
     state_apply_ms: list[float] = []
@@ -244,7 +253,7 @@ def run_parameter_edit_scenario(
             max_changed_keys = max(max_changed_keys, changed_key_count)
 
             sparse_started = time.perf_counter_ns()
-            model = store_bridge._parameter_table_model_for_store(store)
+            model = _parameter_table_model_for_store(store, cache=table_cache)
             sparse_finished = time.perf_counter_ns()
             sparse_refresh_ms.append(float(sparse_finished - sparse_started) / 1_000_000.0)
             changed_row_identities = sum(
@@ -263,14 +272,15 @@ def run_parameter_edit_scenario(
             sparse_value_matches += int(model.rows[row_index].ui_value == edited_value)
 
             reuse_started = time.perf_counter_ns()
-            reused_model = store_bridge._parameter_table_model_for_store(store)
+            reused_model = _parameter_table_model_for_store(store, cache=table_cache)
             reuse_finished = time.perf_counter_ns()
             structure_reuse_ms.append(float(reuse_finished - reuse_started) / 1_000_000.0)
             model_reuse_frames += int(reused_model is model)
 
             overlay_started = time.perf_counter_ns()
-            view = store_bridge.parameter_table_view_for_store(
+            view = parameter_table_view_for_store(
                 store,
+                cache=table_cache,
                 show_inactive_params=True,
             )
             overlay_finished = time.perf_counter_ns()
@@ -282,7 +292,7 @@ def run_parameter_edit_scenario(
     changed_table_revision_delta = int(store.table_revision) - start_table_revision
     changed_value_revision_delta = int(store.value_revision) - start_value_revision
     changed_frame_model_builds = (
-        int(store_bridge.parameter_table_model_build_count()) - start_build_count
+        int(table_cache.model_build_count) - start_build_count
     )
     final_state = store.get_state(key)
     if final_state is None:
@@ -304,7 +314,7 @@ def run_parameter_edit_scenario(
         )
         == before_state
     )
-    undo_model = store_bridge._parameter_table_model_for_store(store)
+    undo_model = _parameter_table_model_for_store(store, cache=table_cache)
     undo_model_matches = (
         undo_state is not None
         and undo_model.rows[undo_model.row_index_by_key[key]].ui_value == undo_state.ui_value
@@ -321,13 +331,13 @@ def run_parameter_edit_scenario(
         )
         == expected_final_state
     )
-    redo_model = store_bridge._parameter_table_model_for_store(store)
+    redo_model = _parameter_table_model_for_store(store, cache=table_cache)
     redo_model_matches = (
         redo_state is not None
         and redo_model.rows[redo_model.row_index_by_key[key]].ui_value == redo_state.ui_value
     )
     total_revision_delta = int(store.revision) - start_revision
-    total_model_builds = int(store_bridge.parameter_table_model_build_count())
+    total_model_builds = int(table_cache.model_build_count)
     scenario.model = redo_model
 
     output_value = {

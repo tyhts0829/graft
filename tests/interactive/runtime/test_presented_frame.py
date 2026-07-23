@@ -29,7 +29,7 @@ class _ProvenanceBuilderSpy:
             config=runtime_config(),
             parameter_source="code",
             parameter_store_path=None,
-            parameter_load_provenance=store.load_provenance,
+            parameter_load_provenance="primary",
         )
         self.calls: list[dict[str, object]] = []
 

@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 
 from grafix.api import G
-from grafix.core.authoring_loader import load_config_authoring_definitions
+from grafix.authoring_loader import load_config_authoring_definitions
 from grafix.core.geometry import Geometry
 from grafix.core.layer import Layer
 from grafix.core.operation_catalog import bind_operation_catalog

@@ -28,12 +28,7 @@ from .key import ParameterKey
 from .labels import ParamLabels
 from .meta import ParamMeta
 from .ordinals import GroupOrdinals
-from .runtime import (
-    LoadProvenance,
-    ParamRuntimeView,
-    ParamStoreLoadDiagnostic,
-    ParamStoreRuntime,
-)
+from .runtime import ParamRuntimeView, ParamStoreRuntime
 from .state import ParamState, ParamStateSnapshot
 
 if TYPE_CHECKING:
@@ -386,18 +381,6 @@ class ParamStore:
 
         return ParamStoreRollback(self)
 
-    @property
-    def load_provenance(self) -> LoadProvenance:
-        """現在のデータを復元した load 経路を返す。"""
-
-        return self._runtime.load_provenance
-
-    @property
-    def load_diagnostics(self) -> tuple[ParamStoreLoadDiagnostic, ...]:
-        """load 中の recovery/quarantine 診断を返す。"""
-
-        return self._runtime.load_diagnostics
-
     def runtime_view(self) -> ParamRuntimeView:
         """GUI が必要とする runtime 情報の read-only view を返す。"""
 
@@ -443,16 +426,6 @@ class ParamStore:
         new_pairs = frozenset(pairs) - warned
         warned.update(new_pairs)
         return new_pairs
-
-    def accept_loaded_state(self) -> bool:
-        """recovery 済み runtime 診断を primary として受理する。"""
-
-        runtime = self._runtime
-        if runtime.load_provenance == "primary" and not runtime.load_diagnostics:
-            return False
-        runtime.load_provenance = "primary"
-        runtime.load_diagnostics = ()
-        return True
 
     def collapsed_headers(self) -> frozenset[CollapsedHeaderKey]:
         """現在の折りたたみ header の immutable snapshot を返す。"""

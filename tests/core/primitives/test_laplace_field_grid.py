@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+
 import numpy as np
 import pytest
 
@@ -11,6 +13,10 @@ from grafix.core.primitives.laplace_field_grid import (
 )
 from grafix.core.realize import RealizeError, realize
 from grafix.core.primitives import laplace_field_grid as _laplace_field_grid_module  # noqa: F401
+
+
+def _packed_digest(coords: np.ndarray, offsets: np.ndarray) -> str:
+    return hashlib.sha256(coords.tobytes() + offsets.tobytes()).hexdigest()
 
 
 def _assert_realized_basic_invariants(coords: np.ndarray, offsets: np.ndarray) -> None:
@@ -230,6 +236,164 @@ def test_laplace_field_grid_presets_are_distinct() -> None:
     assert not np.allclose(b_cyl, b_mob)
     assert not np.allclose(b_cyl, b_exp)
     assert not np.allclose(b_mob, b_exp)
+
+
+def test_laplace_field_grid_fixed_output_characterization() -> None:
+    realized = realize(
+        G.laplace_field_grid(
+            preset="exp",
+            u_min=-1.5,
+            u_max=1.5,
+            v_min=-1.0,
+            v_max=1.0,
+            n_u=3,
+            n_v=3,
+            samples=12,
+            center=(0.2, -0.3, 0.4),
+            scale=0.75,
+            rotate=17.0,
+            clip=True,
+            clip_xmin=-2.0,
+            clip_xmax=2.0,
+            clip_ymin=-2.0,
+            clip_ymax=2.0,
+            k_re=0.4,
+            k_im=0.6,
+        )
+    )
+
+    assert realized.offsets.tolist() == [0, 12, 24, 36, 46, 58, 70]
+    assert _packed_digest(realized.coords, realized.offsets) == (
+        "295c99056d5bb11ec8ffc3dac74bb0d6b42508ba6eaaf8f26f6aba51888c156d"
+    )
+
+
+@pytest.mark.parametrize(
+    ("params", "expected"),
+    [
+        (
+            {
+                "preset": "cylinder_uniform",
+                "u_min": -1.0,
+                "u_max": 1.0,
+                "v_min": -1.0,
+                "v_max": 1.0,
+                "n_u": 2,
+                "n_v": 2,
+                "samples": 2,
+                "a": 0.0,
+                "U": 1.0,
+                "draw_boundary": False,
+            },
+            [
+                [-1.0, -1.0, 0.0],
+                [-1.0, 1.0, 0.0],
+                [1.0, -1.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [-1.0, -1.0, 0.0],
+                [1.0, -1.0, 0.0],
+                [-1.0, 1.0, 0.0],
+                [1.0, 1.0, 0.0],
+            ],
+        ),
+        (
+            {
+                "preset": "mobius",
+                "u_min": -1.0,
+                "u_max": 1.0,
+                "v_min": -1.0,
+                "v_max": 1.0,
+                "n_u": 2,
+                "n_v": 2,
+                "samples": 2,
+                "beta_re": 1.0,
+            },
+            [
+                [0.0, -1.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [2.0, -1.0, 0.0],
+                [2.0, 1.0, 0.0],
+                [0.0, -1.0, 0.0],
+                [2.0, -1.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [2.0, 1.0, 0.0],
+            ],
+        ),
+        (
+            {
+                "preset": "exp",
+                "u_min": 0.0,
+                "u_max": np.log(2.0),
+                "v_min": 0.0,
+                "v_max": 0.0,
+                "n_u": 2,
+                "n_v": 1,
+                "samples": 2,
+                "k_re": 1.0,
+                "k_im": 0.0,
+            },
+            [
+                [1.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [2.0, 0.0, 0.0],
+                [2.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [2.0, 0.0, 0.0],
+            ],
+        ),
+    ],
+)
+def test_laplace_field_grid_small_preset_characterization(
+    params: dict[str, object],
+    expected: list[list[float]],
+) -> None:
+    realized = realize(G.laplace_field_grid(**params))
+
+    np.testing.assert_allclose(
+        realized.coords,
+        np.asarray(expected, dtype=np.float32),
+        rtol=0.0,
+        atol=1e-6,
+    )
+    assert realized.offsets.tolist() == list(range(0, len(expected) + 1, 2))
+
+
+def test_laplace_field_grid_appends_boundary_after_grid_lines() -> None:
+    realized = realize(
+        G.laplace_field_grid(
+            preset="cylinder_uniform",
+            u_min=4.0,
+            u_max=4.0,
+            v_min=-1.0,
+            v_max=1.0,
+            n_u=1,
+            n_v=0,
+            samples=3,
+            a=0.5,
+            U=1.0,
+            gap=0.0,
+            draw_boundary=True,
+            boundary_samples=5,
+        )
+    )
+
+    expected_boundary = np.array(
+        [
+            [0.5, 0.0, 0.0],
+            [0.0, 0.5, 0.0],
+            [-0.5, 0.0, 0.0],
+            [0.0, -0.5, 0.0],
+            [0.5, 0.0, 0.0],
+        ],
+        dtype=np.float32,
+    )
+    assert realized.offsets.tolist() == [0, 3, 8]
+    np.testing.assert_allclose(
+        realized.coords[3:],
+        expected_boundary,
+        rtol=0.0,
+        atol=1e-6,
+    )
 
 
 @pytest.mark.parametrize(

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -21,10 +20,12 @@ from grafix.core.parameters.variations import (
 )
 from grafix.interactive.parameter_gui.gui import ParameterGUI
 from grafix.interactive.parameter_gui.parameter_filter import ParameterFilterState
-from grafix.interactive.parameter_gui.store_bridge import parameter_table_view_for_store
+from grafix.interactive.parameter_gui.table_view import (
+    ParameterTableViewCache,
+    parameter_table_view_for_store,
+)
 from grafix.interactive.parameter_gui.variation_controller import VariationController
 from grafix.interactive.parameter_gui.variation_panel import (
-    make_capture_service_thumbnail_capture,
     normalize_variation_selection,
     variation_panel_model,
     variation_scope_summary,
@@ -119,12 +120,15 @@ def test_panel_model_displays_metadata_diff_count_and_empty_state() -> None:
     assert model.items[0].thumbnail_path == Path("calm.png")
 
 
-def test_scope_model_uses_current_filter_or_all_favorites_and_counts_locks() -> None:
+def test_scope_model_uses_current_filter_or_all_favorites_and_counts_locks(
+    parameter_table_cache: ParameterTableViewCache,
+) -> None:
     store, key_a, key_b = _store()
     set_parameters_favorite(store, (key_a,), favorite=True)
     set_parameters_locked(store, (key_a,), locked=True)
     filtered_view = parameter_table_view_for_store(
         store,
+        cache=parameter_table_cache,
         show_inactive_params=True,
         filter_state=ParameterFilterState(query="site-b"),
     )
@@ -142,37 +146,6 @@ def test_selection_falls_back_after_rename_or_delete() -> None:
     assert normalize_variation_selection(("a", "b"), "b") == "b"
     assert normalize_variation_selection(("a", "b"), "missing") == "a"
     assert normalize_variation_selection((), "missing") is None
-
-
-def test_capture_service_adapter_exports_current_frame_without_clobber(
-    tmp_path: Path,
-) -> None:
-    calls: list[tuple[object, Path, bool]] = []
-
-    class _CaptureService:
-        def export(
-            self,
-            frame: object,
-            path: str | Path,
-            *,
-            overwrite: bool,
-            output_size: tuple[int, int] | None,
-        ) -> SimpleNamespace:
-            output = Path(path)
-            calls.append((frame, output, bool(overwrite)))
-            assert output_size == (96, 64)
-            return SimpleNamespace(path=output)
-
-    frame = object()
-    capture = make_capture_service_thumbnail_capture(
-        cast(Any, _CaptureService()),
-        frame_provider=lambda: frame,  # type: ignore[arg-type,return-value]
-        output_path_for_name=lambda name: tmp_path / f"{name}.png",
-        output_size=(96, 64),
-    )
-
-    assert capture("candidate") == tmp_path / "candidate.png"
-    assert calls == [(frame, tmp_path / "candidate.png", False)]
 
 
 class _OpenedModal:

@@ -10,7 +10,9 @@ from grafix.core.parameters import ParamStore
 from grafix.core.runtime_config import RuntimeConfig
 from grafix.runtime_config_loader import runtime_config
 from grafix.interactive.parameter_gui import gui as gui_module
+from grafix.interactive.parameter_gui.catalog import current_parameter_gui_catalog
 from grafix.interactive.parameter_gui.gui import ParameterGUI
+from grafix.interactive.parameter_gui.table_view import ParameterTableViewCache
 
 
 class _ParameterGuiWindow:
@@ -40,6 +42,13 @@ def effective_runtime_config() -> RuntimeConfig:
     """interactive test が明示注入する完全な実行時設定を返す。"""
 
     return runtime_config()
+
+
+@pytest.fixture
+def parameter_table_cache() -> ParameterTableViewCache:
+    """各 test が明示注入する独立 table cache を返す。"""
+
+    return ParameterTableViewCache(current_parameter_gui_catalog())
 
 
 @pytest.fixture

@@ -11,19 +11,22 @@ from grafix.core.parameters.merge_ops import merge_frame_params
 from grafix.core.parameters.meta import ParamMeta
 from grafix.core.parameters.store import ParamStore
 from grafix.core.parameters.ui_ops import update_state_from_ui
-from grafix.interactive.parameter_gui import store_bridge
+import grafix.interactive.parameter_gui.table_commit as table_commit_module
+import grafix.interactive.parameter_gui.table_view as table_view_module
 from grafix.interactive.parameter_gui.catalog import current_parameter_gui_catalog
 from grafix.interactive.parameter_gui.parameter_filter import ParameterFilterState
 from grafix.interactive.parameter_gui.session_state import WidgetSessionState
 from grafix.interactive.parameter_gui.table import TableEdits
+from grafix.interactive.parameter_gui.table_commit import render_store_parameter_table
+from grafix.interactive.parameter_gui.table_view import (
+    ParameterTableViewCache,
+    _parameter_table_model_for_store,
+    parameter_table_view_for_store,
+)
 
 
 def _layout_rows(group_layout, model_rows):
-    return [
-        model_rows[item.row_index]
-        for block in group_layout
-        for item in block.items
-    ]
+    return [model_rows[item.row_index] for block in group_layout for item in block.items]
 
 
 def _table_edits(render_input, rows) -> TableEdits:
@@ -56,9 +59,13 @@ def _store_with_rows(count: int) -> tuple[ParamStore, list[FrameParamRecord]]:
     return store, records
 
 
+def _new_table_cache() -> ParameterTableViewCache:
+    return ParameterTableViewCache(current_parameter_gui_catalog())
+
+
 def test_1000_rows_reuse_one_table_model_for_60_frames(monkeypatch) -> None:
     store, records = _store_with_rows(1_000)
-    store_bridge.clear_parameter_table_model_cache()
+    table_cache = _new_table_cache()
     render_calls = 0
     widget_state = WidgetSessionState()
 
@@ -70,35 +77,37 @@ def test_1000_rows_reuse_one_table_model_for_60_frames(monkeypatch) -> None:
         assert render_input.group_layout is first.group_layout
         return _table_edits(render_input, rows)
 
-    monkeypatch.setattr(store_bridge, "render_parameter_table", fake_render)
+    monkeypatch.setattr(table_commit_module, "render_parameter_table", fake_render)
 
-    first = store_bridge._parameter_table_model_for_store(store)
+    first = _parameter_table_model_for_store(store, cache=table_cache)
     for _ in range(60):
-        view = store_bridge.parameter_table_view_for_store(
+        view = parameter_table_view_for_store(
             store,
+            cache=table_cache,
             show_inactive_params=True,
         )
-        assert not store_bridge.render_store_parameter_table(
+        assert not render_store_parameter_table(
             store,
             table_view=view,
             widget_state=widget_state,
         ).changed
 
     assert render_calls == 60
-    assert store_bridge.parameter_table_model_build_count() == 1
-    assert store_bridge._parameter_table_model_for_store(store) is first
+    assert table_cache.model_build_count == 1
+    assert table_cache.view_build_count == 1
+    assert _parameter_table_model_for_store(store, cache=table_cache) is first
 
     # effective はフレーム動的値なので、更新しても静的モデルは作り直さない。
     store._runtime_ref().last_effective_by_key[records[0].key] = 999.0
-    assert store_bridge._parameter_table_model_for_store(store) is first
-    assert store_bridge.parameter_table_model_build_count() == 1
+    assert _parameter_table_model_for_store(store, cache=table_cache) is first
+    assert table_cache.model_build_count == 1
 
 
 def test_table_model_patches_value_change_and_rebuilds_for_catalog_generation() -> None:
     store, records = _store_with_rows(2)
-    store_bridge.clear_parameter_table_model_cache()
+    table_cache = _new_table_cache()
 
-    first = store_bridge._parameter_table_model_for_store(store)
+    first = _parameter_table_model_for_store(store, cache=table_cache)
     ok, error = update_state_from_ui(
         store,
         records[0].key,
@@ -106,31 +115,31 @@ def test_table_model_patches_value_change_and_rebuilds_for_catalog_generation() 
         meta=records[0].meta,
     )
     assert ok is True and error is None
-    second = store_bridge._parameter_table_model_for_store(store)
+    second = _parameter_table_model_for_store(store, cache=table_cache)
     assert second is not first
-    assert store_bridge.parameter_table_model_build_count() == 1
+    assert table_cache.model_build_count == 1
     assert second.group_layout is first.group_layout
     row_index = second.row_index_by_key[records[0].key]
     assert second.rows[row_index].ui_value == 1.5
 
-    third = store_bridge._parameter_table_model_for_store(
-        store,
-        catalog=current_parameter_gui_catalog(),
-    )
+    replacement_cache = _new_table_cache()
+    third = _parameter_table_model_for_store(store, cache=replacement_cache)
     assert third is not second
     assert third.group_layout is not second.group_layout
-    assert store_bridge.parameter_table_model_build_count() == 2
+    assert table_cache.model_build_count == 1
+    assert replacement_cache.model_build_count == 1
 
 
 def test_show_inactive_without_activity_filter_skips_activity_mask(
     monkeypatch,
 ) -> None:
     store, records = _store_with_rows(3)
+    table_cache = _new_table_cache()
 
     def fail_activity_mask(*_args, **_kwargs):
         raise AssertionError("activity mask should not be evaluated")
 
-    monkeypatch.setattr(store_bridge, "active_mask_for_rows", fail_activity_mask)
+    monkeypatch.setattr(table_view_module, "active_mask_for_rows", fail_activity_mask)
 
     cases = (
         (None, frozenset(), frozenset()),
@@ -147,8 +156,9 @@ def test_show_inactive_without_activity_filter_skips_activity_mask(
         ),
     )
     for state, error_keys, favorite_keys in cases:
-        view = store_bridge.parameter_table_view_for_store(
+        view = parameter_table_view_for_store(
             store,
+            cache=table_cache,
             show_inactive_params=True,
             filter_state=state,
             error_keys=error_keys,
@@ -161,6 +171,7 @@ def test_activity_mask_is_kept_when_visibility_or_activity_filter_needs_it(
     monkeypatch,
 ) -> None:
     store, _records = _store_with_rows(3)
+    table_cache = _new_table_cache()
     calls = 0
 
     def count_activity_mask(rows, **_kwargs):
@@ -168,14 +179,16 @@ def test_activity_mask_is_kept_when_visibility_or_activity_filter_needs_it(
         calls += 1
         return [True] * len(rows)
 
-    monkeypatch.setattr(store_bridge, "active_mask_for_rows", count_activity_mask)
+    monkeypatch.setattr(table_view_module, "active_mask_for_rows", count_activity_mask)
 
-    store_bridge.parameter_table_view_for_store(
+    parameter_table_view_for_store(
         store,
+        cache=table_cache,
         show_inactive_params=False,
     )
-    store_bridge.parameter_table_view_for_store(
+    parameter_table_view_for_store(
         store,
+        cache=table_cache,
         show_inactive_params=True,
         filter_state=ParameterFilterState(activity="active"),
     )
@@ -186,8 +199,8 @@ def test_query_changes_reuse_filter_independent_base_visibility(
     monkeypatch,
 ) -> None:
     store, _records = _store_with_rows(100)
-    store_bridge.clear_parameter_table_model_cache()
-    original = store_bridge.active_mask_for_rows
+    table_cache = _new_table_cache()
+    original = table_view_module.active_mask_for_rows
     calls = 0
 
     def counted(rows, **kwargs):
@@ -195,14 +208,16 @@ def test_query_changes_reuse_filter_independent_base_visibility(
         calls += 1
         return original(rows, **kwargs)
 
-    monkeypatch.setattr(store_bridge, "active_mask_for_rows", counted)
-    first = store_bridge.parameter_table_view_for_store(
+    monkeypatch.setattr(table_view_module, "active_mask_for_rows", counted)
+    first = parameter_table_view_for_store(
         store,
+        cache=table_cache,
         show_inactive_params=False,
         filter_state=ParameterFilterState(query="value_0001"),
     )
-    second = store_bridge.parameter_table_view_for_store(
+    second = parameter_table_view_for_store(
         store,
+        cache=table_cache,
         show_inactive_params=False,
         filter_state=ParameterFilterState(query="value_0099"),
     )
@@ -213,10 +228,11 @@ def test_query_changes_reuse_filter_independent_base_visibility(
 
 def test_search_trigram_index_preserves_partial_and_dynamic_matches() -> None:
     store, records = _store_with_rows(100)
-    store_bridge.clear_parameter_table_model_cache()
+    table_cache = _new_table_cache()
 
-    partial = store_bridge.parameter_table_view_for_store(
+    partial = parameter_table_view_for_store(
         store,
+        cache=table_cache,
         show_inactive_params=True,
         filter_state=ParameterFilterState(query="alue_009"),
     )
@@ -229,8 +245,9 @@ def test_search_trigram_index_preserves_partial_and_dynamic_matches() -> None:
         meta=records[0].meta,
         override=False,
     )[0]
-    dynamic = store_bridge.parameter_table_view_for_store(
+    dynamic = parameter_table_view_for_store(
         store,
+        cache=table_cache,
         show_inactive_params=True,
         filter_state=ParameterFilterState(query="cod"),
     )
@@ -240,7 +257,7 @@ def test_search_trigram_index_preserves_partial_and_dynamic_matches() -> None:
 @pytest.mark.parametrize("query", ("127", "cc 127", "cc", "midi"))
 def test_search_index_matches_valid_midi_cc(query: str) -> None:
     store, records = _store_with_rows(3)
-    store_bridge.clear_parameter_table_model_cache()
+    table_cache = _new_table_cache()
     assert update_state_from_ui(
         store,
         records[0].key,
@@ -249,8 +266,9 @@ def test_search_index_matches_valid_midi_cc(query: str) -> None:
         cc_key=127,
     )[0]
 
-    view = store_bridge.parameter_table_view_for_store(
+    view = parameter_table_view_for_store(
         store,
+        cache=table_cache,
         show_inactive_params=True,
         filter_state=ParameterFilterState(query=query),
     )
@@ -260,18 +278,20 @@ def test_search_index_matches_valid_midi_cc(query: str) -> None:
 
 def test_unchanged_render_returns_immutable_rows_without_store_change(monkeypatch) -> None:
     store, _records = _store_with_rows(3)
+    table_cache = _new_table_cache()
 
     def fake_render(render_input, **_kwargs):
         rows = _layout_rows(render_input.group_layout, render_input.model_rows)
         return _table_edits(render_input, rows)
 
-    monkeypatch.setattr(store_bridge, "render_parameter_table", fake_render)
+    monkeypatch.setattr(table_commit_module, "render_parameter_table", fake_render)
 
-    view = store_bridge.parameter_table_view_for_store(
+    view = parameter_table_view_for_store(
         store,
+        cache=table_cache,
         show_inactive_params=True,
     )
-    assert not store_bridge.render_store_parameter_table(
+    assert not render_store_parameter_table(
         store,
         table_view=view,
         widget_state=WidgetSessionState(),
@@ -280,7 +300,7 @@ def test_unchanged_render_returns_immutable_rows_without_store_change(monkeypatc
 
 def test_changed_render_refreshes_only_value_without_model_rebuild(monkeypatch) -> None:
     store, records = _store_with_rows(1_000)
-    store_bridge.clear_parameter_table_model_cache()
+    table_cache = _new_table_cache()
 
     def fake_render(render_input, **_kwargs):
         rows = _layout_rows(render_input.group_layout, render_input.model_rows)
@@ -288,48 +308,45 @@ def test_changed_render_refreshes_only_value_without_model_rebuild(monkeypatch) 
         updated[0] = replace(updated[0], ui_value=123.5)
         return _table_edits(render_input, updated)
 
-    monkeypatch.setattr(store_bridge, "render_parameter_table", fake_render)
-    view = store_bridge.parameter_table_view_for_store(
+    monkeypatch.setattr(table_commit_module, "render_parameter_table", fake_render)
+    view = parameter_table_view_for_store(
         store,
+        cache=table_cache,
         show_inactive_params=True,
     )
-    assert store_bridge.render_store_parameter_table(
+    assert render_store_parameter_table(
         store,
         table_view=view,
         widget_state=WidgetSessionState(),
     ).changed
 
-    model = store_bridge._parameter_table_model_for_store(store)
+    model = _parameter_table_model_for_store(store, cache=table_cache)
     index = model.row_index_by_key[records[0].key]
     assert model.rows[index].ui_value == 123.5
-    assert store_bridge.parameter_table_model_build_count() == 1
+    assert table_cache.model_build_count == 1
 
 
 def test_filtered_render_keeps_model_indices_for_layout_and_applies_visible_edit(
     monkeypatch,
 ) -> None:
     store, records = _store_with_rows(3)
-    store_bridge.clear_parameter_table_model_cache()
+    table_cache = _new_table_cache()
 
     def fake_render(render_input, **_kwargs):
         rows = _layout_rows(render_input.group_layout, render_input.model_rows)
         assert [row.arg for row in rows] == ["value_0001"]
-        assert (
-            render_input.model_rows[
-                render_input.group_layout[0].items[0].row_index
-            ]
-            is rows[0]
-        )
+        assert render_input.model_rows[render_input.group_layout[0].items[0].row_index] is rows[0]
         updated = [replace(rows[0], ui_value=99.0)]
         return _table_edits(render_input, updated)
 
-    monkeypatch.setattr(store_bridge, "render_parameter_table", fake_render)
-    view = store_bridge.parameter_table_view_for_store(
+    monkeypatch.setattr(table_commit_module, "render_parameter_table", fake_render)
+    view = parameter_table_view_for_store(
         store,
+        cache=table_cache,
         show_inactive_params=True,
         filter_state=ParameterFilterState(query="value_0001"),
     )
-    assert store_bridge.render_store_parameter_table(
+    assert render_store_parameter_table(
         store,
         table_view=view,
         widget_state=WidgetSessionState(),
@@ -342,8 +359,8 @@ def test_filtered_render_keeps_model_indices_for_layout_and_applies_visible_edit
 
 def test_value_change_log_overflow_falls_back_to_safe_model_rebuild() -> None:
     store, records = _store_with_rows(1)
-    store_bridge.clear_parameter_table_model_cache()
-    store_bridge._parameter_table_model_for_store(store)
+    table_cache = _new_table_cache()
+    _parameter_table_model_for_store(store, cache=table_cache)
 
     for value in range(4_100):
         ok, error = update_state_from_ui(
@@ -354,54 +371,97 @@ def test_value_change_log_overflow_falls_back_to_safe_model_rebuild() -> None:
         )
         assert ok is True and error is None
 
-    model = store_bridge._parameter_table_model_for_store(store)
+    model = _parameter_table_model_for_store(store, cache=table_cache)
     assert model.rows[0].ui_value == 4_099.0
-    assert store_bridge.parameter_table_model_build_count() == 2
+    assert table_cache.model_build_count == 2
 
 
 def test_stable_default_and_search_views_are_reused_without_rebuild() -> None:
     store, _records = _store_with_rows(1_000)
-    store_bridge.clear_parameter_table_model_cache()
+    table_cache = _new_table_cache()
 
-    default = store_bridge.parameter_table_view_for_store(
+    default = parameter_table_view_for_store(
         store,
+        cache=table_cache,
         show_inactive_params=True,
     )
     for _ in range(60):
         assert (
-            store_bridge.parameter_table_view_for_store(
+            parameter_table_view_for_store(
                 store,
+                cache=table_cache,
                 show_inactive_params=True,
             )
             is default
         )
-    assert store_bridge.parameter_table_view_build_count() == 1
+    assert table_cache.view_build_count == 1
 
     state = ParameterFilterState(query="value_0999")
-    search = store_bridge.parameter_table_view_for_store(
+    search = parameter_table_view_for_store(
         store,
+        cache=table_cache,
         show_inactive_params=True,
         filter_state=state,
     )
     for _ in range(60):
         assert (
-            store_bridge.parameter_table_view_for_store(
+            parameter_table_view_for_store(
                 store,
+                cache=table_cache,
                 show_inactive_params=True,
                 filter_state=state,
             )
             is search
         )
     assert search.filtered_count == 1
-    assert store_bridge.parameter_table_view_build_count() == 2
+    assert table_cache.view_build_count == 2
+
+
+def test_table_view_caches_are_isolated_for_the_same_store_and_catalog() -> None:
+    store, _records = _store_with_rows(3)
+    catalog = current_parameter_gui_catalog()
+    first_cache = ParameterTableViewCache(catalog)
+    second_cache = ParameterTableViewCache(catalog)
+
+    first_view = parameter_table_view_for_store(
+        store,
+        cache=first_cache,
+        show_inactive_params=True,
+    )
+    second_view = parameter_table_view_for_store(
+        store,
+        cache=second_cache,
+        show_inactive_params=True,
+    )
+
+    assert first_view is not second_view
+    assert first_view.model is not second_view.model
+    assert first_cache.model_build_count == second_cache.model_build_count == 1
+    assert first_cache.view_build_count == second_cache.view_build_count == 1
+
+    first_cache.clear()
+
+    assert first_cache.model_build_count == 0
+    assert first_cache.view_build_count == 0
+    assert second_cache.model_build_count == 1
+    assert second_cache.view_build_count == 1
+    assert (
+        parameter_table_view_for_store(
+            store,
+            cache=second_cache,
+            show_inactive_params=True,
+        )
+        is second_view
+    )
 
 
 def test_view_cache_invalidates_value_effective_visibility_and_external_flags() -> None:
     store, records = _store_with_rows(2)
-    store_bridge.clear_parameter_table_model_cache()
+    table_cache = _new_table_cache()
 
-    first = store_bridge.parameter_table_view_for_store(
+    first = parameter_table_view_for_store(
         store,
+        cache=table_cache,
         show_inactive_params=True,
     )
     assert update_state_from_ui(
@@ -412,22 +472,25 @@ def test_view_cache_invalidates_value_effective_visibility_and_external_flags() 
         override=False,
         cc_key=7,
     )[0]
-    value_changed = store_bridge.parameter_table_view_for_store(
+    value_changed = parameter_table_view_for_store(
         store,
+        cache=table_cache,
         show_inactive_params=True,
     )
     assert value_changed is not first
     assert (
-        store_bridge.parameter_table_view_for_store(
+        parameter_table_view_for_store(
             store,
+            cache=table_cache,
             show_inactive_params=True,
             filter_state=ParameterFilterState(ui_override_only=True),
         ).filtered_count
         == 1
     )
     assert (
-        store_bridge.parameter_table_view_for_store(
+        parameter_table_view_for_store(
             store,
+            cache=table_cache,
             show_inactive_params=True,
             filter_state=ParameterFilterState(midi_mapped_only=True),
         ).filtered_count
@@ -437,14 +500,16 @@ def test_view_cache_invalidates_value_effective_visibility_and_external_flags() 
     runtime = store._runtime_ref()
     runtime.last_source_by_key[records[0].key] = "midi_live"
     runtime.effective_revision += 1
-    effective_changed = store_bridge.parameter_table_view_for_store(
+    effective_changed = parameter_table_view_for_store(
         store,
+        cache=table_cache,
         show_inactive_params=True,
     )
     assert effective_changed is not value_changed
     assert (
-        store_bridge.parameter_table_view_for_store(
+        parameter_table_view_for_store(
             store,
+            cache=table_cache,
             show_inactive_params=True,
             filter_state=ParameterFilterState(query="MIDI LIVE"),
         ).filtered_count
@@ -452,20 +517,23 @@ def test_view_cache_invalidates_value_effective_visibility_and_external_flags() 
     )
 
     runtime.loaded_groups.add(("model_bench", "loaded-only"))
-    visibility_changed = store_bridge.parameter_table_view_for_store(
+    visibility_changed = parameter_table_view_for_store(
         store,
+        cache=table_cache,
         show_inactive_params=True,
     )
     assert visibility_changed is not effective_changed
 
     error_state = ParameterFilterState(error_only=True)
-    no_error = store_bridge.parameter_table_view_for_store(
+    no_error = parameter_table_view_for_store(
         store,
+        cache=table_cache,
         show_inactive_params=True,
         filter_state=error_state,
     )
-    with_error = store_bridge.parameter_table_view_for_store(
+    with_error = parameter_table_view_for_store(
         store,
+        cache=table_cache,
         show_inactive_params=True,
         filter_state=error_state,
         error_keys=frozenset({records[1].key}),
@@ -476,9 +544,10 @@ def test_view_cache_invalidates_value_effective_visibility_and_external_flags() 
 
 def test_default_show_inactive_view_rebinds_sparse_value_model_without_mask_build() -> None:
     store, records = _store_with_rows(1_000)
-    store_bridge.clear_parameter_table_model_cache()
-    first = store_bridge.parameter_table_view_for_store(
+    table_cache = _new_table_cache()
+    first = parameter_table_view_for_store(
         store,
+        cache=table_cache,
         show_inactive_params=True,
     )
 
@@ -488,8 +557,9 @@ def test_default_show_inactive_view_rebinds_sparse_value_model_without_mask_buil
         12.5,
         meta=records[0].meta,
     )[0]
-    second = store_bridge.parameter_table_view_for_store(
+    second = parameter_table_view_for_store(
         store,
+        cache=table_cache,
         show_inactive_params=True,
     )
 
@@ -497,7 +567,7 @@ def test_default_show_inactive_view_rebinds_sparse_value_model_without_mask_buil
     assert second.visible_mask is first.visible_mask
     assert second.group_layout is first.group_layout
     assert second.model.rows[0].ui_value == 12.5
-    assert store_bridge.parameter_table_view_build_count() == 1
+    assert table_cache.view_build_count == 1
 
 
 def test_default_active_view_reevaluates_only_changed_parameter_group(
@@ -521,56 +591,60 @@ def test_default_active_view_reevaluates_only_changed_parameter_group(
     ]
     store = ParamStore()
     merge_frame_params(store, records)
-    store_bridge.clear_parameter_table_model_cache()
-    original = store_bridge.active_mask_for_rows
+    table_cache = _new_table_cache()
+    original = table_view_module.active_mask_for_rows
     evaluated_row_counts: list[int] = []
 
     def counted(rows, **kwargs):
         evaluated_row_counts.append(len(rows))
         return original(rows, **kwargs)
 
-    monkeypatch.setattr(store_bridge, "active_mask_for_rows", counted)
-    first = store_bridge.parameter_table_view_for_store(
+    monkeypatch.setattr(table_view_module, "active_mask_for_rows", counted)
+    first = parameter_table_view_for_store(
         store,
+        cache=table_cache,
         show_inactive_params=False,
     )
     merge_frame_params(
         store,
         [replace(records[50], effective=999.0)],
     )
-    second = store_bridge.parameter_table_view_for_store(
+    second = parameter_table_view_for_store(
         store,
+        cache=table_cache,
         show_inactive_params=False,
     )
 
     assert second is not first
     assert second.visible_mask is first.visible_mask
     assert evaluated_row_counts == [100, 1]
-    assert store_bridge.parameter_table_view_build_count() == 1
+    assert table_cache.view_build_count == 1
 
 
 def test_favorite_is_view_overlay_and_does_not_rebuild_static_model(
     monkeypatch,
 ) -> None:
     store, records = _store_with_rows(2)
-    store_bridge.clear_parameter_table_model_cache()
-    first = store_bridge._parameter_table_model_for_store(store)
+    table_cache = _new_table_cache()
+    first = _parameter_table_model_for_store(store, cache=table_cache)
     assert all(not row.favorite for row in first.rows)
 
     set_parameters_favorite(store, (records[0].key,), favorite=True)
-    second = store_bridge._parameter_table_model_for_store(store)
+    second = _parameter_table_model_for_store(store, cache=table_cache)
     assert second is first
 
-    favorite_view = store_bridge.parameter_table_view_for_store(
+    favorite_view = parameter_table_view_for_store(
         store,
+        cache=table_cache,
         show_inactive_params=True,
         filter_state=ParameterFilterState(favorite_only=True),
     )
     assert favorite_view.filtered_count == 1
     assert favorite_view.favorite_keys == frozenset({records[0].key})
     assert (
-        store_bridge.parameter_table_view_for_store(
+        parameter_table_view_for_store(
             store,
+            cache=table_cache,
             show_inactive_params=True,
             filter_state=ParameterFilterState(favorite_only=True),
         )
@@ -584,21 +658,22 @@ def test_favorite_is_view_overlay_and_does_not_rebuild_static_model(
         captured_favorite[:] = [bool(row.favorite) for row in rows]
         return _table_edits(render_input, rows)
 
-    monkeypatch.setattr(store_bridge, "render_parameter_table", fake_render)
-    store_bridge.render_store_parameter_table(
+    monkeypatch.setattr(table_commit_module, "render_parameter_table", fake_render)
+    render_store_parameter_table(
         store,
         table_view=favorite_view,
         widget_state=WidgetSessionState(),
     )
     assert captured_favorite == [True]
-    assert store_bridge.parameter_table_model_build_count() == 1
+    assert table_cache.model_build_count == 1
 
     set_parameters_favorite(store, (records[0].key,), favorite=False)
-    without_favorite = store_bridge.parameter_table_view_for_store(
+    without_favorite = parameter_table_view_for_store(
         store,
+        cache=table_cache,
         show_inactive_params=True,
         filter_state=ParameterFilterState(favorite_only=True),
     )
     assert without_favorite is not favorite_view
     assert without_favorite.filtered_count == 0
-    assert store_bridge._parameter_table_model_for_store(store) is first
+    assert _parameter_table_model_for_store(store, cache=table_cache) is first

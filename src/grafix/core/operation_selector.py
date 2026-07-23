@@ -439,13 +439,13 @@ def validate_selector_target(
     return target_s
 
 
-def validate_effect_selector_target(
+def validated_effect_selector(
     target: str,
     *,
     n_inputs: int,
     catalog: OperationCatalog | None = None,
-) -> str:
-    """effect selector の base target を指定 catalog の schema で検証する。"""
+) -> tuple[str, SelectorSpec]:
+    """effect selector の base target と、それを検証した schema を返す。"""
 
     count = validate_effect_selector_n_inputs(n_inputs)
     selected_catalog = current_operation_catalog() if catalog is None else catalog
@@ -462,12 +462,31 @@ def validate_effect_selector_target(
             choices=(),
             n_inputs=count,
         ) from None
-    return validate_selector_target(
-        kind="effect",
-        target=target,
-        selector_spec=spec,
-        n_inputs=count,
+    return (
+        validate_selector_target(
+            kind="effect",
+            target=target,
+            selector_spec=spec,
+            n_inputs=count,
+        ),
+        spec,
     )
+
+
+def validate_effect_selector_target(
+    target: str,
+    *,
+    n_inputs: int,
+    catalog: OperationCatalog | None = None,
+) -> str:
+    """effect selector の base target を指定 catalog の schema で検証する。"""
+
+    validated_target, _ = validated_effect_selector(
+        target,
+        n_inputs=n_inputs,
+        catalog=catalog,
+    )
+    return validated_target
 
 
 __all__ = [
@@ -489,4 +508,5 @@ __all__ = [
     "validate_effect_selector_n_inputs",
     "validate_effect_selector_target",
     "validate_selector_target",
+    "validated_effect_selector",
 ]

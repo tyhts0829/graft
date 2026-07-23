@@ -185,16 +185,3 @@ def test_narrow_runtime_queries_and_commands_do_not_touch_store_revision() -> No
     ) == frozenset()
     assert store.variation_count() == 0
     assert store.revision == revision
-
-
-def test_accept_loaded_state_is_an_idempotent_runtime_command() -> None:
-    store = ParamStore()
-    runtime = store._runtime_ref()
-    runtime.load_provenance = "session_recovery"
-    revision = store.revision
-
-    assert store.accept_loaded_state() is True
-    assert store.load_provenance == "primary"
-    assert store.load_diagnostics == ()
-    assert store.accept_loaded_state() is False
-    assert store.revision == revision

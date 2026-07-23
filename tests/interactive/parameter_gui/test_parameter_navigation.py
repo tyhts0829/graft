@@ -10,10 +10,13 @@ from grafix.core.parameters.merge_ops import merge_frame_params
 from grafix.core.parameters.meta import ParamMeta
 from grafix.core.parameters.store import ParamStore
 from grafix.interactive.parameter_gui.parameter_filter import ParameterFilterState
-from grafix.interactive.parameter_gui.store_bridge import (
+from grafix.interactive.parameter_gui.table_commit import (
     _apply_updated_rows_to_store,
-    parameter_table_view_for_store,
     set_all_parameter_groups_collapsed,
+)
+from grafix.interactive.parameter_gui.table_view import (
+    ParameterTableViewCache,
+    parameter_table_view_for_store,
 )
 
 
@@ -44,9 +47,15 @@ def _store_with_two_groups() -> ParamStore:
     return store
 
 
-def test_collapse_all_and_expand_all_update_all_current_groups() -> None:
+def test_collapse_all_and_expand_all_update_all_current_groups(
+    parameter_table_cache: ParameterTableViewCache,
+) -> None:
     store = _store_with_two_groups()
-    view = parameter_table_view_for_store(store, show_inactive_params=True)
+    view = parameter_table_view_for_store(
+        store,
+        cache=parameter_table_cache,
+        show_inactive_params=True,
+    )
 
     assert set_all_parameter_groups_collapsed(store, view, collapsed=True) is True
     assert store._collapsed_headers_ref() == {
@@ -60,11 +69,14 @@ def test_collapse_all_and_expand_all_update_all_current_groups() -> None:
     assert set_all_parameter_groups_collapsed(store, view, collapsed=False) is False
 
 
-def test_hidden_count_reports_rows_removed_by_search() -> None:
+def test_hidden_count_reports_rows_removed_by_search(
+    parameter_table_cache: ParameterTableViewCache,
+) -> None:
     store = _store_with_two_groups()
 
     view = parameter_table_view_for_store(
         store,
+        cache=parameter_table_cache,
         show_inactive_params=True,
         filter_state=ParameterFilterState(query="not-present"),
     )
@@ -74,9 +86,15 @@ def test_hidden_count_reports_rows_removed_by_search() -> None:
     assert view.hidden_count == 2
 
 
-def test_row_pin_updates_store_and_default_favorite_filter() -> None:
+def test_row_pin_updates_store_and_default_favorite_filter(
+    parameter_table_cache: ParameterTableViewCache,
+) -> None:
     store = _store_with_two_groups()
-    view = parameter_table_view_for_store(store, show_inactive_params=True)
+    view = parameter_table_view_for_store(
+        store,
+        cache=parameter_table_cache,
+        show_inactive_params=True,
+    )
     rows_before = list(view.model.rows)
     target = rows_before[0]
     rows_after = [replace(target, favorite=True), *rows_before[1:]]
@@ -92,6 +110,7 @@ def test_row_pin_updates_store_and_default_favorite_filter() -> None:
     assert favorite_parameter_keys(store) == (target_key,)
     favorite_view = parameter_table_view_for_store(
         store,
+        cache=parameter_table_cache,
         show_inactive_params=True,
         filter_state=ParameterFilterState(favorite_only=True),
     )

@@ -51,8 +51,8 @@ def test_slider_measurement_reuses_setup_config_and_definitions(
 ) -> None:
     """UX timer 内で config discovery/candidate load を繰り返さない。"""
 
-    from grafix.core import authoring_loader as loader_module
-    from grafix.interactive.parameter_gui import store_bridge
+    from grafix import authoring_loader as loader_module
+    from grafix.interactive.parameter_gui import catalog as catalog_module
 
     scenario = make_interactive_slider_scenario(_sync_parameters())
 
@@ -66,7 +66,7 @@ def test_slider_measurement_reuses_setup_config_and_definitions(
         unexpected_call,
     )
     monkeypatch.setattr(
-        store_bridge,
+        catalog_module,
         "current_parameter_gui_catalog",
         unexpected_call,
     )

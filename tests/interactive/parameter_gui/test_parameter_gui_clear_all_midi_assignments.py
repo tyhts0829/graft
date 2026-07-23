@@ -4,7 +4,7 @@ from grafix.core.parameters import ParamMeta, ParamStore, ParameterKey
 from grafix.core.parameters.frame_params import FrameParamRecord
 from grafix.core.parameters.merge_ops import merge_frame_params
 from grafix.core.parameters.ui_ops import update_state_from_ui
-from grafix.interactive.parameter_gui.store_bridge import clear_all_midi_assignments
+from grafix.interactive.parameter_gui.table_commit import clear_all_midi_assignments
 
 
 def test_clear_all_midi_assignments_bakes_effective_and_clears_cc_key() -> None:
