@@ -117,6 +117,34 @@ def test_capture_service_returns_the_public_canonical_result(
     assert capture_module.__all__ == ["CaptureFrame", "CaptureService"]
 
 
+def test_capture_service_owned_export_keeps_exact_generation_until_discard(
+    frame: Frame,
+    tmp_path: Path,
+) -> None:
+    base = tmp_path / "drawing.svg"
+    base.write_bytes(b"existing artwork")
+    owned = CaptureService()._export_owned(
+        frame,
+        base,
+        overwrite=False,
+        split_gcode_layers=False,
+        output_size=None,
+        gcode_params=None,
+    )
+
+    assert owned.path == tmp_path / "drawing_001.svg"
+    assert owned.artifact_paths == (owned.path,)
+    assert owned.manifest_path == capture_manifest_path_for(owned.path)
+    assert owned.path.is_file()
+    assert owned.manifest_path.is_file()
+
+    owned.discard()
+
+    assert base.read_bytes() == b"existing artwork"
+    assert not owned.path.exists()
+    assert not owned.manifest_path.exists()
+
+
 @pytest.mark.parametrize("capture_t", [True, "1.25"])
 def test_capture_service_does_not_coerce_manifest_time(
     frame: Frame,

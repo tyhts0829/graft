@@ -230,7 +230,8 @@ class _ParamStoreMutation:
     commit method は live container を返さない。呼び出し側は read port の copy
     上で plan を完成させ、history の変更前観測も ``prepare_history`` で先に
     終える。commit 区間は revision の再確認、参照 swap、counter/cache 更新だけ
-    に限定する。
+    に限定する。commit に渡した mutable replacement の ownership は
+    ``ParamStore`` へ移り、呼び出し側は return 後に再利用・変更しない。
     """
 
     __slots__ = ("_store",)
@@ -922,14 +923,16 @@ class ParamStoreRollback:
 
 
 class ParamStore:
-    """ParameterKey -> ParamState を保持する永続ストア。
+    """Parameter の論理状態と commit lifecycle を所有する aggregate。
 
     Notes
     -----
-    - このクラスは「永続データの入れ物」に寄せる。
+    - sibling ops は copy/frozen value 上で validation と plan を完了する。
+    - このクラスは logical state の参照 swap、revision/history integration、
+      snapshot/favorite cache invalidation、transient rollback を確定する。
     - parameter lock / favorite は永続 UI state として保持する。
-    - 外部へはミュータブルな参照（ParamState）を渡さない。
-      変更は ops 経由で行う想定とする。
+    - 外部へミュータブルな参照（ParamState）を渡さない。
+    - private mutation port へ渡された mutable plan は commit 後に store が所有する。
     """
 
     def __init__(self) -> None:

@@ -128,8 +128,6 @@ def _draw_worker_main(
                 continue
             drain_snapshot_updates()
             requested_revision = task.snapshot_revision
-            evaluation_snapshot = task.snapshot
-            evaluation_effect_order_snapshot = task.effect_order_snapshot
             if task.snapshot is not None:
                 # task と snapshot を同じ work item に束ねることで、slider drag 中に
                 # control ACK が 1 revision 遅れても、この task の評価を開始できる。
@@ -142,10 +140,7 @@ def _draw_worker_main(
                         generation=worker_generation,
                     )
                 )
-            elif snapshot_revision == requested_revision:
-                evaluation_snapshot = snapshot
-                evaluation_effect_order_snapshot = effect_order_snapshot
-            if evaluation_snapshot is None:
+            if snapshot_revision != requested_revision:
                 reason = (
                     "unknown"
                     if snapshot_revision is None or requested_revision > snapshot_revision
@@ -163,6 +158,10 @@ def _draw_worker_main(
                     )
                 )
                 continue
+            assert snapshot is not None
+            assert effect_order_snapshot is not None
+            evaluation_snapshot = snapshot
+            evaluation_effect_order_snapshot = effect_order_snapshot
             result_q.put(
                 _TaskStarted(
                     frame_id=task.frame_id,

@@ -51,7 +51,7 @@
 - `ParamStore.revision`: snapshot/GUI model/worker 同期を無効化する、snapshot に影響する永続状態の変更時だけ進む単調 revision。
 - `ParamRuntimeView`: GUI/application が private live container へ触れずに読む時点固定 runtime snapshot。生成時に mapping を浅く copy し、後続 mutation を観測しない。要素は canonical immutable value。`src/grafix/core/parameters/runtime.py:ParamRuntimeView`
 - `_ParamStoreRead`: core parameter command が検証・計画に使う、copy/frozen value だけを返す private read port。`src/grafix/core/parameters/store.py:_ParamStoreRead`
-- `_ParamStoreMutation`: 完成済み replacement の expected-revision 確認、参照 swap、revision/history/cache 確定だけを行う private mutation port。`src/grafix/core/parameters/store.py:_ParamStoreMutation`
+- `_ParamStoreMutation`: 完成済み replacement の expected-revision 確認、参照 swap、revision/history/cache 確定だけを行う private mutation port。入力した mutable plan は terminal ownership transfer で `ParamStore` に移り、caller は commit 後に再利用・変更しない。`src/grafix/core/parameters/store.py:_ParamStoreMutation`
 - `commit_runtime_value_patch`: effective value/source だけの frame merge を full store plan なしで確定し、persistent revision と runtime identity を保つ private sparse commit。`src/grafix/core/parameters/store.py:_ParamStoreMutation.commit_runtime_value_patch`
 - `ParamStoreRollback`: variation batch などの一時評価で論理 state と counter を exact restore する owner-bound one-shot rollback scope。`src/grafix/core/parameters/store.py:ParamStoreRollback`
 - `ParameterSession`: interactive session の current schema/load state、store/history/autosave、capture-state provider、終了時 persist の owner。`src/grafix/interactive/runtime/parameter_session.py:ParameterSession`

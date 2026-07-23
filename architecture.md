@@ -444,7 +444,10 @@ signature/docstring を持つ。呼び出し時に private `api._runner_applicat
 - `_mp_draw_protocol`: pickle DTO、wire decode/validation、`DrawResult` / worker error /
   frozen `MpDrawStats`
 - `_mp_draw_state`: ACK、known revision、latest-task、stale-result の I/O を持たない親側 transition
-- `_mp_draw_worker`: spawn 可能な top-level worker entrypoint、worker-side evaluation/cleanup
+- `_mp_draw_worker`: spawn 可能な top-level worker entrypoint、worker-side evaluation/cleanup。
+  task payload は current snapshot 更新にだけ使い、requested revision が worker current revision と
+  一致する場合だけ worker-owned snapshot/effect-order pair を評価する。未到達/古い task は
+  `_TaskStarted` より前に `unknown` / `stale` として拒否する
 - `MpDraw`: parent process、Queue、restart、timeout、close の resource owner。telemetry は scalar
   forwarding property ではなく `MpDraw.stats` の一 immutable snapshot から読む
 - `PresentedFrameState`: last-good layers/t、snapshot revision/frame ID、fresh serial、preview/capture
@@ -476,8 +479,9 @@ variation thumbnail は GUI leaf に export service を持ち込まない。GUI 
 `discard()` だけを持つ `VariationThumbnailArtifact` の capture contract と preview 表示だけを扱う。
 `interactive.runtime.variation_thumbnail_capture` が
 `CaptureService`、live frame provider、base path、canvas size を受け、要求のたびに current frame を
-取得して no-clobber PNG capture へ適合する。古い frame を closure に固定せず、portable filename
-policy は export の variation batch と共有する。
+取得して no-clobber PNG capture へ適合する。adapter は publish 層が返した private owned token を
+同一 object のまま GUI contract へ渡し、公開後に file identity を再取得しない。古い frame を
+closure に固定せず、portable filename policy は export の variation batch と共有する。
 
 source reload は entry source と、静的な package-relative import で到達する local helper の bytes
 だけを candidate generation として隔離実行し、draw signature、declaration snapshot、worker startup
@@ -489,8 +493,9 @@ authoring load と reload が process-global finder/module stateを並行更新�
 
 GUI の named variation 保存は `prepare -> capture -> commit` の一方向 flow である。
 `prepare_variation()` が I/O より前に metadata、duplicate、immutable parameter snapshot と store revision
-を検証する。thumbnail callback は実 artifact path と `discard()` を所有する一回限りの artifact owner を
-返す。この callback は同期実行中に `ParamStore` を変更しない contract であり、違反/concurrent change は
+を検証する。thumbnail callback は実 artifact path と `discard()` を持つ publish-owned token を返す。
+controller は typed private callback を信頼し、path を一度だけ読んで commit 完了まで token を保持する。
+この callback は同期実行中に `ParamStore` を変更しない contract であり、違反/concurrent change は
 commit の revision 再確認で拒否する。capture failure は thumbnail なしで同じ draft を commitし、
 保存自体は成功扱いにする。
 commit は revision/duplicate を再確認して variation を一度だけ追加し、失敗時は controller が今回の
@@ -510,7 +515,13 @@ output path policy はすでに解決された `RuntimeConfig` を入力とす�
 sibling directory と work path を所有し、`publish_capture_generation()` が artifact、manifest、
 layer-split G-code family を一 generation として no-clobber publish する。allocation 後の late
 collision は完成済み staging を再 encode せず、別 version path で bounded retry する。失敗時は
-今回の inode だけを rollback する。
+今回の inode だけを best-effort rollback する。
+
+`publish_capture_generation()` は最初の target を公開する前に staged source の file identity を一度だけ
+取得し、artifact path、manifest path、identity、`discard()` を持つ package-private owned token を作る。
+明示的な `discard()` は全 member を試し、missing、非通常 file、identity mismatch となった外部差し替えを
+保持する。通常の public export は token を結果へ変換して generation を acceptし、Variation thumbnail
+だけが commit 完了まで exact token を保持する。runtime/controller は identity/stat/unlink を再実装しない。
 
 variation batch は directory 全体を一 generation として扱う。thumbnail/manifest、contact sheet、
 structured summary を private workspace で完成させ、manifest 内 path を公開先へ relocation してから

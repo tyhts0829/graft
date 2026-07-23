@@ -4,23 +4,50 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import tempfile
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Final
 
 from grafix.core.capture_manifest import CaptureManifest
+from grafix.core.lifecycle import CleanupErrors
 from grafix.core.value_validation import exact_bool
 
 _UTF8: Final = "utf-8"
+_FileIdentity = tuple[int, int]
 
 
 @dataclass(frozen=True, slots=True)
-class PublishedCaptureGeneration:
-    """一括公開に成功した成果物群と manifest。"""
+class _OwnedCaptureGeneration:
+    """一括公開した成果物群と manifest の削除 capability。"""
 
     artifact_paths: tuple[Path, ...]
     manifest_path: Path
+    _identities: tuple[_FileIdentity, ...]
+
+    @property
+    def path(self) -> Path:
+        """公開 generation の primary artifact path を返す。"""
+
+        return self.artifact_paths[0]
+
+    def discard(self) -> None:
+        """外部差し替えを保持し、今回公開した member だけを削除する。"""
+
+        member_paths = (*self.artifact_paths, self.manifest_path)
+        errors = CleanupErrors()
+        for path, identity in zip(
+            member_paths,
+            self._identities,
+            strict=True,
+        ):
+            errors.attempt(
+                partial(_unlink_owned_file, path, identity),
+                f"discard capture generation member {path}",
+            )
+        errors.raise_if_any()
 
 
 def capture_manifest_path_for(artifact_path: str | Path) -> Path:
@@ -58,12 +85,21 @@ def _stage_manifest(*, directory: Path, manifest: CaptureManifest) -> Path:
             stream.flush()
             os.fsync(stream.fileno())
     except BaseException:
-        staged_path.unlink(missing_ok=True)
+        _cleanup_staged_manifest(staged_path)
         raise
     return staged_path
 
 
-def _regular_file_identity(path: Path) -> tuple[int, int]:
+def _cleanup_staged_manifest(path: Path) -> None:
+    """Private manifest staging を best-effort で削除する。"""
+
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _regular_file_identity(path: Path) -> _FileIdentity:
     """通常ファイルであることを確認し、rollback 用 identity を返す。"""
 
     if path.is_symlink() or not path.is_file():
@@ -72,7 +108,7 @@ def _regular_file_identity(path: Path) -> tuple[int, int]:
     return int(stat_result.st_dev), int(stat_result.st_ino)
 
 
-def _unlink_if_identity(path: Path, expected: tuple[int, int]) -> None:
+def _unlink_if_identity(path: Path, expected: _FileIdentity) -> None:
     """今回公開した inode のままなら unlink する。外部差し替えは保持する。"""
 
     try:
@@ -82,6 +118,21 @@ def _unlink_if_identity(path: Path, expected: tuple[int, int]) -> None:
             path.unlink()
     except OSError:
         pass
+
+
+def _unlink_owned_file(path: Path, expected: _FileIdentity) -> None:
+    """所有中の通常 file だけを unlink し、I/O error は呼び出し側へ返す。"""
+
+    try:
+        stat_result = path.stat(follow_symlinks=False)
+    except FileNotFoundError:
+        return
+    if not stat.S_ISREG(stat_result.st_mode):
+        return
+    identity = (int(stat_result.st_dev), int(stat_result.st_ino))
+    if identity != expected:
+        return
+    path.unlink()
 
 
 def _private_backup_path(path: Path) -> Path:
@@ -103,7 +154,7 @@ def _publish_capture_generation_overwrite(
     *,
     sources: tuple[Path, ...],
     targets: tuple[Path, ...],
-    source_identities: tuple[tuple[int, int], ...],
+    source_identities: tuple[_FileIdentity, ...],
 ) -> None:
     """既存 generation を退避し、失敗時に元へ戻して置換する。"""
 
@@ -180,7 +231,7 @@ def publish_capture_generation(
     manifest_path: str | Path,
     manifest: CaptureManifest,
     overwrite: bool = False,
-) -> PublishedCaptureGeneration:
+) -> _OwnedCaptureGeneration:
     """成果物と manifest を no-clobber generation として公開する。
 
     全ファイルは完成済み sibling staging から ``os.link`` で排他的に公開する。
@@ -219,6 +270,11 @@ def publish_capture_generation(
     target_directories = tuple(path.parent for path in all_targets)
     try:
         source_identities = tuple(_regular_file_identity(path) for path in sources)
+        owned_generation = _OwnedCaptureGeneration(
+            artifact_paths=finals,
+            manifest_path=target_manifest,
+            _identities=source_identities,
+        )
         # writer が close 済みでも durability を揃えるため、artifact も publish 前に fsync。
         for source in staged:
             with source.open("rb") as stream:
@@ -248,12 +304,11 @@ def publish_capture_generation(
         _fsync_directories(target_directories, best_effort=True)
         raise
     finally:
-        staged_manifest.unlink(missing_ok=True)
+        # generation の成否は既に確定している。private staging の cleanup
+        # failure で成功を失敗に変えたり、元の publish error を隠したりしない。
+        _cleanup_staged_manifest(staged_manifest)
 
-    return PublishedCaptureGeneration(
-        artifact_paths=finals,
-        manifest_path=target_manifest,
-    )
+    return owned_generation
 
 
 def write_capture_manifest(path: str | Path, manifest: CaptureManifest) -> Path:
@@ -282,10 +337,7 @@ def write_capture_manifest(path: str | Path, manifest: CaptureManifest) -> Path:
     return target
 
 
-
-
 __all__ = [
-    "PublishedCaptureGeneration",
     "capture_manifest_path_for",
     "publish_capture_generation",
     "write_capture_manifest",

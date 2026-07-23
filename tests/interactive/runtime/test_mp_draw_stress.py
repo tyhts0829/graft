@@ -273,6 +273,82 @@ def test_worker_rejects_unknown_and_stale_revision_and_acks_stale_update() -> No
         mp_draw.close()
 
 
+def test_worker_rejects_stale_task_even_when_it_carries_snapshot_payload() -> None:
+    events: list[tuple[str, int | None]] = []
+
+    def record_event(
+        name: str,
+        *,
+        frame_id: int | None = None,
+        revision: int | None = None,
+    ) -> None:
+        del revision
+        events.append((name, frame_id))
+
+    mp_draw = _mp_draw(
+        _empty_draw,
+        n_worker=1,
+        event_callback=record_event,
+    )
+    try:
+        mp_draw.submit(
+            t=0.0,
+            snapshot_revision=5,
+            snapshot={},
+            effect_order_snapshot={},
+            epoch=0,
+            quality="draft",
+        )
+        first = _wait_for_result(mp_draw)
+        assert first.snapshot_revision == 5
+        assert set(dict(mp_draw.stats.worker_snapshot_revisions).values()) == {5}
+
+        before = mp_draw.stats
+        stale_frame_id = before.last_submitted_frame_id + 10_000
+        mp_draw._task_q.put(
+            _DrawTask(
+                frame_id=stale_frame_id,
+                t=1.0,
+                snapshot_revision=4,
+                cc_snapshot=None,
+                snapshot={},
+                effect_order_snapshot={},
+                epoch=mp_draw.current_epoch,
+                generation=mp_draw.generation,
+                quality="draft",
+            )
+        )
+
+        unexpected_results: list[DrawResult] = []
+
+        def stale_task_finished() -> bool:
+            result = mp_draw.poll_latest()
+            if result is not None and result.frame_id == stale_frame_id:
+                unexpected_results.append(result)
+            stats = mp_draw.stats
+            return (
+                bool(unexpected_results)
+                or stats.rejected_task_count > before.rejected_task_count
+            )
+
+        _wait_until(
+            stale_task_finished,
+            message="payload 付き stale task の完了通知 timeout",
+        )
+
+        after = mp_draw.stats
+        assert unexpected_results == []
+        assert after.completed_result_count == before.completed_result_count
+        assert after.rejected_task_count == before.rejected_task_count + 1
+        assert after.snapshot_ack_count == before.snapshot_ack_count + 1
+        assert after.last_rejection == (4, 5, "stale")
+        assert after.last_snapshot_ack == (4, 5, "stale")
+        assert set(dict(after.worker_snapshot_revisions).values()) == {5}
+        assert ("mp_task_started", stale_frame_id) not in events
+    finally:
+        mp_draw.close()
+
+
 def test_rapid_revision_changes_keep_snapshot_control_backlog_bounded() -> None:
     mp_draw = _mp_draw(_empty_draw, n_worker=2)
     try:
@@ -296,10 +372,17 @@ def test_rapid_revision_changes_keep_snapshot_control_backlog_bounded() -> None:
             final_revision_was_acked,
             message="latest snapshot revision ack timeout",
         )
-        assert mp_draw.stats.snapshot_broadcast_count == 200
-        assert mp_draw.stats.pending_snapshot_update_count == 0
-        assert mp_draw.stats.queued_snapshot_update_count == 0
-        assert mp_draw.stats.rejected_task_count == 0
+        stats = mp_draw.stats
+        assert stats.snapshot_broadcast_count == 200
+        assert stats.pending_snapshot_update_count == 0
+        assert stats.queued_snapshot_update_count == 0
+        # control/task queue は独立しているため、worker が新しい control update を
+        # 先に適用した場合、古い task の stale rejection は正常な latest-wins 動作。
+        if stats.last_rejection is not None:
+            requested, applied, reason = stats.last_rejection
+            assert reason == "stale"
+            assert applied is not None
+            assert requested < applied
     finally:
         mp_draw.close()
 
@@ -352,6 +435,13 @@ def test_revision_churn_keeps_results_moving_and_reaches_latest(
 
         assert final_result is not None
         assert final_result.error is None
-        assert mp_draw.stats.rejected_task_count == 0
+        stats = mp_draw.stats
+        if n_worker == 1:
+            assert stats.rejected_task_count == 0
+        elif stats.last_rejection is not None:
+            requested, applied, reason = stats.last_rejection
+            assert reason == "stale"
+            assert applied is not None
+            assert requested < applied
     finally:
         mp_draw.close()

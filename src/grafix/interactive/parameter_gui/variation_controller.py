@@ -4,10 +4,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, NoReturn, cast
+from typing import TYPE_CHECKING
 
 from grafix.core.parameters.history import ParamStoreHistory
 from grafix.core.parameters.store import ParamStore
@@ -28,6 +26,7 @@ from .variation_panel import (
     VariationPanelModel,
     VariationPanelState,
     VariationScopeSummary,
+    VariationThumbnailArtifact,
     VariationThumbnailCapture,
     VariationThumbnailPreview,
     normalize_variation_selection,
@@ -37,14 +36,6 @@ from .variation_panel import (
 
 if TYPE_CHECKING:
     from .table_view import ParameterTableView
-
-
-@dataclass(frozen=True, slots=True)
-class _ThumbnailArtifactOwnership:
-    """Capture callback から一度だけ読み取った exact path と rollback command。"""
-
-    path: Path
-    discard: Callable[[], None]
 
 
 class VariationController:
@@ -154,12 +145,14 @@ class VariationController:
                 state.notice = f"Could not save variation: {exc}"
             return False
 
-        artifact: _ThumbnailArtifactOwnership | None = None
+        artifact: VariationThumbnailArtifact | None = None
+        thumbnail_path: Path | None = None
         thumbnail_error: str | None = None
         capture = self._thumbnail_capture
-        if callable(capture):
+        if capture is not None:
             try:
-                artifact = _validated_thumbnail_artifact(capture(draft.name))
+                artifact = capture(draft.name)
+                thumbnail_path = artifact.path
             except Exception as exc:
                 # CaptureService boundary の失敗で parameter snapshot 自体を失わない。
                 thumbnail_error = _error_detail(exc)
@@ -168,7 +161,7 @@ class VariationController:
             variation = commit_variation(
                 self._store,
                 draft,
-                thumbnail_path=None if artifact is None else artifact.path,
+                thumbnail_path=thumbnail_path,
             )
         except (KeyError, TypeError, ValueError, RuntimeError) as exc:
             cleanup_error: str | None = None
@@ -413,53 +406,6 @@ class VariationController:
         except Exception as exc:
             return f"Thumbnail unavailable: {exc}"
         return None
-
-
-def _validated_thumbnail_artifact(
-    value: object,
-) -> _ThumbnailArtifactOwnership:
-    """Capture callback の最小 ownership contract を実行前に検証する。"""
-
-    try:
-        discard = getattr(value, "discard")
-    except AttributeError:
-        raise TypeError(
-            "thumbnail capture must return an artifact with path and discard()"
-        ) from None
-    if not callable(discard):
-        raise TypeError("thumbnail artifact discard must be callable")
-
-    try:
-        path = getattr(value, "path")
-    except AttributeError:
-        error = TypeError(
-            "thumbnail capture must return an artifact with path and discard()"
-        )
-        _discard_invalid_thumbnail(discard, error)
-    if not isinstance(path, Path):
-        error = TypeError("thumbnail artifact path must be a Path")
-        _discard_invalid_thumbnail(discard, error)
-
-    return _ThumbnailArtifactOwnership(
-        path=path,
-        discard=cast(Callable[[], None], discard),
-    )
-
-
-def _discard_invalid_thumbnail(
-    discard: Callable[..., object],
-    error: Exception,
-) -> NoReturn:
-    """不正 contract でも rollback command があれば試し、元の診断を保つ。"""
-
-    try:
-        discard()
-    except BaseException as cleanup_error:
-        error.add_note(
-            "Secondary cleanup failure (discard invalid thumbnail artifact): "
-            f"{type(cleanup_error).__name__}: {cleanup_error}"
-        )
-    raise error
 
 
 def _error_detail(error: BaseException) -> str:

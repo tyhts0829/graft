@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import importlib
+import os
 from pathlib import Path
 
 import pytest
@@ -64,6 +65,23 @@ def _capture_provenance(t: float) -> CaptureProvenance:
                 sha256="parameters-sha256",
             ),
         ),
+    )
+
+
+def _manifest_for(
+    artifact_paths: tuple[Path, ...],
+    *,
+    format: str = "svg",
+) -> CaptureManifest:
+    """publish test 用の最小 capture manifest を返す。"""
+
+    return CaptureManifest(
+        t=1.5,
+        canvas_size=(100, 80),
+        format=format,
+        artifact_paths=artifact_paths,
+        provenance=_capture_provenance(1.5),
+        output_size=(100, 80),
     )
 
 
@@ -230,6 +248,58 @@ def test_capture_generation_rolls_back_artifact_when_manifest_late_collides(
     assert staged.read_bytes() == b"new artifact"
 
 
+def test_capture_generation_rejects_duplicate_target_before_publish(
+    tmp_path: Path,
+) -> None:
+    staged = tmp_path / ".staged.svg"
+    staged.write_bytes(b"artifact")
+    target = tmp_path / "capture.svg"
+
+    with pytest.raises(ValueError, match="一意"):
+        publish_capture_generation(
+            staged_artifact_paths=(staged,),
+            artifact_paths=(target,),
+            manifest_path=target,
+            manifest=_manifest_for((target,)),
+        )
+
+    assert not target.exists()
+    assert list(tmp_path.glob(".grafix-capture-manifest-*")) == []
+
+
+def test_private_manifest_cleanup_failure_does_not_mask_publish_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    staged = tmp_path / ".staged.svg"
+    staged.write_bytes(b"new artifact")
+    artifact = tmp_path / "capture.svg"
+    manifest_path = capture_manifest_path_for(artifact)
+    manifest_path.write_bytes(b"external manifest")
+    real_unlink = Path.unlink
+
+    def fail_private_manifest(
+        path: Path,
+        missing_ok: bool = False,
+    ) -> None:
+        if path.name.startswith(".grafix-capture-manifest-"):
+            raise OSError("private cleanup unavailable")
+        real_unlink(path, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", fail_private_manifest)
+
+    with pytest.raises(FileExistsError):
+        publish_capture_generation(
+            staged_artifact_paths=(staged,),
+            artifact_paths=(artifact,),
+            manifest_path=manifest_path,
+            manifest=_manifest_for((artifact,)),
+        )
+
+    assert not artifact.exists()
+    assert manifest_path.read_bytes() == b"external manifest"
+
+
 def test_capture_generation_publishes_all_artifacts_and_manifest(tmp_path: Path) -> None:
     staged = (tmp_path / ".layer1", tmp_path / ".layer2")
     for index, path in enumerate(staged, start=1):
@@ -259,6 +329,159 @@ def test_capture_generation_publishes_all_artifacts_and_manifest(tmp_path: Path)
     assert published.manifest_path == manifest_path
     assert [path.read_bytes() for path in artifacts] == [b"layer 1", b"layer 2"]
     assert json.loads(manifest_path.read_text(encoding="utf-8")) == manifest.as_dict()
+
+
+def test_private_manifest_cleanup_failure_does_not_change_publish_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    staged = tmp_path / ".staged.svg"
+    staged.write_bytes(b"artifact")
+    artifact = tmp_path / "capture.svg"
+    manifest_path = capture_manifest_path_for(artifact)
+    real_unlink = Path.unlink
+
+    def fail_private_manifest(
+        path: Path,
+        missing_ok: bool = False,
+    ) -> None:
+        if path.name.startswith(".grafix-capture-manifest-"):
+            raise OSError("private cleanup unavailable")
+        real_unlink(path, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", fail_private_manifest)
+
+    owned = publish_capture_generation(
+        staged_artifact_paths=(staged,),
+        artifact_paths=(artifact,),
+        manifest_path=manifest_path,
+        manifest=_manifest_for((artifact,)),
+    )
+
+    assert owned.path == artifact
+    assert artifact.read_bytes() == b"artifact"
+    assert manifest_path.is_file()
+
+
+def test_owned_capture_generation_discards_all_artifacts_and_manifest(
+    tmp_path: Path,
+) -> None:
+    staged = (tmp_path / ".layer1", tmp_path / ".layer2")
+    for index, path in enumerate(staged, start=1):
+        path.write_bytes(f"layer {index}".encode())
+    artifacts = (
+        tmp_path / "capture_layer001.gcode",
+        tmp_path / "capture_layer002.gcode",
+    )
+    manifest_path = tmp_path / "capture.gcode.capture.json"
+    owned = publish_capture_generation(
+        staged_artifact_paths=staged,
+        artifact_paths=artifacts,
+        manifest_path=manifest_path,
+        manifest=_manifest_for(artifacts, format="gcode"),
+    )
+
+    assert owned.path == artifacts[0]
+    owned.discard()
+
+    assert all(not path.exists() for path in artifacts)
+    assert not manifest_path.exists()
+    assert all(path.exists() for path in staged)
+
+
+@pytest.mark.parametrize("replaced_member", ["artifact", "manifest"])
+def test_owned_capture_generation_preserves_externally_replaced_member(
+    tmp_path: Path,
+    replaced_member: str,
+) -> None:
+    staged = tmp_path / ".staged.svg"
+    staged.write_bytes(b"owned artifact")
+    artifact = tmp_path / "capture.svg"
+    manifest_path = capture_manifest_path_for(artifact)
+    owned = publish_capture_generation(
+        staged_artifact_paths=(staged,),
+        artifact_paths=(artifact,),
+        manifest_path=manifest_path,
+        manifest=_manifest_for((artifact,)),
+    )
+    replaced_path = artifact if replaced_member == "artifact" else manifest_path
+    replacement = tmp_path / f"external-{replaced_member}"
+    replacement.write_bytes(b"external")
+    os.replace(replacement, replaced_path)
+
+    owned.discard()
+
+    assert replaced_path.read_bytes() == b"external"
+    other_path = manifest_path if replaced_path == artifact else artifact
+    assert not other_path.exists()
+
+
+def test_owned_capture_generation_attempts_remaining_cleanup_after_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    staged = tmp_path / ".staged.svg"
+    staged.write_bytes(b"artifact")
+    artifact = tmp_path / "capture.svg"
+    manifest_path = capture_manifest_path_for(artifact)
+    owned = publish_capture_generation(
+        staged_artifact_paths=(staged,),
+        artifact_paths=(artifact,),
+        manifest_path=manifest_path,
+        manifest=_manifest_for((artifact,)),
+    )
+    real_unlink = Path.unlink
+    calls: list[Path] = []
+
+    def fail_artifact(path: Path, missing_ok: bool = False) -> None:
+        calls.append(path)
+        if path == artifact:
+            raise OSError("artifact cleanup unavailable")
+        real_unlink(path, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", fail_artifact)
+
+    with pytest.raises(OSError, match="artifact cleanup unavailable"):
+        owned.discard()
+
+    assert calls == [artifact, manifest_path]
+    assert artifact.exists()
+    assert not manifest_path.exists()
+
+
+def test_owned_capture_generation_reports_secondary_cleanup_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    staged = tmp_path / ".staged.svg"
+    staged.write_bytes(b"artifact")
+    artifact = tmp_path / "capture.svg"
+    manifest_path = capture_manifest_path_for(artifact)
+    owned = publish_capture_generation(
+        staged_artifact_paths=(staged,),
+        artifact_paths=(artifact,),
+        manifest_path=manifest_path,
+        manifest=_manifest_for((artifact,)),
+    )
+    calls: list[Path] = []
+
+    def fail_all(path: Path, _missing_ok: bool = False) -> None:
+        calls.append(path)
+        if path == artifact:
+            raise OSError("artifact cleanup unavailable")
+        raise PermissionError("manifest cleanup unavailable")
+
+    monkeypatch.setattr(Path, "unlink", fail_all)
+
+    with pytest.raises(OSError, match="artifact cleanup unavailable") as raised:
+        owned.discard()
+
+    assert calls == [artifact, manifest_path]
+    assert getattr(raised.value, "__notes__", ()) == [
+        "Secondary cleanup failure "
+        f"(discard capture generation member {manifest_path}): "
+        "PermissionError: manifest cleanup unavailable"
+    ]
 
 
 def test_capture_generation_overwrite_replaces_complete_generation(tmp_path: Path) -> None:

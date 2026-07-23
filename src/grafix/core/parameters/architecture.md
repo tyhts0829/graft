@@ -8,7 +8,10 @@
 
 ## TL;DR
 
-- **Store はデータ**（永続データの核）。書き込みは **`*_ops.py` 経由**を原則とする。
+- **`ParamStore` は aggregate owner**。論理 state、revision/history、snapshot/favorite cache、
+  transient rollback を一つの境界で確定する。
+- **`*_ops.py` は validate/plan**。copy/frozen read port から完成済み replacement を作り、
+  private mutation port へ一度だけ渡す。
 - **snapshot は pure**（読むつもりが書く、を排除）。不足補完は merge/load 側の責務。
 - `ParamStore.revision` が同じ間は snapshot と GUI 静的モデルを再構築しない。
 - 1 フレームの値解決は `parameter_context()` が固定した snapshot に基づき **決定的**に行う。
@@ -36,10 +39,12 @@
 
 ### Store
 
-- `ParamStore`（`store.py`）: 永続データの入れ物。
+- `ParamStore`（`store.py`）: parameter aggregate の owner。
   - `_states/_meta/_explicit_by_key`（key 単位）
   - `_labels/_ordinals/_effects`（group 単位）
   - `_runtime`（永続化しない実行時情報）
+  - logical state の commit、revision/history integration、snapshot/favorite cache invalidation
+  - owner-bound transient rollback
 - `get_state()` は **コピーを返す**（外部へミュータブル参照を渡さない）。
 - session recovery が既存 object identity を維持する場合だけ、
   `replace_contents_from()` で別 `ParamStore` の全内容を transactional に置換する。
@@ -48,7 +53,7 @@
 
 ## レイヤ構造（どこに何を書くべきか）
 
-### 1) データ構造レイヤ（薄いクラス/型）
+### 1) value と aggregate owner
 
 - `key.py`: `ParameterKey` と site_id 生成。
 - `meta.py`: `ParamMeta`。
@@ -58,9 +63,12 @@
 - `ordinals.py`: `GroupOrdinals`（group の安定順 ordinal）。
 - `effects.py`: `EffectChainIndex`（effect chain の step 情報と chain ordinal）。
 - `runtime.py`: `ParamStoreRuntime`（loaded/observed/reconcile-applied）。
-- `store.py`: `ParamStore`（永続データの核）。
+- `store.py`: `ParamStore`、参照を漏らさない `_ParamStoreRead`、完成済み plan を確定する
+  `_ParamStoreMutation`、`ParamStoreRollback`。
 
-この層は「データの表現」を担い、運用ロジック（reconcile/prune/永続化/採番方針など）は持たない。
+`key.py` などの value type はデータ表現だけを担う。一方 `ParamStore` は薄い container ではなく、
+aggregate 内の参照 swap、revision/history、cache invalidation、transient rollback を所有する。
+reconcile/prune の domain validation と plan は sibling ops、JSON codec は `codec.py` に残す。
 
 ### 2) pure 関数レイヤ（副作用なし）
 
@@ -72,9 +80,14 @@
 - `reconcile.py`: group の fingerprint 化とマッチング（誤マッチを避けるアルゴリズム）。
 - `snapshot_ops.py`: `store_snapshot()` / `store_snapshot_for_gui()`（副作用なし）
 
-### 3) ops レイヤ（Store の唯一の書き込みルート）
+### 3) ops レイヤ（validate / plan）
 
-原則として「store を mutate するなら ops に置く」。
+domain command は `_ParamStoreRead` が返す copy/frozen value 上で validation、no-op 判定、allocation を
+完了し、expected revision と完成済み replacement を `_ParamStoreMutation` へ渡す。mutation port は
+revision の再確認、参照 swap、history/revision/cache の確定だけを行う。
+
+mutation port へ渡した mutable replacement の ownership は commit 呼び出しで `ParamStore` へ移る。
+呼び出し側は commit 後に同じ object を再利用・変更しない。
 
 - `merge_ops.py`: Frame で観測した `FrameParamRecord` を store に統合（観測→保存）。
   - group ordinal を確保
@@ -152,7 +165,10 @@ ParamStore には反映しない。
 
 ### write 経路
 
-- store を更新する操作は **ops に集約**する（知識が散る事故を防ぐ）。
+- sibling ops は validation/planning、`ParamStore` と private mutation port は commit と
+  revision/history/cache 更新を所有する。
+- mutation port へ渡した mutable plan は terminal ownership transfer とし、commit 後に caller が
+  再利用・変更しない。
 - `get_state()` の返り値を mutate しても store は変わらない（コピーなので）。
 
 ### snapshot の純度
@@ -193,7 +209,10 @@ ParamStore には反映しない。
 
 ### Store を更新したい
 
-- `store.py` にメソッドを増やすより、まず `*_ops.py` に手続きを追加する。
+- domain validation/planning はまず `*_ops.py` に置き、完成済み replacement を既存の
+  `_ParamStoreMutation` commit へ渡す。新しい汎用 mutation API は追加しない。
+- aggregate invariant、revision/history/cache の確定規則、owner-bound rollback を変える場合だけ
+  `store.py` を変更する。
 - snapshot の挙動を変えたい場合は `snapshot_ops.py`（pure のまま）で設計する。
 
 ---
@@ -201,5 +220,7 @@ ParamStore には反映しない。
 ## よくある落とし穴
 
 - `store.get_state(...).ui_value = ...` は **無効**（コピーを更新しているだけ）。更新は `ui_ops.update_state_from_ui()` を使う。
+- `_ParamStoreMutation.commit_*()` へ渡した dict/set/runtime object は store が所有する。commit 後に
+  caller 側で mutate しない。
 - `store_snapshot()` は **採番しない**。ordinal が無いと例外になるので、観測/ロード側で確保する。
 - meta-less state を残すと永続化が汚れやすい。GUI 対象外の state は原則 drop（仕様として固定）。

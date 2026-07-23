@@ -10,7 +10,7 @@ from typing import Protocol
 
 from grafix.core.capture_manifest import CaptureManifest, RecordingManifest
 from grafix.export.capture_publish import (
-    PublishedCaptureGeneration,
+    _OwnedCaptureGeneration,
     capture_manifest_path_for,
     publish_capture_generation,
 )
@@ -270,7 +270,7 @@ class CaptureService:
         split_gcode_layers: bool = False,
         overwrite: bool = False,
         output_size: tuple[int, int] | None = None,
-    ) -> PublishedCaptureGeneration:
+    ) -> _OwnedCaptureGeneration:
         """完成済み staging と manifest を一つの generation として公開する。"""
 
         if not isinstance(format, ExportFormat):
@@ -330,7 +330,7 @@ class CaptureService:
         output_size: tuple[int, int],
         provenance: CaptureProvenance,
         recording: RecordingManifest,
-    ) -> PublishedCaptureGeneration:
+    ) -> _OwnedCaptureGeneration:
         """encode 完了済み video と recording manifest を一世代で公開する。"""
 
         if not isinstance(staged_path, Path) or not isinstance(output_path, Path):
@@ -365,7 +365,7 @@ class CaptureService:
         split_gcode_layers: bool = False,
         output_size: tuple[int, int] | None = None,
         initial_path: Path | None = None,
-    ) -> PublishedCaptureGeneration:
+    ) -> _OwnedCaptureGeneration:
         """完成済み frame staging を空いている一世代へ公開する。"""
 
         if not isinstance(base_path, Path):
@@ -406,7 +406,7 @@ class CaptureService:
         output_size: tuple[int, int],
         provenance: CaptureProvenance,
         recording: RecordingManifest,
-    ) -> PublishedCaptureGeneration:
+    ) -> _OwnedCaptureGeneration:
         """完成済み video staging を再 encode せず一世代へ公開する。"""
 
         if not isinstance(base_path, Path):
@@ -428,22 +428,17 @@ class CaptureService:
         )
         return retried.value
 
-    def export(
+    def _export_owned(
         self,
         frame: CaptureFrame,
         path: str | Path,
         *,
-        overwrite: bool = False,
-        split_gcode_layers: bool = False,
-        output_size: tuple[int, int] | None = None,
-        gcode_params: GCodeParams | None = None,
-    ) -> ExportResult:
-        """CaptureFrame を suffix から推論した形式で安全に保存する。
-
-        ``overwrite=False`` では既存 artifact/manifest を避けて version path を予約し、
-        publish 直前の late collision も別 version へ再試行する。encode は一度だけ
-        private sibling staging で行い、成功した artifact と manifest だけを公開する。
-        """
+        overwrite: bool,
+        split_gcode_layers: bool,
+        output_size: tuple[int, int] | None,
+        gcode_params: GCodeParams | None,
+    ) -> _OwnedCaptureGeneration:
+        """CaptureFrame を保存し、公開 generation の削除 capability を返す。"""
 
         if type(overwrite) is not bool:
             raise TypeError("overwrite は bool である必要があります")
@@ -484,11 +479,7 @@ class CaptureService:
                     overwrite=True,
                     output_size=output_size,
                 )
-                return ExportResult(
-                    path=published.artifact_paths[0],
-                    format=format,
-                    manifest_path=published.manifest_path,
-                )
+                return published
 
             published = self.publish_staged_with_retry(
                 frame,
@@ -498,11 +489,38 @@ class CaptureService:
                 split_gcode_layers=split_gcode_layers,
                 output_size=output_size,
             )
-            return ExportResult(
-                path=published.artifact_paths[0],
-                format=format,
-                manifest_path=published.manifest_path,
-            )
+            return published
+
+    def export(
+        self,
+        frame: CaptureFrame,
+        path: str | Path,
+        *,
+        overwrite: bool = False,
+        split_gcode_layers: bool = False,
+        output_size: tuple[int, int] | None = None,
+        gcode_params: GCodeParams | None = None,
+    ) -> ExportResult:
+        """CaptureFrame を suffix から推論した形式で安全に保存する。
+
+        ``overwrite=False`` では既存 artifact/manifest を避けて version path を予約し、
+        publish 直前の late collision も別 version へ再試行する。encode は一度だけ
+        private sibling staging で行い、成功した artifact と manifest だけを公開する。
+        """
+
+        published = self._export_owned(
+            frame,
+            path,
+            overwrite=overwrite,
+            split_gcode_layers=split_gcode_layers,
+            output_size=output_size,
+            gcode_params=gcode_params,
+        )
+        return ExportResult(
+            path=published.path,
+            format=ExportFormat.from_path(published.path),
+            manifest_path=published.manifest_path,
+        )
 
 
 __all__ = ["CaptureFrame", "CaptureService"]

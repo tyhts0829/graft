@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 import json
 from pathlib import Path
+from typing import Never
 
 import pyglet
 import pytest
@@ -18,10 +19,7 @@ from grafix.core.parameters import ParameterCaptureState, ParamStore
 from grafix.runtime_config_loader import runtime_config
 from grafix.export.capture import CaptureService
 from grafix.export.capture_provenance import CaptureProvenanceBuilder
-from grafix.export.capture_publish import (
-    PublishedCaptureGeneration,
-    capture_manifest_path_for,
-)
+from grafix.export.capture_publish import capture_manifest_path_for
 from grafix.export.output_paths import VersionedPathAllocator
 import grafix.interactive.runtime.recording_session as recording_session_module
 from grafix.interactive.runtime.recording_session import RecordingSession
@@ -456,7 +454,7 @@ def test_publish_failure_retains_completed_staging_for_recovery(
             output_size: tuple[int, int],
             provenance: CaptureProvenance,
             recording: RecordingManifest,
-        ) -> PublishedCaptureGeneration:
+        ) -> Never:
             del (
                 staged_path,
                 base_path,

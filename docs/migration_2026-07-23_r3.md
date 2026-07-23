@@ -192,7 +192,8 @@ GUI の named variation 保存は次の一方向 flow である。
 
 1. `prepare_variation()` が name/note/seed/t/duplicate、immutable parameter snapshot、base revision を
    I/O 前に検証し、`VariationDraft` を返す。
-2. thumbnail callback が exact published path と `discard()` を持つ owned artifact を返す。
+2. capture publish 層が最初の target 公開前に identity を固定し、thumbnail callback が exact
+   published path と `discard()` を持つ同じ private owned token を返す。
 3. `commit_variation()` が owner/revision/duplicate を再確認し、一件だけ追加する。
 4. commit failure では controller が今回の PNG/manifest artifact family だけを `discard()` する。
 
@@ -205,10 +206,11 @@ change で revision が変わった場合も、commit は state を変更せず 
 |---|---|---|
 | prepare failure | なし | capture しない |
 | capture failure | あり | なし |
-| artifact owner 構築 failure | あり | 今回分を rollback |
 | commit failure | なし | 今回分を rollback |
 | success | あり | 実際に publish された exact path |
 
+runtime adapter は publish 後に file identity を再取得せず、controller は typed callback の token を
+commit 完了まで保持する。外部差し替え済み member は identity mismatch として `discard()` で保持する。
 public `create_variation()` も同じ prepare/commit 経路を使う。汎用 transaction manager や互換経路は
 追加していない。
 
@@ -312,7 +314,9 @@ restarts = stats.restart_count
 
 `MpDrawStats` は frozen/slots の一時点 snapshot である。telemetry のためだけの lock はない。
 `generation`、`evaluation_timeout`、`current_epoch` など制御/lifecycle contract に必要な property は
-`MpDraw` に残る。wire field、timeout/restart、latest-wins、last-good、close 順は変更していない。
+`MpDraw` に残る。worker は task payload を current snapshot 更新にだけ使い、requested revision と
+worker current revision が一致した場合だけ worker-owned snapshot/effect-order pair を評価する。
+wire field、timeout/restart、latest-wins、last-good、close 順は変更していない。
 旧 private module path の shim と scalar telemetry forwarding property はない。
 
 ## 10. 同日先行 migration の最終状態

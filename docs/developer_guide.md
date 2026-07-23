@@ -167,10 +167,11 @@ subsystem package のため、callable として扱わない。
 
 GUI の named variation 保存は `prepare_variation -> thumbnail capture -> commit_variation` の順である。
 prepare が metadata/duplicate/snapshot/revision を I/O 前に検証し、capture は exact path と
-`discard()` を持つ owned artifact を返す。capture failure は thumbnail なし commit、commit failure は
-今回の artifact family の discard に進む。capture callback は同期中に store を変更しない contract で、
-revision が変われば commit は state を変更せず失敗する。batch API は raw store を借りず、session 内に閉じた
-一時適用/render/rollback capability を使う。
+`discard()` を持つ publish-owned token を返す。file identity は publish 前に一度だけ取得し、
+runtime adapter は token を再構築せず GUI へ渡す。capture failure は thumbnail なし commit、
+commit failure は今回の artifact family の discard に進む。capture callback は同期中に store を
+変更しない contract で、revision が変われば commit は state を変更せず失敗する。batch API は raw
+store を借りず、session 内に閉じた一時適用/render/rollback capability を使う。
 
 API variation batch は variation 順、item ごとの transient rollback、render/capture callback、partial
 failure だけを持つ。private workspace、manifest relocation、contact sheet/summary encode、no-clobber
@@ -243,7 +244,8 @@ lexical scope に限定し、function/async function/class 内の deferred impor
 
 Parameter GUI leaf は export type/service を importせず、variation thumbnail の capture/preview callable
 だけを受け取る。runtime adapter は要求ごとに live frame provider を呼び、`CaptureService` が返した
-実際の no-clobber path を GUI へ返す。
+実際の no-clobber path と publish 時 identity を持つ exact token を GUI へ返す。runtime で
+`stat()` し直したり rollback owner を作り直したりしない。
 
 MIDI の低水準 composition は exact path を必ず渡す。
 
@@ -266,7 +268,9 @@ production では `api._runner_application` が解決済み `RuntimeConfig` と 
 `MpDraw` の private module は protocol/state/worker/parent resource owner に分離されている。
 repository consumer は scalar telemetry property を連続して読まず、一度取得した frozen
 `stats = mp_draw.stats` から同一時点の値を読む。`generation` と `evaluation_timeout` など制御 contract
-に必要な property だけは parent owner に残る。
+に必要な property だけは parent owner に残る。worker は task payload を current snapshot 更新にだけ
+使い、requested revision と worker current revision が一致するときだけ worker-owned
+snapshot/effect-order pair を評価する。
 
 ### Architecture / cache identity を触りたい
 

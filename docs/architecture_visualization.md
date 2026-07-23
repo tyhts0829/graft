@@ -316,7 +316,7 @@ flowchart TB
     mp["mp_draw.py / MpDraw<br/>parent process / Queue / restart / timeout / close"]
     protocol["_mp_draw_protocol.py<br/>pickle DTO / wire validation<br/>result / error / frozen MpDrawStats"]
     state["_mp_draw_state.py<br/>I/O-free ACK / latest / stale transitions"]
-    worker["_mp_draw_worker.py<br/>spawn entrypoint / evaluation / cleanup"]
+    worker["_mp_draw_worker.py<br/>spawn entrypoint / revision barrier<br/>evaluation / cleanup"]
     stats["MpDraw.stats<br/>one immutable telemetry snapshot"]
 
     sr -->|"initial and reload"| factory --> client
@@ -332,6 +332,8 @@ test fake は constructor の `mp_draw_factory` から渡し、`SceneRunner._mp_
 transition state は process、Queue、thread、clock、close capability を所有しない。protocol の private
 DTO path は永続/external wire contract ではない。telemetry の scalar forwarding property はなく、
 制御に必要な `generation` / `evaluation_timeout` 等だけを parent owner に残す。
+worker は task payload を current snapshot 更新にだけ使い、requested revision と worker current
+revision が一致する場合だけ worker-owned snapshot/effect-order pair を評価する。
 
 ## 5. Parameter の読み取りと更新
 
@@ -563,24 +565,28 @@ flowchart LR
     runtime["runtime thumbnail adapter"]
     provider["live frame provider"]
     capture["CaptureService"]
+    publish["capture publish owner<br/>identity before first target"]
     policy["export filename policy"]
-    artifact["owned artifact<br/>exact PNG/manifest identity + discard()"]
+    artifact["private owned token<br/>exact PNG/manifest identity + discard()"]
     commit["commit_variation<br/>revision/duplicate recheck"]
     variation["Variation<br/>exact path or no thumbnail"]
-    rollback["commit failure<br/>discard this artifact family"]
+    rollback["controller on commit failure<br/>discard this artifact family"]
 
     gui --> prepare
     prepare -->|"validated name"| runtime
     runtime -->|"each request"| provider
     provider --> capture
     runtime --> policy --> capture
-    capture --> artifact --> commit --> variation
+    capture --> publish --> artifact
+    artifact -->|"same object"| gui
+    gui --> commit --> variation
     commit -->|"failure"| rollback
-    runtime -->|"capture failure: no artifact"| commit
+    artifact --> rollback
+    runtime -->|"capture failure: no artifact"| gui
 ```
 
 GL/MIDI/Parameter GUI leaf は `grafix.export` を importしない。adapter は古い frame を固定せず、
-`CaptureService` が実際に公開した path と rollback command を GUI へ返す。domain validation failure
+publish 前に identity を固定した exact token を再構築せず GUI へ返す。domain validation failure
 では capture せず、capture failure では thumbnail なしで同じ draft を commitする。callback は同期中に
 store を変更しない contract で、revision が変われば commit は state を変更せず artifact を rollbackする。
 
@@ -598,15 +604,19 @@ flowchart LR
     staging["CaptureStaging"]
     publish["Atomic no-clobber publish"]
     files["Artifact family + capture manifest"]
+    token["private owned token<br/>pre-publish identities + discard()"]
 
     draw --> render --> frame
     load --> render
     frame --> adapter --> service
     service --> encoder --> staging --> publish --> files
+    publish --> token
 ```
 
 `RenderSession.render()` はファイル I/O を行わない。publish は完成済み private staging を使い、
 late collision では再 encode せず別 version を試す。失敗時は今回の generation だけを rollback する。
+通常 export は token を public result へ変換して generation を acceptし、Variation thumbnail だけが
+commit まで token を保持する。runtime は publish 後に identity を取り直さない。
 `SceneItem` の再帰 container は list/tuple だけで、custom `Sequence`、set、generator、str/bytes は
 runtime/type contract の対象外である。
 
