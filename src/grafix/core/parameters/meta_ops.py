@@ -12,8 +12,18 @@ from .store import ParamStore
 def set_meta(store: ParamStore, key: ParameterKey, meta: ParamMeta) -> None:
     """ParamMeta を上書き保存する。"""
 
-    store._set_meta(key, meta)
+    base_revision = store.revision
+    read = store._read()
+    if read.meta(key) == meta:
+        return
+    next_meta = read.all_meta()
+    next_meta[key] = meta
+    mutation = store._mutation()
+    mutation.prepare_history(expected_revision=base_revision, keys=(key,))
+    mutation.commit_meta(
+        expected_revision=base_revision,
+        meta=next_meta,
+    )
 
 
 __all__ = ["set_meta"]
-

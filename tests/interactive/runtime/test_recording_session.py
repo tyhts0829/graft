@@ -14,7 +14,7 @@ pyglet.options["shadow_window"] = False
 
 from grafix.core.capture_manifest import RecordingManifest
 from grafix.core.capture_provenance import CaptureProvenance
-from grafix.core.parameters import ParamStore
+from grafix.core.parameters import ParameterCaptureState, ParamStore
 from grafix.runtime_config_loader import runtime_config
 from grafix.export.capture import CaptureService
 from grafix.export.capture_provenance import CaptureProvenanceBuilder
@@ -37,9 +37,8 @@ _PROVENANCE_STORE = ParamStore()
 _PROVENANCE_BUILDER = CaptureProvenanceBuilder(
     _draw,
     config=runtime_config(),
-    parameter_source="code",
+    parameter_state=ParameterCaptureState("code", "primary"),
     parameter_store_path=None,
-    parameter_load_provenance="primary",
     seed=1847,
 )
 

@@ -9,8 +9,8 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Literal, Protocol, TypeAlias
 
-from grafix.core.geometry import Geometry
-from grafix.core.layer import Layer
+from grafix.core.geometry import Geometry as Geometry
+from grafix.core.layer import Layer as Layer
 from grafix.api.operation_info import OperationInfo as OperationInfo
 from grafix.core.scene import SceneItem
 
@@ -1920,44 +1920,18 @@ L: _L
 
 P: _P
 
-from grafix.api.export import export as export
-from grafix.api.render import (Color as Color, ExportFormat as ExportFormat, ExportResult as ExportResult, Frame as Frame, RenderOptions as RenderOptions, RenderSession as RenderSession, RenderSessionMetadata as RenderSessionMetadata, render as render)
-from grafix.api.variation_batch import (VariationBatchResult as VariationBatchResult, VariationRenderResult as VariationRenderResult, render_variation_batch as render_variation_batch)
+from grafix.api.cc import CcView as CcView
+from grafix.api.render import (CaptureProvenance as CaptureProvenance, Color as Color, ColorInput as ColorInput, ConfigProvenance as ConfigProvenance, ExportFormat as ExportFormat, ExportResult as ExportResult, Frame as Frame, FrameProvenance as FrameProvenance, FrameStyle as FrameStyle, GitProvenance as GitProvenance, LoadProvenance as LoadProvenance, ParameterLoadMode as ParameterLoadMode, ParameterLoadState as ParameterLoadState, ParameterSnapshotProvenance as ParameterSnapshotProvenance, ParamStoreLoadDiagnostic as ParamStoreLoadDiagnostic, RGB01 as RGB01, RGB8 as RGB8, RealizedLayer as RealizedLayer, RenderOptions as RenderOptions, RenderSession as RenderSession, RenderSessionMetadata as RenderSessionMetadata, RuntimeConfig as RuntimeConfig, SessionProvenance as SessionProvenance, SourceProvenance as SourceProvenance)
+from grafix.export.variation_batch import (VariationBatchResult as VariationBatchResult, VariationRenderResult as VariationRenderResult, VariationRenderStatus as VariationRenderStatus)
 from grafix.api.preset import preset as preset
+from grafix.core.gcode_params import GCodeParams as GCodeParams
 from grafix.core.operation_authoring import effect as effect
 from grafix.core.operation_authoring import primitive as primitive
+from grafix.core.parameters.meta import ParamMeta as ParamMeta
+from grafix.core.realize import GeometryCacheKey as GeometryCacheKey
+from grafix.core.realized_geometry import RealizedGeometry as RealizedGeometry
 from grafix.core.resource_budget import ResourceBudget as ResourceBudget, ResourceLimitError as ResourceLimitError
 
 from grafix.core.runtime_limits import (RuntimeLimitProfiles as RuntimeLimitProfiles, RuntimeLimits as RuntimeLimits)
 
-from grafix.core.runtime_config import RuntimeConfig, RuntimeConfigFallback
-
-def run(
-    draw: Callable[[float], SceneItem],
-    *,
-    config_path: str | Path | None = ...,
-    config: RuntimeConfig | None = ...,
-    config_fallback: RuntimeConfigFallback | None = ...,
-    run_id: str | None = ...,
-    background_color: Vec3 = ...,
-    line_thickness: float = ...,
-    line_color: Vec3 = ...,
-    render_scale: float = ...,
-    canvas_size: tuple[int, int] = ...,
-    parameter_gui: bool = ...,
-    parameter_persistence: bool = ...,
-    midi_port_name: str | None = ...,
-    midi_mode: str = ...,
-    n_worker: int = ...,
-    evaluation_timeout: float | None = ...,
-    fps: float = ...,
-    seed: int | None = ...,
-    runtime_limit_profiles: RuntimeLimitProfiles = ...,
-) -> None:
-    """`draw(t)` を既定の background 1 worker で評価し、リアルタイム描画する。
-
-    `n_worker=0` の場合だけ同期評価し、`>=1` は background worker 数を表す。
-    """
-    ...
-
-__all__ = ['Color', 'E', 'ExportFormat', 'ExportResult', 'Frame', 'G', 'L', 'OperationInfo', 'P', 'RenderOptions', 'RenderSession', 'RenderSessionMetadata', 'ResourceBudget', 'ResourceLimitError', 'RuntimeLimitProfiles', 'RuntimeLimits', 'VariationBatchResult', 'VariationRenderResult', 'effect', 'export', 'preset', 'primitive', 'render', 'render_variation_batch', 'run']
+__all__ = ['CaptureProvenance', 'CcView', 'Color', 'ColorInput', 'ConfigProvenance', 'E', 'ExportFormat', 'ExportResult', 'Frame', 'FrameProvenance', 'FrameStyle', 'G', 'GCodeParams', 'Geometry', 'GeometryCacheKey', 'GitProvenance', 'L', 'Layer', 'LoadProvenance', 'OperationInfo', 'P', 'ParamMeta', 'ParameterLoadMode', 'ParameterLoadState', 'ParameterSnapshotProvenance', 'ParamStoreLoadDiagnostic', 'RGB01', 'RGB8', 'RealizedGeometry', 'RealizedLayer', 'RenderOptions', 'RenderSession', 'RenderSessionMetadata', 'ResourceBudget', 'ResourceLimitError', 'RuntimeLimitProfiles', 'RuntimeLimits', 'RuntimeConfig', 'SceneItem', 'SessionProvenance', 'SourceProvenance', 'VariationBatchResult', 'VariationRenderResult', 'VariationRenderStatus', 'effect', 'preset', 'primitive']

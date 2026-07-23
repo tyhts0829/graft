@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -82,7 +83,7 @@ class _DeadMpDraw:
     def __init__(self, error: MpDrawWorkerError) -> None:
         self.error = error
         self.close_calls = 0
-        self.last_submitted_frame_id = 0
+        self.stats = SimpleNamespace(last_submitted_frame_id=0)
 
     def submit(self, **_kwargs: object) -> None:
         raise self.error
@@ -129,10 +130,10 @@ class _BatchedSuccessThenErrorMpDraw:
         )
         self.poll_calls = 0
         self.close_calls = 0
-        self.last_submitted_frame_id = 0
+        self.stats = SimpleNamespace(last_submitted_frame_id=0)
 
     def submit(self, **_kwargs: object) -> None:
-        self.last_submitted_frame_id += 1
+        self.stats.last_submitted_frame_id += 1
         return
 
     def poll_latest(self) -> DrawResult | None:
@@ -163,7 +164,7 @@ class _EpochMpDraw:
         self.submitted_epochs: list[int] = []
         self._published = False
         self.close_calls = 0
-        self.last_submitted_frame_id = 0
+        self.stats = SimpleNamespace(last_submitted_frame_id=0)
 
     def begin_epoch(self, epoch: int | None = None) -> int:
         self.current_epoch = self.current_epoch + 1 if epoch is None else int(epoch)
@@ -174,7 +175,7 @@ class _EpochMpDraw:
         return self.current_epoch
 
     def submit(self, **kwargs: object) -> None:
-        self.last_submitted_frame_id += 1
+        self.stats.last_submitted_frame_id += 1
         self.submitted_epochs.append(int(cast(int, kwargs["epoch"])))
 
     def poll_latest(self) -> DrawResult | None:
@@ -198,11 +199,11 @@ class _IdleMpDraw:
     def __init__(self) -> None:
         self.submit_calls: list[dict[str, object]] = []
         self.close_calls = 0
-        self.last_submitted_frame_id = 0
+        self.stats = SimpleNamespace(last_submitted_frame_id=0)
         self.begin_calls: list[int] = []
 
     def submit(self, **kwargs: object) -> None:
-        self.last_submitted_frame_id += 1
+        self.stats.last_submitted_frame_id += 1
         self.submit_calls.append(dict(kwargs))
 
     def poll_latest(self) -> None:

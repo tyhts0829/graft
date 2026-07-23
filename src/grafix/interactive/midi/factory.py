@@ -35,6 +35,7 @@ from grafix.interactive.diagnostics import DiagnosticCenter
 
 from .midi_controller import (
     MidiController,
+    _require_snapshot_path,
     maybe_load_frozen_cc_snapshot,
     save_cc_snapshot,
     shutdown_midi_controller,
@@ -50,8 +51,7 @@ def create_midi_controller(
     *,
     port_name: str | None,
     mode: str,
-    profile_name: str,
-    save_dir: Path | None = None,
+    snapshot_path: Path,
     priority_inputs: tuple[tuple[str, str], ...] = (),
 ) -> MidiController | None:
     """設定値に従って `MidiController` を生成する。
@@ -62,10 +62,8 @@ def create_midi_controller(
         MIDI 入力ポート名。`None` なら MIDI 無効。`"auto"` なら利用可能な入力ポートから自動選択する。
     mode
         `"7bit"` または `"14bit"`（`MidiController` の `mode`）。
-    profile_name
-        CC スナップショット永続化ファイル名（stem）に埋め込む profile 名。
-    save_dir
-        CC スナップショットを保存するディレクトリ。`None` のときは既定の出力先を使う。
+    snapshot_path
+        composition root がこの session 用に一度だけ確定した永続化ファイルパス。
     priority_inputs
         `("port_name", "mode")` の候補リスト。`port_name="auto"` のときのみ参照する。
 
@@ -100,11 +98,7 @@ def create_midi_controller(
         name="mode",
         choices=("7bit", "14bit"),
     )
-    profile = exact_string(profile_name, name="profile_name")
-    if not profile:
-        raise ValueError("profile_name は空にできません")
-    if save_dir is not None and not isinstance(save_dir, Path):
-        raise TypeError("save_dir は Path または None である必要があります")
+    path = _require_snapshot_path(snapshot_path)
     if type(priority_inputs) is not tuple:
         raise TypeError(
             "priority_inputs は (port_name, mode) の tuple である必要があります"
@@ -150,32 +144,28 @@ def create_midi_controller(
                     continue
                 return MidiController(
                     names[0],
+                    snapshot_path=path,
                     mode=candidate_mode,
-                    profile_name=profile,
-                    save_dir=save_dir,
                 )
             if candidate_port_name in names:
                 return MidiController(
                     candidate_port_name,
+                    snapshot_path=path,
                     mode=candidate_mode,
-                    profile_name=profile,
-                    save_dir=save_dir,
                 )
 
         if priorities or not names:
             return None
         return MidiController(
             names[0],
+            snapshot_path=path,
             mode=mode_value,
-            profile_name=profile,
-            save_dir=save_dir,
         )
 
     return MidiController(
         port,
+        snapshot_path=path,
         mode=mode_value,
-        profile_name=profile,
-        save_dir=save_dir,
     )
 
 
@@ -183,37 +173,31 @@ def create_midi_session(
     *,
     port_name: str | None,
     mode: str,
-    profile_name: str,
-    save_dir: Path,
     snapshot_path: Path,
     priority_inputs: tuple[tuple[str, str], ...] = (),
     diagnostics: DiagnosticCenter | None = None,
 ) -> MidiSession:
     """controller/frozen snapshot/reconnect を一つの所有 session に組み立てる。"""
 
-    if not isinstance(save_dir, Path) or not isinstance(snapshot_path, Path):
-        raise TypeError("save_dir と snapshot_path は Path である必要があります")
+    path = _require_snapshot_path(snapshot_path)
     controller = create_midi_controller(
         port_name=port_name,
         mode=mode,
-        profile_name=profile_name,
-        save_dir=save_dir,
+        snapshot_path=path,
         priority_inputs=priority_inputs,
     )
     try:
         frozen_result = maybe_load_frozen_cc_snapshot(
             port_name=port_name,
             controller=controller,
-            profile_name=profile_name,
-            save_dir=save_dir,
+            snapshot_path=path,
         )
 
         def reconnect() -> MidiController | None:
             return create_midi_controller(
                 port_name=port_name,
                 mode=mode,
-                profile_name=profile_name,
-                save_dir=save_dir,
+                snapshot_path=path,
                 priority_inputs=priority_inputs,
             )
 
@@ -227,7 +211,7 @@ def create_midi_session(
             snapshot_load_result=snapshot_result,
             reconnect=None if port_name is None else reconnect,
             diagnostics=diagnostics,
-            discard_persisted_snapshot=lambda: save_cc_snapshot({}, snapshot_path),
+            discard_persisted_snapshot=lambda: save_cc_snapshot({}, path),
         )
     except BaseException:
         if controller is not None:

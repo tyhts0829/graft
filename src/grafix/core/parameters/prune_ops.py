@@ -55,8 +55,9 @@ def prune_stale_loaded_groups(store: ParamStore) -> None:
     - 両者の差分（loaded - observed）を「古い（stale）」とみなし、まとめて削除する。
     """
 
-    runtime = store._runtime_ref()
-    effects = store._effects_ref()
+    read = store._read()
+    runtime = read.runtime()
+    effects = read.effects()
     if not runtime.loaded_groups and not effects.stale_loaded_chain_ids():
         # 今回の実行でロードされていないなら、比較対象がないので何もしない。
         return
@@ -64,6 +65,8 @@ def prune_stale_loaded_groups(store: ParamStore) -> None:
     if runtime.loaded_groups:
         # 保存直前にもう一度だけ再リンクを試みる（最後まで観測した集合で最善を尽くす）。
         reconcile_loaded_groups_for_runtime(store)
+        read = store._read()
+        runtime = read.runtime()
 
         from .style import STYLE_OP
 
@@ -82,12 +85,19 @@ def prune_stale_loaded_groups(store: ParamStore) -> None:
             preserve_observed_effect_topology=True,
         )
 
+    base_revision = store.revision
+    read = store._read()
+    effects = read.effects()
     stale_chain_ids = effects.prune_stale_loaded_chains()
     if stale_chain_ids:
-        collapsed = store._collapsed_headers_ref()
+        collapsed = set(read.collapsed_headers())
         for chain_id in stale_chain_ids:
             collapsed.discard(effect_chain_collapsed_header_key(chain_id))
-        store._touch()
+        store._mutation().commit_effects(
+            expected_revision=base_revision,
+            effects=effects,
+            collapsed_headers=collapsed,
+        )
 
 
 def prune_unknown_args_in_known_ops(
@@ -122,12 +132,18 @@ def prune_unknown_args_in_known_ops(
 
     removed: list[ParameterKey] = []
 
-    favorites = set(store._favorite_keys_snapshot())
-    locked = store._locked_keys_ref()
+    base_revision = store.revision
+    read = store._read()
+    states = read.states()
+    meta_by_key = read.all_meta()
+    explicit_by_key = read.all_explicit()
+    favorites = set(read.favorite_keys())
+    favorites_before = frozenset(favorites)
+    locked = set(read.locked_keys())
     keys = (
-        set(store._states)
-        | set(store._meta)
-        | set(store._explicit_by_key)
+        set(states)
+        | set(meta_by_key)
+        | set(explicit_by_key)
         | set(locked)
         | favorites
     )
@@ -145,15 +161,22 @@ def prune_unknown_args_in_known_ops(
 
         # op は登録済みだが arg は未知、というケースなのでストアから消す。
         removed.append(key)
-        store._states.pop(key, None)
-        store._meta.pop(key, None)
-        store._explicit_by_key.pop(key, None)
+        states.pop(key, None)
+        meta_by_key.pop(key, None)
+        explicit_by_key.pop(key, None)
         locked.discard(key)
         favorites.discard(key)
 
     if removed:
-        store._replace_favorite_keys(favorites)
-        store._touch()
+        store._mutation().commit_parameter_prune(
+            expected_revision=base_revision,
+            states=states,
+            meta=meta_by_key,
+            explicit_by_key=explicit_by_key,
+            locked_keys=locked,
+            favorite_keys=favorites,
+            favorites_changed=favorites != favorites_before,
+        )
     return removed
 
 
@@ -193,42 +216,94 @@ def prune_groups(
     if not groups:
         return
 
-    runtime = store._runtime_ref()
-    labels = store._labels_ref()
-    ordinals = store._ordinals_ref()
-    effects = store._effects_ref()
-    collapsed = store._collapsed_headers_ref()
-    chain_ids_before = set(effects.chain_ordinals().keys())
+    base_revision = store.revision
+    read = store._read()
+    states = read.states()
+    meta_by_key = read.all_meta()
+    explicit_by_key = read.all_explicit()
+    runtime = read.runtime()
+    labels = read.labels()
+    ordinals = read.ordinals()
+    effects = read.effects()
+    collapsed = set(read.collapsed_headers())
+    locked = set(read.locked_keys())
+    favorites = set(read.favorite_keys())
+
+    labels_before = labels.as_dict()
+    ordinals_before = ordinals.as_dict()
+    effect_topologies_before = effects.topologies()
+    effect_chain_ordinals_before = effects.chain_ordinals()
+    effect_orders_before = effects.order_overrides()
+    collapsed_before = frozenset(collapsed)
+    runtime_groups_before = (
+        frozenset(runtime.loaded_groups),
+        frozenset(runtime.observed_groups),
+    )
+    states_before = dict(states)
+    meta_before = dict(meta_by_key)
+    explicit_before = dict(explicit_by_key)
+    locked_before = frozenset(locked)
+    favorites_before = frozenset(favorites)
+
+    persistent_groups = (
+        {
+            (key.op, key.site_id)
+            for key in (
+                set(states)
+                | set(meta_by_key)
+                | set(explicit_by_key)
+                | locked
+                | favorites
+            )
+        }
+        | set(labels_before)
+        | {
+            (op, site_id)
+            for op, by_site in ordinals_before.items()
+            for site_id in by_site
+        }
+        | set(effects.step_info_by_site())
+        | {
+            (header.op, header.site_id)
+            for header in collapsed
+            if header.op is not None and header.site_id is not None
+        }
+    )
+    runtime_groups = set(runtime.loaded_groups) | set(runtime.observed_groups)
+    groups.intersection_update(persistent_groups | runtime_groups)
+    if not groups:
+        return
+    persistent_targets = groups & persistent_groups
+    effect_targets = persistent_targets & set(effects.step_info_by_site())
+    chain_ids_before = set(effect_chain_ordinals_before)
 
     affected_ops: set[str] = set()
 
     # 走査中に dict を削除するため、keys() を list 化してから回す。
-    for key in list(store._states.keys()):
-        if (key.op, key.site_id) in groups:
-            del store._states[key]
-    for key in list(store._meta.keys()):
-        if (key.op, key.site_id) in groups:
-            del store._meta[key]
-    for key in list(store._explicit_by_key.keys()):
-        if (key.op, key.site_id) in groups:
-            del store._explicit_by_key[key]
-    locked = store._locked_keys_ref()
+    for key in list(states):
+        if (key.op, key.site_id) in persistent_targets:
+            del states[key]
+    for key in list(meta_by_key):
+        if (key.op, key.site_id) in persistent_targets:
+            del meta_by_key[key]
+    for key in list(explicit_by_key):
+        if (key.op, key.site_id) in persistent_targets:
+            del explicit_by_key[key]
     for key in list(locked):
-        if (key.op, key.site_id) in groups:
+        if (key.op, key.site_id) in persistent_targets:
             locked.discard(key)
-    favorites = set(store._favorite_keys_snapshot())
     for key in tuple(favorites):
-        if (key.op, key.site_id) in groups:
+        if (key.op, key.site_id) in persistent_targets:
             favorites.discard(key)
-    store._replace_favorite_keys(favorites)
 
     # 表示ラベルは parameter の有無とは独立に残ってしまうので、グループ単位で明示削除する。
-    for op, site_id in groups:
+    for op, site_id in persistent_targets:
         labels.delete(op, site_id)
 
-    # ordinals/effects/collapsed/runtime は「グループの存在」を前提にした情報なのでまとめて消す。
-    for op, site_id in groups:
-        affected_ops.add(op)
+    # ordinals/effects/collapsed は「永続グループの存在」を前提にした情報なのでまとめて消す。
+    for op, site_id in persistent_targets:
+        if ordinals.get(op, site_id) is not None:
+            affected_ops.add(op)
         ordinals.delete(op, site_id)
         effects.delete_step(
             op,
@@ -236,6 +311,9 @@ def prune_groups(
             preserve_observed_topology=preserve_observed_effect_topology,
         )
         collapsed.difference_update(group_collapsed_header_keys((op, site_id)))
+
+    # runtime state は永続状態と独立に消す。runtime-only group ではこの差分だけを commit する。
+    for op, site_id in groups:
         runtime.loaded_groups.discard((op, site_id))
         runtime.observed_groups.discard((op, site_id))
 
@@ -244,13 +322,51 @@ def prune_groups(
         ordinals.compact(op)
 
     # ステップ削除の結果、参照されなくなった effect chain を落とす。
-    effects.prune_unused_chains()
+    if effect_targets:
+        effects.prune_unused_chains()
     chain_ids_after = set(effects.chain_ordinals().keys())
     # 消えた chain に対応する collapsed 状態も取り除き、UI 側にゴミが残らないようにする。
     for removed_chain_id in chain_ids_before - chain_ids_after:
         collapsed.discard(effect_chain_collapsed_header_key(removed_chain_id))
 
-    store._touch()
+    persistent_changed = (
+        states != states_before
+        or meta_by_key != meta_before
+        or explicit_by_key != explicit_before
+        or labels.as_dict() != labels_before
+        or ordinals.as_dict() != ordinals_before
+        or effects.topologies() != effect_topologies_before
+        or effects.chain_ordinals() != effect_chain_ordinals_before
+        or effects.order_overrides() != effect_orders_before
+        or frozenset(collapsed) != collapsed_before
+        or frozenset(locked) != locked_before
+        or frozenset(favorites) != favorites_before
+    )
+    runtime_changed = (
+        frozenset(runtime.loaded_groups),
+        frozenset(runtime.observed_groups),
+    ) != runtime_groups_before
+
+    if persistent_changed:
+        store._mutation().commit_prune(
+            expected_revision=base_revision,
+            states=states,
+            meta=meta_by_key,
+            explicit_by_key=explicit_by_key,
+            labels=labels,
+            ordinals=ordinals,
+            effects=effects,
+            collapsed_headers=collapsed,
+            locked_keys=locked,
+            favorite_keys=favorites,
+            runtime=runtime,
+            favorites_changed=favorites != favorites_before,
+        )
+    elif runtime_changed:
+        store._mutation().commit_runtime(
+            expected_revision=base_revision,
+            runtime=runtime,
+        )
 
 
 __all__ = ["prune_stale_loaded_groups", "prune_unknown_args_in_known_ops", "prune_groups"]

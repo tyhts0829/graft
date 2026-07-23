@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from grafix.api.render import RenderOptions
 from grafix.core.capture_manifest import RecordingManifest
-from grafix.core.parameters import ParamStore
+from grafix.core.parameters import ParameterCaptureState, ParamStore
 from grafix.core.pipeline import RealizedLayer
 from grafix.runtime_config_loader import runtime_config
 from grafix.core.runtime_limits import RuntimeLimits
@@ -284,5 +284,8 @@ def make_draw_window_system(
             store=target_store,
             monitor=monitor,
             effective_config=runtime_config(),
-            parameter_load_provenance=lambda: "primary",
+            parameter_capture_state=lambda: ParameterCaptureState(
+                "code",
+                "primary",
+            ),
         )

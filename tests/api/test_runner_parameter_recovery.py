@@ -9,7 +9,7 @@ import pytest
 
 pyglet.options["shadow_window"] = False
 
-import grafix.api.runner as runner_module
+import grafix.api._runner_application as runner_module
 import grafix.interactive.midi.factory as midi_factory_module
 import grafix.interactive.runtime.parameter_gui_system as gui_system_module
 import grafix.interactive.runtime.parameter_recovery as parameter_recovery_module
@@ -18,7 +18,6 @@ import grafix.parameter_storage as parameter_storage_module
 from grafix.core.parameters import (
     FrameParamRecord,
     KnownOperationSchemaSnapshot,
-    ParameterLoadState,
     ParamMeta,
     ParamStore,
     ParameterKey,
@@ -61,7 +60,7 @@ def test_parameter_session_owns_store_history_and_nonpersistent_finalize() -> No
     assert session.history is not None
     assert session.snapshot_slots is not None
     assert session.autosave is None
-    assert session.source == "code"
+    assert session.capture_state().source == "code"
     session.persist(session_completed_cleanly=True, monitor=None)
 
 
@@ -243,29 +242,19 @@ def test_recovered_session_actions_are_wired_to_shared_diagnostic_center(
     recovery = param_store_recovery_path(primary)
     store, key, autosave = _session_with_dirty_explicit_override(primary)
     autosave.flush()
-    recovered = recover_param_store_session(primary)
-    recovered_autosave = ParamStoreAutosave(
-        recovered.store,
-        recovery,
-        save=write_param_store_recovery,
+    parameter_session = parameter_session_module.ParameterSession(
+        primary_path=primary,
+        gui_enabled=False,
+        known_operations=_EMPTY_KNOWN_OPERATIONS,
     )
     monitor = RuntimeMonitor()
-    adopted = [recovered.load_state]
 
-    session = parameter_session_module._install_parameter_diagnostic_actions(
-        monitor=monitor,
-        store=recovered.store,
-        load_state=recovered.load_state,
-        adopt_load_result=lambda loaded: adopted.__setitem__(0, loaded.load_state),
-        primary_path=primary,
-        autosave=recovered_autosave,
-        history=None,
-        snapshot_slots=None,
-        known_operations=_EMPTY_KNOWN_OPERATIONS,
+    recovery_session = parameter_session.install_diagnostic_actions(
+        monitor,
         open_source=lambda _source: None,
     )
 
-    assert session is not None
+    assert recovery_session is not None
     snapshot = monitor.snapshot()
     assert snapshot.recovered_session is True
     recovered_event = next(
@@ -287,7 +276,7 @@ def test_recovered_session_actions_are_wired_to_shared_diagnostic_center(
     assert monitor.diagnostic_center.dispatch_action(recovered_event, keep)
     assert monitor.snapshot().recovered_session is False
     assert not recovery.exists()
-    assert adopted[0].provenance == "primary"
+    assert parameter_session.load_state.provenance == "primary"
     kept = read_param_store(primary).store.get_state(key)
     assert kept is not None
     assert kept.ui_value == pytest.approx(0.9)
@@ -327,13 +316,12 @@ def test_parameter_session_adopts_recovery_decision_load_state(
         known_operations=_EMPTY_KNOWN_OPERATIONS,
     )
     assert session.load_state.provenance == "session_recovery"
-    assert session.source == "recovery"
+    assert session.capture_state().source == "recovery"
     provenance = CaptureProvenanceBuilder(
         lambda _t: None,
         config=runtime_config(),
-        parameter_source=session.source,
+        parameter_state=session.capture_state,
         parameter_store_path=primary,
-        parameter_load_provenance=lambda: session.load_state.provenance,
     )
     recovered_frame = provenance.frame(
         session.store,
@@ -356,7 +344,7 @@ def test_parameter_session_adopts_recovery_decision_load_state(
 
     assert session.load_state.provenance == "primary"
     assert session.load_state.diagnostics == ()
-    assert session.source == "saved"
+    assert session.capture_state().source == "saved"
     state = session.store.get_state(key)
     assert state is not None
     assert state.ui_value == pytest.approx(expected_value)
@@ -368,10 +356,37 @@ def test_parameter_session_adopts_recovery_decision_load_state(
         origin="interactive",
     )
     assert recovered_frame.session.parameter_load_provenance == "session_recovery"
+    assert recovered_frame.session.parameter_source == "recovery"
     assert decided_frame.session.parameter_load_provenance == (
         session.load_state.provenance
     )
+    assert decided_frame.session.parameter_source == "saved"
     assert decided_frame.frame.parameters.revision == session.store.revision
+
+
+def test_recovery_keep_samples_schema_when_action_is_dispatched(
+    tmp_path: Path,
+) -> None:
+    primary = tmp_path / "store.json"
+    session, radius, new_arg = _parameter_session_with_pending_recovery(
+        primary,
+        include_obsolete=True,
+    )
+    assert new_arg is not None
+    monitor, event, action = _recovery_action(session, "keep")
+
+    accepted_schema = KnownOperationSchemaSnapshot(
+        {"circle": frozenset({"obsolete"})}
+    )
+    session.replace_known_operations(accepted_schema)
+
+    assert monitor.diagnostic_center.dispatch_action(event, action)
+    assert session.load_state.provenance == "primary"
+    assert session.store.get_state(radius) is None
+    assert session.store.get_state(new_arg) is not None
+    persisted = read_param_store(primary).store
+    assert persisted.get_state(radius) is None
+    assert persisted.get_state(new_arg) is not None
 
 
 def test_parameter_session_keep_write_failure_preserves_one_recovery_generation(
@@ -499,16 +514,14 @@ def test_retry_action_retries_autosave_and_clears_failure(
         error=autosave.last_error,
         source=str(autosave.path),
     )
-    parameter_session_module._install_parameter_diagnostic_actions(
-        monitor=monitor,
-        store=store,
-        load_state=ParameterLoadState(),
-        adopt_load_result=lambda _loaded: None,
+    session = parameter_session_module.ParameterSession(
         primary_path=None,
-        autosave=autosave,
-        history=None,
-        snapshot_slots=None,
+        gui_enabled=False,
         known_operations=_EMPTY_KNOWN_OPERATIONS,
+    )
+    session.autosave = autosave
+    session.install_diagnostic_actions(
+        monitor,
         open_source=lambda _source: None,
     )
     failed = next(event for event in monitor.snapshot().diagnostics if event.category == "save")
@@ -551,16 +564,13 @@ def test_open_action_uses_runner_source_handler(tmp_path: Path) -> None:
     source.write_text("pass\n", encoding="utf-8")
     opened: list[str] = []
     monitor = RuntimeMonitor()
-    parameter_session_module._install_parameter_diagnostic_actions(
-        monitor=monitor,
-        store=ParamStore(),
-        load_state=ParameterLoadState(),
-        adopt_load_result=lambda _loaded: None,
+    session = parameter_session_module.ParameterSession(
         primary_path=None,
-        autosave=None,
-        history=None,
-        snapshot_slots=None,
+        gui_enabled=False,
         known_operations=_EMPTY_KNOWN_OPERATIONS,
+    )
+    session.install_diagnostic_actions(
+        monitor,
         open_source=opened.append,
     )
     action = DiagnosticAction("open", "Open source")
@@ -786,8 +796,6 @@ def test_acquisition_failure_closes_midi_created_before_draw_window(
         midi_factory_module.create_midi_session(
             port_name="auto",
             mode="7bit",
-            profile_name="midi",
-            save_dir=tmp_path,
             snapshot_path=tmp_path / "midi.json",
         )
 
@@ -862,7 +870,7 @@ def test_failure_after_draw_window_construction_runs_registered_closer(
     monkeypatch.setattr(runner_module, "DrawWindowSystem", DrawWindow)
 
     with pytest.raises(RuntimeError, match="window placement failed"):
-        runner_module.run(
+        runner_module._run_interactive_application(
             lambda _t: None,
             parameter_gui=False,
             parameter_persistence=False,
@@ -965,7 +973,7 @@ def test_gui_construction_failure_closes_completed_draw_system_and_midi_once(
     monkeypatch.setattr(gui_system_module, "ParameterGUIWindowSystem", FailedGUI)
 
     with pytest.raises(RuntimeError, match="GUI construction failed"):
-        runner_module.run(
+        runner_module._run_interactive_application(
             lambda _t: None,
             parameter_gui=True,
             parameter_persistence=False,

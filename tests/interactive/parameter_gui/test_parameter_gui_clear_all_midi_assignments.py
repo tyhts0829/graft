@@ -5,6 +5,7 @@ from grafix.core.parameters.frame_params import FrameParamRecord
 from grafix.core.parameters.merge_ops import merge_frame_params
 from grafix.core.parameters.ui_ops import update_state_from_ui
 from grafix.interactive.parameter_gui.table_commit import clear_all_midi_assignments
+from tests.param_store_test_support import mutate_runtime
 
 
 def test_clear_all_midi_assignments_bakes_effective_and_clears_cc_key() -> None:
@@ -52,8 +53,15 @@ def test_clear_all_midi_assignments_bakes_effective_and_clears_cc_key() -> None:
         override=False,
         cc_key=(10, 11, 12),
     )
-    store._runtime_ref().last_effective_by_key[key_r] = 0.75
-    store._runtime_ref().last_effective_by_key[key_p] = (-1.0, 0.25, 1.0)
+    def seed_effective(runtime: object) -> None:
+        runtime.last_effective_by_key[key_r] = 0.75  # type: ignore[attr-defined]
+        runtime.last_effective_by_key[key_p] = (  # type: ignore[attr-defined]
+            -1.0,
+            0.25,
+            1.0,
+        )
+
+    mutate_runtime(store, seed_effective)
 
     changed = clear_all_midi_assignments(store)
     assert changed is True

@@ -121,8 +121,7 @@ def test_effective_revision_advances_once_only_when_final_snapshot_changes() -> 
     first = replace(_record(1), source="code")
 
     merge_frame_params(store, [first])
-    runtime = store._runtime_ref()
-    assert runtime.effective_revision == 1
+    assert store.effective_revision == 1
 
     # 同じ record の再 merge と、途中値だけが異なる同一 key の merge は不変。
     merge_frame_params(store, [first])
@@ -133,7 +132,7 @@ def test_effective_revision_advances_once_only_when_final_snapshot_changes() -> 
             first,
         ],
     )
-    assert runtime.effective_revision == 1
+    assert store.effective_revision == 1
 
     # effective が複数 key で変わっても、1 frame につき 1 回だけ進む。
     second = replace(_record(2), source="code")
@@ -144,7 +143,7 @@ def test_effective_revision_advances_once_only_when_final_snapshot_changes() -> 
             second,
         ],
     )
-    assert runtime.effective_revision == 2
+    assert store.effective_revision == 2
 
     # 値が同じでも source が変われば provenance snapshot は変わる。
     merge_frame_params(
@@ -154,7 +153,7 @@ def test_effective_revision_advances_once_only_when_final_snapshot_changes() -> 
             second,
         ],
     )
-    assert runtime.effective_revision == 3
+    assert store.effective_revision == 3
 
 def test_stable_merge_skips_initial_value_canonicalization(
     monkeypatch: pytest.MonkeyPatch,
@@ -176,22 +175,11 @@ def test_stable_merge_skips_initial_value_canonicalization(
     assert len(store_snapshot(store)) == len(records)
 
 
-def test_stable_merge_writes_only_changed_runtime_key() -> None:
-    class CountingDict(dict[ParameterKey, object]):
-        writes = 0
-
-        def __setitem__(self, key: ParameterKey, value: object) -> None:
-            self.writes += 1
-            super().__setitem__(key, value)
-
+def test_stable_merge_reports_only_changed_runtime_key() -> None:
     store = ParamStore()
     records = [replace(_record(index), source="code") for index in range(100)]
     merge_frame_params(store, records)
-    runtime = store._runtime_ref()
-    effective = CountingDict(runtime.last_effective_by_key)
-    source = CountingDict(runtime.last_source_by_key)
-    runtime.last_effective_by_key = effective
-    runtime.last_source_by_key = source  # type: ignore[assignment]
+    revision = store.effective_revision
 
     merge_frame_params(
         store,
@@ -201,18 +189,18 @@ def test_stable_merge_writes_only_changed_runtime_key() -> None:
         ],
     )
 
-    assert effective.writes == 1
-    assert source.writes == 1
-    assert runtime.last_effective_by_key[records[-1].key] == -1.0
-    assert runtime.last_source_by_key[records[-1].key] == "ui"
+    assert store.effective_changes_since(revision) == frozenset(
+        {records[-1].key}
+    )
+    assert store.last_effective_value(records[-1].key) == -1.0
+    assert store.runtime_view().last_source_by_key[records[-1].key] == "ui"
 
 
 def test_duplicate_key_runtime_and_explicit_values_are_last_record_wins() -> None:
     store = ParamStore()
     first = replace(_record(1), effective=1.0, source="code", explicit=False)
     merge_frame_params(store, [first])
-    runtime = store._runtime_ref()
-    revision = runtime.effective_revision
+    revision = store.effective_revision
 
     merge_frame_params(
         store,
@@ -225,10 +213,10 @@ def test_duplicate_key_runtime_and_explicit_values_are_last_record_wins() -> Non
     state = store.get_state(first.key)
     assert state is not None
     assert state.override is False
-    assert store._explicit_by_key[first.key] is True
-    assert runtime.last_effective_by_key[first.key] == 2.0
-    assert runtime.last_source_by_key[first.key] == "midi_live"
-    assert runtime.effective_revision == revision + 1
+    assert store._read().explicit(first.key) is True
+    assert store.last_effective_value(first.key) == 2.0
+    assert store.runtime_view().last_source_by_key[first.key] == "midi_live"
+    assert store.effective_revision == revision + 1
 
 
 def test_structure_change_leaves_stable_cache_with_latest_schema() -> None:
@@ -261,7 +249,7 @@ def test_failed_merge_restores_effective_snapshot_and_revision(
     store = ParamStore()
     first = replace(_record(1), source="code")
     merge_frame_params(store, [first])
-    runtime = store._runtime_ref()
+    runtime = store._read().runtime()
     before_effective = dict(runtime.last_effective_by_key)
     before_source = dict(runtime.last_source_by_key)
     before_revision = runtime.effective_revision

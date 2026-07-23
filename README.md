@@ -66,7 +66,10 @@ isolated candidate authoring catalog, and only then swaps the callable, catalog,
 generation. A syntax/load error keeps the last-good code, frame, parameters, catalog, and
 worker alive; the Inspector shows the traceback with Retry/Open. Use relative imports for
 sketch-local helpers (for example, `from .shapes import make_shape`) so the whole reachable
-source generation can be watched and isolated.
+source generation can be watched and isolated. Relative imports must be in module lexical
+scope; putting one inside a function, async function, or class is rejected before any candidate
+source runs. A configured `preset_module_dirs` entry is a synthetic namespace root: a root
+`__init__.py` is rejected, while a nested package `__init__.py` runs normally once.
 
 ## Core API
 
@@ -76,14 +79,28 @@ source generation can be watched and isolated.
 - `P` / `@preset`: reusable components
 - `cc`: MIDI CC(`cc[1]` -> 0..1) to control parameters with physical controllers
 - `run(draw)`: interactive rendering + Parameter GUI
+- `render(draw, t)`: one final-quality headless render
+- `save(frame, path)`: encode and atomically publish a rendered `Frame`
 - `ResourceBudget`: per-operation vertex/line/byte limits checked before large allocations
 - `RuntimeLimits` / `RuntimeLimitProfiles`: headless and interactive resource profiles
 
-Use `from grafix import ...` as the canonical public import. The root and `grafix.api`
-facades resolve implementation groups lazily: importing the DSL does not initialize the
-interactive runner, render/export stack, parameter storage, or config discovery. A
-core-only import such as `import grafix.core.geometry` also leaves those outer
-capabilities unloaded.
+Use `from grafix import ...` as the canonical public import. `grafix` and `grafix.api` are
+normal Python modules; there is no custom module class or callable/module dual behavior.
+The root resolves public names lazily, so importing the DSL does not initialize the
+interactive runner, render/export stack, parameter storage, or config discovery. The
+application callables `render`, `save`, `run`, and `render_variation_batch` live at the root
+and in their definition modules, not directly under the `grafix.api` package:
+
+```python
+from grafix import cc, render, run, save
+from grafix.api.export import save as save_frame
+from grafix.api.render import render as render_frame
+```
+
+`grafix.export` is the export subsystem package, `grafix.api.export` is a normal API module,
+and `grafix.save` is the save callable. Likewise, `grafix.api.cc` is the definition module
+while `grafix.cc` is the `CcView` object. A core-only import such as
+`import grafix.core.geometry` leaves outer capabilities unloaded.
 
 `G.select` and `E.select` expose the registered operations as a Parameter GUI choice while
 keeping target-specific base arguments separate:
@@ -417,6 +434,11 @@ output, GUI, or MIDI settings does not invalidate geometry caches. Two sessions 
 different configs can coexist, and closing either session does not change the other.
 Pass either `config_path=` or an already loaded `config=`, never both.
 
+The interactive composition root also resolves one exact MIDI snapshot path from that same
+config and injects it into the MIDI session. Live load/save, disconnected frozen fallback,
+reconnect, and discard all reuse that path; MIDI leaf code does not rediscover config or
+derive another path from partial location inputs.
+
 Lower-level output-path helpers never discover config implicitly. Resolve one immutable
 value at the application boundary and pass it explicitly:
 
@@ -545,7 +567,7 @@ The direct API separates one final-quality render from capture. `line_thickness=
 means 0.1% of the canvas short side:
 
 ```python
-from grafix import RenderOptions, export, render
+from grafix import RenderOptions, render, save
 
 frame = render(
     draw,
@@ -553,7 +575,7 @@ frame = render(
     options=RenderOptions(canvas_size=(300, 300), line_thickness=0.001),
     parameter_source="code",
 )
-result = export(frame, "data/output/art.svg")
+result = save(frame, "data/output/art.svg")
 print(result.path, result.manifest_path)
 ```
 
@@ -562,7 +584,7 @@ print(result.path, result.manifest_path)
 font resources are reused and then closed deterministically:
 
 ```python
-from grafix import RenderOptions, RenderSession, export
+from grafix import RenderOptions, RenderSession, save
 
 with RenderSession(
     draw,
@@ -572,19 +594,19 @@ with RenderSession(
 ) as session:
     for index, t in enumerate((0.0, 1.0, 2.0)):
         frame = session.render(t)
-        export(frame, f"data/output/frame-{index}.svg")
+        save(frame, f"data/output/frame-{index}.svg")
 ```
 
 `RenderSession.render()` always evaluates at final quality and performs no file I/O;
-`export()` owns encoding, private staging, no-clobber publication, and the sibling capture
+`save()` owns encoding, private staging, no-clobber publication, and the sibling capture
 manifest. The same immutable `Frame` may therefore be exported to multiple formats.
 
 `RenderSession` owns its evaluation resources and cache store and injects them into a borrowing
 `RealizeSession`. At the lower-level API, each omitted `resources` or `cache_store` dependency is
 owned and closed by `RealizeSession`; explicitly supplied dependencies remain caller-owned.
 `RenderSession` does not expose those closeable child owners. Public properties may provide
-immutable metadata or session views such as `options`, `param_store`, `config`,
-`runtime_limits`, and `metadata`, but never a child resource with its own `close()` capability.
+immutable values such as `options`, `config`, `runtime_limits`, and `metadata`, but never the
+mutable `ParamStore` or a child resource with its own `close()` capability.
 
 ## Troubleshooting
 
@@ -616,4 +638,4 @@ The CLI is the normal benchmark entry point. Harness extensions use the canonica
 adding a workload provider.
 
 See: `architecture.md`, `docs/developer_guide.md`, and
-`docs/migration_2026-07-23.md` for the current ownership/import migration.
+`docs/migration_2026-07-23_r3.md` for the current ownership/import migration.

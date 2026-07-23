@@ -11,14 +11,14 @@ from pathlib import Path
 import pytest
 
 import grafix.core.capture_provenance as provenance_values
-from grafix import G, RenderSession, export
+from grafix import G, RenderSession, save
 from grafix.core.capture_provenance import (
     FrameProvenance,
     GitProvenance,
     ParameterSnapshotProvenance,
 )
 from grafix.core.parameters.store import ParamStore
-from grafix.core.parameters.runtime import LoadProvenance
+from grafix.core.parameters.runtime import ParameterCaptureState
 from grafix.runtime_config_loader import runtime_config
 from grafix.core.parameters.style import style_key
 from grafix.core.parameters.ui_ops import update_state_from_ui
@@ -79,7 +79,7 @@ def test_render_session_snapshots_session_and_frame_provenance_once(
             lambda _path: (_ for _ in ()).throw(AssertionError("git rediscovery")),
         )
         second = session.render(1.0)
-        result = export(second, tmp_path / "frame.svg")
+        result = save(second, tmp_path / "frame.svg")
 
     assert source_calls == 1
     assert git_calls == 1
@@ -94,10 +94,10 @@ def test_render_session_snapshots_session_and_frame_provenance_once(
 
 
 def test_interactive_builder_reads_current_load_provenance_for_each_frame() -> None:
-    current: LoadProvenance = "session_recovery"
+    current = ParameterCaptureState("recovery", "session_recovery")
     provider_calls = 0
 
-    def current_load_provenance() -> LoadProvenance:
+    def current_parameter_state() -> ParameterCaptureState:
         nonlocal provider_calls
         provider_calls += 1
         return current
@@ -106,9 +106,8 @@ def test_interactive_builder_reads_current_load_provenance_for_each_frame() -> N
     builder = provenance_module.CaptureProvenanceBuilder(
         _draw,
         config=runtime_config(),
-        parameter_source="recovery",
+        parameter_state=current_parameter_state,
         parameter_store_path=None,
-        parameter_load_provenance=current_load_provenance,
     )
 
     recovered = builder.frame(
@@ -118,7 +117,7 @@ def test_interactive_builder_reads_current_load_provenance_for_each_frame() -> N
         quality="final",
         origin="interactive",
     )
-    current = "primary"
+    current = ParameterCaptureState("saved", "primary")
     kept = builder.frame(
         store,
         t=1.0,
@@ -129,27 +128,28 @@ def test_interactive_builder_reads_current_load_provenance_for_each_frame() -> N
 
     assert recovered.session.parameter_load_provenance == "session_recovery"
     assert kept.session.parameter_load_provenance == "primary"
+    assert recovered.session.parameter_source == "recovery"
+    assert kept.session.parameter_source == "saved"
     assert recovered.session.source is kept.session.source
     assert recovered.session.git is kept.session.git
     assert provider_calls == 3
 
 
 def test_interactive_builder_validates_each_provided_load_provenance() -> None:
-    current = "primary"
+    current: object = ParameterCaptureState("saved", "primary")
 
-    def current_load_provenance() -> LoadProvenance:
+    def current_parameter_state() -> ParameterCaptureState:
         return current  # type: ignore[return-value]
 
     builder = provenance_module.CaptureProvenanceBuilder(
         _draw,
         config=runtime_config(),
-        parameter_source="saved",
+        parameter_state=current_parameter_state,
         parameter_store_path=None,
-        parameter_load_provenance=current_load_provenance,
     )
     current = "legacy"
 
-    with pytest.raises(ValueError, match="parameter_load_provenance"):
+    with pytest.raises(TypeError, match="ParameterCaptureState"):
         builder.frame(
             ParamStore(),
             t=0.0,
@@ -163,10 +163,10 @@ def test_parameter_snapshot_hash_tracks_effective_frame_values() -> None:
     with RenderSession(_draw) as session:
         first = session.render(0.0)
         key = style_key("background_color")
-        meta = session.param_store.get_meta(key)
+        meta = session._store.get_meta(key)
         assert meta is not None
         ok, error = update_state_from_ui(
-            session.param_store,
+            session._store,
             key,
             (255, 0, 0),
             meta=meta,
@@ -251,10 +251,10 @@ def test_parameter_snapshot_is_cached_until_store_or_effective_revision_changes(
         assert stable.provenance.frame.parameters is first.provenance.frame.parameters
         assert snapshot_calls == 2
 
-        store_revision = session.param_store.revision
+        store_revision = session._store.revision
         length = 11.0
         effective_changed = session.render(3.0)
-        assert session.param_store.revision == store_revision
+        assert session._store.revision == store_revision
         assert snapshot_calls == 3
         assert (
             effective_changed.provenance.frame.parameters.sha256
@@ -262,10 +262,10 @@ def test_parameter_snapshot_is_cached_until_store_or_effective_revision_changes(
         )
 
         key = style_key("background_color")
-        meta = session.param_store.get_meta(key)
+        meta = session._store.get_meta(key)
         assert meta is not None
         ok, error = update_state_from_ui(
-            session.param_store,
+            session._store,
             key,
             (255, 0, 0),
             meta=meta,
@@ -320,7 +320,7 @@ def test_git_unavailable_is_explicit_in_manifest(
 
     with RenderSession(_draw) as session:
         frame = session.render(0.0)
-        result = export(frame, tmp_path / "frame.svg")
+        result = save(frame, tmp_path / "frame.svg")
 
     assert result.manifest_path is not None
     payload = json.loads(result.manifest_path.read_text(encoding="utf-8"))
@@ -412,11 +412,11 @@ def test_frame_seed_override_is_explicit_and_does_not_touch_global_rng(
         cleared = session.render(0.0, provenance_seed=None)
         rng_after = random.getstate()
 
-        overridden_export = export(
+        overridden_export = save(
             overridden,
             tmp_path / "overridden.svg",
         )
-        cleared_export = export(
+        cleared_export = save(
             cleared,
             tmp_path / "cleared.svg",
         )

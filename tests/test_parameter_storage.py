@@ -22,6 +22,7 @@ from grafix.core.parameters.codec import (
 from grafix.core.parameters.context import current_frame_params, parameter_context
 from grafix.core.parameters.codec_parser import parse_param_store_payload
 from grafix.core.parameters.effects import EffectStepTopology
+from grafix.core.parameters.effect_order_ops import set_effect_order
 from grafix.core.parameters.frame_params import FrameParamRecord
 from grafix.core.parameters.invariants import assert_invariants
 from grafix.core.parameters.merge_ops import merge_frame_params
@@ -46,6 +47,7 @@ from grafix.core.parameters.variations import (
     restore_variation,
     set_parameters_locked,
 )
+from tests.param_store_test_support import record_effect_chain
 
 
 def _isolate_config_discovery(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -133,24 +135,26 @@ def test_parsed_param_store_is_deeply_read_only() -> None:
 
 def _store_with_effect_order() -> ParamStore:
     store = ParamStore()
-    assert store._effects_ref().record_chain(
+    assert record_effect_chain(
+        store,
         chain_id="chain-order",
         steps=(
             EffectStepTopology("scale", "scale-site", 1, 0),
             EffectStepTopology("rotate", "rotate-site", 1, 1),
         ),
     )
-    assert store._effects_ref().set_order_override(
-        "chain-order",
-        (("rotate", "rotate-site"), ("scale", "scale-site")),
+    assert set_effect_order(
+        store,
+        chain_id="chain-order",
+        order=(("rotate", "rotate-site"), ("scale", "scale-site")),
     )
-    store._touch()
     return store
 
 
 def _store_with_parameter_and_effect_chain() -> tuple[ParamStore, ParameterKey]:
     store, key = _store_with_float_value(0.6)
-    assert store._effects_ref().record_chain(
+    assert record_effect_chain(
+        store,
         chain_id="strict-chain",
         steps=(EffectStepTopology("scale", "effect-site", 1, 0),),
     )
@@ -524,7 +528,7 @@ def test_current_schema_reports_and_repairs_missing_chain_ordinal() -> None:
     result = loads_param_store_result(json.dumps(payload))
 
     assert result.store.chain_ordinals() == {"chain-order": 1}
-    assert result.store._effects_ref().code_order("chain-order") == (
+    assert result.store._read().effects().code_order("chain-order") == (
         ("scale", "scale-site"),
         ("rotate", "rotate-site"),
     )
@@ -538,11 +542,13 @@ def test_duplicate_parameter_and_chain_ordinals_are_repaired_with_issues() -> No
     store = ParamStore()
     _merge_float_group(store, op="variant", site_id="a")
     _merge_float_group(store, op="variant", site_id="b")
-    assert store._effects_ref().record_chain(
+    assert record_effect_chain(
+        store,
         chain_id="a",
         steps=(EffectStepTopology("scale", "scale-site", 1, 0),),
     )
-    assert store._effects_ref().record_chain(
+    assert record_effect_chain(
+        store,
         chain_id="b",
         steps=(EffectStepTopology("rotate", "rotate-site", 1, 0),),
     )
@@ -587,11 +593,11 @@ def test_current_schema_roundtrip_preserves_effect_topology_and_gui_order(
     assert [item["n_inputs"] for item in payload["effect_steps"]] == [1, 1]
 
     for loaded in (_read_store(primary), _read_store(recovery)):
-        assert loaded._effects_ref().code_order("chain-order") == (
+        assert loaded._read().effects().code_order("chain-order") == (
             ("scale", "scale-site"),
             ("rotate", "rotate-site"),
         )
-        assert loaded._effects_ref().effective_order("chain-order") == (
+        assert loaded._read().effects().effective_order("chain-order") == (
             ("rotate", "rotate-site"),
             ("scale", "scale-site"),
         )
@@ -638,7 +644,7 @@ def test_malformed_effect_order_entry_is_diagnosed_and_dropped() -> None:
     result = loads_param_store_result(json.dumps(payload))
 
     assert [issue.section for issue in result.issues] == ["ui.effect_order_overrides"]
-    assert result.store._effects_ref().order_overrides() == {
+    assert result.store.effect_order_overrides() == {
         "chain-order": (
             ("rotate", "rotate-site"),
             ("scale", "scale-site"),
@@ -663,9 +669,10 @@ def test_order_without_saved_topology_is_diagnosed_and_dropped() -> None:
     assert len(result.issues) == 1
     assert result.issues[0].section == "ui.effect_order_overrides"
     assert "topology is missing" in result.issues[0].reason
-    assert loaded._effects_ref().order_overrides() == {}
+    assert loaded.effect_order_overrides() == {}
 
-    assert loaded._effects_ref().record_chain(
+    assert record_effect_chain(
+        loaded,
         chain_id="late-chain",
         steps=(
             EffectStepTopology("scale", "scale-site", 1, 0),
@@ -673,7 +680,7 @@ def test_order_without_saved_topology_is_diagnosed_and_dropped() -> None:
         ),
     )
 
-    assert loaded._effects_ref().effective_order("late-chain") == (
+    assert loaded._read().effects().effective_order("late-chain") == (
         ("scale", "scale-site"),
         ("rotate", "rotate-site"),
     )

@@ -58,8 +58,8 @@ def test_parameter_session_source_distinguishes_code_and_saved(tmp_path: Path) -
         known_operations=empty,
     )
 
-    assert code.source == "code"
-    assert saved.source == "saved"
+    assert code.capture_state().source == "code"
+    assert saved.capture_state().source == "saved"
 
 
 def test_parameter_session_replaces_finalize_schema_only_after_generation_acceptance() -> None:

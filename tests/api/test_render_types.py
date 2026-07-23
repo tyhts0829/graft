@@ -12,8 +12,8 @@ from grafix import (
     Frame,
     RenderOptions,
     RenderSession,
-    export,
     render,
+    save,
 )
 from grafix.api.render import ExportResult as RenderExportResult
 from grafix.core.export_result import ExportResult as CoreExportResult
@@ -171,7 +171,7 @@ def test_new_render_api_is_exported_from_root() -> None:
     assert RenderOptions.__module__ == "grafix.core.render_options"
     assert RenderSession.__module__ == "grafix.api.render"
     assert render.__module__ == "grafix.api.render"
-    assert export.__module__ == "grafix.api.export"
+    assert save.__module__ == "grafix.api.export"
 
 
 def test_side_effect_export_constructor_is_not_public() -> None:

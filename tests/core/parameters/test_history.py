@@ -6,13 +6,16 @@ import pytest
 
 from grafix.core.parameters.collapsed_header import primitive_collapsed_header_key
 from grafix.core.parameters.effects import EffectStepTopology
+from grafix.core.parameters.effect_order_ops import set_effect_order
 from grafix.core.parameters.frame_params import FrameParamRecord
 from grafix.core.parameters.history import ParamSnapshotSlots, ParamStoreHistory
 from grafix.core.parameters.key import ParameterKey
 from grafix.core.parameters.merge_ops import merge_frame_params
 from grafix.core.parameters.meta import ParamMeta
+from grafix.core.parameters.meta_ops import set_meta
 from grafix.core.parameters.store import ParamStore
 from grafix.core.parameters.ui_ops import update_state_from_ui
+from tests.param_store_test_support import record_effect_chain
 
 
 FLOAT_META = ParamMeta(kind="float", ui_min=0.0, ui_max=1.0)
@@ -21,22 +24,21 @@ EFFECT_UI_ORDER = tuple(reversed(EFFECT_CODE_ORDER))
 
 
 def _add_effect_chain(store: ParamStore) -> None:
-    assert store._effects_ref().record_chain(
+    assert record_effect_chain(
+        store,
         chain_id="chain-order",
         steps=(
             EffectStepTopology("scale", "scale-site", 1, 0),
             EffectStepTopology("rotate", "rotate-site", 1, 1),
         ),
     )
-    store._touch()
 
 
 def _set_effect_order(
     store: ParamStore,
     order: tuple[tuple[str, str], ...],
 ) -> None:
-    assert store._effects_ref().set_order_override("chain-order", order)
-    store._touch()
+    assert set_effect_order(store, chain_id="chain-order", order=order)
 
 
 def _add_parameter(
@@ -131,7 +133,7 @@ def test_patch_history_respects_kind_change_after_code_reload() -> None:
     with history.transaction(source="parameter_gui", patch=True):
         _set_value(store, key, 0.8)
 
-    store._set_meta(key, ParamMeta(kind="int", ui_min=0, ui_max=10))
+    set_meta(store, key, ParamMeta(kind="int", ui_min=0, ui_max=10))
     assert history.undo() is False
     assert _value(store, key) == 0.8
 
@@ -293,14 +295,13 @@ def test_snapshot_restore_preserves_a_newly_discovered_adjusted_parameter() -> N
     _set_value(store, original_key, 0.8)
     _set_value(store, discovered_key, 0.9)
     header = primitive_collapsed_header_key(("circle", "site-2"))
-    store._collapsed_headers_ref().add(header)
-    store._touch()
+    store.set_collapsed(header, collapsed=True)
 
     assert slots.restore("A") is True
     assert _value(store, original_key) == 0.25
     assert _value(store, discovered_key) == 0.9
     # Snapshot A 作成後に発見した header の GUI 状態も壊さない。
-    assert header in store._collapsed_headers_ref()
+    assert header in store.collapsed_headers()
 
 
 def test_snapshot_restore_same_state_is_noop_and_does_not_add_history() -> None:
@@ -339,14 +340,14 @@ def test_effect_order_is_one_full_history_operation_and_ab_state() -> None:
 
     assert history.undo_depth == 1
     assert history.undo() is True
-    assert store._effects_ref().effective_order("chain-order") == EFFECT_CODE_ORDER
+    assert store._read().effects().effective_order("chain-order") == EFFECT_CODE_ORDER
     assert history.redo() is True
-    assert store._effects_ref().effective_order("chain-order") == EFFECT_UI_ORDER
+    assert store._read().effects().effective_order("chain-order") == EFFECT_UI_ORDER
 
     assert slots.restore("A") is True
-    assert store._effects_ref().effective_order("chain-order") == EFFECT_CODE_ORDER
+    assert store._read().effects().effective_order("chain-order") == EFFECT_CODE_ORDER
     assert slots.restore("B") is True
-    assert store._effects_ref().effective_order("chain-order") == EFFECT_UI_ORDER
+    assert store._read().effects().effective_order("chain-order") == EFFECT_UI_ORDER
 
 
 def test_synchronize_is_noop_without_external_changes() -> None:

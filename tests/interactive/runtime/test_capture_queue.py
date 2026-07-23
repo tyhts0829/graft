@@ -8,7 +8,7 @@ from typing import Any, cast
 import pytest
 
 from grafix.core.export_format import ExportFormat
-from grafix.core.parameters import ParamStore
+from grafix.core.parameters import ParameterCaptureState, ParamStore
 from grafix.runtime_config_loader import runtime_config
 from grafix.core.runtime_limits import RuntimeLimits
 from grafix.export.capture import CaptureService
@@ -35,9 +35,8 @@ def _snapshot(t: float = 2.5) -> CaptureExportSnapshot:
     provenance = CaptureProvenanceBuilder(
         _draw,
         config=runtime_config(),
-        parameter_source="code",
+        parameter_state=ParameterCaptureState("code", "primary"),
         parameter_store_path=None,
-        parameter_load_provenance="primary",
         seed=1847,
     ).frame(
         store,

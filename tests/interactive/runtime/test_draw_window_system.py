@@ -30,6 +30,7 @@ from grafix.export.output_paths import VersionedPathAllocator
 from grafix.core.parameters import (
     EffectStepTopology,
     FrameEffectChainRecord,
+    ParameterCaptureState,
     ParamStore,
 )
 from grafix.core.parameters.effect_order_ops import merge_frame_effect_chains
@@ -63,6 +64,7 @@ from grafix.export.capture import CaptureService
 from tests.interactive.runtime.draw_window_system_fixture import (
     make_draw_window_system as _make_initialized_system,
 )
+from tests.param_store_test_support import publish_structure_change_for_test
 
 
 _DEFAULTS = LayerStyleDefaults(color=(0.0, 0.0, 0.0), thickness=0.01)
@@ -76,9 +78,8 @@ def _provenance_builder_for(store: ParamStore) -> CaptureProvenanceBuilder:
     return CaptureProvenanceBuilder(
         _provenance_draw,
         config=runtime_config(),
-        parameter_source="code",
+        parameter_state=ParameterCaptureState("code", "primary"),
         parameter_store_path=None,
-        parameter_load_provenance="primary",
         seed=1847,
     )
 
@@ -194,7 +195,10 @@ def test_draw_window_requires_canonical_finite_float_fps(
             render_scale=1.0,
             store=ParamStore(),
             effective_config=runtime_config(),
-            parameter_load_provenance=lambda: "primary",
+            parameter_capture_state=lambda: ParameterCaptureState(
+                "code",
+                "primary",
+            ),
             fps=fps,  # type: ignore[arg-type]
         )
 
@@ -204,9 +208,8 @@ class _CountingProvenanceBuilder:
         self.inner = CaptureProvenanceBuilder(
             cast(Any, draw),
             config=runtime_config(),
-            parameter_source="code",
+            parameter_state=ParameterCaptureState("code", "primary"),
             parameter_store_path=None,
-            parameter_load_provenance="primary",
             seed=1847,
         )
         self.calls: list[dict[str, object]] = []
@@ -221,9 +224,8 @@ def _capture_provenance(t: float) -> CaptureProvenance:
     return CaptureProvenanceBuilder(
         _provenance_draw,
         config=runtime_config(),
-        parameter_source="code",
+        parameter_state=ParameterCaptureState("code", "primary"),
         parameter_store_path=None,
-        parameter_load_provenance="primary",
         seed=1847,
     ).frame(
         store,
@@ -232,6 +234,44 @@ def _capture_provenance(t: float) -> CaptureProvenance:
         quality="final",
         origin="interactive",
     )
+
+
+def test_provenance_generations_share_one_atomic_parameter_state_provider() -> None:
+    current = ParameterCaptureState("recovery", "session_recovery")
+    provider_calls = 0
+
+    def parameter_state() -> ParameterCaptureState:
+        nonlocal provider_calls
+        provider_calls += 1
+        return current
+
+    system = object.__new__(DrawWindowSystem)
+    system._effective_config = runtime_config()
+    system._parameter_capture_state = parameter_state
+    system._parameter_store_path = None
+    system._seed = 1847
+
+    initial = system._new_provenance_builder(_provenance_draw)
+    current = ParameterCaptureState("saved", "primary")
+    reloaded = system._new_provenance_builder(_provenance_draw)
+
+    assert provider_calls == 2
+    assert initial.session.parameter_source == "recovery"
+    assert initial.session.parameter_load_provenance == "session_recovery"
+    assert reloaded.session.parameter_source == "saved"
+    assert reloaded.session.parameter_load_provenance == "primary"
+
+    current = ParameterCaptureState("recovery", "session_recovery")
+    frame = reloaded.frame(
+        ParamStore(),
+        t=0.0,
+        frame_index=0,
+        quality="draft",
+        origin="interactive",
+    )
+    assert provider_calls == 3
+    assert frame.session.parameter_source == "recovery"
+    assert frame.session.parameter_load_provenance == "session_recovery"
 
 
 def _install_capture_context(system: DrawWindowSystem) -> None:
@@ -879,7 +919,7 @@ def test_changed_preview_does_not_materialize_provenance() -> None:
 
     for _ in range(120):
         # slider edit と同じく、毎 fresh frame で store revision を変える。
-        system._store._touch()
+        publish_structure_change_for_test(system._store)
         system.draw_frame()
 
     assert builder.calls == []
@@ -894,7 +934,7 @@ def test_changed_preview_does_not_materialize_provenance() -> None:
 
 def test_shutdown_re_evaluates_when_preview_parameter_revision_is_stale() -> None:
     system, builder = _make_provenance_preview_system(frame_count=2)
-    system._store._touch()
+    publish_structure_change_for_test(system._store)
     # MP worker が一つ前の parameter revision を表示した状況を再現する。
     system._scene_runner.snapshot_revision_override = 0
 
@@ -2290,7 +2330,10 @@ def test_constructor_failure_rolls_back_every_acquired_closeable_in_reverse_orde
             render_scale=1.0,
             store=ParamStore(),
             effective_config=runtime_config(),
-            parameter_load_provenance=lambda: "primary",
+            parameter_capture_state=lambda: ParameterCaptureState(
+                "code",
+                "primary",
+            ),
             midi_session=cast(Any, Midi()),
             monitor=(cast(Any, Monitor()) if failure_stage == "post_scene" else None),
             source_reload=(cast(Any, object()) if failure_stage == "post_scene" else None),
@@ -2380,7 +2423,10 @@ def test_partial_draw_window_initialization_releases_acquired_resources(
             render_scale=1.0,
             store=ParamStore(),
             effective_config=runtime_config(),
-            parameter_load_provenance=lambda: "primary",
+            parameter_capture_state=lambda: ParameterCaptureState(
+                "code",
+                "primary",
+            ),
             n_worker=0,
         )
 

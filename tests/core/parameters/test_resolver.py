@@ -11,6 +11,7 @@ from grafix.core.parameters import (
 from grafix.core.parameters.frame_params import FrameParamRecord
 from grafix.core.parameters.merge_ops import merge_frame_params
 from grafix.core.parameters.ui_ops import update_state_from_ui
+from tests.param_store_test_support import runtime_state
 
 
 def test_override_priority_and_quantize():
@@ -115,7 +116,7 @@ def test_vec3_cc_applies_per_component():
         resolved = resolve_params(op="scale", params=params, meta=meta, site_id="sv2")
 
     assert resolved["p"] == pytest.approx((-1.0, 0.0, 1.0))
-    assert store._runtime_ref().last_source_by_key[key] == "midi_live"
+    assert runtime_state(store).last_source_by_key[key] == "midi_live"
 
 
 def test_font_uses_base_when_override_false():
@@ -185,7 +186,7 @@ def test_bool_uses_code_or_ui_according_to_override() -> None:
             site_id="bool-site",
         )
     assert code_value["enabled"] is True
-    assert store._runtime_ref().last_source_by_key[key] == "code"
+    assert runtime_state(store).last_source_by_key[key] == "code"
 
     update_state_from_ui(store, key, False, meta=stored_meta, override=True)
     with parameter_context(store=store, cc_snapshot=None):
@@ -196,4 +197,4 @@ def test_bool_uses_code_or_ui_according_to_override() -> None:
             site_id="bool-site",
         )
     assert ui_value["enabled"] is False
-    assert store._runtime_ref().last_source_by_key[key] == "ui"
+    assert runtime_state(store).last_source_by_key[key] == "ui"

@@ -30,8 +30,8 @@ def test_component_records_only_public_params_and_mutes_internal() -> None:
     # 関数本体内の G/E は mute されるので、内部 primitive/effect は ParamStore に出ない。
     assert all(k.op != "polygon" for k in snap.keys())
     assert all(k.op != "affine" for k in snap.keys())
-    assert all(op != "polygon" for (op, _site_id) in store._labels_ref().as_dict())  # type: ignore[attr-defined]
-    assert all(op != "affine" for (op, _site_id) in store._labels_ref().as_dict())  # type: ignore[attr-defined]
+    assert all(op != "polygon" for op, _site_id in store._read().label_items())
+    assert all(op != "affine" for op, _site_id in store._read().label_items())
 
 
 def test_component_passes_resolved_params_to_function() -> None:

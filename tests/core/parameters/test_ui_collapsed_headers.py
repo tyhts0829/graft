@@ -40,17 +40,18 @@ def _polyhedron_records(site_id: str) -> list[FrameParamRecord]:
 
 def test_ui_collapsed_headers_are_preserved_on_json_roundtrip():
     store = ParamStore()
-    store._collapsed_headers_ref().update(
+    store.set_all_collapsed(
         {
             STYLE_COLLAPSED_HEADER_KEY,
             primitive_collapsed_header_key(("circle", "c:1")),
             preset_collapsed_header_key(("preset.logo", "p:1")),
             effect_chain_collapsed_header_key("chain:1"),
-        }
+        },
+        collapsed=True,
     )
 
     loaded = loads_param_store_result(dumps_param_store(store)).store
-    assert loaded._collapsed_headers_ref() == {
+    assert loaded.collapsed_headers() == {
         STYLE_COLLAPSED_HEADER_KEY,
         primitive_collapsed_header_key(("circle", "c:1")),
         preset_collapsed_header_key(("preset.logo", "p:1")),
@@ -61,13 +62,14 @@ def test_ui_collapsed_headers_are_preserved_on_json_roundtrip():
 
 def test_ui_collapsed_headers_use_v4_tagged_records():
     store = ParamStore()
-    store._collapsed_headers_ref().update(
+    store.set_all_collapsed(
         {
             STYLE_COLLAPSED_HEADER_KEY,
             primitive_collapsed_header_key(("circle", "site")),
             preset_collapsed_header_key(("preset.logo", "site")),
             effect_chain_collapsed_header_key("chain"),
-        }
+        },
+        collapsed=True,
     )
 
     payload = json.loads(dumps_param_store(store))
@@ -96,7 +98,7 @@ def test_invalid_collapsed_header_record_is_diagnosed_and_dropped():
 
     result = loads_param_store_result(json.dumps(payload))
 
-    assert result.store._collapsed_headers_ref() == {
+    assert result.store.collapsed_headers() == {
         primitive_collapsed_header_key(("circle", "site"))
     }
     assert [
@@ -114,7 +116,7 @@ def test_reconcile_migrates_collapsed_header_state_for_primitive_groups():
     merge_frame_params(original, _polyhedron_records(old_site_id))
     old_header = primitive_collapsed_header_key(("polyhedron", old_site_id))
     new_header = primitive_collapsed_header_key(("polyhedron", new_site_id))
-    original._collapsed_headers_ref().add(old_header)
+    original.set_collapsed(old_header, collapsed=True)
 
     # 永続化ロード相当（loaded_groups を持つ状態にする）
     store = loads_param_store_result(dumps_param_store(original)).store
@@ -122,7 +124,7 @@ def test_reconcile_migrates_collapsed_header_state_for_primitive_groups():
     # 新 site_id のグループを観測（=site_id がズレた状態を再現）
     merge_frame_params(store, _polyhedron_records(new_site_id))
 
-    collapsed = store._collapsed_headers_ref()
+    collapsed = store.collapsed_headers()
     assert old_header not in collapsed
     assert new_header in collapsed
     assert_invariants(store)
@@ -135,13 +137,13 @@ def test_reconcile_migrates_collapsed_header_state_for_preset_groups():
     merge_frame_params(original, _polyhedron_records(old_site_id))
     old_header = preset_collapsed_header_key(("polyhedron", old_site_id))
     new_header = preset_collapsed_header_key(("polyhedron", new_site_id))
-    original._collapsed_headers_ref().add(old_header)
+    original.set_collapsed(old_header, collapsed=True)
 
     store = loads_param_store_result(dumps_param_store(original)).store
     merge_frame_params(store, _polyhedron_records(new_site_id))
 
-    assert old_header not in store._collapsed_headers_ref()
-    assert new_header in store._collapsed_headers_ref()
+    assert old_header not in store.collapsed_headers()
+    assert new_header in store.collapsed_headers()
     assert_invariants(store)
 
 
@@ -152,7 +154,10 @@ def test_prune_removes_collapsed_header_state_for_removed_groups_and_unused_chai
     merge_frame_params(store, _polyhedron_records("p0"))
     primitive_header = primitive_collapsed_header_key(("polyhedron", "p0"))
     preset_header = preset_collapsed_header_key(("polyhedron", "p0"))
-    store._collapsed_headers_ref().update({primitive_header, preset_header})
+    store.set_all_collapsed(
+        {primitive_header, preset_header},
+        collapsed=True,
+    )
 
     merge_frame_effect_chains(
         store,
@@ -178,11 +183,11 @@ def test_prune_removes_collapsed_header_state_for_removed_groups_and_unused_chai
         ],
     )
     effect_header = effect_chain_collapsed_header_key("c1")
-    store._collapsed_headers_ref().add(effect_header)
+    store.set_collapsed(effect_header, collapsed=True)
 
     prune_groups(store, [("polyhedron", "p0"), ("scale", "s0")])
 
-    collapsed = store._collapsed_headers_ref()
+    collapsed = store.collapsed_headers()
     assert primitive_header not in collapsed
     assert preset_header not in collapsed
     assert effect_header not in collapsed

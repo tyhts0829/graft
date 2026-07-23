@@ -21,40 +21,46 @@ def assert_invariants(store: ParamStore) -> None:
     テスト専用の検査関数。実行時に常時呼ぶことは想定しない。
     """
 
-    for key, state in store._states.items():
+    read = store._read()
+    states = read.states()
+    meta_by_key = read.all_meta()
+    explicit_by_key = read.all_explicit()
+
+    for key, state in states.items():
         assert isinstance(key, ParameterKey)
         assert isinstance(state, ParamState)
-        assert key in store._explicit_by_key
+        assert key in explicit_by_key
 
-    for key, meta in store._meta.items():
+    for key, meta in meta_by_key.items():
         assert isinstance(key, ParameterKey)
         assert isinstance(meta, ParamMeta)
 
-    for key, value in store._explicit_by_key.items():
+    for key, value in explicit_by_key.items():
         assert isinstance(key, ParameterKey)
         assert isinstance(value, bool)
 
-    for key in store._locked_keys_ref():
+    for key in read.locked_keys():
         assert isinstance(key, ParameterKey)
-        assert key in store._states
-        assert key in store._meta
+        assert key in states
+        assert key in meta_by_key
 
-    for key in store._favorite_keys_ref():
+    for key in read.favorite_keys():
         assert isinstance(key, ParameterKey)
-        assert key in store._states
-        assert key in store._meta
+        assert key in states
+        assert key in meta_by_key
 
-    for header in store._collapsed_headers_ref():
+    for header in read.collapsed_headers():
         assert type(header) is CollapsedHeaderKey
 
-    labels = store._labels_ref().as_dict()
+    labels = read.label_items()
     for (op, site_id), label in labels.items():
         assert isinstance(op, str)
         assert isinstance(site_id, str)
         assert isinstance(label, str)
         assert len(label) <= MAX_LABEL_LENGTH
 
-    ordinals_by_op = store._ordinals_ref().as_dict()
+    ordinal_model = read.ordinals()
+    ordinals_by_op = ordinal_model.as_dict()
     for op, mapping in ordinals_by_op.items():
         assert isinstance(op, str)
         assert isinstance(mapping, dict)
@@ -66,7 +72,7 @@ def assert_invariants(store: ParamStore) -> None:
             values = [int(v) for v in mapping.values()]
             assert set(values) == set(range(1, len(mapping) + 1))
 
-    effects = store._effects_ref()
+    effects = read.effects()
     step_info_by_site = effects.step_info_by_site()
     chain_ordinal_by_id = effects.chain_ordinals()
     for (op, site_id), (chain_id, step_index) in step_info_by_site.items():
@@ -78,10 +84,10 @@ def assert_invariants(store: ParamStore) -> None:
         assert chain_id in chain_ordinal_by_id
         has_parameter = any(
             key.op == op and key.site_id == site_id
-            for key in set(store._states) | set(store._meta)
+            for key in set(states) | set(meta_by_key)
         )
         if has_parameter:
-            assert store._ordinals_ref().get(op, site_id) is not None
+            assert ordinal_model.get(op, site_id) is not None
 
     for chain_id, ordinal in chain_ordinal_by_id.items():
         assert isinstance(chain_id, str)
@@ -127,7 +133,7 @@ def assert_invariants(store: ParamStore) -> None:
             assert set(order) == set(code_keys)
             assert effects.effective_order(chain_id) == order
 
-    runtime = store._runtime_ref()
+    runtime = read.runtime()
     for op, site_id in runtime.loaded_groups:
         assert isinstance(op, str)
         assert isinstance(site_id, str)

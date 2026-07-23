@@ -18,16 +18,19 @@
 
 ### 公開 API（スケッチ作者が触る層）
 
-- `src/grafix/__init__.py`（lazy root facade: `G/E/L/P/run/render/export/cc`）
-- `src/grafix/api/__init__.py`（公開 API facade。render/export/variation/runner を遅延解決）
+- `src/grafix/__init__.py`（標準 PEP 562 root facade:
+  `G/E/L/P/run/render/save/render_variation_batch/cc` と共通公開型）
+- `src/grafix/api/__init__.py`（authoring DSL と公開 value type。application callable は re-export しない）
 - `src/grafix/api/primitives.py`（`G.*`）
 - `src/grafix/api/effects.py`（`E.*`）
 - `src/grafix/api/operation_info.py`（evaluator-free な公開 catalog inspection value）
 - `src/grafix/api/layers.py`（`L.*`）
 - `src/grafix/api/presets.py` / `src/grafix/api/preset.py`（`P.*` / `@preset`）
-- `src/grafix/api/runner.py`（`run(draw)` の interactive 実装）
+- `src/grafix/api/cc.py`（root `cc` object の定義）
+- `src/grafix/api/runner.py`（正規 signature/docstring を持つ軽量 `run(draw)` wrapper）
+- `src/grafix/api/_runner_application.py`（config/GUI/MIDI/window の private heavy composition）
 - `src/grafix/api/render.py`（`RenderSession` / `render(draw, t) -> Frame`）
-- `src/grafix/api/export.py`（`export(frame, path) -> ExportResult` の headless 導線）
+- `src/grafix/api/export.py`（`save(frame, path) -> ExportResult` の headless 導線）
 
 ### コア（変更の中心になる層）
 
@@ -35,6 +38,7 @@
 - `src/grafix/core/operation_authoring.py` / `src/grafix/core/operation_declaration.py`（decorator / immutable declaration）
 - `src/grafix/core/authoring_definitions.py` / `authoring_recipe.py`（registration target / immutable recipe・snapshot）
 - `src/grafix/authoring_loader.py`（config authoring source の filesystem capture / candidate catalog）
+- `src/grafix/_source_import_policy.py`（authoring/reload 共通の relative-import lexical preflight）
 - `src/grafix/_snapshot_import.py`（config/reload が共有する temporary import transaction。private infrastructure）
 - `src/grafix/core/operation_catalog.py` / `src/grafix/core/preset_catalog.py`（immutable catalog）
 - `src/grafix/core/evaluation_config.py` / `evaluation_context.py`（評価専用 config、quality、external dependency contract）
@@ -52,11 +56,18 @@
 ### Import boundary を確認したい
 
 - sketch/public extension は `from grafix import ...` を正規入口にする。
-- root と `grafix.api` は lazy facade であり、公開 object identity は一度解決すると固定される。
-- `run` の参照だけでは `api.runner` を load せず、call 時に初期化する。
+- root と `grafix.api` は通常の `ModuleType` である。custom module class、代入 guard、
+  callable/module の dual behavior は追加しない。
+- root は公開名から定義 module/attribute への PEP 562 mapping だけを持つ。`grafix.export` は package、
+  `grafix.api.export` は module、保存 callable は `grafix.save` / `grafix.api.export.save` である。
+- `grafix.api.render` / `grafix.api.export` / `grafix.api.runner` / `grafix.api.cc` は通常 module である。
+  application callable は root または各定義 module から取得し、`grafix.api` 直下に re-export しない。
+- `run` の参照や signature inspection は GUI/runtime を load せず、call 時に
+  `api._runner_application` を初期化する。
 - `import grafix.core.<module>` は `grafix.api`、`grafix.export`、parameter storage、config loader を
   初期化しない。core module から outer capability を得るために root facade を importしない。
-- facade の import contract は `tests/api/test_lazy_facade.py`、dependency direction は
+- 標準 import contract は `tests/api/test_lazy_facade.py`、公開型 graph は
+  `tests/api/test_public_type_graph.py`、dependency direction は
   `tests/architecture/` を先に読む。
 
 ## 変更パターン別 “触る場所”
@@ -119,8 +130,25 @@ recovered_store = recovery_result.store
 ```
 
 `ParamStore` / `ParamStoreRuntime` は load provenance/diagnostics を保持しない。interactive は
-`ParameterSession.load_state` を Keep/Discard のたびに一箇所で更新し、headless
-`RenderSession.metadata.parameter_load_state` は構築時 result に固定する。
+`ParameterSession` が current `KnownOperationSchemaSnapshot`、`load_state`、store/history/autosave と
+終了時 persist を一意に所有する。source reload 成功時だけ schema を交換し、Keep は action dispatch
+時の current schema を使う。Keep/Discard の detached load result は session が store contents と
+load state を一箇所で採用する。
+
+`ParameterSession.capture_state()` は一つの current load-state sample から frozen
+`ParameterCaptureState(source, load_provenance)` を返す。interactive の provenance builder は provider
+を frame ごとに一度だけ読み、headless の `RenderSession.metadata.parameter_load_state` と capture
+state は構築時 result に固定する。
+
+core parameter command は `ParamStore._read()` の copy/frozen view 上で
+`validate -> plan` を完了し、完成した replacement だけを `ParamStore._mutation()` へ渡す。
+sibling command は `_ParamStoreMutation` だけを write port として使い、expected revision、
+history-before observation、参照 swap、revision/cache 更新を一つの commit として確定する。
+`ParamStore` 自身が所有する construction/contents replacement/transient rollback はこの境界内に残る。
+mutation batch API は持たず、store 外へ mutable `_..._ref()` や手動
+`_touch()` を戻さない。frame merge が effective value/source だけを変える場合は
+`commit_runtime_value_patch()` が full plan を作らず sparse patch を適用し、persistent revision と
+runtime identity を保って effective revision だけを進める。
 
 ### Export（headless 出力）を触りたい
 
@@ -130,9 +158,19 @@ recovered_store = recovery_result.store
 - encode/no-clobber/manifest: `src/grafix/export/capture.py`
 - staging/publish: `src/grafix/export/capture_staging.py` / `src/grafix/export/capture_publish.py`
 - output path policy: `src/grafix/export/output_paths.py`
-- 入口 API: `src/grafix/api/export.py`
+- 入口 API: `src/grafix/api/export.py:save`
 - フォーマット別: `src/grafix/export/svg.py` / `src/grafix/export/image.py` / `src/grafix/export/gcode.py`
 - 共通パイプライン: `src/grafix/core/pipeline.py`
+
+直接保存する正規形は `from grafix import save` と `save(frame, path)` である。`grafix.export` は
+subsystem package のため、callable として扱わない。
+
+GUI の named variation 保存は `prepare_variation -> thumbnail capture -> commit_variation` の順である。
+prepare が metadata/duplicate/snapshot/revision を I/O 前に検証し、capture は exact path と
+`discard()` を持つ owned artifact を返す。capture failure は thumbnail なし commit、commit failure は
+今回の artifact family の discard に進む。capture callback は同期中に store を変更しない contract で、
+revision が変われば commit は state を変更せず失敗する。batch API は raw store を借りず、session 内に閉じた
+一時適用/render/rollback capability を使う。
 
 API variation batch は variation 順、item ごとの transient rollback、render/capture callback、partial
 failure だけを持つ。private workspace、manifest relocation、contact sheet/summary encode、no-clobber
@@ -168,7 +206,13 @@ png_path = default_png_output_path(
 
 ### Interactive runtime / reload / diagnostics を触りたい
 
-- frame評価とworker世代: `src/grafix/interactive/runtime/scene_runner.py` / `mp_draw.py`
+- public runner / heavy composition: `src/grafix/api/runner.py` /
+  `src/grafix/api/_runner_application.py`
+- frame評価とworker世代: `src/grafix/interactive/runtime/scene_runner.py` /
+  `src/grafix/interactive/runtime/mp_draw.py`
+- mp-draw DTO/wire validation: `src/grafix/interactive/runtime/_mp_draw_protocol.py`
+- mp-draw pure parent transitions: `src/grafix/interactive/runtime/_mp_draw_state.py`
+- mp-draw spawn entrypoint/evaluation: `src/grafix/interactive/runtime/_mp_draw_worker.py`
 - presented frame/capture binding: `src/grafix/interactive/runtime/presented_frame.py`
 - transactional source watch: `src/grafix/interactive/runtime/source_reload.py`
 - frame順序と配線: `src/grafix/interactive/runtime/draw_window_system.py`
@@ -192,9 +236,37 @@ transaction を共有する。source discovery/import policy/catalog accept は 
 `sys.meta_path` / `sys.modules` 操作を実装しない。config directory の capture/load は
 `grafix.authoring_loader` を使い、削除済みの core 内 loader path を importしない。
 
+`preset_module_dirs` は synthetic namespace source root で、root `__init__.py` は全件 preflight で
+拒否する。nested package の `__init__.py` は通常どおり一度だけ実行する。relative import は module
+lexical scope に限定し、function/async function/class 内の deferred import は path/line/scope 付きで
+実行前に拒否する。filesystem capture と pickle 復元 recipe の両方が同じ全件 preflight を通る。
+
 Parameter GUI leaf は export type/service を importせず、variation thumbnail の capture/preview callable
 だけを受け取る。runtime adapter は要求ごとに live frame provider を呼び、`CaptureService` が返した
 実際の no-clobber path を GUI へ返す。
+
+MIDI の低水準 composition は exact path を必ず渡す。
+
+```python
+from pathlib import Path
+
+from grafix.interactive.midi.factory import create_midi_session
+
+midi = create_midi_session(
+    port_name="auto",
+    mode="7bit",
+    snapshot_path=Path("data/output/sketch-midi.json"),
+)
+```
+
+production では `api._runner_application` が解決済み `RuntimeConfig` と draw/run ID からこの path を
+一度だけ作る。controller/factory/helper は live load/save、frozen fallback、reconnect、discard で
+同じ `snapshot_path` を使い、profile/save directory や ambient config から再構築しない。
+
+`MpDraw` の private module は protocol/state/worker/parent resource owner に分離されている。
+repository consumer は scalar telemetry property を連続して読まず、一度取得した frozen
+`stats = mp_draw.stats` から同一時点の値を読む。`generation` と `evaluation_timeout` など制御 contract
+に必要な property だけは parent owner に残る。
 
 ### Architecture / cache identity を触りたい
 
@@ -263,4 +335,4 @@ private symbolへ到達しない。依存規則は`tests/architecture/test_bench
 - `python -m grafix benchmark -- --help`（ベンチ/レポート生成）
 
 破壊的な import/signature/internal owner の変更一覧は
-`docs/migration_2026-07-23.md` を参照する。
+`docs/migration_2026-07-23_r3.md` を参照する。

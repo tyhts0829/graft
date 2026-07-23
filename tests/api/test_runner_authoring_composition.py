@@ -11,7 +11,7 @@ import pytest
 
 pyglet.options["shadow_window"] = False
 
-import grafix.api.runner as runner_module
+import grafix.api._runner_application as runner_module
 import grafix.interactive.parameter_gui.catalog as gui_catalog_module
 import grafix.interactive.runtime.parameter_gui_system as gui_system_module
 import grafix.interactive.runtime.variation_thumbnail_capture as thumbnail_capture_module
@@ -19,6 +19,7 @@ from grafix.core.authoring_definitions import AuthoringDefinitionsSnapshot
 from grafix.core.operation_catalog import OperationCatalog
 from grafix.core.parameters import (
     KnownOperationSchemaSnapshot,
+    ParameterCaptureState,
     ParameterLoadState,
     ParamStore,
 )
@@ -103,6 +104,8 @@ class _RunnerCompositionHarness:
         self.gui: Any | None = None
         self.provider_results: list[ParameterGuiCatalog] = []
         self.midi_close_count = 0
+        self.midi_session_kwargs: list[dict[str, object]] = []
+        self.output_path_calls: list[dict[str, object]] = []
 
         harness = self
         real_schema_projection = runner_module.known_operation_schema_snapshot
@@ -133,8 +136,6 @@ class _RunnerCompositionHarness:
             return projected
 
         class ParameterSession:
-            source = "code"
-
             def __init__(
                 self,
                 *,
@@ -156,6 +157,20 @@ class _RunnerCompositionHarness:
                     tuple[KnownOperationSchemaSnapshot, bool, object | None]
                 ] = []
                 harness.parameter_session = self
+
+            def capture_state(self) -> ParameterCaptureState:
+                source = (
+                    "recovery"
+                    if (
+                        self.primary_path is not None
+                        and self.load_state.provenance == "session_recovery"
+                    )
+                    else ("saved" if self.primary_path is not None else "code")
+                )
+                return ParameterCaptureState(
+                    source,
+                    self.load_state.provenance,
+                )
 
             def replace_known_operations(
                 self,
@@ -291,21 +306,34 @@ class _RunnerCompositionHarness:
             "WorkspaceWindowController",
             WorkspaceWindowController,
         )
+        def create_midi_session(**kwargs: object) -> MidiSession:
+            harness.midi_session_kwargs.append(dict(kwargs))
+            return MidiSession()
+
         monkeypatch.setattr(
             runner_module,
             "create_midi_session",
-            lambda **_kwargs: MidiSession(),
+            create_midi_session,
         )
         monkeypatch.setattr(
             runner_module,
             "default_param_store_path",
             lambda *_args, **_kwargs: tmp_path / "parameters.json",
         )
+        def output_path_for_draw(
+            *_args: object,
+            **kwargs: object,
+        ) -> Path:
+            harness.output_path_calls.append(dict(kwargs))
+            return (
+                tmp_path
+                / f"{kwargs.get('kind', 'output')}.{kwargs.get('ext', 'dat')}"
+            )
+
         monkeypatch.setattr(
             runner_module,
             "output_path_for_draw",
-            lambda *_args, **kwargs: tmp_path
-            / f"{kwargs.get('kind', 'output')}.{kwargs.get('ext', 'dat')}",
+            output_path_for_draw,
         )
         monkeypatch.setattr(
             gui_system_module,
@@ -323,7 +351,7 @@ class _RunnerCompositionHarness:
         monkeypatch.setattr(runner_module.pyglet.clock, "unschedule", lambda *_args: None)
 
     def run(self, draw: Callable[[float], object]) -> None:
-        runner_module.run(
+        runner_module._run_interactive_application(
             cast(Callable[[float], SceneItem], draw),
             config=self.config,
             parameter_gui=self.gui_enabled,
@@ -369,6 +397,14 @@ def test_runner_normal_lifetime_persists_then_closes_owned_resources(
         "close midi",
     ]
     assert harness.midi_close_count == 1
+    midi_path_calls = [
+        call for call in harness.output_path_calls if call.get("kind") == "midi"
+    ]
+    assert len(midi_path_calls) == 1
+    assert len(harness.midi_session_kwargs) == 1
+    assert harness.midi_session_kwargs[0]["snapshot_path"] == tmp_path / "midi.json"
+    assert "profile_name" not in harness.midi_session_kwargs[0]
+    assert "save_dir" not in harness.midi_session_kwargs[0]
 
 
 def test_runner_projects_one_config_snapshot_and_switches_gui_by_generation_identity(
@@ -407,10 +443,10 @@ def test_runner_projects_one_config_snapshot_and_switches_gui_by_generation_iden
     assert harness.draw_window_kwargs["definitions"] is initial
     assert harness.draw_window_kwargs["effective_config"] is harness.config
     provenance_provider = cast(
-        Callable[[], str],
-        harness.draw_window_kwargs["parameter_load_provenance"],
+        Callable[[], ParameterCaptureState],
+        harness.draw_window_kwargs["parameter_capture_state"],
     )
-    assert provenance_provider() == "primary"
+    assert provenance_provider() == ParameterCaptureState("code", "primary")
     assert len(harness.schema_projections) == 2
     assert len(harness.gui_projections) == 2
     _assert_projection_source(harness.schema_projections[0], initial)
@@ -421,7 +457,10 @@ def test_runner_projects_one_config_snapshot_and_switches_gui_by_generation_iden
     session = harness.parameter_session
     assert session is not None
     session.load_state = ParameterLoadState(provenance="session_recovery")
-    assert provenance_provider() == "session_recovery"
+    assert provenance_provider() == ParameterCaptureState(
+        "code",
+        "session_recovery",
+    )
     initial_schema = harness.schema_projections[0][2]
     reloaded_schema = harness.schema_projections[1][2]
     assert session.initial_known_operations is initial_schema

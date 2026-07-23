@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pickle
 from collections.abc import Callable
 from dataclasses import replace
 from typing import Any, cast
@@ -19,13 +20,18 @@ from grafix.core.parameters import (
     ParameterKey,
     ParamMeta,
 )
-from grafix.interactive.runtime.mp_draw import (
+from grafix.interactive.runtime._mp_draw_protocol import (
     DrawResult,
+    MpDrawWorkerError,
+    _DrawTask,
     _SnapshotAck,
     _SnapshotUpdate,
     _TaskRejected,
     _TaskStarted,
     _WorkerReady,
+    decode_draw_task,
+    decode_snapshot_update,
+    decode_worker_message,
 )
 
 
@@ -535,3 +541,149 @@ def test_draw_result_uses_keyword_constructor() -> None:
     assert result.t == pytest.approx(0.0)
     assert result.epoch == 0
     assert result.snapshot_revision == 0
+
+
+def _valid_draw_task() -> _DrawTask:
+    return _DrawTask(
+        frame_id=1,
+        t=0.0,
+        snapshot_revision=0,
+        cc_snapshot=None,
+        snapshot={},
+        effect_order_snapshot={},
+        epoch=0,
+        generation=0,
+        quality="draft",
+    )
+
+
+def _valid_snapshot_update() -> _SnapshotUpdate:
+    return _SnapshotUpdate(
+        revision=0,
+        snapshot={},
+        effect_order_snapshot={},
+        generation=0,
+    )
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        pytest.param(_valid_draw_result(), id="draw-result"),
+        pytest.param(
+            _WorkerReady(worker="worker", pid=1, generation=0),
+            id="worker-ready",
+        ),
+        pytest.param(
+            _SnapshotAck(
+                worker="worker",
+                pid=1,
+                requested_revision=0,
+                applied_revision=0,
+                status="applied",
+                generation=0,
+            ),
+            id="snapshot-ack",
+        ),
+        pytest.param(
+            _TaskRejected(
+                frame_id=1,
+                worker="worker",
+                pid=1,
+                requested_revision=1,
+                applied_revision=0,
+                reason="unknown",
+                generation=0,
+            ),
+            id="task-rejected",
+        ),
+        pytest.param(
+            _TaskStarted(
+                frame_id=1,
+                worker="worker",
+                pid=1,
+                generation=0,
+            ),
+            id="task-started",
+        ),
+    ],
+)
+def test_worker_message_roundtrips_through_pickle(message: object) -> None:
+    restored = pickle.loads(pickle.dumps(message))
+
+    assert restored == message
+    assert type(restored) is type(message)
+    assert decode_worker_message(restored) is restored
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param(_valid_draw_task(), id="draw-task"),
+        pytest.param(_valid_snapshot_update(), id="snapshot-update"),
+    ],
+)
+def test_worker_input_roundtrips_through_pickle(value: object) -> None:
+    restored = pickle.loads(pickle.dumps(value))
+
+    assert restored == value
+    assert type(restored) is type(value)
+
+
+def test_worker_error_roundtrips_with_structured_context() -> None:
+    error = MpDrawWorkerError(
+        worker="SpawnProcess-2",
+        pid=123,
+        exitcode=-9,
+        detail="startup failed",
+    )
+
+    restored = pickle.loads(pickle.dumps(error))
+
+    assert isinstance(restored, MpDrawWorkerError)
+    assert restored.worker == "SpawnProcess-2"
+    assert restored.pid == 123
+    assert restored.exitcode == -9
+    assert restored.detail == "startup failed"
+    assert str(restored) == str(error)
+
+
+def test_wire_decoders_accept_canonical_values_and_stop_sentinel() -> None:
+    task = _valid_draw_task()
+    update = _valid_snapshot_update()
+
+    assert decode_draw_task(task) is task
+    assert decode_draw_task(None) is None
+    assert decode_snapshot_update(update) is update
+
+
+@pytest.mark.parametrize(
+    ("decoder", "value", "message"),
+    [
+        pytest.param(
+            decode_worker_message,
+            object(),
+            "worker message",
+            id="worker-message",
+        ),
+        pytest.param(
+            decode_draw_task,
+            {},
+            "draw task",
+            id="draw-task",
+        ),
+        pytest.param(
+            decode_snapshot_update,
+            None,
+            "snapshot update",
+            id="snapshot-update",
+        ),
+    ],
+)
+def test_wire_decoders_reject_unknown_payloads(
+    decoder: Callable[[object], object],
+    value: object,
+    message: str,
+) -> None:
+    with pytest.raises(TypeError, match=message):
+        decoder(value)

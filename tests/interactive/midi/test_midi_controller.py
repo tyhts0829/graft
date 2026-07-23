@@ -16,8 +16,8 @@ from grafix.interactive.midi.midi_controller import (
     CcSnapshotWriteBlockedError,
     MidiConnectionError,
     MidiController,
-    default_cc_snapshot_path,
     load_cc_snapshot,
+    load_frozen_cc_snapshot,
     maybe_load_frozen_cc_snapshot,
     save_cc_snapshot,
 )
@@ -65,9 +65,8 @@ class _StringSubclass(str):
 def _controller(*, tmp_dir: Path, mode: str) -> MidiController:
     return MidiController(
         "Dummy Port",
+        snapshot_path=tmp_dir / "test_profile.json",
         mode=mode,
-        profile_name="test_profile",
-        save_dir=tmp_dir,
         inport=DummyInPort([]),
     )
 
@@ -80,9 +79,8 @@ def test_controller_rejects_non_exact_string_mode(
     with pytest.raises(TypeError, match="mode.*str"):
         MidiController(
             "Dummy Port",
+            snapshot_path=tmp_path / "test_profile.json",
             mode=mode,  # type: ignore[arg-type]
-            profile_name="test_profile",
-            save_dir=tmp_path,
             inport=DummyInPort([]),
         )
 
@@ -91,9 +89,8 @@ def test_controller_rejects_unknown_mode(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="mode"):
         MidiController(
             "Dummy Port",
+            snapshot_path=tmp_path / "test_profile.json",
             mode="16bit",
-            profile_name="test_profile",
-            save_dir=tmp_path,
             inport=DummyInPort([]),
         )
 
@@ -106,62 +103,26 @@ def test_controller_rejects_non_exact_string_port_name(
     with pytest.raises(TypeError, match="port_name.*str"):
         MidiController(
             port_name,  # type: ignore[arg-type]
-            profile_name="test_profile",
-            save_dir=tmp_path,
+            snapshot_path=tmp_path / "test_profile.json",
             inport=DummyInPort([]),
         )
 
 
-@pytest.mark.parametrize("profile_name", [1, _StringSubclass("test_profile")])
-def test_controller_rejects_non_exact_string_profile_name(
-    tmp_path: Path,
-    profile_name: object,
-) -> None:
-    with pytest.raises(TypeError, match="profile_name.*str"):
+def test_controller_rejects_non_path_snapshot_path() -> None:
+    with pytest.raises(TypeError, match="snapshot_path.*Path"):
         MidiController(
             "Dummy Port",
-            profile_name=profile_name,  # type: ignore[arg-type]
-            save_dir=tmp_path,
+            snapshot_path="snapshot.json",  # type: ignore[arg-type]
             inport=DummyInPort([]),
         )
 
 
-@pytest.mark.parametrize(
-    ("kwargs", "field"),
-    [
-        ({"save_dir": "snapshots"}, "save_dir"),
-        ({"persistence_path": "snapshot.json"}, "persistence_path"),
-    ],
-)
-def test_controller_rejects_path_coercion(
-    kwargs: dict[str, object],
-    field: str,
-) -> None:
-    with pytest.raises(TypeError, match=field):
-        MidiController(
-            "Dummy Port",
-            profile_name="test_profile",
-            inport=DummyInPort([]),
-            **kwargs,  # type: ignore[arg-type]
-        )
-
-
-@pytest.mark.parametrize(
-    "kwargs",
-    [
-        {"port_name": "", "profile_name": "test_profile"},
-        {"port_name": "Dummy Port", "profile_name": ""},
-    ],
-)
-def test_controller_rejects_empty_names(
-    tmp_path: Path,
-    kwargs: dict[str, str],
-) -> None:
+def test_controller_rejects_empty_port_name(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="空にできません"):
         MidiController(
-            save_dir=tmp_path,
+            "",
+            snapshot_path=tmp_path / "test_profile.json",
             inport=DummyInPort([]),
-            **kwargs,
         )
 
 
@@ -173,8 +134,7 @@ def test_controller_requires_complete_input_port_protocol(tmp_path: Path) -> Non
     with pytest.raises(TypeError, match="iter_pending.*close"):
         MidiController(
             "Dummy Port",
-            profile_name="test_profile",
-            save_dir=tmp_path,
+            snapshot_path=tmp_path / "test_profile.json",
             inport=IncompletePort(),  # type: ignore[arg-type]
         )
 
@@ -187,8 +147,7 @@ def test_controller_requires_callable_input_port_methods(tmp_path: Path) -> None
     with pytest.raises(TypeError, match="iter_pending.*close"):
         MidiController(
             "Dummy Port",
-            profile_name="test_profile",
-            save_dir=tmp_path,
+            snapshot_path=tmp_path / "test_profile.json",
             inport=InvalidPort(),  # type: ignore[arg-type]
         )
 
@@ -197,8 +156,7 @@ def test_controller_closes_owned_input_port_once(tmp_path: Path) -> None:
     inport = DummyInPort([])
     controller = MidiController(
         "Dummy Port",
-        profile_name="test_profile",
-        save_dir=tmp_path,
+        snapshot_path=tmp_path / "test_profile.json",
         inport=inport,
     )
 
@@ -253,7 +211,7 @@ def test_update_rejects_noncanonical_external_data_bytes_without_mutation(
     assert controller.cc_change_seq == 0
 
     controller.save()
-    assert load_cc_snapshot(controller.path).as_dict() == {7: 0.5}
+    assert load_cc_snapshot(controller.snapshot_path).as_dict() == {7: 0.5}
 
 
 @pytest.mark.parametrize(
@@ -351,9 +309,8 @@ def test_poll_pending_counts_updates(tmp_path: Path) -> None:
     )
     ctrl = MidiController(
         "Dummy Port",
+        snapshot_path=tmp_path / "test_profile.json",
         mode="7bit",
-        profile_name="test_profile",
-        save_dir=tmp_path,
         inport=inport,
     )
 
@@ -376,8 +333,7 @@ def test_poll_pending_wraps_port_pending_acquisition_failure(
 
     controller = MidiController(
         "Dummy Port",
-        profile_name="test_profile",
-        save_dir=tmp_path,
+        snapshot_path=tmp_path / "test_profile.json",
         inport=FailingInPort(),
     )
 
@@ -405,8 +361,7 @@ def test_poll_pending_wraps_iterator_failure_after_partial_update(
 
     controller = MidiController(
         "Dummy Port",
-        profile_name="test_profile",
-        save_dir=tmp_path,
+        snapshot_path=tmp_path / "test_profile.json",
         inport=FailingInPort(),
     )
 
@@ -425,8 +380,7 @@ def test_poll_pending_does_not_reclassify_message_validation_error(
     )
     controller = MidiController(
         "Dummy Port",
-        profile_name="test_profile",
-        save_dir=tmp_path,
+        snapshot_path=tmp_path / "test_profile.json",
         inport=inport,
     )
 
@@ -461,7 +415,7 @@ def test_save_load_roundtrip(tmp_path: Path) -> None:
     ctrl2 = _controller(tmp_dir=tmp_path, mode="7bit")
     assert ctrl2.cc == ctrl.cc
 
-    payload = json.loads(ctrl.path.read_text(encoding="utf-8"))
+    payload = json.loads(ctrl.snapshot_path.read_text(encoding="utf-8"))
     assert payload == {
         "schema_version": MIDI_CC_SNAPSHOT_SCHEMA_VERSION,
         "values": [
@@ -469,6 +423,26 @@ def test_save_load_roundtrip(tmp_path: Path) -> None:
             {"cc": 64, "value": 0.5},
         ],
     }
+
+
+def test_controller_load_and_save_preserve_exact_injected_path(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "nested" / "MIDI 名前 !.snapshot"
+    save_cc_snapshot({3: 0.25}, path)
+
+    controller = MidiController(
+        "Dummy Port",
+        snapshot_path=path,
+        inport=DummyInPort([]),
+    )
+
+    assert controller.snapshot_path is path
+    assert controller.snapshot_load_result.source is path
+    assert controller.cc == {3: 0.25}
+    controller.cc[4] = 0.75
+    controller.save()
+    assert load_cc_snapshot(path).as_dict() == {3: 0.25, 4: 0.75}
 
 
 def test_missing_snapshot_is_the_only_empty_non_error_result(tmp_path: Path) -> None:
@@ -652,7 +626,7 @@ def test_rejected_snapshot_is_not_overwritten_until_explicit_discard(
     path.write_text(original, encoding="utf-8")
     controller = MidiController(
         "Dummy Port",
-        persistence_path=path,
+        snapshot_path=path,
         inport=DummyInPort([]),
     )
 
@@ -680,7 +654,7 @@ def test_session_shutdown_preserves_rejected_snapshot_and_closes_port(
     inport = DummyInPort([])
     controller = MidiController(
         "Dummy Port",
-        persistence_path=path,
+        snapshot_path=path,
         inport=inport,
     )
     center = DiagnosticCenter()
@@ -706,7 +680,7 @@ def test_session_shutdown_saves_latest_cc_after_port_disconnect(
     )
     controller = MidiController(
         "Dummy Port",
-        persistence_path=path,
+        snapshot_path=path,
         inport=inport,
     )
     session = MidiSession(
@@ -730,7 +704,7 @@ def test_clear_after_disconnect_does_not_restore_live_values_on_shutdown(
     path = tmp_path / "snapshot.json"
     controller = MidiController(
         "Dummy Port",
-        persistence_path=path,
+        snapshot_path=path,
         inport=DisconnectingInPort(
             DummyCcMsg(type="control_change", control=7, value=127)
         ),
@@ -752,8 +726,7 @@ def test_maybe_load_frozen_cc_snapshot_returns_none_when_midi_disabled(tmp_path:
         maybe_load_frozen_cc_snapshot(
             port_name=None,
             controller=None,
-            profile_name="main",
-            save_dir=tmp_path,
+            snapshot_path=tmp_path / "main.json",
         )
         is None
     )
@@ -764,32 +737,47 @@ def test_maybe_load_frozen_cc_snapshot_returns_none_when_controller_present(
 ) -> None:
     ctrl = MidiController(
         "Dummy Port",
+        snapshot_path=tmp_path / "main.json",
         mode="7bit",
-        profile_name="main",
-        save_dir=tmp_path,
         inport=DummyInPort([]),
     )
     assert (
         maybe_load_frozen_cc_snapshot(
             port_name="auto",
             controller=ctrl,
-            profile_name="main",
-            save_dir=tmp_path,
+            snapshot_path=tmp_path / "main.json",
         )
         is None
     )
 
 
 def test_maybe_load_frozen_cc_snapshot_loads_when_no_controller(tmp_path: Path) -> None:
-    path = default_cc_snapshot_path(profile_name="main", save_dir=tmp_path)
+    path = tmp_path / "main.json"
     save_cc_snapshot({1: 0.25, 2: 1.0}, path)
 
     result = maybe_load_frozen_cc_snapshot(
         port_name="auto",
         controller=None,
-        profile_name="main",
-        save_dir=tmp_path,
+        snapshot_path=path,
     )
     assert result is not None
     assert result.status == "loaded"
     assert result.as_dict() == {1: 0.25, 2: 1.0}
+
+
+def test_frozen_load_helpers_reject_non_path_before_branching() -> None:
+    with pytest.raises(TypeError, match="snapshot_path.*Path"):
+        load_cc_snapshot("main.json")  # type: ignore[arg-type]
+
+    with pytest.raises(TypeError, match="snapshot_path.*Path"):
+        save_cc_snapshot({}, "main.json")  # type: ignore[arg-type]
+
+    with pytest.raises(TypeError, match="snapshot_path.*Path"):
+        load_frozen_cc_snapshot(snapshot_path="main.json")  # type: ignore[arg-type]
+
+    with pytest.raises(TypeError, match="snapshot_path.*Path"):
+        maybe_load_frozen_cc_snapshot(
+            port_name=None,
+            controller=None,
+            snapshot_path="main.json",  # type: ignore[arg-type]
+        )

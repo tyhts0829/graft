@@ -61,7 +61,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.evaluation_timeout <= 0.0:
         _parser().error("--evaluation-timeoutは正の値である必要があります")
 
-    from grafix.api.runner import run
+    from grafix.api._runner_application import _run_interactive_application
     from grafix.runtime_config_loader import runtime_config_with_fallback
     from grafix.interactive.runtime.source_reload import (
         SourceReloadController,
@@ -85,7 +85,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 else contextlib.nullcontext()
             )
             with watch_context:
-                run(
+                _run_interactive_application(
                     controller.draw,
                     config=effective_config,
                     config_fallback=config_fallback,

@@ -318,13 +318,14 @@ def _measure_slider_sequence(
         input_to_result = _summarize_distribution(input_to_result_ms)
         minimum_progress_results = max(1, (int(frames) + 1) // 2)
         maximum_progress_streak = max(1, (int(frames) + 3) // 4)
+        stats = mp_draw.stats
         progress_contract_met = (
             fresh_frames >= minimum_progress_results
             and max_consecutive_stale <= maximum_progress_streak
             and monotonic_revisions
             and int(final_result.snapshot_revision) == final_revision
             and final_checksum == expected_checksum
-            and mp_draw.rejected_task_count == 0
+            and stats.rejected_task_count == 0
         )
         interactive_target_met = (
             fresh_result_ratio >= _SLIDER_FRESH_RESULT_TARGET
@@ -348,14 +349,14 @@ def _measure_slider_sequence(
             "final_geometry_checksum": final_checksum,
             "expected_geometry_checksum": expected_checksum,
             "checksum_matches_sync": final_checksum == expected_checksum,
-            "snapshot_broadcasts": mp_draw.snapshot_broadcast_count,
-            "snapshot_payload_copies": mp_draw.snapshot_payload_copy_count,
-            "snapshot_acks": mp_draw.snapshot_ack_count,
+            "snapshot_broadcasts": stats.snapshot_broadcast_count,
+            "snapshot_payload_copies": stats.snapshot_payload_copy_count,
+            "snapshot_acks": stats.snapshot_ack_count,
             "submitted_tasks": submitted,
-            "enqueued_tasks": mp_draw.task_enqueue_count,
-            "dropped_tasks": mp_draw.task_drop_count,
-            "completed_results": mp_draw.completed_result_count,
-            "rejected_tasks": mp_draw.rejected_task_count,
+            "enqueued_tasks": stats.task_enqueue_count,
+            "dropped_tasks": stats.task_drop_count,
+            "completed_results": stats.completed_result_count,
+            "rejected_tasks": stats.rejected_task_count,
             "progress_contract_met": progress_contract_met,
             "interactive_target_met": interactive_target_met,
             "elapsed_ms": max(0.0, (time.monotonic() - started_at) * 1_000.0),
@@ -483,13 +484,15 @@ def _measure_mp(
         _wait_for_completed(mp_draw, target=1)
         first_ns = time.perf_counter_ns() - first_started
 
-        baseline = mp_draw.completed_result_count
+        stats = mp_draw.stats
+        baseline = stats.completed_result_count
         submitted = 0
         steady_started = time.perf_counter_ns()
         deadline = time.monotonic() + _RESULT_TIMEOUT_S
-        while mp_draw.completed_result_count - baseline < int(steady_frames):
+        while stats.completed_result_count - baseline < int(steady_frames):
             mp_draw.poll_latest()
-            completed = mp_draw.completed_result_count - baseline
+            stats = mp_draw.stats
+            completed = stats.completed_result_count - baseline
             while submitted < int(steady_frames) and submitted - completed < int(n_worker):
                 mp_draw.submit(
                     t=float(submitted + 1),
@@ -500,13 +503,14 @@ def _measure_mp(
                     quality="draft",
                 )
                 submitted += 1
-                completed = mp_draw.completed_result_count - baseline
+                stats = mp_draw.stats
+                completed = stats.completed_result_count - baseline
             if time.monotonic() >= deadline:
                 raise TimeoutError("mp-draw steady result timeout")
-            if mp_draw.completed_result_count - baseline == completed:
+            if stats.completed_result_count - baseline == completed:
                 time.sleep(0.0002)
         steady_ns = time.perf_counter_ns() - steady_started
-        completed = mp_draw.completed_result_count - baseline
+        completed = stats.completed_result_count - baseline
         return {
             "startup_ms": startup_ns / 1_000_000.0,
             "first_result_ms": first_ns / 1_000_000.0,
@@ -521,7 +525,7 @@ def _measure_mp(
 
 def _wait_for_completed(mp_draw: MpDraw, *, target: int) -> None:
     deadline = time.monotonic() + _RESULT_TIMEOUT_S
-    while mp_draw.completed_result_count < int(target):
+    while mp_draw.stats.completed_result_count < int(target):
         mp_draw.poll_latest()
         if time.monotonic() >= deadline:
             raise TimeoutError("mp-draw first result timeout")

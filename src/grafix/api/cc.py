@@ -1,4 +1,4 @@
-# どこで: `src/grafix/cc.py`。
+# どこで: `src/grafix/api/cc.py`。
 # 何を: `from grafix import cc` で参照できる CC 辞書ビューを提供する。
 # なぜ: mp-draw でもフレーム内の CC 値を `cc[1]` の形で読めるようにするため。
 
@@ -90,3 +90,6 @@ class CcView(Mapping[int, float]):
 
 
 cc = CcView()
+
+
+__all__ = ["CcView", "cc"]

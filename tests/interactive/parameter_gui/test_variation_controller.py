@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
@@ -34,6 +37,18 @@ META = ParamMeta(
     ui_max=10.0,
     recommended_range=(1.0, 9.0),
 )
+
+
+@dataclass(slots=True)
+class _ThumbnailArtifact:
+    path: Path
+    discarded: bool = False
+    discard_error: Exception | None = None
+
+    def discard(self) -> None:
+        self.discarded = True
+        if self.discard_error is not None:
+            raise self.discard_error
 
 
 def _store() -> tuple[ParamStore, ParameterKey, ParameterKey]:
@@ -119,7 +134,9 @@ def test_save_owns_transport_and_thumbnail_boundaries_then_load_is_undoable(
         store,
         history=history,
         transport=TransportClock(initial_t=3.25, playing=False),
-        thumbnail_capture=lambda name: captured.append(name) or thumbnail,
+        thumbnail_capture=lambda name: (
+            captured.append(name) or _ThumbnailArtifact(thumbnail)
+        ),
     )
     state = controller.state
     state.new_name = "  candidate  "
@@ -178,6 +195,177 @@ def test_save_rejects_empty_or_duplicate_before_capture_and_survives_capture_fai
     assert controller.save() is False
     assert calls == ["candidate"]
     assert state.notice == "Variation already exists: candidate."
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("new_name", "x" * 81),
+        ("new_note", object()),
+        ("random_seed", True),
+    ),
+)
+def test_save_validates_domain_input_before_thumbnail_capture(
+    field: str,
+    value: object,
+) -> None:
+    store, _key_a, _key_b = _store()
+    calls: list[str] = []
+    controller = VariationController(
+        store,
+        thumbnail_capture=lambda name: (
+            calls.append(name) or _ThumbnailArtifact(Path("unused.png"))
+        ),
+    )
+    state = controller.state
+    state.new_name = "candidate"
+    setattr(state, field, value)
+    revision = store.revision
+
+    assert controller.save() is False
+
+    assert calls == []
+    assert list_variations(store) == ()
+    assert store.revision == revision
+
+
+def test_save_validates_transport_time_before_thumbnail_capture() -> None:
+    store, _key_a, _key_b = _store()
+    calls: list[str] = []
+    invalid_transport = SimpleNamespace(
+        snapshot=lambda: SimpleNamespace(t=True),
+    )
+    controller = VariationController(
+        store,
+        transport=cast(Any, invalid_transport),
+        thumbnail_capture=lambda name: (
+            calls.append(name) or _ThumbnailArtifact(Path("unused.png"))
+        ),
+    )
+    controller.state.new_name = "candidate"
+    revision = store.revision
+
+    assert controller.save() is False
+
+    assert calls == []
+    assert list_variations(store) == ()
+    assert store.revision == revision
+
+
+def test_invalid_thumbnail_result_is_capture_failure_and_saves_without_path() -> None:
+    store, _key_a, _key_b = _store()
+    controller = VariationController(
+        store,
+        thumbnail_capture=lambda _name: Path("old-contract.png"),  # type: ignore[arg-type,return-value]
+    )
+    controller.state.new_name = "candidate"
+    revision = store.revision
+
+    assert controller.save() is True
+
+    assert list_variations(store)[0].thumbnail_path is None
+    assert store.revision == revision + 1
+    assert controller.state.notice is not None
+    assert "must return an artifact" in controller.state.notice
+
+
+def test_invalid_owned_thumbnail_result_is_discarded_before_fallback_save() -> None:
+    store, _key_a, _key_b = _store()
+
+    class _InvalidArtifact:
+        path = "not-a-path"
+        discarded = False
+
+        def discard(self) -> None:
+            self.discarded = True
+
+    artifact = _InvalidArtifact()
+    controller = VariationController(
+        store,
+        thumbnail_capture=lambda _name: artifact,  # type: ignore[arg-type,return-value]
+    )
+    controller.state.new_name = "candidate"
+
+    assert controller.save() is True
+
+    assert artifact.discarded is True
+    assert list_variations(store)[0].thumbnail_path is None
+    assert controller.state.notice is not None
+    assert "path must be a Path" in controller.state.notice
+
+
+def test_thumbnail_path_is_sampled_once_before_commit(tmp_path: Path) -> None:
+    store, _key_a, _key_b = _store()
+    first_path = tmp_path / "published.png"
+    second_path = tmp_path / "changed.png"
+
+    class _DynamicArtifact:
+        reads = 0
+
+        @property
+        def path(self) -> Path:
+            self.reads += 1
+            return first_path if self.reads == 1 else second_path
+
+        def discard(self) -> None:
+            return None
+
+    artifact = _DynamicArtifact()
+    controller = VariationController(
+        store,
+        thumbnail_capture=lambda _name: artifact,
+    )
+    controller.state.new_name = "candidate"
+
+    assert controller.save() is True
+
+    assert artifact.reads == 1
+    assert list_variations(store)[0].thumbnail_path == str(first_path)
+
+
+def test_capture_must_not_mutate_store_and_commit_failure_discards_artifact() -> None:
+    store, _key_a, _key_b = _store()
+    artifact = _ThumbnailArtifact(Path("candidate.png"))
+
+    def mutate_store(_name: str) -> _ThumbnailArtifact:
+        create_variation(store, "callback mutation", created_at=100.0)
+        return artifact
+
+    controller = VariationController(store, thumbnail_capture=mutate_store)
+    controller.state.new_name = "candidate"
+
+    assert controller.save() is False
+
+    assert artifact.discarded is True
+    assert [variation.name for variation in list_variations(store)] == [
+        "callback mutation"
+    ]
+    assert controller.state.notice is not None
+    assert "changed after variation was prepared" in controller.state.notice
+
+
+def test_commit_and_discard_failures_are_both_visible_in_notice() -> None:
+    store, _key_a, _key_b = _store()
+    artifact = _ThumbnailArtifact(
+        Path("candidate.png"),
+        discard_error=OSError("manifest cleanup unavailable"),
+    )
+
+    def mutate_store(_name: str) -> _ThumbnailArtifact:
+        create_variation(store, "callback mutation", created_at=100.0)
+        return artifact
+
+    controller = VariationController(store, thumbnail_capture=mutate_store)
+    controller.state.new_name = "candidate"
+
+    assert controller.save() is False
+
+    assert artifact.discarded is True
+    assert controller.state.notice is not None
+    assert "changed after variation was prepared" in controller.state.notice
+    assert "thumbnail cleanup failed: manifest cleanup unavailable" in (
+        controller.state.notice
+    )
 
 
 def test_synchronize_select_rename_duplicate_and_confirm_fixed_delete_target() -> None:

@@ -13,6 +13,7 @@ from typing import Any
 from grafix.core.operation_catalog import OperationCatalog
 from grafix.core.parameters import (
     KnownOperationSchemaSnapshot,
+    ParameterCaptureState,
     ParameterLoadState,
     ParamSnapshotSlots,
     ParamStore,
@@ -129,99 +130,6 @@ def _open_diagnostic_source(source: str) -> None:
     )
 
 
-def _install_parameter_diagnostic_actions(
-    *,
-    monitor: Any,
-    store: ParamStore,
-    load_state: ParameterLoadState,
-    adopt_load_result: Callable[[ParamStoreLoadResult], None],
-    primary_path: Path | None,
-    autosave: ParamStoreAutosave | None,
-    history: ParamStoreHistory | None,
-    snapshot_slots: ParamSnapshotSlots | None,
-    known_operations: KnownOperationSchemaSnapshot,
-    open_source: Callable[[str], None] = _open_diagnostic_source,
-) -> ParamStoreRecoverySession | None:
-    """save/recovery/Open action を共有 DiagnosticCenter へ配線する。"""
-
-    center = monitor.diagnostic_center
-
-    def open_event(event: DiagnosticEvent) -> None:
-        if event.source is None:
-            raise ValueError("Diagnostic has no source to open")
-        open_source(event.source)
-
-    center.register_action("open", open_event)
-
-    if autosave is not None:
-
-        def retry_autosave(event: DiagnosticEvent) -> None:
-            try:
-                autosave.flush()
-            finally:
-                monitor.set_autosave(
-                    status=autosave.status,
-                    error=autosave.last_error,
-                    source=str(autosave.path),
-                )
-            center.dismiss(event)
-
-        center.register_action("retry", retry_autosave, category="save")
-
-    if primary_path is None:
-        return None
-
-    for event in param_store_load_diagnostic_events(
-        load_state.diagnostics,
-        primary_path=primary_path,
-    ):
-        monitor.publish_diagnostic(event)
-
-    if load_state.provenance != "session_recovery":
-        return None
-
-    recovery = ParamStoreRecoverySession(store, primary_path, known_operations)
-    monitor.publish_diagnostic(recovered_session_diagnostic(primary_path))
-    monitor.set_recovered_session(True)
-
-    def finish_decision(event: DiagnosticEvent) -> None:
-        if autosave is not None:
-            autosave.mark_clean()
-            monitor.set_autosave(
-                status=autosave.status,
-                error=autosave.last_error,
-                source=str(autosave.path),
-            )
-        if history is not None:
-            history.clear()
-        if snapshot_slots is not None:
-            snapshot_slots.clear()
-        monitor.set_recovered_session(False)
-        center.dismiss(event)
-
-    def keep(event: DiagnosticEvent) -> None:
-        adopt_load_result(recovery.keep())
-        finish_decision(event)
-
-    def discard(event: DiagnosticEvent) -> None:
-        loaded = recovery.discard()
-        adopt_load_result(loaded)
-        finish_decision(event)
-        for diagnostic in param_store_load_diagnostic_events(
-            loaded.load_state.diagnostics,
-            primary_path=primary_path,
-        ):
-            monitor.publish_diagnostic(diagnostic)
-
-    def compare(_event: DiagnosticEvent) -> None:
-        monitor.publish_diagnostic(recovery.compare_diagnostic())
-
-    center.register_action("keep", keep, category="recovery")
-    center.register_action("discard", discard, category="recovery")
-    center.register_action("compare", compare, category="recovery")
-    return recovery
-
-
 class ParameterSession:
     """一 interactive session の parameter state と永続化 resource を所有する。"""
 
@@ -290,30 +198,113 @@ class ParameterSession:
         self.store.replace_contents_from(loaded.store)
         self._load_state = loaded.load_state
 
-    @property
-    def source(self) -> ParameterLoadMode:
-        """capture provenance に渡す parameter source label を返す。"""
+    def capture_state(self) -> ParameterCaptureState:
+        """同じ load state sample から capture 用 source/provenance pair を返す。"""
 
+        load_state = self._load_state
+        source: ParameterLoadMode
         if self.primary_path is None:
-            return "code"
-        if self._load_state.provenance == "session_recovery":
-            return "recovery"
-        return "saved"
+            source = "code"
+        elif load_state.provenance == "session_recovery":
+            source = "recovery"
+        else:
+            source = "saved"
+        return ParameterCaptureState(
+            source=source,
+            load_provenance=load_state.provenance,
+        )
 
-    def install_diagnostic_actions(self, monitor: Any) -> ParamStoreRecoverySession | None:
+    def install_diagnostic_actions(
+        self,
+        monitor: Any,
+        *,
+        open_source: Callable[[str], None] = _open_diagnostic_source,
+    ) -> ParamStoreRecoverySession | None:
         """save/recovery/open action と既存 load diagnostics を monitor へ配線する。"""
 
-        return _install_parameter_diagnostic_actions(
-            monitor=monitor,
-            store=self.store,
-            load_state=self._load_state,
-            adopt_load_result=self._adopt_load_result,
-            primary_path=self.primary_path,
-            autosave=self.autosave,
-            history=self.history,
-            snapshot_slots=self.snapshot_slots,
-            known_operations=self.known_operations,
-        )
+        center = monitor.diagnostic_center
+
+        def open_event(event: DiagnosticEvent) -> None:
+            if event.source is None:
+                raise ValueError("Diagnostic has no source to open")
+            open_source(event.source)
+
+        center.register_action("open", open_event)
+
+        autosave = self.autosave
+        if autosave is not None:
+
+            def retry_autosave(event: DiagnosticEvent) -> None:
+                try:
+                    autosave.flush()
+                finally:
+                    monitor.set_autosave(
+                        status=autosave.status,
+                        error=autosave.last_error,
+                        source=str(autosave.path),
+                    )
+                center.dismiss(event)
+
+            center.register_action("retry", retry_autosave, category="save")
+
+        primary_path = self.primary_path
+        if primary_path is None:
+            return None
+
+        load_state = self._load_state
+        for event in param_store_load_diagnostic_events(
+            load_state.diagnostics,
+            primary_path=primary_path,
+        ):
+            monitor.publish_diagnostic(event)
+
+        if load_state.provenance != "session_recovery":
+            return None
+
+        recovery = ParamStoreRecoverySession(self.store, primary_path)
+        monitor.publish_diagnostic(recovered_session_diagnostic(primary_path))
+        monitor.set_recovered_session(True)
+
+        def finish_decision(event: DiagnosticEvent) -> None:
+            if autosave is not None:
+                autosave.mark_clean()
+                monitor.set_autosave(
+                    status=autosave.status,
+                    error=autosave.last_error,
+                    source=str(autosave.path),
+                )
+            if self.history is not None:
+                self.history.clear()
+            if self.snapshot_slots is not None:
+                self.snapshot_slots.clear()
+            monitor.set_recovered_session(False)
+            center.dismiss(event)
+
+        def keep(event: DiagnosticEvent) -> None:
+            # action の install 時ではなく dispatch 時の accepted schema を使う。
+            known_operations = self.known_operations
+            self._adopt_load_result(
+                recovery.keep(known_operations=known_operations)
+            )
+            finish_decision(event)
+
+        def discard(event: DiagnosticEvent) -> None:
+            loaded = recovery.discard()
+            self._adopt_load_result(loaded)
+            finish_decision(event)
+            for diagnostic in param_store_load_diagnostic_events(
+                loaded.load_state.diagnostics,
+                primary_path=primary_path,
+            ):
+                monitor.publish_diagnostic(diagnostic)
+
+        def compare(_event: DiagnosticEvent) -> None:
+            monitor.publish_diagnostic(recovery.compare_diagnostic())
+
+        center.register_action("keep", keep, category="recovery")
+        center.register_action("discard", discard, category="recovery")
+        center.register_action("compare", compare, category="recovery")
+        return recovery
 
     def persist(
         self,

@@ -1,155 +1,189 @@
-"""Grafix の公開 Python API facade。"""
+"""Grafix の authoring API と公開 value type。"""
 
 from __future__ import annotations
 
 from importlib import import_module
-import sys
-from types import ModuleType
 from typing import TYPE_CHECKING, Any
+
+from grafix.core.operation_authoring import effect, primitive
 
 from .effects import E
 from .layers import L
-from .operation_info import OperationInfo as OperationInfo
+from .operation_info import OperationInfo
 from .preset import preset
 from .presets import P
 from .primitives import G
-from grafix.core.operation_authoring import effect, primitive
-from grafix.core.resource_budget import ResourceBudget, ResourceLimitError
-from grafix.core.runtime_limits import RuntimeLimitProfiles, RuntimeLimits
 
 if TYPE_CHECKING:
-    from .export import export
-    from .render import (
+    from grafix.api.cc import CcView
+    from grafix.api.render import (
+        CaptureProvenance,
         Color,
+        ColorInput,
+        ConfigProvenance,
         ExportFormat,
         ExportResult,
         Frame,
+        FrameProvenance,
+        FrameStyle,
+        GitProvenance,
+        LoadProvenance,
+        ParameterLoadMode,
+        ParameterLoadState,
+        ParameterSnapshotProvenance,
+        ParamStoreLoadDiagnostic,
+        RGB01,
+        RGB8,
+        RealizedLayer,
         RenderOptions,
         RenderSession,
         RenderSessionMetadata,
-        render,
+        RuntimeConfig,
+        SessionProvenance,
+        SourceProvenance,
     )
-    from .runner import run
-    from .variation_batch import (
+    from grafix.export.variation_batch import (
         VariationBatchResult,
         VariationRenderResult,
-        render_variation_batch,
+        VariationRenderStatus,
     )
+    from grafix.core.gcode_params import GCodeParams
+    from grafix.core.geometry import Geometry
+    from grafix.core.layer import Layer
+    from grafix.core.parameters.meta import ParamMeta
+    from grafix.core.realize import GeometryCacheKey
+    from grafix.core.realized_geometry import RealizedGeometry
+    from grafix.core.resource_budget import ResourceBudget, ResourceLimitError
+    from grafix.core.runtime_limits import RuntimeLimitProfiles, RuntimeLimits
+    from grafix.core.scene import SceneItem
 
 __all__ = [
+    "CaptureProvenance",
+    "CcView",
     "Color",
+    "ColorInput",
+    "ConfigProvenance",
     "E",
     "ExportFormat",
     "ExportResult",
     "Frame",
+    "FrameProvenance",
+    "FrameStyle",
     "G",
+    "GCodeParams",
+    "Geometry",
+    "GeometryCacheKey",
+    "GitProvenance",
     "L",
+    "Layer",
+    "LoadProvenance",
     "OperationInfo",
     "P",
+    "ParamMeta",
+    "ParameterLoadMode",
+    "ParameterLoadState",
+    "ParameterSnapshotProvenance",
+    "ParamStoreLoadDiagnostic",
+    "RGB01",
+    "RGB8",
+    "RealizedGeometry",
+    "RealizedLayer",
     "RenderOptions",
     "RenderSession",
     "RenderSessionMetadata",
     "ResourceBudget",
     "ResourceLimitError",
+    "RuntimeConfig",
     "RuntimeLimitProfiles",
     "RuntimeLimits",
+    "SceneItem",
+    "SessionProvenance",
+    "SourceProvenance",
     "VariationBatchResult",
     "VariationRenderResult",
+    "VariationRenderStatus",
     "effect",
-    "export",
     "preset",
     "primitive",
-    "render",
-    "render_variation_batch",
-    "run",
 ]
 
-_RENDER_NAMES = frozenset(
-    {
-        "Color",
-        "ExportFormat",
-        "ExportResult",
-        "Frame",
-        "RenderOptions",
-        "RenderSession",
-        "RenderSessionMetadata",
-        "render",
-    }
-)
-_VARIATION_NAMES = frozenset(
-    {"VariationBatchResult", "VariationRenderResult", "render_variation_batch"}
-)
-
-
-class _LazyPublicName:
-    """同名 submodule と区別する遅延公開名 sentinel。"""
-
-    __slots__ = ("name",)
-
-    def __init__(self, name: str) -> None:
-        self.name = name
-
-
-def _resolve_api_name(name: str) -> Any:
-    """重い API group の公開値を実装 module から取得する。"""
-
-    if name in _RENDER_NAMES:
-        render_module = import_module("grafix.api.render")
-        return getattr(render_module, name)
-    if name in _VARIATION_NAMES:
-        variation_module = import_module("grafix.api.variation_batch")
-        return getattr(variation_module, name)
-    if name == "export":
-        export_module = import_module("grafix.api.export")
-        return export_module.export
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
-class _ApiFacadeModule(ModuleType):
-    """同名実装 module より公開 callable を優先する API facade。"""
-
-    def __getattribute__(self, name: str) -> Any:
-        value = ModuleType.__getattribute__(self, name)
-        if isinstance(value, _LazyPublicName):
-            value = _resolve_api_name(value.name)
-            ModuleType.__setattr__(self, name, value)
-        return value
-
-    def __setattr__(self, name: str, value: Any) -> None:
-        if name in {"render", "export"} and isinstance(value, ModuleType):
-            current = ModuleType.__getattribute__(self, "__dict__").get(name)
-            if isinstance(current, _LazyPublicName) or callable(current):
-                return
-        ModuleType.__setattr__(self, name, value)
-
-
-if not TYPE_CHECKING:
-    render = _LazyPublicName("render")
-    export = _LazyPublicName("export")
+_PUBLIC_TYPES: dict[str, tuple[str, str]] = {
+    "CaptureProvenance": ("grafix.core.capture_provenance", "CaptureProvenance"),
+    "CcView": ("grafix.api.cc", "CcView"),
+    "Color": ("grafix.core.render_options", "Color"),
+    "ColorInput": ("grafix.core.render_options", "ColorInput"),
+    "ConfigProvenance": ("grafix.core.capture_provenance", "ConfigProvenance"),
+    "ExportFormat": ("grafix.core.export_format", "ExportFormat"),
+    "ExportResult": ("grafix.core.export_result", "ExportResult"),
+    "Frame": ("grafix.api.render", "Frame"),
+    "FrameProvenance": ("grafix.core.capture_provenance", "FrameProvenance"),
+    "FrameStyle": ("grafix.core.parameters.style_resolver", "FrameStyle"),
+    "GCodeParams": ("grafix.core.gcode_params", "GCodeParams"),
+    "Geometry": ("grafix.core.geometry", "Geometry"),
+    "GeometryCacheKey": ("grafix.core.realize", "GeometryCacheKey"),
+    "GitProvenance": ("grafix.core.capture_provenance", "GitProvenance"),
+    "Layer": ("grafix.core.layer", "Layer"),
+    "LoadProvenance": ("grafix.core.parameters.runtime", "LoadProvenance"),
+    "ParamMeta": ("grafix.core.parameters.meta", "ParamMeta"),
+    "ParameterLoadMode": ("grafix.core.parameters.source", "ParameterLoadMode"),
+    "ParameterLoadState": ("grafix.core.parameters.runtime", "ParameterLoadState"),
+    "ParameterSnapshotProvenance": (
+        "grafix.core.capture_provenance",
+        "ParameterSnapshotProvenance",
+    ),
+    "ParamStoreLoadDiagnostic": (
+        "grafix.core.parameters.runtime",
+        "ParamStoreLoadDiagnostic",
+    ),
+    "RGB01": ("grafix.core.render_options", "RGB01"),
+    "RGB8": ("grafix.core.render_options", "RGB8"),
+    "RealizedGeometry": (
+        "grafix.core.realized_geometry",
+        "RealizedGeometry",
+    ),
+    "RealizedLayer": ("grafix.core.pipeline", "RealizedLayer"),
+    "RenderOptions": ("grafix.core.render_options", "RenderOptions"),
+    "RenderSession": ("grafix.api.render", "RenderSession"),
+    "RenderSessionMetadata": ("grafix.api.render", "RenderSessionMetadata"),
+    "ResourceBudget": ("grafix.core.resource_budget", "ResourceBudget"),
+    "ResourceLimitError": ("grafix.core.resource_budget", "ResourceLimitError"),
+    "RuntimeConfig": ("grafix.core.runtime_config", "RuntimeConfig"),
+    "RuntimeLimitProfiles": (
+        "grafix.core.runtime_limits",
+        "RuntimeLimitProfiles",
+    ),
+    "RuntimeLimits": ("grafix.core.runtime_limits", "RuntimeLimits"),
+    "SceneItem": ("grafix.core.scene", "SceneItem"),
+    "SessionProvenance": ("grafix.core.capture_provenance", "SessionProvenance"),
+    "SourceProvenance": ("grafix.core.capture_provenance", "SourceProvenance"),
+    "VariationBatchResult": (
+        "grafix.export.variation_batch",
+        "VariationBatchResult",
+    ),
+    "VariationRenderResult": (
+        "grafix.export.variation_batch",
+        "VariationRenderResult",
+    ),
+    "VariationRenderStatus": (
+        "grafix.export.variation_batch",
+        "VariationRenderStatus",
+    ),
+}
 
 
 def __getattr__(name: str) -> Any:
-    """重い API group を、最初に参照された時点で解決する。"""
+    """公開 value type を定義 module から遅延解決する。"""
 
-    value = _resolve_api_name(name)
+    try:
+        module_name, attribute_name = _PUBLIC_TYPES[name]
+    except KeyError:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from None
+    value = getattr(import_module(module_name), attribute_name)
     globals()[name] = value
     return value
 
 
 def __dir__() -> list[str]:
-    """通常の module 名と公開 facade 名を返す。"""
+    """通常の module 名と公開名を返す。"""
 
     return sorted(set(globals()) | set(__all__))
-
-
-if not TYPE_CHECKING:
-
-    def run(*args: object, **kwargs: object) -> None:
-        """GUI runtime を実行時まで読み込まずに公開 ``run`` へ委譲する。"""
-
-        from .runner import run as runner_run
-
-        runner_run(*args, **kwargs)
-
-
-sys.modules[__name__].__class__ = _ApiFacadeModule

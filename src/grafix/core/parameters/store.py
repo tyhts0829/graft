@@ -5,11 +5,11 @@
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Callable, Iterable, Iterator, Mapping, MutableSet
+from collections.abc import Callable, Iterable, Mapping
 from copy import deepcopy
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from types import MappingProxyType, TracebackType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from .adjustment_snapshot import (
     ParameterAdjustment,
@@ -29,6 +29,7 @@ from .labels import ParamLabels
 from .meta import ParamMeta
 from .ordinals import GroupOrdinals
 from .runtime import ParamRuntimeView, ParamStoreRuntime
+from .source import ValueSource
 from .state import ParamState, ParamStateSnapshot
 
 if TYPE_CHECKING:
@@ -58,15 +59,796 @@ class _TransientParamStoreState:
     value_change_log: deque[tuple[int, tuple[ParameterKey, ...]]]
 
 
-@dataclass(slots=True)
-class _PendingStoreMutation:
-    """一つの core command 内でまとめる revision 更新。"""
+class _ParamStoreRead:
+    """ParamStore が所有する、参照を漏らさない内部 read port。"""
 
-    owner: object
-    touched: bool = False
-    structure: bool = False
-    value_keys: list[ParameterKey] = field(default_factory=list)
-    favorites: bool = False
+    __slots__ = ("_store",)
+
+    def __init__(self, store: ParamStore) -> None:
+        self._store = store
+
+    @property
+    def revision(self) -> int:
+        return self._store.revision
+
+    def state(self, key: ParameterKey) -> ParamState | None:
+        state = self._store._states.get(key)
+        return None if state is None else ParamState(**vars(state))
+
+    def states(self) -> dict[ParameterKey, ParamState]:
+        return {
+            key: ParamState(**vars(state))
+            for key, state in self._store._states.items()
+        }
+
+    def state_snapshots(self) -> dict[ParameterKey, ParamStateSnapshot]:
+        return {
+            key: ParamStateSnapshot.from_state(state)
+            for key, state in self._store._states.items()
+        }
+
+    def meta(self, key: ParameterKey) -> ParamMeta | None:
+        return self._store._meta.get(key)
+
+    def all_meta(self) -> dict[ParameterKey, ParamMeta]:
+        return dict(self._store._meta)
+
+    def explicit(self, key: ParameterKey) -> bool | None:
+        return self._store._explicit_by_key.get(key)
+
+    def all_explicit(self) -> dict[ParameterKey, bool]:
+        return dict(self._store._explicit_by_key)
+
+    def parameter_keys(self) -> frozenset[ParameterKey]:
+        return frozenset(
+            set(self._store._states)
+            | set(self._store._meta)
+            | set(self._store._explicit_by_key)
+        )
+
+    def labels(self) -> ParamLabels:
+        labels = ParamLabels()
+        labels.replace(self._store._labels.as_dict())
+        return labels
+
+    def label_items(self) -> dict[tuple[str, str], str]:
+        return self._store._labels.as_dict()
+
+    def ordinals(self) -> GroupOrdinals:
+        ordinals = GroupOrdinals()
+        ordinals.replace(self._store._ordinals.as_dict())
+        return ordinals
+
+    def ordinal_items(self) -> dict[str, dict[str, int]]:
+        return self._store._ordinals.as_dict()
+
+    def effects(self) -> EffectChainIndex:
+        return deepcopy(self._store._effects)
+
+    def collapsed_headers(self) -> frozenset[CollapsedHeaderKey]:
+        return frozenset(self._store._collapsed_headers)
+
+    def locked_keys(self) -> frozenset[ParameterKey]:
+        return frozenset(self._store._locked_keys)
+
+    def favorite_keys(self) -> frozenset[ParameterKey]:
+        return self._store._favorite_keys_snapshot()
+
+    def favorite_keys_tuple(self) -> tuple[ParameterKey, ...]:
+        return self._store._favorite_keys_tuple()
+
+    def variations(self) -> tuple[Variation, ...]:
+        return tuple(self._store._variations.values())
+
+    def variation(self, name: str) -> Variation | None:
+        return self._store._variations.get(name)
+
+    def variations_by_name(self) -> dict[str, Variation]:
+        return dict(self._store._variations)
+
+    def runtime(self) -> ParamStoreRuntime:
+        return deepcopy(self._store._runtime)
+
+    def runtime_token(self) -> int:
+        """merge cache 用の opaque identity token を返す。"""
+
+        return id(self._store._runtime)
+
+    def snapshot_rows(
+        self,
+    ) -> dict[
+        ParameterKey,
+        tuple[ParamMeta, ParamStateSnapshot, int, str | None],
+    ]:
+        """snapshot 構築に必要な immutable row を一度に固定する。"""
+
+        rows: dict[
+            ParameterKey,
+            tuple[ParamMeta, ParamStateSnapshot, int, str | None],
+        ] = {}
+        store = self._store
+        for key, state in store._states.items():
+            meta = store._meta.get(key)
+            if meta is None:
+                continue
+            ordinal = store._ordinals.get(key.op, key.site_id)
+            if ordinal is None:
+                raise RuntimeError(
+                    "ParamStore の不変条件違反: ordinal が未割り当ての group がある"
+                    f": op={key.op!r}, site_id={key.site_id!r}"
+                )
+            rows[key] = (
+                meta,
+                ParamStateSnapshot.from_state(state),
+                int(ordinal),
+                store._labels.get(key.op, key.site_id),
+            )
+        return rows
+
+    def snapshot_row(
+        self,
+        key: ParameterKey,
+    ) -> tuple[ParamMeta, ParamStateSnapshot, int, str | None] | None:
+        store = self._store
+        state = store._states.get(key)
+        meta = store._meta.get(key)
+        if state is None or meta is None:
+            return None
+        ordinal = store._ordinals.get(key.op, key.site_id)
+        if ordinal is None:
+            return None
+        return (
+            meta,
+            ParamStateSnapshot.from_state(state),
+            int(ordinal),
+            store._labels.get(key.op, key.site_id),
+        )
+
+    def visible_groups(
+        self,
+    ) -> tuple[frozenset[tuple[str, str]], frozenset[tuple[str, str]]]:
+        runtime = self._store._runtime
+        return (
+            frozenset(runtime.loaded_groups),
+            frozenset(runtime.observed_groups),
+        )
+
+    def reconcile_status(self) -> tuple[bool, bool, bool]:
+        """reconcile の early-exit 判定だけを allocation 無しで返す。"""
+
+        runtime = self._store._runtime
+        return (
+            bool(runtime.loaded_groups),
+            bool(runtime.observed_groups),
+            bool(runtime.reconcile_orphans),
+        )
+
+
+class _ParamStoreMutation:
+    """検証・allocation 済み replacement だけを確定する内部 write port。
+
+    commit method は live container を返さない。呼び出し側は read port の copy
+    上で plan を完成させ、history の変更前観測も ``prepare_history`` で先に
+    終える。commit 区間は revision の再確認、参照 swap、counter/cache 更新だけ
+    に限定する。
+    """
+
+    __slots__ = ("_store",)
+
+    def __init__(self, store: ParamStore) -> None:
+        self._store = store
+
+    def prepare_history(
+        self,
+        *,
+        expected_revision: int,
+        keys: tuple[ParameterKey, ...] = (),
+        headers: frozenset[CollapsedHeaderKey] | None = None,
+        observe_headers: bool = False,
+    ) -> None:
+        """commit より前に history observer へ変更前値を渡す。"""
+
+        self._require_revision(expected_revision)
+        for key in keys:
+            self._store._observe_history_key_before(key)
+        if observe_headers:
+            self._store._observe_history_headers_before(headers)
+
+    def commit_parameter_state(
+        self,
+        *,
+        expected_revision: int,
+        states: dict[ParameterKey, ParamState],
+        meta: dict[ParameterKey, ParamMeta],
+        explicit_by_key: dict[ParameterKey, bool],
+        structure: bool,
+        value_keys: tuple[ParameterKey, ...],
+    ) -> None:
+        self._replace(
+            expected_revision=expected_revision,
+            states=states,
+            meta=meta,
+            explicit_by_key=explicit_by_key,
+            structure=structure,
+            value_keys=value_keys,
+        )
+
+    def commit_existing_parameter_state(
+        self,
+        *,
+        expected_revision: int,
+        key: ParameterKey,
+        state: ParamState,
+        value_changed: bool,
+    ) -> None:
+        """既存 key の完成済み ParamState object だけを差し替える。"""
+
+        self._require_revision(expected_revision)
+        self._store._states[key] = state
+        self._store._commit_prepared_mutation(
+            touched=True,
+            structure=False,
+            value_keys=(key,) if value_changed else (),
+            favorites=False,
+        )
+
+    def commit_adjustment_values(
+        self,
+        *,
+        expected_revision: int,
+        states: dict[ParameterKey, ParamState],
+        value_keys: tuple[ParameterKey, ...],
+    ) -> None:
+        self._replace(
+            expected_revision=expected_revision,
+            states=states,
+            structure=False,
+            value_keys=value_keys,
+        )
+
+    def commit_adjustment_restore(
+        self,
+        *,
+        expected_revision: int,
+        states: dict[ParameterKey, ParamState],
+        meta: dict[ParameterKey, ParamMeta],
+        effects: EffectChainIndex,
+        collapsed_headers: set[CollapsedHeaderKey],
+        structure: bool,
+        value_keys: tuple[ParameterKey, ...],
+    ) -> None:
+        self._replace(
+            expected_revision=expected_revision,
+            states=states,
+            meta=meta,
+            effects=effects,
+            collapsed_headers=collapsed_headers,
+            structure=structure,
+            value_keys=value_keys,
+        )
+
+    def commit_adjustment_patch(
+        self,
+        *,
+        expected_revision: int,
+        states: dict[ParameterKey, ParamState],
+        meta: dict[ParameterKey, ParamMeta],
+        collapsed_headers: set[CollapsedHeaderKey],
+        structure: bool,
+        value_keys: tuple[ParameterKey, ...],
+    ) -> None:
+        self._replace(
+            expected_revision=expected_revision,
+            states=states,
+            meta=meta,
+            collapsed_headers=collapsed_headers,
+            structure=structure,
+            value_keys=value_keys,
+        )
+
+    def commit_collapsed_headers(
+        self,
+        *,
+        expected_revision: int,
+        collapsed_headers: set[CollapsedHeaderKey],
+    ) -> None:
+        self._replace(
+            expected_revision=expected_revision,
+            collapsed_headers=collapsed_headers,
+            structure=False,
+        )
+
+    def commit_meta(
+        self,
+        *,
+        expected_revision: int,
+        meta: dict[ParameterKey, ParamMeta],
+    ) -> None:
+        self._replace(
+            expected_revision=expected_revision,
+            meta=meta,
+            structure=True,
+        )
+
+    def commit_parameter_edits(
+        self,
+        *,
+        expected_revision: int,
+        states: dict[ParameterKey, ParamState],
+        meta: dict[ParameterKey, ParamMeta],
+        explicit_by_key: dict[ParameterKey, bool],
+        favorite_keys: set[ParameterKey],
+        structure: bool,
+        value_keys: tuple[ParameterKey, ...],
+        favorites_changed: bool,
+    ) -> None:
+        self._replace(
+            expected_revision=expected_revision,
+            states=states,
+            meta=meta,
+            explicit_by_key=explicit_by_key,
+            favorite_keys=favorite_keys,
+            structure=structure,
+            value_keys=value_keys,
+            favorites_changed=favorites_changed,
+        )
+
+    def commit_labels(
+        self,
+        *,
+        expected_revision: int,
+        labels: ParamLabels,
+    ) -> None:
+        self._replace(
+            expected_revision=expected_revision,
+            labels=labels,
+            structure=True,
+        )
+
+    def commit_effects(
+        self,
+        *,
+        expected_revision: int,
+        effects: EffectChainIndex,
+        collapsed_headers: set[CollapsedHeaderKey],
+    ) -> None:
+        self._replace(
+            expected_revision=expected_revision,
+            effects=effects,
+            collapsed_headers=collapsed_headers,
+            structure=True,
+        )
+
+    def commit_effect_observation_start(
+        self,
+        *,
+        expected_revision: int,
+        effects: EffectChainIndex,
+    ) -> None:
+        """公開状態を変えない observation marker だけを置換する。"""
+
+        self._require_revision(expected_revision)
+        self._store._effects = effects
+
+    def commit_favorites(
+        self,
+        *,
+        expected_revision: int,
+        favorite_keys: set[ParameterKey],
+    ) -> None:
+        self._replace(
+            expected_revision=expected_revision,
+            favorite_keys=favorite_keys,
+            favorites_changed=True,
+        )
+
+    def commit_locks(
+        self,
+        *,
+        expected_revision: int,
+        locked_keys: set[ParameterKey],
+    ) -> None:
+        self._replace(
+            expected_revision=expected_revision,
+            locked_keys=locked_keys,
+            structure=False,
+        )
+
+    def commit_variations(
+        self,
+        *,
+        expected_revision: int,
+        variations: dict[str, Variation],
+    ) -> None:
+        self._replace(
+            expected_revision=expected_revision,
+            variations=variations,
+            structure=False,
+        )
+
+    def commit_style(
+        self,
+        *,
+        expected_revision: int,
+        states: dict[ParameterKey, ParamState],
+        meta: dict[ParameterKey, ParamMeta],
+        explicit_by_key: dict[ParameterKey, bool],
+        ordinals: GroupOrdinals,
+        value_keys: tuple[ParameterKey, ...],
+    ) -> None:
+        self._replace(
+            expected_revision=expected_revision,
+            states=states,
+            meta=meta,
+            explicit_by_key=explicit_by_key,
+            ordinals=ordinals,
+            structure=True,
+            value_keys=value_keys,
+        )
+
+    def commit_decoded(
+        self,
+        *,
+        expected_revision: int,
+        states: dict[ParameterKey, ParamState],
+        meta: dict[ParameterKey, ParamMeta],
+        explicit_by_key: dict[ParameterKey, bool],
+        labels: ParamLabels,
+        ordinals: GroupOrdinals,
+        effects: EffectChainIndex,
+        collapsed_headers: set[CollapsedHeaderKey],
+        locked_keys: set[ParameterKey],
+        favorite_keys: set[ParameterKey],
+        variations: dict[str, Variation],
+        runtime: ParamStoreRuntime,
+    ) -> None:
+        self._replace(
+            expected_revision=expected_revision,
+            states=states,
+            meta=meta,
+            explicit_by_key=explicit_by_key,
+            labels=labels,
+            ordinals=ordinals,
+            effects=effects,
+            collapsed_headers=collapsed_headers,
+            locked_keys=locked_keys,
+            favorite_keys=favorite_keys,
+            variations=variations,
+            runtime=runtime,
+            structure=True,
+            favorites_changed=bool(favorite_keys),
+        )
+
+    def commit_prune(
+        self,
+        *,
+        expected_revision: int,
+        states: dict[ParameterKey, ParamState],
+        meta: dict[ParameterKey, ParamMeta],
+        explicit_by_key: dict[ParameterKey, bool],
+        labels: ParamLabels,
+        ordinals: GroupOrdinals,
+        effects: EffectChainIndex,
+        collapsed_headers: set[CollapsedHeaderKey],
+        locked_keys: set[ParameterKey],
+        favorite_keys: set[ParameterKey],
+        runtime: ParamStoreRuntime,
+        favorites_changed: bool,
+    ) -> None:
+        self._replace(
+            expected_revision=expected_revision,
+            states=states,
+            meta=meta,
+            explicit_by_key=explicit_by_key,
+            labels=labels,
+            ordinals=ordinals,
+            effects=effects,
+            collapsed_headers=collapsed_headers,
+            locked_keys=locked_keys,
+            favorite_keys=favorite_keys,
+            runtime=runtime,
+            structure=True,
+            favorites_changed=favorites_changed,
+        )
+
+    def commit_parameter_prune(
+        self,
+        *,
+        expected_revision: int,
+        states: dict[ParameterKey, ParamState],
+        meta: dict[ParameterKey, ParamMeta],
+        explicit_by_key: dict[ParameterKey, bool],
+        locked_keys: set[ParameterKey],
+        favorite_keys: set[ParameterKey],
+        favorites_changed: bool,
+    ) -> None:
+        self._replace(
+            expected_revision=expected_revision,
+            states=states,
+            meta=meta,
+            explicit_by_key=explicit_by_key,
+            locked_keys=locked_keys,
+            favorite_keys=favorite_keys,
+            structure=True,
+            favorites_changed=favorites_changed,
+        )
+
+    def commit_reconcile(
+        self,
+        *,
+        expected_revision: int,
+        states: dict[ParameterKey, ParamState],
+        meta: dict[ParameterKey, ParamMeta],
+        explicit_by_key: dict[ParameterKey, bool],
+        labels: ParamLabels,
+        ordinals: GroupOrdinals,
+        collapsed_headers: set[CollapsedHeaderKey],
+        locked_keys: set[ParameterKey],
+        favorite_keys: set[ParameterKey],
+        runtime: ParamStoreRuntime,
+        favorites_changed: bool,
+        value_keys: tuple[ParameterKey, ...],
+    ) -> None:
+        self._require_revision(expected_revision)
+        store = self._store
+        store._states = states
+        store._meta = meta
+        store._explicit_by_key = explicit_by_key
+        store._labels = labels
+        store._ordinals = ordinals
+        store._collapsed_headers = collapsed_headers
+        store._locked_keys = locked_keys
+        store._favorite_keys_data = favorite_keys
+        self._install_runtime_contents(
+            store._runtime,
+            runtime,
+            value_keys=(),
+        )
+        store._commit_prepared_mutation(
+            touched=True,
+            structure=True,
+            value_keys=value_keys,
+            favorites=favorites_changed,
+        )
+
+    def commit_merge(
+        self,
+        *,
+        expected_revision: int,
+        states: dict[ParameterKey, ParamState],
+        meta: dict[ParameterKey, ParamMeta],
+        explicit_by_key: dict[ParameterKey, bool],
+        labels: ParamLabels,
+        ordinals: GroupOrdinals,
+        collapsed_headers: set[CollapsedHeaderKey],
+        locked_keys: set[ParameterKey],
+        favorite_keys: set[ParameterKey],
+        runtime: ParamStoreRuntime,
+        runtime_value_keys: tuple[ParameterKey, ...],
+        structure: bool,
+        value_keys: tuple[ParameterKey, ...],
+        favorites_changed: bool,
+    ) -> None:
+        self._require_revision(expected_revision)
+        store = self._store
+        store._states = states
+        store._meta = meta
+        store._explicit_by_key = explicit_by_key
+        store._labels = labels
+        store._ordinals = ordinals
+        store._collapsed_headers = collapsed_headers
+        store._locked_keys = locked_keys
+        store._favorite_keys_data = favorite_keys
+        self._install_runtime_contents(
+            store._runtime,
+            runtime,
+            value_keys=runtime_value_keys,
+        )
+        store._commit_prepared_mutation(
+            touched=True,
+            structure=structure,
+            value_keys=value_keys,
+            favorites=favorites_changed,
+        )
+
+    def commit_full_replacement(
+        self,
+        *,
+        expected_revision: int,
+        states: dict[ParameterKey, ParamState],
+        meta: dict[ParameterKey, ParamMeta],
+        explicit_by_key: dict[ParameterKey, bool],
+        labels: ParamLabels,
+        ordinals: GroupOrdinals,
+        effects: EffectChainIndex,
+        collapsed_headers: set[CollapsedHeaderKey],
+        locked_keys: set[ParameterKey],
+        favorite_keys: set[ParameterKey],
+        variations: dict[str, Variation],
+        runtime: ParamStoreRuntime,
+    ) -> None:
+        """全 domain と counter/cache を replacement として一度に確定する。"""
+
+        self._require_revision(expected_revision)
+        store = self._store
+        next_effective_revision = store._runtime.effective_revision + 1
+        next_visibility_revision = store._runtime.visibility_revision + 1
+
+        store._states = states
+        store._meta = meta
+        store._explicit_by_key = explicit_by_key
+        store._labels = labels
+        store._ordinals = ordinals
+        store._effects = effects
+        store._collapsed_headers = collapsed_headers
+        store._locked_keys = locked_keys
+        store._favorite_keys_data = favorite_keys
+        store._variations = variations
+        store._runtime = runtime
+
+        store._revision += 1
+        store._table_revision += 1
+        store._value_revision += 1
+        store._style_revision += 1
+        store._favorite_revision += 1
+        store._favorite_snapshot_revision = -1
+        store._favorite_snapshot = frozenset()
+        store._favorite_tuple = ()
+        store._value_change_log.clear()
+        store._snapshot_cache_revision = -1
+        store._snapshot_cache_value_revision = -1
+        store._snapshot_cache_rebuilt_entries = 0
+        store._snapshot_cache = None
+
+        runtime.effective_revision = next_effective_revision
+        runtime._effective_change_revision = -1
+        runtime._effective_changed_keys = ()
+        runtime._visibility_tracker.revision = next_visibility_revision
+
+    def commit_runtime(
+        self,
+        *,
+        expected_revision: int,
+        runtime: ParamStoreRuntime,
+        runtime_value_keys: tuple[ParameterKey, ...] = (),
+    ) -> None:
+        self._require_revision(expected_revision)
+        self._install_runtime_contents(
+            self._store._runtime,
+            runtime,
+            value_keys=runtime_value_keys,
+        )
+
+    def commit_runtime_value_patch(
+        self,
+        *,
+        expected_revision: int,
+        expected_effective_revision: int,
+        updates: tuple[tuple[ParameterKey, object, ValueSource], ...],
+        changed_keys: tuple[ParameterKey, ...],
+    ) -> None:
+        """完成済み sparse effective/source patch だけを runtime へ反映する。"""
+
+        self._require_revision(expected_revision)
+        runtime = self._store._runtime
+        if runtime.effective_revision != expected_effective_revision:
+            raise RuntimeError(
+                "parameter runtime changed while planning mutation"
+            )
+        next_effective_revision = expected_effective_revision + 1
+        for key, effective, source in updates:
+            runtime.last_effective_by_key[key] = effective
+            runtime.last_source_by_key[key] = source
+        runtime.effective_revision = next_effective_revision
+        runtime._effective_change_revision = next_effective_revision
+        runtime._effective_changed_keys = changed_keys
+
+    @staticmethod
+    def _install_runtime_contents(
+        target: ParamStoreRuntime,
+        source: ParamStoreRuntime,
+        *,
+        value_keys: tuple[ParameterKey, ...],
+    ) -> None:
+        """完成済み runtime plan を既存 identity へ failure-free に移す。"""
+
+        tracker = target._visibility_tracker
+        loaded_groups = source.loaded_groups
+        observed_groups = source.observed_groups
+        loaded_groups.bind(tracker)  # type: ignore[attr-defined]
+        observed_groups.bind(tracker)  # type: ignore[attr-defined]
+        object.__setattr__(target, "loaded_groups", loaded_groups)
+        object.__setattr__(target, "observed_groups", observed_groups)
+        target.reconcile_applied = source.reconcile_applied
+        target.display_order_by_group = source.display_order_by_group
+        target.next_display_order = source.next_display_order
+        target.warned_unknown_args = source.warned_unknown_args
+        for key in value_keys:
+            if key in source.last_effective_by_key:
+                target.last_effective_by_key[key] = (
+                    source.last_effective_by_key[key]
+                )
+            else:
+                target.last_effective_by_key.pop(key, None)
+            if key in source.last_source_by_key:
+                target.last_source_by_key[key] = source.last_source_by_key[key]
+            else:
+                target.last_source_by_key.pop(key, None)
+        target.reconcile_orphans = source.reconcile_orphans
+        target.effective_revision = source.effective_revision
+        target._effective_change_revision = source._effective_change_revision
+        target._effective_changed_keys = source._effective_changed_keys
+        tracker.revision = source.visibility_revision
+
+    def _replace(
+        self,
+        *,
+        expected_revision: int,
+        states: dict[ParameterKey, ParamState] | None = None,
+        meta: dict[ParameterKey, ParamMeta] | None = None,
+        explicit_by_key: dict[ParameterKey, bool] | None = None,
+        labels: ParamLabels | None = None,
+        ordinals: GroupOrdinals | None = None,
+        effects: EffectChainIndex | None = None,
+        collapsed_headers: set[CollapsedHeaderKey] | None = None,
+        locked_keys: set[ParameterKey] | None = None,
+        favorite_keys: set[ParameterKey] | None = None,
+        variations: dict[str, Variation] | None = None,
+        runtime: ParamStoreRuntime | None = None,
+        structure: bool = False,
+        value_keys: tuple[ParameterKey, ...] = (),
+        favorites_changed: bool = False,
+    ) -> None:
+        """完成済み replacement を swap する。validation/callback は行わない。"""
+
+        self._require_revision(expected_revision)
+        store = self._store
+        if states is not None:
+            store._states = states
+        if meta is not None:
+            store._meta = meta
+        if explicit_by_key is not None:
+            store._explicit_by_key = explicit_by_key
+        if labels is not None:
+            store._labels = labels
+        if ordinals is not None:
+            store._ordinals = ordinals
+        if effects is not None:
+            store._effects = effects
+        if collapsed_headers is not None:
+            store._collapsed_headers = collapsed_headers
+        if locked_keys is not None:
+            store._locked_keys = locked_keys
+        if favorite_keys is not None:
+            store._favorite_keys_data = favorite_keys
+        if variations is not None:
+            store._variations = variations
+        if runtime is not None:
+            store._runtime = runtime
+        store._commit_prepared_mutation(
+            touched=bool(
+                structure
+                or value_keys
+                or (
+                    states is not None
+                    or meta is not None
+                    or explicit_by_key is not None
+                    or labels is not None
+                    or ordinals is not None
+                    or effects is not None
+                    or collapsed_headers is not None
+                    or locked_keys is not None
+                    or variations is not None
+                )
+            ),
+            structure=structure,
+            value_keys=value_keys,
+            favorites=favorites_changed,
+        )
+
+    def _require_revision(self, expected_revision: int) -> None:
+        if self._store.revision != expected_revision:
+            raise RuntimeError("parameter store changed while planning mutation")
 
 
 def _known_adjustment_headers(
@@ -139,38 +921,6 @@ class ParamStoreRollback:
             self._state = None
 
 
-class _FavoriteKeySet(MutableSet[ParameterKey]):
-    """favorite mutation を store revision へ接続する mutable view。"""
-
-    __slots__ = ("_store",)
-
-    def __init__(self, store: ParamStore) -> None:
-        self._store = store
-
-    def __contains__(self, key: object) -> bool:
-        return key in self._store._favorite_keys_data
-
-    def __iter__(self) -> Iterator[ParameterKey]:
-        return iter(self._store._favorite_keys_data)
-
-    def __len__(self) -> int:
-        return len(self._store._favorite_keys_data)
-
-    def add(self, key: ParameterKey) -> None:
-        data = self._store._favorite_keys_data
-        if key in data:
-            return
-        data.add(key)
-        self._store._touch_favorites()
-
-    def discard(self, key: ParameterKey) -> None:
-        data = self._store._favorite_keys_data
-        if key not in data:
-            return
-        data.discard(key)
-        self._store._touch_favorites()
-
-
 class ParamStore:
     """ParameterKey -> ParamState を保持する永続ストア。
 
@@ -214,11 +964,12 @@ class ParamStore:
         ) = None
         self._history_transaction_owner: object | None = None
         self._active_transient_rollback: ParamStoreRollback | None = None
-        self._pending_mutation: _PendingStoreMutation | None = None
         self._snapshot_cache_revision = -1
         self._snapshot_cache_value_revision = -1
         self._snapshot_cache_rebuilt_entries = 0
         self._snapshot_cache: object | None = None
+        self._read_port = _ParamStoreRead(self)
+        self._mutation_port = _ParamStoreMutation(self)
 
     @property
     def revision(self) -> int:
@@ -256,16 +1007,6 @@ class ParamStore:
 
         return self._favorite_revision
 
-    def _replace_favorite_keys(self, keys: Iterable[ParameterKey]) -> bool:
-        """favorite 集合を置換し、変更時だけ revision を一度進める。"""
-
-        normalized = set(keys)
-        if normalized == self._favorite_keys_data:
-            return False
-        self._favorite_keys_data = normalized
-        self._touch_favorites()
-        return True
-
     def replace_contents_from(self, source: ParamStore) -> None:
         """object identity を保ち、別 store の全内容へ一度に置換する。
 
@@ -295,15 +1036,7 @@ class ParamStore:
         ):
             raise RuntimeError("cannot replace ParamStore during a history transaction")
 
-        next_revision = self._revision + 1
-        next_table_revision = self._table_revision + 1
-        next_value_revision = self._value_revision + 1
-        next_style_revision = self._style_revision + 1
-        next_favorite_revision = self._favorite_revision + 1
-        old_runtime = self._runtime
-        next_effective_revision = old_runtime.effective_revision + 1
-        next_visibility_revision = old_runtime.visibility_revision + 1
-
+        base_revision = self.revision
         (
             states,
             meta,
@@ -332,37 +1065,20 @@ class ParamStore:
             )
         )
 
-        self._states = states
-        self._meta = meta
-        self._explicit_by_key = explicit_by_key
-        self._labels = labels
-        self._ordinals = ordinals
-        self._effects = effects
-        self._collapsed_headers = collapsed_headers
-        self._locked_keys = locked_keys
-        self._favorite_keys_data = favorite_keys
-        self._variations = variations
-        self._runtime = runtime
-
-        self._revision = next_revision
-        self._table_revision = next_table_revision
-        self._value_revision = next_value_revision
-        self._style_revision = next_style_revision
-        self._favorite_revision = next_favorite_revision
-        self._favorite_snapshot_revision = -1
-        self._favorite_snapshot = frozenset()
-        self._favorite_tuple = ()
-        self._value_change_log.clear()
-        self._snapshot_cache_revision = -1
-        self._snapshot_cache_value_revision = -1
-        self._snapshot_cache_rebuilt_entries = 0
-        self._snapshot_cache = None
-
-        runtime = self._runtime
-        runtime.effective_revision = next_effective_revision
-        runtime._effective_change_revision = -1
-        runtime._effective_changed_keys = ()
-        runtime._visibility_tracker.revision = next_visibility_revision
+        self._mutation().commit_full_replacement(
+            expected_revision=base_revision,
+            states=states,
+            meta=meta,
+            explicit_by_key=explicit_by_key,
+            labels=labels,
+            ordinals=ordinals,
+            effects=effects,
+            collapsed_headers=collapsed_headers,
+            locked_keys=locked_keys,
+            favorite_keys=favorite_keys,
+            variations=variations,
+            runtime=runtime,
+        )
 
     def begin_transient_rollback(self) -> ParamStoreRollback:
         """終了時に現在の論理状態へ正確に戻す one-shot scope を返す。
@@ -455,6 +1171,7 @@ class ParamStore:
         ordered = tuple(dict.fromkeys(headers))
         if not all(isinstance(header, CollapsedHeaderKey) for header in ordered):
             raise TypeError("headers must contain only CollapsedHeaderKey values")
+        base_revision = self.revision
         current = self._collapsed_headers
         changed = tuple(
             header
@@ -464,12 +1181,21 @@ class ParamStore:
         if not changed:
             return ()
         before = frozenset(current)
-        self._observe_history_headers_before(before)
+        planned = set(current)
         if collapsed:
-            current.update(changed)
+            planned.update(changed)
         else:
-            current.difference_update(changed)
-        self._touch(structure=False)
+            planned.difference_update(changed)
+        mutation = self._mutation()
+        mutation.prepare_history(
+            expected_revision=base_revision,
+            headers=before,
+            observe_headers=True,
+        )
+        mutation.commit_collapsed_headers(
+            expected_revision=base_revision,
+            collapsed_headers=planned,
+        )
         return changed
 
     def replace_collapsed_headers(
@@ -484,9 +1210,17 @@ class ParamStore:
         before = frozenset(self._collapsed_headers)
         if normalized == self._collapsed_headers:
             return False
-        self._observe_history_headers_before(before)
-        self._collapsed_headers = normalized
-        self._touch(structure=False)
+        base_revision = self.revision
+        mutation = self._mutation()
+        mutation.prepare_history(
+            expected_revision=base_revision,
+            headers=before,
+            observe_headers=True,
+        )
+        mutation.commit_collapsed_headers(
+            expected_revision=base_revision,
+            collapsed_headers=normalized,
+        )
         return True
 
     def variation_count(self) -> int:
@@ -572,29 +1306,40 @@ class ParamStore:
 
         if type(snapshot) is not ParameterAdjustmentSnapshot:
             raise TypeError("snapshot must be a ParameterAdjustmentSnapshot")
-        if self.adjustment_snapshot_matches(snapshot):
-            return False
 
+        base_revision = self.revision
+        states = dict(self._states)
+        meta_by_key = dict(self._meta)
+        effects = deepcopy(self._effects)
+        collapsed_headers = set(self._collapsed_headers)
         changed_value_keys: list[ParameterKey] = []
         structure_changed = False
-        for key, saved, current_state, current_meta in self._applicable_adjustments(
-            snapshot
-        ):
+        for key, saved in snapshot.items():
+            current_state = self._states.get(key)
+            current_meta = self._meta.get(key)
+            if (
+                current_state is None
+                or current_meta is None
+                or saved.meta.kind != current_meta.kind
+            ):
+                continue
             if (
                 current_state.override != saved.state.override
                 or current_state.ui_value != saved.state.ui_value
                 or current_state.cc_key != saved.state.cc_key
             ):
-                current_state.override = saved.state.override
-                current_state.ui_value = saved.state.ui_value
-                current_state.cc_key = saved.state.cc_key
+                states[key] = ParamState(
+                    override=saved.state.override,
+                    ui_value=saved.state.ui_value,
+                    cc_key=saved.state.cc_key,
+                )
                 changed_value_keys.append(key)
 
             if (
                 current_meta.ui_min != saved.meta.ui_min
                 or current_meta.ui_max != saved.meta.ui_max
             ):
-                self._meta[key] = replace(
+                meta_by_key[key] = replace(
                     current_meta,
                     ui_min=saved.meta.ui_min,
                     ui_max=saved.meta.ui_max,
@@ -605,14 +1350,14 @@ class ParamStore:
         for header, saved_collapsed in snapshot.collapsed_items():
             if header not in known_headers:
                 continue
-            if saved_collapsed and header not in self._collapsed_headers:
-                self._collapsed_headers.add(header)
+            if saved_collapsed and header not in collapsed_headers:
+                collapsed_headers.add(header)
                 structure_changed = True
-            elif not saved_collapsed and header in self._collapsed_headers:
-                self._collapsed_headers.discard(header)
+            elif not saved_collapsed and header in collapsed_headers:
+                collapsed_headers.discard(header)
                 structure_changed = True
 
-        if self._effects.restore_order_state(
+        if effects.restore_order_state(
             dict(snapshot.effect_order_items()),
             topology_signatures=dict(snapshot.effect_topology_items()),
         ):
@@ -621,9 +1366,14 @@ class ParamStore:
         changed = structure_changed or bool(changed_value_keys)
         if changed:
             # Revision は過去値へ戻さず、restore 全体で一度だけ進める。
-            self._touch(
+            self._mutation().commit_adjustment_restore(
+                expected_revision=base_revision,
+                states=states,
+                meta=meta_by_key,
+                effects=effects,
+                collapsed_headers=collapsed_headers,
                 structure=structure_changed,
-                value_keys=changed_value_keys,
+                value_keys=tuple(changed_value_keys),
             )
         return changed
 
@@ -665,6 +1415,16 @@ class ParamStore:
         return self._effects.chain_ordinals()
 
     # --- 内部 API（ops/codec からのみ利用する想定）---
+    def _read(self) -> _ParamStoreRead:
+        """core parameter module 用の参照を漏らさない read port を返す。"""
+
+        return self._read_port
+
+    def _mutation(self) -> _ParamStoreMutation:
+        """core parameter module 用の限定 write port を返す。"""
+
+        return self._mutation_port
+
     def _applicable_adjustments(
         self,
         snapshot: ParameterAdjustmentSnapshot,
@@ -709,6 +1469,10 @@ class ParamStore:
         if type(patch) is not ParameterAdjustmentPatch:
             raise TypeError("patch must be a ParameterAdjustmentPatch")
 
+        base_revision = self.revision
+        states = dict(self._states)
+        meta_by_key = dict(self._meta)
+        collapsed_headers = set(self._collapsed_headers)
         changed_value_keys: list[ParameterKey] = []
         meta_changed = False
         for key, saved in patch.parameter_items(after=after):
@@ -731,16 +1495,18 @@ class ParamStore:
                 or current_state.cc_key != saved_state.cc_key
             )
             if state_changed:
-                current_state.override = saved_state.override
-                current_state.ui_value = saved_state.ui_value
-                current_state.cc_key = saved_state.cc_key
+                states[key] = ParamState(
+                    override=saved_state.override,
+                    ui_value=saved_state.ui_value,
+                    cc_key=saved_state.cc_key,
+                )
                 changed_value_keys.append(key)
 
             if (
                 current_meta.ui_min != saved_meta.ui_min
                 or current_meta.ui_max != saved_meta.ui_max
             ):
-                self._meta[key] = replace(
+                meta_by_key[key] = replace(
                     current_meta,
                     ui_min=saved_meta.ui_min,
                     ui_max=saved_meta.ui_max,
@@ -754,18 +1520,22 @@ class ParamStore:
             for header, should_collapse in header_states:
                 if header not in known_headers:
                     continue
-                if should_collapse and header not in self._collapsed_headers:
-                    self._collapsed_headers.add(header)
+                if should_collapse and header not in collapsed_headers:
+                    collapsed_headers.add(header)
                     headers_changed = True
-                elif not should_collapse and header in self._collapsed_headers:
-                    self._collapsed_headers.discard(header)
+                elif not should_collapse and header in collapsed_headers:
+                    collapsed_headers.discard(header)
                     headers_changed = True
 
         if not changed_value_keys and not meta_changed and not headers_changed:
             return False
-        self._touch(
+        self._mutation().commit_adjustment_patch(
+            expected_revision=base_revision,
+            states=states,
+            meta=meta_by_key,
+            collapsed_headers=collapsed_headers,
             structure=bool(meta_changed or headers_changed),
-            value_keys=changed_value_keys,
+            value_keys=tuple(changed_value_keys),
         )
         return True
 
@@ -784,9 +1554,11 @@ class ParamStore:
         ):
             raise TypeError("adjustments must be ParameterAdjustment values")
 
+        base_revision = self.revision
+        states = dict(self._states)
         changed: list[ParameterKey] = []
         for key, adjustment in entries:
-            current_state = self._states.get(key)
+            current_state = states.get(key)
             current_meta = self._meta.get(key)
             if (
                 current_state is None
@@ -801,114 +1573,24 @@ class ParamStore:
                 and current_state.cc_key == saved_state.cc_key
             ):
                 continue
-            self._observe_history_key_before(key)
-            current_state.override = saved_state.override
-            current_state.ui_value = saved_state.ui_value
-            current_state.cc_key = saved_state.cc_key
+            states[key] = ParamState(
+                override=saved_state.override,
+                ui_value=saved_state.ui_value,
+                cc_key=saved_state.cc_key,
+            )
             changed.append(key)
         if changed:
-            self._touch(structure=False, value_keys=changed)
+            mutation = self._mutation()
+            mutation.prepare_history(
+                expected_revision=base_revision,
+                keys=tuple(dict.fromkeys(changed)),
+            )
+            mutation.commit_adjustment_values(
+                expected_revision=base_revision,
+                states=states,
+                value_keys=tuple(dict.fromkeys(changed)),
+            )
         return tuple(changed)
-
-    def _load_persisted_parameters(
-        self,
-        *,
-        states: Mapping[ParameterKey, ParamStateSnapshot],
-        meta: Mapping[ParameterKey, ParamMeta],
-        explicit_by_key: Mapping[ParameterKey, bool],
-        preserve_explicit_overrides: bool,
-    ) -> None:
-        """Codec parser の canonical parameter records を新しい store へ格納する。"""
-
-        self._meta.update(meta)
-        self._states.update(
-            {
-                key: ParamState(
-                    override=(
-                        state.override
-                        if preserve_explicit_overrides
-                        or not explicit_by_key[key]
-                        else False
-                    ),
-                    ui_value=state.ui_value,
-                    cc_key=state.cc_key,
-                )
-                for key, state in states.items()
-                if key in meta
-            }
-        )
-        self._explicit_by_key.update(explicit_by_key)
-        self._runtime.loaded_groups = {
-            (key.op, key.site_id) for key in self._states
-        }
-
-    def _get_state_ref(self, key: ParameterKey) -> ParamState | None:
-        return self._states.get(key)
-
-    def _ensure_state(
-        self,
-        key: ParameterKey,
-        *,
-        base_value: Any,
-        explicit: bool,
-        initial_override: bool | None = None,
-    ) -> ParamState:
-        """ParamState を確保し、無ければ base_value で初期化して返す。"""
-
-        if type(explicit) is not bool:
-            raise TypeError("explicit must be an exact bool")
-        if initial_override is not None and type(initial_override) is not bool:
-            raise TypeError("initial_override must be an exact bool or None")
-        state = self._states.get(key)
-        if state is not None:
-            return state
-
-        self._observe_history_key_before(key)
-        state = ParamState(ui_value=base_value)
-        if initial_override is not None:
-            state.override = initial_override
-        self._states[key] = state
-        self._explicit_by_key[key] = explicit
-        self._touch()
-        return state
-
-    def _set_meta(self, key: ParameterKey, meta: ParamMeta) -> None:
-        if self._meta.get(key) == meta:
-            return
-        self._observe_history_key_before(key)
-        self._meta[key] = meta
-        self._touch()
-
-    def _get_explicit_ref(self, key: ParameterKey) -> bool | None:
-        return self._explicit_by_key.get(key)
-
-    def _set_explicit(self, key: ParameterKey, value: bool) -> None:
-        if type(value) is not bool:
-            raise TypeError("explicit must be an exact bool")
-        if self._explicit_by_key.get(key) == value:
-            return
-        self._explicit_by_key[key] = value
-        self._touch()
-
-    def _labels_ref(self) -> ParamLabels:
-        return self._labels
-
-    def _ordinals_ref(self) -> GroupOrdinals:
-        return self._ordinals
-
-    def _effects_ref(self) -> EffectChainIndex:
-        return self._effects
-
-    def _collapsed_headers_ref(self) -> set[CollapsedHeaderKey]:
-        return self._collapsed_headers
-
-    def _locked_keys_ref(self) -> set[ParameterKey]:
-        return self._locked_keys
-
-    def _favorite_keys_ref(self) -> MutableSet[ParameterKey]:
-        # self 参照を永続属性に置くと exact-store deepcopy/restore の所有権が
-        # 壊れるため、mutation 境界でだけ lightweight view を作る。
-        return _FavoriteKeySet(self)
 
     def _favorite_keys_snapshot(self) -> frozenset[ParameterKey]:
         """revision 内で同一 identity の immutable favorite 集合を返す。"""
@@ -929,49 +1611,17 @@ class ParamStore:
         self._favorite_keys_snapshot()
         return self._favorite_tuple
 
-    def _variations_ref(self) -> dict[str, Variation]:
-        return self._variations
-
-    def _runtime_ref(self) -> ParamStoreRuntime:
-        return self._runtime
-
-    def _touch(
-        self,
-        *,
-        structure: bool = True,
-        value_keys: Iterable[ParameterKey] = (),
-    ) -> None:
-        """永続 revision と用途別 revision を一度に更新する。
-
-        ``structure=False`` は、既存行の値だけが変わる hot path でのみ使う。
-        呼び出し側が指定を忘れた場合は静的モデルを再構築する安全側へ倒す。
-        """
-
-        changed_keys = tuple(dict.fromkeys(value_keys))
-        pending = self._pending_mutation
-        if pending is not None:
-            pending.touched = True
-            pending.structure = pending.structure or bool(structure)
-            pending.value_keys.extend(changed_keys)
-            return
-        self._commit_mutation(
-            touched=True,
-            structure=bool(structure),
-            value_keys=changed_keys,
-            favorites=False,
-        )
-
-    def _commit_mutation(
+    def _commit_prepared_mutation(
         self,
         *,
         touched: bool,
         structure: bool,
-        value_keys: Iterable[ParameterKey],
+        value_keys: tuple[ParameterKey, ...],
         favorites: bool,
     ) -> None:
-        """集約済み mutation を revision/cache へ一度だけ反映する。"""
+        """検証・重複除去済みの mutation を revision/cache へ反映する。"""
 
-        changed_keys = tuple(dict.fromkeys(value_keys))
+        changed_keys = value_keys
         if not touched and not favorites:
             return
         self._revision += 1
@@ -1008,42 +1658,6 @@ class ParamStore:
             # collapse state など ParamSnapshot に含まれない変更では、同じ
             # immutable mapping をそのまま現 revision の cache として扱える。
             self._snapshot_cache_revision = self._revision
-
-    def _touch_favorites(self) -> None:
-        """favorite overlay と永続保存だけを無効化する。"""
-
-        pending = self._pending_mutation
-        if pending is not None:
-            pending.favorites = True
-            self._favorite_snapshot_revision = -1
-            return
-        self._commit_mutation(
-            touched=False,
-            structure=False,
-            value_keys=(),
-            favorites=True,
-        )
-
-    def _begin_mutation_batch(self, owner: object) -> None:
-        """core command 用の revision 集約を開始する。"""
-
-        if self._pending_mutation is not None:
-            raise RuntimeError("ParamStore mutation batch is already active")
-        self._pending_mutation = _PendingStoreMutation(owner=owner)
-
-    def _end_mutation_batch(self, owner: object) -> None:
-        """core command の mutation を一度の revision 更新として確定する。"""
-
-        pending = self._pending_mutation
-        if pending is None or pending.owner is not owner:
-            raise RuntimeError("ParamStore mutation batch owner does not match")
-        self._pending_mutation = None
-        self._commit_mutation(
-            touched=pending.touched,
-            structure=pending.structure,
-            value_keys=pending.value_keys,
-            favorites=pending.favorites,
-        )
 
     def value_changes_since(
         self,

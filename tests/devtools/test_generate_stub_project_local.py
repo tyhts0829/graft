@@ -75,7 +75,9 @@ def test_stub_cli_defaults_to_project_local_output_and_includes_user_ops(
 
     probe = project / "preset_typing_probe.py"
     probe.write_text(
-        "from grafix import P\n"
+        "from grafix import P, RuntimeConfig, render, run, save\n"
+        "from grafix.api import ParameterLoadState\n"
+        "from grafix.api.render import CaptureProvenance, FrameStyle\n"
         "P.onboarding_local_preset(size=2.0)\n"
         "P.onboarding_local_presett(size=2.0)\n",
         encoding="utf-8",

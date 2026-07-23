@@ -4,7 +4,6 @@ from fractions import Fraction
 import json
 import os
 import random
-from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,18 +18,34 @@ from grafix import (
     RenderSession,
     VariationBatchResult,
     VariationRenderResult,
-    render_variation_batch,
+    render_variation_batch as _public_render_variation_batch,
+)
+from grafix.api.variation_batch import (
+    _render_variation_batch as _render_variation_batch_with_capture,
 )
 from grafix.core.geometry import Geometry
 from grafix.core.parameters.codec import encode_param_store
 from grafix.core.parameters.collapsed_header import primitive_collapsed_header_key
 from grafix.core.parameters.frame_params import FrameParamRecord
+from grafix.core.parameters.favorites import (
+    favorite_parameter_key_set,
+    set_parameters_favorite,
+)
 from grafix.core.parameters.key import ParameterKey
 from grafix.core.parameters.merge_ops import merge_frame_params
 from grafix.core.parameters.meta import ParamMeta
+from grafix.core.parameters.meta_ops import set_meta
 from grafix.core.parameters.store import ParamStore
 from grafix.core.parameters.ui_ops import update_state_from_ui
-from grafix.core.parameters.variations import create_variation
+from grafix.core.parameters.variations import (
+    Variation,
+    create_variation,
+    delete_variation,
+    list_variations,
+    locked_parameter_keys,
+    set_parameters_locked,
+)
+from tests.param_store_test_support import mutate_runtime
 
 _META = ParamMeta(kind="float", ui_min=0.0, ui_max=100.0)
 _AMOUNT = ParameterKey(op="batch", site_id="main", arg="amount")
@@ -81,40 +96,67 @@ class _Session:
         fail_value: float | None = None,
         mutate_store_during_render: bool = False,
     ) -> None:
-        self.param_store = store
+        self._store = store
         self.fail_value = fail_value
         self.mutate_store_during_render = mutate_store_during_render
         self.observed: list[tuple[float, float, float]] = []
         self.discovered_was_present: list[bool] = []
         self.provenance_seeds: list[int | None | str] = []
 
-    def render(
+    def _named_variations(self) -> tuple[Variation, ...]:
+        return list_variations(self._store)
+
+    def _render_variation(
+        self,
+        variation: Variation,
+        t: float,
+    ) -> SimpleNamespace:
+        with self._store.begin_transient_rollback():
+            self._store.apply_adjustment_snapshot(variation.parameter_snapshot)
+            return self._render(t, provenance_seed=variation.seed)
+
+    def _render(
         self,
         t: float,
         *,
         provenance_seed: int | None | str = "session",
     ) -> SimpleNamespace:
-        amount = _value(self.param_store, _AMOUNT)
-        later = _value(self.param_store, _LATER)
+        amount = _value(self._store, _AMOUNT)
+        later = _value(self._store, _LATER)
         self.observed.append((float(t), amount, later))
         self.provenance_seeds.append(provenance_seed)
         self.discovered_was_present.append(
-            self.param_store.get_state(_DISCOVERED) is not None
+            self._store.get_state(_DISCOVERED) is not None
         )
         if self.mutate_store_during_render:
-            _add(self.param_store, _DISCOVERED, amount * 100.0)
-            self.param_store._set_meta(
+            _add(self._store, _DISCOVERED, amount * 100.0)
+            set_meta(
+                self._store,
                 _AMOUNT,
                 replace(_META, ui_min=-100.0),
             )
-            self.param_store._favorite_keys_ref().add(_DISCOVERED)
-            self.param_store._locked_keys_ref().add(_DISCOVERED)
-            self.param_store._collapsed_headers_ref().add(
-                primitive_collapsed_header_key(("batch", "main"))
+            set_parameters_favorite(
+                self._store,
+                (_DISCOVERED,),
+                favorite=True,
             )
-            self.param_store._runtime_ref().observed_groups.add(("batch", "mutated"))
+            set_parameters_locked(
+                self._store,
+                (_DISCOVERED,),
+                locked=True,
+            )
+            self._store.set_collapsed(
+                primitive_collapsed_header_key(("batch", "main")),
+                collapsed=True,
+            )
+            mutate_runtime(
+                self._store,
+                lambda runtime: runtime.observed_groups.add(
+                    ("batch", "mutated")
+                ),
+            )
             # Render 中の予期しない collection 変更も batch 外へ漏らさない。
-            self.param_store._variations_ref().pop("A & first", None)
+            delete_variation(self._store, "A & first")
         if self.fail_value is not None and amount == self.fail_value:
             raise RuntimeError(f"cannot render amount={amount:g}")
         return SimpleNamespace(t=float(t))
@@ -145,6 +187,34 @@ class _CaptureService:
             format=ExportFormat.from_path(output),
             manifest_path=manifest,
         )
+
+
+def render_variation_batch(
+    session: _Session | RenderSession,
+    output_root: str | Path,
+    *,
+    capture_frame: Any | None = None,
+    **kwargs: Any,
+) -> VariationBatchResult:
+    """公開 API または module-private capture callback seam を呼ぶ test helper。"""
+
+    if capture_frame is None:
+        return _public_render_variation_batch(session, output_root, **kwargs)  # type: ignore[arg-type]
+    return _render_variation_batch_with_capture(
+        session,
+        output_root,
+        capture_frame=capture_frame,
+        **kwargs,
+    )
+
+
+def test_public_batch_signature_has_no_concrete_capture_service() -> None:
+    import inspect
+
+    assert (
+        "capture_service"
+        not in inspect.signature(_public_render_variation_batch).parameters
+    )
 
 
 @pytest.mark.parametrize("overwrite", ("false", 0, 1))
@@ -197,7 +267,7 @@ def test_batch_normalizes_a_valid_real_default_time(tmp_path: Path) -> None:
         variation_names=("C 日本語",),
         default_t=Fraction(3, 2),
         thumbnail_format=ExportFormat.SVG,
-        capture_service=_CaptureService(),
+        capture_frame=_CaptureService().export,
     )
 
     assert result.items[0].t == 1.5
@@ -294,7 +364,7 @@ def test_batch_preserves_exact_variation_and_batch_name_whitespace(
         variation_names=("  exact name  ",),
         batch_name="  exact batch  ",
         thumbnail_format=ExportFormat.SVG,
-        capture_service=_CaptureService(),
+        capture_frame=_CaptureService().export,
     )
 
     assert result.output_directory.name == "  exact batch  "
@@ -333,7 +403,7 @@ def test_batch_merges_each_variation_and_restores_original_store(tmp_path: Path)
         variation_names=("A & first", "B / missing", "C 日本語"),
         default_t=7.5,
         thumbnail_format=ExportFormat.SVG,
-        capture_service=capture,
+        capture_frame=capture.export,
     )
 
     # B が持たない後発 key は A の値 10 を引き継がず、original 99 に戻る。
@@ -386,11 +456,11 @@ def test_batch_exactly_isolates_render_mutations_and_restores_store(
     before_revision = store.revision
     before_favorite_revision = store.favorite_revision
     before_adjustments = store.capture_adjustment_snapshot()
-    before_explicit = deepcopy(store._explicit_by_key)
-    before_favorites = set(store._favorite_keys_ref())
-    before_locks = set(store._locked_keys_ref())
-    before_collapsed = set(store._collapsed_headers_ref())
-    before_runtime = deepcopy(store._runtime_ref())
+    before_explicit = store._read().all_explicit()
+    before_favorites = favorite_parameter_key_set(store)
+    before_locks = locked_parameter_keys(store)
+    before_collapsed = store.collapsed_headers()
+    before_runtime = store._read().runtime()
     before_persisted = encode_param_store(
         store,
         preserve_explicit_overrides=True,
@@ -400,18 +470,18 @@ def test_batch_exactly_isolates_render_mutations_and_restores_store(
         session,
         tmp_path,
         variation_names=("A & first", "B / missing", "C 日本語"),
-        capture_service=_CaptureService(),
+        capture_frame=_CaptureService().export,
     )
 
     assert result.success_count == 3
     assert session.discovered_was_present == [False, False, False]
     assert store.revision == before_revision
     assert store.capture_adjustment_snapshot() == before_adjustments
-    assert store._explicit_by_key == before_explicit
-    assert store._favorite_keys_ref() == before_favorites
-    assert store._locked_keys_ref() == before_locks
-    assert store._collapsed_headers_ref() == before_collapsed
-    assert store._runtime_ref() == before_runtime
+    assert store._read().all_explicit() == before_explicit
+    assert favorite_parameter_key_set(store) == before_favorites
+    assert locked_parameter_keys(store) == before_locks
+    assert store.collapsed_headers() == before_collapsed
+    assert store._read().runtime() == before_runtime
     assert (
         encode_param_store(store, preserve_explicit_overrides=True)
         == before_persisted
@@ -420,8 +490,8 @@ def test_batch_exactly_isolates_render_mutations_and_restores_store(
 
     # exact restore 後に作る mutation view は復元後の store を更新する。
     restored_revision = store.revision
-    store._favorite_keys_ref().add(_AMOUNT)
-    assert _AMOUNT in store._favorite_keys_ref()
+    set_parameters_favorite(store, (_AMOUNT,), favorite=True)
+    assert _AMOUNT in favorite_parameter_key_set(store)
     assert store.favorite_revision == before_favorite_revision + 1
     assert store.revision == restored_revision + 1
 
@@ -435,7 +505,7 @@ def test_png_thumbnail_uses_requested_output_size(tmp_path: Path) -> None:
         tmp_path,
         variation_names=("A & first",),
         thumbnail_size=(240, 180),
-        capture_service=capture,
+        capture_frame=capture.export,
     )
 
     assert capture.calls[0][3] == (240, 180)
@@ -451,7 +521,7 @@ def test_partial_failure_is_reported_and_does_not_stop_later_variations(
         session,
         tmp_path,
         variation_names=("A & first", "B / missing", "unknown", "C 日本語"),
-        capture_service=_CaptureService(),
+        capture_frame=_CaptureService().export,
     )
 
     assert [item.status for item in result.items] == [
@@ -483,7 +553,7 @@ def test_capture_failure_is_partial_and_restores_store(tmp_path: Path) -> None:
         session,
         tmp_path,
         variation_names=("A & first", "B / missing", "C 日本語"),
-        capture_service=_CaptureService(fail_t=2.0),
+        capture_frame=_CaptureService(fail_t=2.0).export,
     )
 
     assert [item.status for item in result.items] == ["success", "failed", "success"]
@@ -501,7 +571,7 @@ def test_default_batch_directory_is_no_clobber(tmp_path: Path) -> None:
         session,
         tmp_path,
         variation_names=("A & first",),
-        capture_service=_CaptureService(),
+        capture_frame=_CaptureService().export,
     )
     sentinel = first.output_directory / "keep.txt"
     sentinel.write_text("original")
@@ -509,7 +579,7 @@ def test_default_batch_directory_is_no_clobber(tmp_path: Path) -> None:
         session,
         tmp_path,
         variation_names=("A & first",),
-        capture_service=_CaptureService(),
+        capture_frame=_CaptureService().export,
     )
 
     assert first.output_directory == tmp_path / "variations"
@@ -530,7 +600,7 @@ def test_explicit_overwrite_replaces_the_whole_generation(tmp_path: Path) -> Non
         variation_names=("A & first",),
         thumbnail_format=ExportFormat.SVG,
         overwrite=True,
-        capture_service=capture,
+        capture_frame=capture.export,
     )
 
     assert result.output_directory == existing
@@ -576,7 +646,7 @@ def test_overwrite_publish_failure_rolls_back_previous_generation(
             variation_names=("A & first",),
             thumbnail_format=ExportFormat.SVG,
             overwrite=True,
-            capture_service=_CaptureService(),
+            capture_frame=_CaptureService().export,
         )
 
     assert sentinel.read_text() == "old generation"
@@ -597,7 +667,7 @@ def test_columns_must_be_an_integer_without_coercion(
             tmp_path,
             variation_names=("A & first",),
             columns=columns,  # type: ignore[arg-type]
-            capture_service=_CaptureService(),
+            capture_frame=_CaptureService().export,
         )
 
 
@@ -612,7 +682,7 @@ def test_columns_must_be_positive(
             tmp_path,
             variation_names=("A & first",),
             columns=columns,
-            capture_service=_CaptureService(),
+            capture_frame=_CaptureService().export,
         )
 
 
@@ -744,14 +814,14 @@ def test_real_render_session_and_capture_service_contract(tmp_path: Path) -> Non
     stale.write_text("stale")
     with RenderSession(draw, seed=999) as session:
         create_variation(
-            session.param_store,
+            session._store,
             "Real contract",
             seed=42,
             t=1.25,
             created_at=1.0,
         )
         create_variation(
-            session.param_store,
+            session._store,
             "No seed",
             seed=None,
             t=1.25,

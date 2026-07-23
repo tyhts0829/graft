@@ -18,6 +18,7 @@ from grafix.core.parameters.frame_params import FrameParamRecord
 from grafix.core.parameters.key import ParameterKey
 from grafix.core.parameters.merge_ops import merge_frame_params
 from grafix.core.parameters.meta import ParamMeta
+from grafix.core.parameters.meta_ops import set_meta
 from grafix.core.parameters.meta_spec import meta_from_spec, meta_to_spec
 from grafix.core.parameters.resolver import resolve_params
 from grafix.core.parameters.snapshot_ops import store_snapshot
@@ -209,7 +210,7 @@ def test_adjustment_snapshot_restores_only_gui_range_and_keeps_current_semantic_
         advanced=False,
         recommended_range=(2.0, 20.0),
     )
-    store._set_meta(key, current_meta)
+    set_meta(store, key, current_meta)
 
     assert store.apply_adjustment_snapshot(snapshot) is True
     assert store.get_meta(key) == ParamMeta(

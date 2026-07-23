@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -100,7 +101,7 @@ class _WorkerResult:
     def __init__(self, result: DrawResult) -> None:
         self._result = result
         self._published = False
-        self.last_submitted_frame_id = int(result.frame_id)
+        self.stats = SimpleNamespace(last_submitted_frame_id=int(result.frame_id))
 
     def submit(self, **_kwargs: object) -> None:
         return None

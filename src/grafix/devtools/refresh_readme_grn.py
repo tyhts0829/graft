@@ -114,7 +114,7 @@ def _export_one(
     config: object,
 ) -> tuple[Path, Path]:
     """1 スケッチ分の SVG/PNG を export して保存先パスを返す。"""
-    from grafix import RenderOptions, export, render
+    from grafix import RenderOptions, render, save
     from grafix.export.output_paths import output_path_for_draw
     from grafix.core.runtime_config import RuntimeConfig
     from grafix.export.image import default_png_output_path
@@ -140,7 +140,7 @@ def _export_one(
         parameter_source="saved",
         config=config,
     )
-    svg_result = export(frame, svg_path, overwrite=True)
+    svg_result = save(frame, svg_path, overwrite=True)
 
     png_path = default_png_output_path(
         draw,  # type: ignore[arg-type]
@@ -148,7 +148,7 @@ def _export_one(
         canvas_size=canvas_size,
         config=frame.metadata.effective_config,
     )
-    png_result = export(frame, png_path, overwrite=True)
+    png_result = save(frame, png_path, overwrite=True)
     return svg_result.path, png_result.path
 
 

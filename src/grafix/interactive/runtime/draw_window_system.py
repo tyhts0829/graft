@@ -38,7 +38,7 @@ from pyglet.window import key
 from grafix.core.export_format import ExportFormat
 from grafix.core.lifecycle import CleanupErrors
 from grafix.core.parameters import (
-    LoadProvenance,
+    ParameterCaptureState,
     ParamStore,
     begin_effect_chain_generation,
 )
@@ -77,7 +77,7 @@ from grafix.interactive.runtime.presented_frame import PresentedFrameState
 from grafix.interactive.runtime.recording_session import RecordingSession
 from grafix.interactive.runtime.scene_runner import SceneRunner
 from grafix.core.parameters.style_resolver import StyleResolver
-from grafix.core.parameters.source import MidiFrameSnapshot, ParameterLoadMode
+from grafix.core.parameters.source import MidiFrameSnapshot
 from grafix.core.preview_quality import PreviewQuality
 from grafix.interactive.runtime.video_recorder import default_video_output_path
 
@@ -118,7 +118,7 @@ class DrawWindowSystem:
         render_scale: float,
         store: ParamStore,
         effective_config: RuntimeConfig,
-        parameter_load_provenance: Callable[[], LoadProvenance],
+        parameter_capture_state: Callable[[], ParameterCaptureState],
         midi_session: MidiSession | None = None,
         monitor: RuntimeMonitor | None = None,
         fps: float = 60.0,
@@ -128,7 +128,6 @@ class DrawWindowSystem:
         runtime_limit_profiles: RuntimeLimitProfiles = DEFAULT_RUNTIME_LIMIT_PROFILES,
         source_reload: SourceReloadController | None = None,
         definitions: AuthoringDefinitionsSnapshot | None = None,
-        parameter_source: ParameterLoadMode = "code",
         parameter_store_path: Path | None = None,
         seed: int | None = None,
     ) -> None:
@@ -167,13 +166,12 @@ class DrawWindowSystem:
         self._fps = frame_rate
         if not isinstance(effective_config, RuntimeConfig):
             raise TypeError("effective_config は RuntimeConfig である必要があります")
-        if not callable(parameter_load_provenance):
-            raise TypeError("parameter_load_provenance は callable である必要があります")
+        if not callable(parameter_capture_state):
+            raise TypeError("parameter_capture_state は callable である必要があります")
         self._effective_config = effective_config
         # Keep/Discard 後も capture 時点の session state を使えるよう、値ではなく
         # owner である ParameterSession への provider を保持する。
-        self._parameter_load_provenance = parameter_load_provenance
-        self._parameter_source = parameter_source
+        self._parameter_capture_state = parameter_capture_state
         self._parameter_store_path = (
             None if parameter_store_path is None else Path(parameter_store_path)
         )
@@ -183,9 +181,8 @@ class DrawWindowSystem:
             provenance_builder=CaptureProvenanceBuilder(
                 draw,
                 config=self._effective_config,
-                parameter_source=self._parameter_source,
+                parameter_state=self._parameter_capture_state,
                 parameter_store_path=self._parameter_store_path,
-                parameter_load_provenance=self._parameter_load_provenance,
                 seed=seed,
             ),
         )
@@ -443,9 +440,8 @@ class DrawWindowSystem:
         return CaptureProvenanceBuilder(
             draw,
             config=self._effective_config,
-            parameter_source=self._parameter_source,
+            parameter_state=self._parameter_capture_state,
             parameter_store_path=self._parameter_store_path,
-            parameter_load_provenance=self._parameter_load_provenance,
             seed=self._seed,
         )
 

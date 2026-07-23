@@ -86,27 +86,7 @@ def store_snapshot(
 def _full_snapshot(store: ParamStore) -> ParamSnapshot:
     """store 全体から独立した immutable mapping を構築する。"""
 
-    labels = store._labels_ref()
-    ordinals = store._ordinals_ref()
-
-    result: dict[ParameterKey, ParamSnapshotEntry] = {}
-    for key, state in store._states.items():
-        meta = store._meta.get(key)
-        if meta is None:
-            # meta を持たないキーはスナップショットに含めない（実質的に GUI 対象外）
-            continue
-
-        ordinal = ordinals.get(key.op, key.site_id)
-        if ordinal is None:
-            raise RuntimeError(
-                "ParamStore の不変条件違反: ordinal が未割り当ての group がある"
-                f": op={key.op!r}, site_id={key.site_id!r}"
-            )
-
-        label = labels.get(key.op, key.site_id)
-        state_copy = ParamStateSnapshot.from_state(state)
-        result[key] = (meta, state_copy, int(ordinal), label)
-    return MappingProxyType(result)
+    return MappingProxyType(store._read().snapshot_rows())
 
 
 def _snapshot_with_value_changes(
@@ -156,20 +136,7 @@ def _snapshot_entry(
 ) -> ParamSnapshotEntry | None:
     """既存 key 1 件だけを snapshot entry へ固定する。"""
 
-    state = store._states.get(key)
-    meta = store._meta.get(key)
-    if state is None or meta is None:
-        return None
-    ordinal = store._ordinals_ref().get(key.op, key.site_id)
-    if ordinal is None:
-        return None
-    label = store._labels_ref().get(key.op, key.site_id)
-    return (
-        meta,
-        ParamStateSnapshot.from_state(state),
-        int(ordinal),
-        label,
-    )
+    return store._read().snapshot_row(key)
 
 
 def store_snapshot_for_gui(
@@ -178,17 +145,17 @@ def store_snapshot_for_gui(
     """Parameter GUI 表示用のスナップショットを返す（副作用なし）。"""
 
     snapshot = store_snapshot(store)
-    runtime = store._runtime_ref()
-    if not runtime.loaded_groups:
+    loaded_groups, observed_groups = store._read().visible_groups()
+    if not loaded_groups:
         return snapshot
 
     from .style import STYLE_OP
 
     loaded_targets = {
-        (op, site_id) for op, site_id in runtime.loaded_groups if op not in {STYLE_OP}
+        (op, site_id) for op, site_id in loaded_groups if op not in {STYLE_OP}
     }
     observed_targets = {
-        (op, site_id) for op, site_id in runtime.observed_groups if op not in {STYLE_OP}
+        (op, site_id) for op, site_id in observed_groups if op not in {STYLE_OP}
     }
 
     hide_groups = loaded_targets - observed_targets

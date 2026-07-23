@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from hashlib import sha256
 import time
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from math import ceil, floor
 from pathlib import Path
 from random import Random
@@ -27,11 +27,11 @@ from .adjustment_snapshot import (
 )
 from .key import ParameterKey
 from .meta import ParamMeta
+from .store import ParamStore
 from .view import canonicalize_ui_value
 
 if TYPE_CHECKING:
     from .history import ParamStoreHistory
-    from .store import ParamStore
 
 
 _MAX_VARIATION_NAME_LENGTH = 80
@@ -83,6 +83,38 @@ class Variation:
 
 
 @dataclass(frozen=True, slots=True)
+class VariationDraft:
+    """外部 artifact を作る前に確定した variation の domain 入力。
+
+    ``base_revision`` と ``_store`` は、capture callback の実行中に store が
+    変更されていないことを commit 時に確認するために保持する。draft 自体は
+    thumbnail path を持たず、capture の成否にかかわらず同じ snapshot を確定する。
+    """
+
+    variation: Variation
+    base_revision: int
+    _store: ParamStore = field(repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if type(self.variation) is not Variation:
+            raise TypeError("variation must be a Variation")
+        if self.variation.thumbnail_path is not None:
+            raise ValueError("variation draft must not contain a thumbnail path")
+        revision = exact_integer(
+            self.base_revision,
+            name="base_revision",
+            minimum=0,
+        )
+        object.__setattr__(self, "base_revision", revision)
+
+    @property
+    def name(self) -> str:
+        """検証済み variation 名を返す。"""
+
+        return self.variation.name
+
+
+@dataclass(frozen=True, slots=True)
 class VariationDifference:
     """現在の store と variation 間の 1 parameter 分の差分。"""
 
@@ -105,22 +137,114 @@ def create_variation(
     同名 variation は暗黙に上書きしない。
     """
 
-    validated_name = _validated_name(name)
-    variations = store._variations_ref()
-    if validated_name in variations:
-        raise ValueError(f"variation already exists: {validated_name!r}")
-
-    variation = Variation(
-        name=validated_name,
-        created_at=time.time() if created_at is None else created_at,
+    draft = prepare_variation(
+        store,
+        name,
         note=note,
         seed=seed,
         t=t,
-        parameter_snapshot=store.capture_adjustment_snapshot(),
-        thumbnail_path=_thumbnail_path_text(thumbnail_path),
+        created_at=created_at,
     )
+    return commit_variation(
+        store,
+        draft,
+        thumbnail_path=thumbnail_path,
+    )
+
+
+def prepare_variation(
+    store: ParamStore,
+    name: str,
+    *,
+    note: str = "",
+    seed: int | None = None,
+    t: float | None = None,
+    created_at: float | None = None,
+) -> VariationDraft:
+    """variation の全 domain 入力と snapshot を副作用なしで検証する。
+
+    戻り値は ``store`` の現在 revision にだけ commit できる。これにより、
+    呼び出し側が draft 作成後に thumbnail capture を実行しても、その callback
+    が parameter state を変更した場合は古い snapshot を保存しない。
+    """
+
+    if not isinstance(store, ParamStore):
+        raise TypeError("store must be a ParamStore")
+
+    # 外部 capture より前に scalar metadata の失敗をすべて確定する。
+    validated_name = _validated_name(name)
+    validated_note = exact_string(note, name="note")
+    validated_seed = (
+        None if seed is None else exact_integer(seed, name="seed")
+    )
+    validated_t = None if t is None else finite_real(t, name="t")
+    validated_created_at = finite_real(
+        time.time() if created_at is None else created_at,
+        name="created_at",
+    )
+
+    if store._read().variation(validated_name) is not None:
+        raise ValueError(f"variation already exists: {validated_name!r}")
+
+    base_revision = store.revision
+    snapshot = store.capture_adjustment_snapshot()
+    if store.revision != base_revision:
+        raise RuntimeError("parameter store changed while preparing variation")
+
+    return VariationDraft(
+        variation=Variation(
+            name=validated_name,
+            created_at=validated_created_at,
+            note=validated_note,
+            seed=validated_seed,
+            t=validated_t,
+            parameter_snapshot=snapshot,
+            thumbnail_path=None,
+        ),
+        base_revision=base_revision,
+        _store=store,
+    )
+
+
+def commit_variation(
+    store: ParamStore,
+    draft: VariationDraft,
+    *,
+    thumbnail_path: str | Path | None = None,
+) -> Variation:
+    """検証済み draft を現在 revision へ一度だけ追加する。
+
+    revision または同名 entry が capture 中に変化していた場合は、store を変更せず
+    失敗する。呼び出し側はこの失敗時に、自身が所有する thumbnail artifact を
+    rollback できる。
+    """
+
+    if not isinstance(store, ParamStore):
+        raise TypeError("store must be a ParamStore")
+    if type(draft) is not VariationDraft:
+        raise TypeError("draft must be a VariationDraft")
+    validated_thumbnail_path = _thumbnail_path_text(thumbnail_path)
+    variation = replace(
+        draft.variation,
+        thumbnail_path=validated_thumbnail_path,
+    )
+
+    if draft._store is not store:
+        raise ValueError("variation draft belongs to another ParamStore")
+    if store.revision != draft.base_revision:
+        raise RuntimeError(
+            "parameter store changed after variation was prepared"
+        )
+    variations = store._read().variations_by_name()
+    if variation.name in variations:
+        raise ValueError(f"variation already exists: {variation.name!r}")
+
+    # allocation は live state を触る前に終え、commit は参照 swap に限定する。
     variations[variation.name] = variation
-    store._touch()
+    store._mutation().commit_variations(
+        expected_revision=draft.base_revision,
+        variations=variations,
+    )
     return variation
 
 
@@ -135,7 +259,8 @@ def duplicate_variation(
 
     source_name = _validated_name(name)
     duplicate_name = _validated_name(new_name)
-    variations = store._variations_ref()
+    base_revision = store.revision
+    variations = store._read().variations_by_name()
     source = _require_variation(variations, source_name)
     if duplicate_name in variations:
         raise ValueError(f"variation already exists: {duplicate_name!r}")
@@ -147,7 +272,10 @@ def duplicate_variation(
         parameter_snapshot=source.parameter_snapshot,
     )
     variations[duplicate.name] = duplicate
-    store._touch()
+    store._mutation().commit_variations(
+        expected_revision=base_revision,
+        variations=variations,
+    )
     return duplicate
 
 
@@ -156,7 +284,8 @@ def rename_variation(store: ParamStore, name: str, new_name: str) -> Variation:
 
     current_name = _validated_name(name)
     validated_new_name = _validated_name(new_name)
-    variations = store._variations_ref()
+    base_revision = store.revision
+    variations = store._read().variations_by_name()
     variation = _require_variation(variations, current_name)
     if validated_new_name == current_name:
         return variation
@@ -170,7 +299,10 @@ def rename_variation(store: ParamStore, name: str, new_name: str) -> Variation:
     ]
     variations.clear()
     variations.update(items)
-    store._touch()
+    store._mutation().commit_variations(
+        expected_revision=base_revision,
+        variations=variations,
+    )
     return renamed
 
 
@@ -178,18 +310,22 @@ def delete_variation(store: ParamStore, name: str) -> bool:
     """variation を削除する。存在しなければ False を返す。"""
 
     validated_name = _validated_name(name)
-    variations = store._variations_ref()
+    base_revision = store.revision
+    variations = store._read().variations_by_name()
     if validated_name not in variations:
         return False
     del variations[validated_name]
-    store._touch()
+    store._mutation().commit_variations(
+        expected_revision=base_revision,
+        variations=variations,
+    )
     return True
 
 
 def list_variations(store: ParamStore) -> tuple[Variation, ...]:
     """作成順の variation を読み取り専用 tuple で返す。"""
 
-    return tuple(store._variations_ref().values())
+    return store._read().variations()
 
 
 def diff_variation(
@@ -198,7 +334,10 @@ def diff_variation(
 ) -> tuple[VariationDifference, ...]:
     """現在の parameter 状態と variation の差分を返す。"""
 
-    variation = _require_variation(store._variations_ref(), _validated_name(name))
+    variation = _require_variation(
+        store._read().variations_by_name(),
+        _validated_name(name),
+    )
     return tuple(
         VariationDifference(key=key, fields=fields)
         for key, fields in variation.parameter_snapshot.difference_fields(
@@ -220,7 +359,10 @@ def restore_variation(
     """
 
     validated_name = _validated_name(name)
-    variation = _require_variation(store._variations_ref(), validated_name)
+    variation = _require_variation(
+        store._read().variations_by_name(),
+        validated_name,
+    )
     if history is None:
         return store.apply_adjustment_snapshot(variation.parameter_snapshot)
     if history._store is not store:
@@ -237,7 +379,7 @@ def locked_parameter_keys(store: ParamStore) -> tuple[ParameterKey, ...]:
 
     return tuple(
         sorted(
-            store._locked_keys_ref(),
+            store._read().locked_keys(),
             key=lambda key: (key.op, key.site_id, key.arg),
         )
     )
@@ -248,7 +390,7 @@ def is_parameter_locked(store: ParamStore, key: ParameterKey) -> bool:
 
     if not isinstance(key, ParameterKey):
         raise TypeError("key must be a ParameterKey")
-    return key in store._locked_keys_ref()
+    return key in store._read().locked_keys()
 
 
 def set_parameters_locked(
@@ -266,7 +408,8 @@ def set_parameters_locked(
 
     locked = exact_bool(locked, name="locked")
     ordered_keys = _ordered_scope(keys)
-    locked_keys = store._locked_keys_ref()
+    base_revision = store.revision
+    locked_keys = set(store._read().locked_keys())
     available_keys = frozenset(store.capture_adjustment_snapshot().keys())
     changed: list[ParameterKey] = []
     for key in ordered_keys:
@@ -279,7 +422,10 @@ def set_parameters_locked(
             locked_keys.discard(key)
             changed.append(key)
     if changed:
-        store._touch()
+        store._mutation().commit_locks(
+            expected_revision=base_revision,
+            locked_keys=locked_keys,
+        )
     return tuple(changed)
 
 
@@ -311,7 +457,7 @@ def randomize_parameters(
         current = store.capture_adjustment_snapshot()
         current_by_key = dict(current.items())
         adjustments: list[tuple[ParameterKey, ParameterAdjustment]] = []
-        locked = store._locked_keys_ref()
+        locked = store._read().locked_keys()
         for key in ordered_keys:
             if key in locked:
                 continue
@@ -380,8 +526,9 @@ def morph_variations(
     if not 0.0 <= normalized_amount <= 1.0:
         raise ValueError("amount must be a finite number in [0, 1]")
     _validate_history(store, history)
-    variation_a = _require_variation(store._variations_ref(), _validated_name(a_name))
-    variation_b = _require_variation(store._variations_ref(), _validated_name(b_name))
+    variations = store._read().variations_by_name()
+    variation_a = _require_variation(variations, _validated_name(a_name))
+    variation_b = _require_variation(variations, _validated_name(b_name))
     ordered_keys = _ordered_scope(keys)
     adjustments_a = dict(variation_a.parameter_snapshot.items())
     adjustments_b = dict(variation_b.parameter_snapshot.items())
@@ -390,7 +537,7 @@ def morph_variations(
         current = store.capture_adjustment_snapshot()
         current_by_key = dict(current.items())
         adjustments: list[tuple[ParameterKey, ParameterAdjustment]] = []
-        locked = store._locked_keys_ref()
+        locked = store._read().locked_keys()
         use_b = normalized_amount >= 0.5
         for key in ordered_keys:
             if key in locked:
@@ -659,6 +806,8 @@ def _require_variation(
 __all__ = [
     "Variation",
     "VariationDifference",
+    "VariationDraft",
+    "commit_variation",
     "create_variation",
     "delete_variation",
     "diff_variation",
@@ -667,6 +816,7 @@ __all__ = [
     "list_variations",
     "locked_parameter_keys",
     "morph_variations",
+    "prepare_variation",
     "randomize_parameters",
     "rename_variation",
     "restore_variation",

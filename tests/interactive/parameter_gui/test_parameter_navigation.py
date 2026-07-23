@@ -58,14 +58,14 @@ def test_collapse_all_and_expand_all_update_all_current_groups(
     )
 
     assert set_all_parameter_groups_collapsed(store, view, collapsed=True) is True
-    assert store._collapsed_headers_ref() == {
+    assert store.collapsed_headers() == {
         primitive_collapsed_header_key(("circle", "site-a")),
         primitive_collapsed_header_key(("circle", "site-b")),
     }
     assert set_all_parameter_groups_collapsed(store, view, collapsed=True) is False
 
     assert set_all_parameter_groups_collapsed(store, view, collapsed=False) is True
-    assert store._collapsed_headers_ref() == set()
+    assert store.collapsed_headers() == set()
     assert set_all_parameter_groups_collapsed(store, view, collapsed=False) is False
 
 

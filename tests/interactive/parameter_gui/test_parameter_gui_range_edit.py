@@ -10,6 +10,7 @@ from grafix.interactive.parameter_gui.range_edit import (
     preview_range_edit,
     range_edit_session_for_store,
 )
+from tests.param_store_test_support import replace_parameter_state_for_test
 
 
 def _add_range_parameter(
@@ -33,10 +34,7 @@ def _add_range_parameter(
             )
         ],
     )
-    state = store._get_state_ref(key)
-    assert state is not None
-    state.cc_key = cc_key
-    store._touch()
+    replace_parameter_state_for_test(store, key, cc_key=cc_key)
     return key
 
 

@@ -18,7 +18,10 @@ from grafix.core.parameters.codec import (
     loads_param_store_result,
 )
 from grafix.core.parameters.context import parameter_context
-from grafix.core.parameters.effect_order_ops import merge_frame_effect_chains
+from grafix.core.parameters.effect_order_ops import (
+    merge_frame_effect_chains,
+    set_effect_order,
+)
 from grafix.core.parameters.effects import EffectStepTopology
 from grafix.core.parameters.frame_params import (
     FrameEffectChainRecord,
@@ -36,6 +39,7 @@ from grafix.core.parameters.variations import (
     is_parameter_locked,
     set_parameters_locked,
 )
+from tests.param_store_test_support import record_effect_chain, runtime_state
 
 
 def _roundtrip_store(store: ParamStore) -> ParamStore:
@@ -418,7 +422,7 @@ def test_reconcile_never_reuses_an_old_group_after_automatic_migration():
     # 次 frame でも、primary に使用済みの old を secondary へ再利用しない。
     merge_frame_params(store, _polyhedron_records("new-secondary"))
     assert store.get_state(secondary_key).ui_value == "tetrahedron"  # type: ignore[union-attr]
-    assert store._runtime_ref().reconcile_applied == {
+    assert runtime_state(store).reconcile_applied == {
         (("polyhedron", "old"), ("polyhedron", "new-primary"))
     }
 
@@ -493,16 +497,18 @@ def test_prune_removes_stale_effect_steps_and_unused_chain_ordinals():
 
 def test_prune_removes_effect_order_override_with_its_chain() -> None:
     store = ParamStore()
-    assert store._effects_ref().record_chain(
+    assert record_effect_chain(
+        store,
         chain_id="chain-order",
         steps=(
             EffectStepTopology("scale", "scale-site", 1, 0),
             EffectStepTopology("rotate", "rotate-site", 1, 1),
         ),
     )
-    assert store._effects_ref().set_order_override(
-        "chain-order",
-        (("rotate", "rotate-site"), ("scale", "scale-site")),
+    assert set_effect_order(
+        store,
+        chain_id="chain-order",
+        order=(("rotate", "rotate-site"), ("scale", "scale-site")),
     )
 
     prune_groups(
@@ -510,8 +516,8 @@ def test_prune_removes_effect_order_override_with_its_chain() -> None:
         (("scale", "scale-site"), ("rotate", "rotate-site")),
     )
 
-    assert store._effects_ref().topology("chain-order") is None
-    assert store._effects_ref().order_overrides() == {}
+    assert store._read().effects().topology("chain-order") is None
+    assert store.effect_order_overrides() == {}
     assert "chain-order" not in store.chain_ordinals()
 
 
@@ -521,25 +527,27 @@ def test_prune_removes_loaded_unobserved_parameterless_effect_chain() -> None:
         EffectStepTopology("first_no_params", "first-site", 1, 0),
         EffectStepTopology("second_no_params", "second-site", 1, 1),
     )
-    assert original._effects_ref().record_chain(
+    assert record_effect_chain(
+        original,
         chain_id="removed-chain",
         steps=topology,
     )
-    assert original._effects_ref().set_order_override(
-        "removed-chain",
-        (("second_no_params", "second-site"), ("first_no_params", "first-site")),
+    assert set_effect_order(
+        original,
+        chain_id="removed-chain",
+        order=(("second_no_params", "second-site"), ("first_no_params", "first-site")),
     )
     removed_header = effect_chain_collapsed_header_key("removed-chain")
-    original._collapsed_headers_ref().add(removed_header)
+    original.set_collapsed(removed_header, collapsed=True)
     store = _roundtrip_store(original)
 
-    assert not store._runtime_ref().loaded_groups
+    assert not runtime_state(store).loaded_groups
     prune_stale_loaded_groups(store)
 
     assert store.effect_chain_topologies() == {}
     assert store.effect_order_overrides() == {}
     assert "removed-chain" not in store.chain_ordinals()
-    assert removed_header not in store._collapsed_headers_ref()
+    assert removed_header not in store.collapsed_headers()
 
 
 def test_prune_keeps_loaded_parameterless_effect_chain_observed_this_session() -> None:
@@ -548,19 +556,21 @@ def test_prune_keeps_loaded_parameterless_effect_chain_observed_this_session() -
         EffectStepTopology("first_no_params", "first-site", 1, 0),
         EffectStepTopology("second_no_params", "second-site", 1, 1),
     )
-    assert original._effects_ref().record_chain(
+    assert record_effect_chain(
+        original,
         chain_id="observed-chain",
         steps=topology,
     )
     store = _roundtrip_store(original)
 
-    assert not store._effects_ref().record_chain(
+    assert not record_effect_chain(
+        store,
         chain_id="observed-chain",
         steps=topology,
     )
     prune_stale_loaded_groups(store)
 
-    assert store._effects_ref().topology("observed-chain") == topology
+    assert store._read().effects().topology("observed-chain") == topology
     assert "observed-chain" in store.chain_ordinals()
 
 
@@ -570,13 +580,15 @@ def test_parameter_prune_does_not_remove_observed_code_topology_step() -> None:
         EffectStepTopology("first", "first-site", 1, 0),
         EffectStepTopology("second", "second-site", 1, 1),
     )
-    assert original._effects_ref().record_chain(
+    assert record_effect_chain(
+        original,
         chain_id="metadata-removed-chain",
         steps=topology,
     )
-    assert original._effects_ref().set_order_override(
-        "metadata-removed-chain",
-        (("second", "second-site"), ("first", "first-site")),
+    assert set_effect_order(
+        original,
+        chain_id="metadata-removed-chain",
+        order=(("second", "second-site"), ("first", "first-site")),
     )
     merge_frame_params(
         original,
@@ -593,13 +605,14 @@ def test_parameter_prune_does_not_remove_observed_code_topology_step() -> None:
     )
     store = _roundtrip_store(original)
 
-    assert not store._effects_ref().record_chain(
+    assert not record_effect_chain(
+        store,
         chain_id="metadata-removed-chain",
         steps=topology,
     )
     prune_stale_loaded_groups(store)
 
-    assert store._effects_ref().topology("metadata-removed-chain") == topology
+    assert store._read().effects().topology("metadata-removed-chain") == topology
     assert store.effect_order_overrides()["metadata-removed-chain"] == (
         ("second", "second-site"),
         ("first", "first-site"),

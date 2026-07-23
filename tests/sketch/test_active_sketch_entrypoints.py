@@ -116,12 +116,13 @@ def smoke_run(draw, *args, **kwargs):
         if script_path.is_relative_to(preset_root)
         else None
     )
+    if definitions is not None:
+        draw.__grafix_authoring_definitions__ = definitions
     with RenderSession(
         draw,
         options=options,
         parameter_source="code",
         seed=kwargs.get("seed"),
-        definitions=definitions,
     ) as session:
         frame = session.render(0.0)
     print(json.dumps({"layers": len(frame.layers)}))

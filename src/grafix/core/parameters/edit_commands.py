@@ -5,12 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from .favorites import favorite_parameter_key_set, set_parameters_favorite
 from .key import ParameterKey
 from .meta import ParamMeta
-from .meta_ops import set_meta
+from .state import ParamState
 from .store import ParamStore
-from .ui_ops import update_state_from_ui
 from .validation import CcKey, validate_cc_key, validate_parameter_value
 
 
@@ -74,61 +72,69 @@ def apply_parameter_edits(
     if len(set(keys)) != len(keys):
         raise ValueError("edits must contain at most one command per key")
 
-    favorites_before = favorite_parameter_key_set(store)
+    base_revision = store.revision
+    read = store._read()
+    states = read.states()
+    meta_by_key = read.all_meta()
+    explicit_by_key = read.all_explicit()
+    favorites = set(read.favorite_keys())
+    favorites_before = frozenset(favorites)
     changed: list[ParameterEdit] = []
+    history_keys: list[ParameterKey] = []
+    value_keys: list[ParameterKey] = []
+    structure_changed = False
     for edit in edits:
-        state = store.get_state(edit.key)
-        if (
-            store.get_meta(edit.key) != edit.meta
-            or state is None
+        state = states.get(edit.key)
+        meta_changed = meta_by_key.get(edit.key) != edit.meta
+        state_changed = (
+            state is None
             or state.ui_value != edit.ui_value
             or state.override != edit.override
             or state.cc_key != edit.cc_key
-            or (edit.key in favorites_before) != edit.favorite
-        ):
-            changed.append(edit)
+        )
+        favorite_changed = (edit.key in favorites_before) != edit.favorite
+        if not meta_changed and not state_changed and not favorite_changed:
+            continue
+
+        changed.append(edit)
+        if meta_changed:
+            meta_by_key[edit.key] = edit.meta
+            history_keys.append(edit.key)
+            structure_changed = True
+        if state_changed:
+            if state is None:
+                state = ParamState(ui_value=edit.ui_value)
+                explicit_by_key[edit.key] = False
+                structure_changed = True
+            state.ui_value = edit.ui_value
+            state.override = edit.override
+            state.cc_key = edit.cc_key
+            states[edit.key] = state
+            history_keys.append(edit.key)
+            value_keys.append(edit.key)
+        if favorite_changed:
+            if edit.favorite:
+                favorites.add(edit.key)
+            else:
+                favorites.discard(edit.key)
     if not changed:
         return ()
 
-    revision_before = store.revision
-    owner = object()
-    store._begin_mutation_batch(owner)
-    try:
-        favorite_on: list[ParameterKey] = []
-        favorite_off: list[ParameterKey] = []
-        for edit in changed:
-            state = store.get_state(edit.key)
-            if store.get_meta(edit.key) != edit.meta:
-                set_meta(store, edit.key, edit.meta)
-            if (
-                state is None
-                or state.ui_value != edit.ui_value
-                or state.override != edit.override
-                or state.cc_key != edit.cc_key
-            ):
-                ok, error = update_state_from_ui(
-                    store,
-                    edit.key,
-                    edit.ui_value,
-                    meta=edit.meta,
-                    override=edit.override,
-                    cc_key=edit.cc_key,
-                )
-                if not ok:
-                    raise ValueError(error or f"invalid parameter edit: {edit.key!r}")
-            favorite_before = edit.key in favorites_before
-            if edit.favorite != favorite_before:
-                (favorite_on if edit.favorite else favorite_off).append(edit.key)
-
-        if favorite_on:
-            set_parameters_favorite(store, favorite_on, favorite=True)
-        if favorite_off:
-            set_parameters_favorite(store, favorite_off, favorite=False)
-    finally:
-        store._end_mutation_batch(owner)
-
-    if store.revision == revision_before:
-        return ()
+    mutation = store._mutation()
+    mutation.prepare_history(
+        expected_revision=base_revision,
+        keys=tuple(dict.fromkeys(history_keys)),
+    )
+    mutation.commit_parameter_edits(
+        expected_revision=base_revision,
+        states=states,
+        meta=meta_by_key,
+        explicit_by_key=explicit_by_key,
+        favorite_keys=favorites,
+        structure=structure_changed,
+        value_keys=tuple(value_keys),
+        favorites_changed=favorites != favorites_before,
+    )
     return tuple(edit.key for edit in changed)
 
 

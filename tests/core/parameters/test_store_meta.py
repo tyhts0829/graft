@@ -10,11 +10,16 @@ from grafix.core.parameters.codec import (
     loads_param_store_result,
 )
 from grafix.core.parameters.collapsed_header import primitive_collapsed_header_key
+from grafix.core.parameters.favorites import (
+    favorite_parameter_key_set,
+    set_parameters_favorite,
+)
 from grafix.core.parameters.merge_ops import merge_frame_params
 from grafix.core.parameters.invariants import assert_invariants
 from grafix.core.parameters.snapshot_ops import store_snapshot
 from grafix.core.parameters.state import ParamState, ParamStateSnapshot
 from grafix.core.parameters.ui_ops import update_state_from_ui
+from tests.param_store_test_support import mutate_runtime, runtime_state
 
 
 def test_snapshot_includes_meta_state_and_ordinal():
@@ -213,34 +218,40 @@ def test_unknown_kind_is_rejected() -> None:
 
 
 @pytest.mark.parametrize(
-    ("field", "value"),
+    "explicit",
     [
-        ("explicit", 1),
-        ("initial_override", 1),
+        1,
+        0,
     ],
 )
-def test_store_rejects_non_bool_internal_flags(field: str, value: object) -> None:
-    store = ParamStore()
+def test_frame_record_rejects_non_bool_explicit(explicit: object) -> None:
     key = ParameterKey(op="circle", site_id="strict-flags", arg="r")
-    kwargs = {
-        "base_value": 1.0,
-        "explicit": False,
-        "initial_override": None,
-    }
-    kwargs[field] = value
-
-    with pytest.raises(TypeError, match="exact bool"):
-        store._ensure_state(key, **kwargs)  # type: ignore[arg-type]
-
-    assert store.get_state(key) is None
+    with pytest.raises(TypeError, match="bool"):
+        FrameParamRecord(
+            key=key,
+            base=1.0,
+            meta=ParamMeta(kind="float"),
+            effective=1.0,
+            source="code",
+            explicit=explicit,  # type: ignore[arg-type]
+        )
 
 
-def test_store_rejects_non_bool_explicit_update() -> None:
+def test_ui_update_rejects_non_bool_override() -> None:
     store = ParamStore()
     key = ParameterKey(op="circle", site_id="strict-explicit", arg="r")
 
-    with pytest.raises(TypeError, match="exact bool"):
-        store._set_explicit(key, 1)  # type: ignore[arg-type]
+    ok, error = update_state_from_ui(
+        store,
+        key,
+        1.0,
+        meta=ParamMeta(kind="float"),
+        override=1,  # type: ignore[arg-type]
+    )
+
+    assert ok is False
+    assert error == "override must be an exact bool or None"
+    assert store.get_state(key) is None
 
 
 def test_snapshot_rejects_corrupt_non_bool_override() -> None:
@@ -325,47 +336,56 @@ def test_replace_contents_is_deep_and_invalidates_all_revision_domains() -> None
             )
         ],
     )
-    source._favorite_keys_ref().add(source_key)
-    source._collapsed_headers_ref().add(
-        primitive_collapsed_header_key((source_key.op, source_key.site_id))
+    set_parameters_favorite(source, (source_key,), favorite=True)
+    source.set_collapsed(
+        primitive_collapsed_header_key((source_key.op, source_key.site_id)),
+        collapsed=True,
     )
-    source._runtime_ref().observed_groups.add(("line", "observed"))
+    mutate_runtime(
+        source,
+        lambda runtime: runtime.observed_groups.add(("line", "observed")),
+    )
 
     old_snapshot = store_snapshot(target)
-    old_runtime = target._runtime_ref()
+    old_runtime = target._read().runtime_token()
+    old_runtime_state = runtime_state(target)
     revisions = (
         target.revision,
         target.table_revision,
         target.value_revision,
         target.style_revision,
         target.favorite_revision,
-        old_runtime.effective_revision,
-        old_runtime.visibility_revision,
+        old_runtime_state.effective_revision,
+        old_runtime_state.visibility_revision,
     )
 
     target.replace_contents_from(source)
 
     assert target.get_state(target_key) is None
     assert target.get_state(source_key) is not None
-    assert target._favorite_keys_snapshot() == frozenset({source_key})
-    assert target._collapsed_headers_ref() == {
+    assert favorite_parameter_key_set(target) == frozenset({source_key})
+    assert target.collapsed_headers() == {
         primitive_collapsed_header_key((source_key.op, source_key.site_id))
     }
     assert store_snapshot(target) is not old_snapshot
-    assert target._runtime_ref() is not old_runtime
+    assert target._read().runtime_token() != old_runtime
+    target_runtime = runtime_state(target)
     assert (
         target.revision,
         target.table_revision,
         target.value_revision,
         target.style_revision,
         target.favorite_revision,
-        target._runtime_ref().effective_revision,
-        target._runtime_ref().visibility_revision,
+        target_runtime.effective_revision,
+        target_runtime.visibility_revision,
     ) == tuple(value + 1 for value in revisions)
     assert target.value_changes_since(revisions[2]) is None
-    assert target._runtime_ref().effective_changes_since(revisions[5]) is None
+    assert target_runtime.effective_changes_since(revisions[5]) is None
 
-    source_state = source._get_state_ref(source_key)
-    assert source_state is not None
-    source_state.ui_value = 9.0
+    assert update_state_from_ui(
+        source,
+        source_key,
+        9.0,
+        meta=meta,
+    )[0]
     assert target.get_state(source_key).ui_value == 2.0  # type: ignore[union-attr]

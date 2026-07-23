@@ -24,7 +24,7 @@ from grafix.core.export_format import ExportFormat
 from grafix.export.capture_provenance import CaptureProvenanceBuilder
 from grafix.core.geometry import Geometry
 from grafix.core.layer import Layer
-from grafix.core.parameters import ParamStore
+from grafix.core.parameters import ParameterCaptureState, ParamStore
 from grafix.core.pipeline import RealizedLayer
 from grafix.core.realize import GeometryCacheKey
 from grafix.core.realized_geometry import RealizedGeometry
@@ -56,9 +56,8 @@ _PROVENANCE_STORE = ParamStore()
 _PROVENANCE_BUILDER = CaptureProvenanceBuilder(
     _provenance_draw,
     config=runtime_config(),
-    parameter_source="code",
+    parameter_state=ParameterCaptureState("code", "primary"),
     parameter_store_path=None,
-    parameter_load_provenance="primary",
 )
 
 
@@ -1145,9 +1144,8 @@ def test_default_worker_uses_parent_gcode_params_recorded_in_manifest(
     provenance = CaptureProvenanceBuilder(
         draw,
         config=effective_config,
-        parameter_source="code",
+        parameter_state=ParameterCaptureState("code", "primary"),
         parameter_store_path=None,
-        parameter_load_provenance="primary",
     ).frame(
         store,
         t=0.0,

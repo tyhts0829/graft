@@ -6,7 +6,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from .key import ParameterKey
 from .meta import ParamMeta
+from .state import ParamState
 from .store import ParamStore
 from .style import (
     STYLE_BACKGROUND_COLOR,
@@ -64,17 +66,46 @@ def ensure_style_entries(
         ),
     ]
 
-    ordinals = store._ordinals_ref()
+    base_revision = store.revision
+    read = store._read()
+    states = read.states()
+    meta_by_key = read.all_meta()
+    explicit_by_key = read.all_explicit()
+    ordinals = read.ordinals()
+    before_ordinals = ordinals.as_dict()
+    history_keys: list[ParameterKey] = []
+    changed = False
     for arg, base_value, meta in items:
         key = style_key(arg)
-        store._set_meta(key, meta)
-        store._ensure_state(
-            key,
-            base_value=base_value,
-            explicit=False,
-            initial_override=True,
-        )
+        if meta_by_key.get(key) != meta:
+            meta_by_key[key] = meta
+            history_keys.append(key)
+            changed = True
+        if key not in states:
+            states[key] = ParamState(
+                override=True,
+                ui_value=base_value,
+            )
+            explicit_by_key[key] = False
+            history_keys.append(key)
+            changed = True
         ordinals.get_or_assign(key.op, key.site_id)
+    changed = changed or ordinals.as_dict() != before_ordinals
+    if not changed:
+        return
+    mutation = store._mutation()
+    mutation.prepare_history(
+        expected_revision=base_revision,
+        keys=tuple(dict.fromkeys(history_keys)),
+    )
+    mutation.commit_style(
+        expected_revision=base_revision,
+        states=states,
+        meta=meta_by_key,
+        explicit_by_key=explicit_by_key,
+        ordinals=ordinals,
+        value_keys=(),
+    )
 
 
 __all__ = ["ensure_style_entries"]

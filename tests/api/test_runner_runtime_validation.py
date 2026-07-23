@@ -1,17 +1,18 @@
 from __future__ import annotations
 
+import inspect
 from typing import Any
 
 import pytest
 import pyglet
 
 pyglet.options["shadow_window"] = False
+import grafix.api._runner_application as application_module  # noqa: E402
 import grafix.api.runner as runner_module  # noqa: E402
 from grafix.core.runtime_limits import (  # noqa: E402
     DEFAULT_RUNTIME_LIMIT_PROFILES,
     RuntimeLimitProfiles,
 )
-from grafix.core.runtime_config import RuntimeConfigFallback  # noqa: E402
 from grafix.runtime_config_loader import runtime_config  # noqa: E402
 
 
@@ -42,7 +43,7 @@ def _assert_rejected_before_side_effect(
 ) -> None:
     config_load_calls: list[object] = []
     monkeypatch.setattr(
-        runner_module,
+        application_module,
         "runtime_config_with_fallback",
         config_load_calls.append,
     )
@@ -200,7 +201,7 @@ def test_run_preserves_nonpositive_fps_contract(
         raise ConfigPathReached
 
     monkeypatch.setattr(
-        runner_module,
+        application_module,
         "runtime_config_with_fallback",
         stop_after_validation,
     )
@@ -212,7 +213,7 @@ def test_run_rejects_config_and_config_path_before_config_loading(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[object] = []
-    monkeypatch.setattr(runner_module, "runtime_config_with_fallback", calls.append)
+    monkeypatch.setattr(application_module, "runtime_config_with_fallback", calls.append)
 
     with pytest.raises(ValueError, match="同時"):
         runner_module.run(
@@ -224,32 +225,7 @@ def test_run_rejects_config_and_config_path_before_config_loading(
     assert calls == []
 
 
-def test_run_rejects_config_fallback_without_config_before_config_loading(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    calls: list[object] = []
-    monkeypatch.setattr(runner_module, "runtime_config_with_fallback", calls.append)
-    fallback = RuntimeConfigFallback(
-        summary="RuntimeError: invalid config",
-        details="traceback",
-        source=None,
-    )
-
-    with pytest.raises(ValueError, match="config.*同時"):
-        runner_module.run(_draw, config_fallback=fallback)
-
-    assert calls == []
-
-
-def test_run_rejects_invalid_config_fallback_before_config_loading(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _assert_rejected_before_side_effect(
-        monkeypatch,
-        kwargs={
-            "config": runtime_config(),
-            "config_fallback": object(),
-        },
-        error_type=TypeError,
-        match="config_fallback.*RuntimeConfigFallback",
-    )
+def test_public_run_does_not_expose_internal_config_fallback() -> None:
+    assert "config_fallback" not in inspect.signature(runner_module.run).parameters
+    with pytest.raises(TypeError, match="config_fallback"):
+        runner_module.run(_draw, config_fallback=object())  # type: ignore[call-arg]

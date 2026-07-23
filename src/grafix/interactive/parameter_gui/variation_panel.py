@@ -8,7 +8,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, TypeAlias
+from typing import TYPE_CHECKING, Literal, Protocol, TypeAlias
 
 from grafix.core.parameters.favorites import favorite_parameter_keys
 from grafix.core.parameters.key import ParameterKey
@@ -23,7 +23,27 @@ if TYPE_CHECKING:
     from .table_view import ParameterTableView
 
 VariationScope = Literal["filtered", "favorites"]
-VariationThumbnailCapture: TypeAlias = Callable[[str], str | Path | None]
+
+
+class VariationThumbnailArtifact(Protocol):
+    """Variation commit まで callback が所有する thumbnail artifact。"""
+
+    @property
+    def path(self) -> Path:
+        """CaptureService が実際に公開した PNG path。"""
+
+        ...
+
+    def discard(self) -> None:
+        """今回公開した artifact family だけを破棄する。"""
+
+        ...
+
+
+VariationThumbnailCapture: TypeAlias = Callable[
+    [str],
+    VariationThumbnailArtifact,
+]
 VariationThumbnailPreview: TypeAlias = Callable[[object, Path], None]
 
 
@@ -172,6 +192,7 @@ __all__ = [
     "VariationPanelState",
     "VariationScope",
     "VariationScopeSummary",
+    "VariationThumbnailArtifact",
     "VariationThumbnailCapture",
     "VariationThumbnailPreview",
     "filtered_parameter_keys",

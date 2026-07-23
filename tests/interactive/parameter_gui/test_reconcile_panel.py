@@ -18,6 +18,7 @@ from grafix.interactive.parameter_gui.reconcile_panel import (
     reconcile_reason_text,
     render_reconcile_orphan_popup,
 )
+from tests.param_store_test_support import mutate_runtime
 
 
 def _orphan(
@@ -163,7 +164,13 @@ def _ambiguous_store() -> tuple[ParamStore, ParameterKey]:
     old_b = ParameterKey("circle", "old-b", "radius")
     update_state_from_ui(store, old_b, 8.5, meta=meta, override=True)
     orphan = _orphan()
-    store._runtime_ref().reconcile_orphans[orphan.new_group] = orphan
+    mutate_runtime(
+        store,
+        lambda runtime: runtime.reconcile_orphans.__setitem__(
+            orphan.new_group,
+            orphan,
+        ),
+    )
     return store, ParameterKey("circle", "new", "radius")
 
 

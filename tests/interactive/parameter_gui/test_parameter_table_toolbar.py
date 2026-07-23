@@ -312,10 +312,10 @@ def test_collapse_all_is_an_independent_undoable_operation(
 
     assert gui._render_parameter_table_toolbar() is True
     assert history.undo_depth == 1
-    assert store._collapsed_headers_ref()
+    assert store.collapsed_headers()
 
     assert history.undo() is True
-    assert store._collapsed_headers_ref() == set()
+    assert store.collapsed_headers() == set()
 
 
 def test_vec3_menu_counts_each_assigned_component(

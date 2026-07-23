@@ -43,7 +43,7 @@ from grafix.core.runtime_limits import (
 from grafix.core.runtime_config import RuntimeConfig
 from grafix.core.scene import SceneItem
 from grafix.core.value_validation import exact_integer, finite_real
-from grafix.interactive.runtime.mp_draw import DrawResult, MpDraw
+from grafix.interactive.runtime.mp_draw import DrawResult, MpDraw, MpDrawStats
 from grafix.interactive.runtime.perf import PerfCollector
 from grafix.interactive.diagnostics import DiagnosticCenter, DiagnosticEvent
 
@@ -67,7 +67,7 @@ class _MpDrawClient(Protocol):
     """SceneRunner が background draw に要求する最小契約。"""
 
     @property
-    def last_submitted_frame_id(self) -> int: ...
+    def stats(self) -> MpDrawStats: ...
 
     def submit(
         self,
@@ -851,9 +851,10 @@ class SceneRunner:
             epoch=int(self._mp_epoch),
             quality=quality,
         )
+        stats = mp_draw.stats
         perf.record_event(
             "mp_task_submitted",
-            frame_id=mp_draw.last_submitted_frame_id,
+            frame_id=stats.last_submitted_frame_id,
             revision=int(snapshot_revision),
         )
 

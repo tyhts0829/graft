@@ -131,12 +131,12 @@ def init_project(
 
     root_path = Path(root).expanduser().resolve(strict=False)
     name = _normalize_project_name(project_name or root_path.name)
+    (root_path / "sketch/presets").mkdir(parents=True, exist_ok=True)
     templates = (
         (Path("pyproject.toml"), _project_manifest(name)),
         (Path(".grafix/config.yaml"), _CONFIG),
         (Path("sketch/__init__.py"), ""),
         (Path("sketch/main.py"), _SKETCH_MAIN),
-        (Path("sketch/presets/__init__.py"), ""),
     )
     files = tuple(
         _create_text_file(root_path / relative_path, content)

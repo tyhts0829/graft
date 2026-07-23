@@ -9,8 +9,14 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
 
-from grafix.api import ExportFormat, ExportResult, RenderOptions, RenderSession, export
-from grafix.api.render import ParameterLoadMode
+from grafix.api.export import save
+from grafix.api.render import (
+    ExportFormat,
+    ExportResult,
+    ParameterLoadMode,
+    RenderOptions,
+    RenderSession,
+)
 from grafix.export.output_paths import output_path_for_draw
 from grafix.core.runtime_config import RuntimeConfig, bind_runtime_config
 from grafix.runtime_config_loader import load_runtime_config
@@ -223,7 +229,7 @@ def main(argv: list[str] | None = None) -> int:
         paths = _frame_output_paths(base_path, n_frames=len(ts))
         for frame_t, path in zip(ts, paths, strict=True):
             frame = session.render(frame_t)
-            result = export(frame, path, overwrite=bool(args.overwrite))
+            result = save(frame, path, overwrite=bool(args.overwrite))
             _print_result(t=frame_t, result=result)
 
     return 0

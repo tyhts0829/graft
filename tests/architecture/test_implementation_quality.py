@@ -81,15 +81,13 @@ def test_public_operation_info_has_no_evaluator_capability() -> None:
 def test_mp_draw_state_values_do_not_own_process_or_queue_capabilities() -> None:
     """submit/close owner 以外の state/message class を純粋な値・遷移に保つ。"""
 
-    path = (
-        _repo_root()
-        / "src"
-        / "grafix"
-        / "interactive"
-        / "runtime"
-        / "mp_draw.py"
+    runtime_root = (
+        _repo_root() / "src" / "grafix" / "interactive" / "runtime"
     )
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    paths = (
+        runtime_root / "_mp_draw_protocol.py",
+        runtime_root / "_mp_draw_state.py",
+    )
     forbidden_calls = {
         "cancel_join_thread",
         "close",
@@ -103,25 +101,27 @@ def test_mp_draw_state_values_do_not_own_process_or_queue_capabilities() -> None
         "terminate",
     }
     violations: list[str] = []
-    for class_node in (
-        node for node in tree.body if isinstance(node, ast.ClassDef)
-    ):
-        methods = {
-            node.name
-            for node in class_node.body
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        }
-        if {"submit", "close"} <= methods:
-            continue
-        for node in ast.walk(class_node):
-            if (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr in forbidden_calls
-            ):
-                violations.append(
-                    f"{class_node.name}:{node.lineno}: {node.func.attr}()"
-                )
+    forbidden_import_prefixes = ("multiprocessing", "queue", "threading")
+    for path in paths:
+        imports = _imported_modules(path)
+        for module in imports:
+            if module.startswith(forbidden_import_prefixes):
+                violations.append(f"{path.name}: import {module}")
+
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for class_node in (
+            node for node in tree.body if isinstance(node, ast.ClassDef)
+        ):
+            for node in ast.walk(class_node):
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr in forbidden_calls
+                ):
+                    violations.append(
+                        f"{path.name}:{class_node.name}:{node.lineno}: "
+                        f"{node.func.attr}()"
+                    )
 
     assert not violations, "state/message class の I/O capability を検出:\n" + "\n".join(
         violations

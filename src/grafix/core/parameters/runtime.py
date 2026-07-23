@@ -12,7 +12,7 @@ from typing import ClassVar, Iterable, Literal
 from .identity import GroupKey
 from .key import ParameterKey
 from .reconcile import ReconcileOrphan
-from .source import ValueSource
+from .source import ParameterLoadMode, ValueSource
 
 LoadProvenance = Literal["primary", "session_recovery", "quarantined"]
 
@@ -143,6 +143,37 @@ class ParameterLoadState:
 
 
 @dataclass(frozen=True, slots=True)
+class ParameterCaptureState:
+    """capture manifest に同時記録する parameter load 状態。
+
+    ``source`` と ``load_provenance`` は同じ session state の標本である。
+    別々の provider から読むと Keep/Discard の境界で矛盾した組を作れるため、
+    capture 層へはこの value を一つだけ渡す。
+    """
+
+    source: ParameterLoadMode
+    load_provenance: LoadProvenance
+
+    def __post_init__(self) -> None:
+        source = self.source
+        if not isinstance(source, Path):
+            if type(source) is not str or source not in {
+                "code",
+                "saved",
+                "recovery",
+            }:
+                raise ValueError(
+                    "source は 'code'、'saved'、'recovery'、Path のいずれかです"
+                )
+        if type(self.load_provenance) is not str or self.load_provenance not in {
+            "primary",
+            "session_recovery",
+            "quarantined",
+        }:
+            raise ValueError("load_provenance は定義済み LoadProvenance です")
+
+
+@dataclass(frozen=True, slots=True)
 class ParamRuntimeView:
     """outer layer が参照する ParamStore runtime の read-only view。"""
 
@@ -270,6 +301,7 @@ class ParamStoreRuntime:
 
 __all__ = [
     "LoadProvenance",
+    "ParameterCaptureState",
     "ParameterLoadState",
     "ParamRuntimeView",
     "ParamStoreLoadDiagnostic",

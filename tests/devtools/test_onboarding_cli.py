@@ -22,7 +22,6 @@ def test_init_creates_minimal_project_without_clobbering_existing_files(
         "pyproject.toml",
         "sketch/__init__.py",
         "sketch/main.py",
-        "sketch/presets/__init__.py",
     }
     assert first.existing == ()
     assert 'name = "my-creative-project"' in (project / "pyproject.toml").read_text()
@@ -33,7 +32,7 @@ def test_init_creates_minimal_project_without_clobbering_existing_files(
     second = init_project(project)
 
     assert second.created == ()
-    assert len(second.existing) == 5
+    assert len(second.existing) == 4
     assert sketch_path.read_text(encoding="utf-8") == "# keep me\n"
 
 

@@ -29,20 +29,23 @@ def test_transient_rollback_invalidates_transient_merge_cache() -> None:
         )
 
     merge(1.0, "code")
-    original_runtime = store._runtime_ref()
+    original_runtime = store._read().runtime_token()
 
     with store.begin_transient_rollback():
         merge(2.0, "ui")
-    restored_runtime = store._runtime_ref()
-    assert restored_runtime is not original_runtime
-    assert restored_runtime.last_effective_by_key[key] == 1.0
-    assert restored_runtime.last_source_by_key[key] == "code"
-    restored_revision = restored_runtime.effective_revision
+    restored_runtime = store._read().runtime_token()
+    assert restored_runtime != original_runtime
+    restored_state = store._read().runtime()
+    assert restored_state.last_effective_by_key[key] == 1.0
+    assert restored_state.last_source_by_key[key] == "code"
+    restored_revision = restored_state.effective_revision
 
     # table revision は capture 時点へ巻き戻っていても、runtime identity が異なる
     # ため transient cache を再利用せず、復元後の runtime へ値を書き込む。
     merge(2.0, "ui")
 
-    assert restored_runtime.last_effective_by_key[key] == 2.0
-    assert restored_runtime.last_source_by_key[key] == "ui"
-    assert restored_runtime.effective_revision == restored_revision + 1
+    assert store._read().runtime_token() == restored_runtime
+    restored_state = store._read().runtime()
+    assert restored_state.last_effective_by_key[key] == 2.0
+    assert restored_state.last_source_by_key[key] == "ui"
+    assert restored_state.effective_revision == restored_revision + 1

@@ -15,6 +15,7 @@ from grafix.devtools.benchmarks.catalog import case_definitions
     ("operation", "expected_metric"),
     (
         ("layout_reuse", "parameter_layout.stable_reuse"),
+        ("merge_runtime_one", "parameter_merge.runtime_one"),
         ("merge_steady", "parameter_merge.steady"),
         ("snapshot_one", "parameter_snapshot.one_key"),
         ("visibility_default", "parameter_visibility.default"),
@@ -49,6 +50,9 @@ def test_parameter_hotpath_registry_scopes_reference_and_soak_cases() -> None:
     definitions = {definition.case_id: definition for definition in case_definitions()}
 
     merge = definitions["runtime.parameter_merge.rows_1000.change_steady"]
+    runtime_one = definitions[
+        "runtime.parameter_merge.rows_1000.change_runtime_one"
+    ]
     snapshot = definitions["runtime.parameter_snapshot.rows_10000.change_one"]
     layout = definitions["gui.parameter_layout.rows_10000"]
     visibility = definitions["gui.parameter_visibility.rows_10000.mode_search"]
@@ -60,6 +64,12 @@ def test_parameter_hotpath_registry_scopes_reference_and_soak_cases() -> None:
         "samples": 24,
     }
     assert merge.selectable_suites == ("parameters",)
+    assert runtime_one.parameters == {
+        "operation": "merge_runtime_one",
+        "rows": 1_000,
+        "samples": 200,
+    }
+    assert runtime_one.selectable_suites == ("parameters",)
     assert layout.parameters["operation"] == "layout_reuse"
     assert layout.selectable_suites == ("parameters", "soak")
     assert snapshot.selectable_suites == ("parameters", "soak")

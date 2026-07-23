@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib
 from pathlib import Path
 
-from grafix import G, RenderOptions, export, render
+from grafix import G, RenderOptions, render, save
 from grafix.core.parameters import ParameterLoadState, ParamStore
 from grafix.core.parameters.style import style_key
 from grafix.core.parameters.style_ops import ensure_style_entries
@@ -77,7 +77,7 @@ def test_export_uses_paramstore_background_color(monkeypatch, tmp_path: Path) ->
         ),
         parameter_source="saved",
     )
-    result = export(frame, tmp_path / "out.png")
+    result = save(frame, tmp_path / "out.png")
 
     assert frame.style.bg_color_rgb01 == (0.0, 0.0, 0.0)
     assert captured["background_color"] == (0.0, 0.0, 0.0)

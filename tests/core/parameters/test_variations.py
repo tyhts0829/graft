@@ -16,6 +16,10 @@ from grafix.core.parameters.codec import (
     loads_param_store_result,
 )
 from grafix.core.parameters.effects import EffectStepTopology
+from grafix.core.parameters.effect_order_ops import (
+    reset_effect_order,
+    set_effect_order,
+)
 from grafix.core.parameters.frame_params import FrameParamRecord
 from grafix.core.parameters.history import ParamStoreHistory
 from grafix.core.parameters.key import ParameterKey
@@ -24,6 +28,7 @@ from grafix.core.parameters.meta import ParamMeta
 from grafix.core.parameters.store import ParamStore
 from grafix.core.parameters.ui_ops import update_state_from_ui
 from grafix.core.parameters.variations import (
+    commit_variation,
     create_variation,
     delete_variation,
     diff_variation,
@@ -32,11 +37,13 @@ from grafix.core.parameters.variations import (
     list_variations,
     locked_parameter_keys,
     morph_variations,
+    prepare_variation,
     randomize_parameters,
     rename_variation,
     restore_variation,
     set_parameters_locked,
 )
+from tests.param_store_test_support import record_effect_chain
 
 
 FLOAT_META = ParamMeta(kind="float", ui_min=0.0, ui_max=1.0)
@@ -49,18 +56,19 @@ class _StringSubclass(str):
 
 
 def _add_reordered_effect_chain(store: ParamStore) -> None:
-    assert store._effects_ref().record_chain(
+    assert record_effect_chain(
+        store,
         chain_id="chain-order",
         steps=(
             EffectStepTopology("scale", "scale-site", 1, 0),
             EffectStepTopology("rotate", "rotate-site", 1, 1),
         ),
     )
-    assert store._effects_ref().set_order_override(
-        "chain-order",
-        EFFECT_UI_ORDER,
+    assert set_effect_order(
+        store,
+        chain_id="chain-order",
+        order=EFFECT_UI_ORDER,
     )
-    store._touch()
 
 
 def _add_parameter(
@@ -188,6 +196,80 @@ def test_create_list_rename_and_delete_advance_revision_on_real_changes() -> Non
     assert delete_variation(store, "still") is True
     assert list_variations(store) == ()
     assert store.revision == revision + 3
+
+
+def test_prepare_is_side_effect_free_and_commit_advances_revision_once() -> None:
+    store = ParamStore()
+    _add_parameter(store)
+    revision = store.revision
+
+    draft = prepare_variation(
+        store,
+        "candidate",
+        note="validated",
+        seed=17,
+        t=1.5,
+        created_at=100.0,
+    )
+
+    assert draft.name == "candidate"
+    assert draft.base_revision == revision
+    assert list_variations(store) == ()
+    assert store.revision == revision
+
+    variation = commit_variation(
+        store,
+        draft,
+        thumbnail_path=Path("candidate.png"),
+    )
+
+    assert variation.parameter_snapshot is draft.variation.parameter_snapshot
+    assert variation.thumbnail_path == "candidate.png"
+    assert list_variations(store) == (variation,)
+    assert store.revision == revision + 1
+
+
+def test_stale_draft_commit_keeps_variations_and_revision_unchanged() -> None:
+    store = ParamStore()
+    key = _add_parameter(store)
+    draft = prepare_variation(store, "candidate", created_at=100.0)
+    _set_value(store, key, 0.75)
+    revision = store.revision
+
+    with pytest.raises(RuntimeError, match="changed after variation was prepared"):
+        commit_variation(store, draft, thumbnail_path="candidate.png")
+
+    assert list_variations(store) == ()
+    assert store.revision == revision
+
+
+def test_draft_cannot_be_committed_to_another_store() -> None:
+    source = ParamStore()
+    destination = ParamStore()
+    _add_parameter(source)
+    _add_parameter(destination)
+    draft = prepare_variation(source, "candidate", created_at=100.0)
+    revision = destination.revision
+
+    with pytest.raises(ValueError, match="another ParamStore"):
+        commit_variation(destination, draft)
+
+    assert list_variations(destination) == ()
+    assert destination.revision == revision
+
+
+def test_store_change_after_prepare_is_rejected_without_second_touch() -> None:
+    store = ParamStore()
+    _add_parameter(store)
+    draft = prepare_variation(store, "candidate", created_at=100.0)
+    created = create_variation(store, "candidate", created_at=200.0)
+    revision = store.revision
+
+    with pytest.raises(RuntimeError, match="changed after variation was prepared"):
+        commit_variation(store, draft)
+
+    assert list_variations(store) == (created,)
+    assert store.revision == revision
 
 
 @pytest.mark.parametrize(
@@ -406,7 +488,7 @@ def test_variation_snapshot_uses_v4_tagged_collapsed_header_records() -> None:
     store = ParamStore()
     _add_parameter(store)
     header = primitive_collapsed_header_key(("wave", "site-1"))
-    store._collapsed_headers_ref().add(header)
+    store.set_collapsed(header, collapsed=True)
     create_variation(store, "saved", created_at=123.5)
 
     payload = encode_param_store(store)
@@ -572,14 +654,13 @@ def test_variation_codec_and_restore_include_effect_order_but_diff_does_not() ->
     _add_reordered_effect_chain(store)
     create_variation(store, "reordered", created_at=100.0)
 
-    assert store._effects_ref().reset_order("chain-order")
-    store._touch()
+    assert reset_effect_order(store, chain_id="chain-order")
     assert diff_variation(store, "reordered") == ()
 
     loaded = loads_param_store_result(dumps_param_store(store)).store
-    assert loaded._effects_ref().effective_order("chain-order") == EFFECT_CODE_ORDER
+    assert loaded._read().effects().effective_order("chain-order") == EFFECT_CODE_ORDER
     assert restore_variation(loaded, "reordered") is True
-    assert loaded._effects_ref().effective_order("chain-order") == EFFECT_UI_ORDER
+    assert loaded._read().effects().effective_order("chain-order") == EFFECT_UI_ORDER
     assert diff_variation(loaded, "reordered") == ()
 
 
@@ -590,13 +671,15 @@ def test_loaded_variation_does_not_restore_order_after_effect_arity_change() -> 
         EffectStepTopology("second", "second-site", 1, 1),
         EffectStepTopology("third", "third-site", 1, 2),
     )
-    assert store._effects_ref().record_chain(
+    assert record_effect_chain(
+        store,
         chain_id="arity-chain",
         steps=topology,
     )
-    assert store._effects_ref().set_order_override(
-        "arity-chain",
-        (
+    assert set_effect_order(
+        store,
+        chain_id="arity-chain",
+        order=(
             ("first", "first-site"),
             ("third", "third-site"),
             ("second", "second-site"),
@@ -605,7 +688,8 @@ def test_loaded_variation_does_not_restore_order_after_effect_arity_change() -> 
     create_variation(store, "old-arity", created_at=100.0)
     loaded = loads_param_store_result(dumps_param_store(store)).store
 
-    assert loaded._effects_ref().record_chain(
+    assert record_effect_chain(
+        loaded,
         chain_id="arity-chain",
         steps=(
             EffectStepTopology("first", "first-site", 2, 0),
@@ -613,7 +697,6 @@ def test_loaded_variation_does_not_restore_order_after_effect_arity_change() -> 
             EffectStepTopology("third", "third-site", 1, 2),
         ),
     )
-    loaded._touch()
     revision = loaded.revision
 
     assert restore_variation(loaded, "old-arity") is False

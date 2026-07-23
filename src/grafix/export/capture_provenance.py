@@ -24,12 +24,20 @@ from grafix.core.capture_provenance import (
     sha256_digest,
 )
 from grafix.core.parameters.codec import encode_param_store
-from grafix.core.parameters.runtime import LoadProvenance
+from grafix.core.parameters.runtime import ParameterCaptureState
 from grafix.core.parameters.store import ParamStore
 from grafix.core.runtime_config import RuntimeConfig
 from grafix.core.value_validation import exact_string
 
 _GIT_TIMEOUT_S = 2.0
+
+
+def _parameter_source_text(source: str | Path) -> str:
+    if type(source) is str:
+        return exact_string(source, name="parameter_state.source")
+    if isinstance(source, Path):
+        return str(source)
+    raise TypeError("parameter_state.source は str または Path である必要があります")
 
 
 def _snapshot_source(draw: Callable[[float], object]) -> SourceProvenance:
@@ -204,24 +212,28 @@ class CaptureProvenanceBuilder:
         draw: Callable[[float], object],
         *,
         config: RuntimeConfig,
-        parameter_source: str | Path,
+        parameter_state: ParameterCaptureState
+        | Callable[[], ParameterCaptureState],
         parameter_store_path: Path | None,
-        parameter_load_provenance: LoadProvenance | Callable[[], LoadProvenance],
         seed: int | None = None,
     ) -> None:
         if not callable(draw):
             raise TypeError("draw は callable である必要があります")
         if not isinstance(config, RuntimeConfig):
             raise TypeError("config は RuntimeConfig である必要があります")
-        if type(parameter_source) is str:
-            parameter_source_text = exact_string(
-                parameter_source,
-                name="parameter_source",
-            )
-        elif isinstance(parameter_source, Path):
-            parameter_source_text = str(parameter_source)
+        self._parameter_state_provider: (
+            Callable[[], ParameterCaptureState] | None
+        )
+        if callable(parameter_state):
+            self._parameter_state_provider = parameter_state
+            initial_parameter_state = parameter_state()
         else:
-            raise TypeError("parameter_source は str または Path である必要があります")
+            self._parameter_state_provider = None
+            initial_parameter_state = parameter_state
+        if type(initial_parameter_state) is not ParameterCaptureState:
+            raise TypeError(
+                "parameter_state provider は exact ParameterCaptureState を返す必要があります"
+            )
         if parameter_store_path is not None and not isinstance(
             parameter_store_path,
             Path,
@@ -229,13 +241,6 @@ class CaptureProvenanceBuilder:
             raise TypeError(
                 "parameter_store_path は Path または None である必要があります"
             )
-        self._parameter_load_provenance: Callable[[], LoadProvenance] | None
-        if callable(parameter_load_provenance):
-            self._parameter_load_provenance = parameter_load_provenance
-            initial_load_provenance = parameter_load_provenance()
-        else:
-            self._parameter_load_provenance = None
-            initial_load_provenance = parameter_load_provenance
         seed = normalize_provenance_seed(seed, parameter_name="seed")
         source = _snapshot_source(draw)
         self._session = SessionProvenance(
@@ -243,9 +248,11 @@ class CaptureProvenanceBuilder:
             source=source,
             git=_snapshot_git(source.path),
             config=ConfigProvenance.from_config(config),
-            parameter_source=parameter_source_text,
+            parameter_source=_parameter_source_text(
+                initial_parameter_state.source
+            ),
             parameter_store_path=parameter_store_path,
-            parameter_load_provenance=initial_load_provenance,
+            parameter_load_provenance=initial_parameter_state.load_provenance,
             seed=seed,
         )
         # Parameter snapshot は immutable であり、store の永続状態と
@@ -296,8 +303,8 @@ class CaptureProvenanceBuilder:
         ``provenance_seed`` が ``"session"`` なら構築時の session seed を使う。
         int/None はこの frame の provenance だけを明示的に上書きし、
         source/Git/config の再探索や乱数 global state の変更は行わない。
-        load provenance provider が指定されている場合は、この frame を固定する時点の
-        値を取得する。
+        parameter state provider が指定されている場合は、この frame を固定する
+        時点で一度だけ取得し、source と load provenance を同じ標本から更新する。
         """
 
         if not isinstance(store, ParamStore):
@@ -305,11 +312,19 @@ class CaptureProvenanceBuilder:
         if provenance_seed == "session" and type(provenance_seed) is not str:
             raise TypeError("provenance_seed は int、None、または 'session' である必要があります")
         session = self._session
-        load_provenance = self._parameter_load_provenance
-        if load_provenance is not None:
+        parameter_state_provider = self._parameter_state_provider
+        if parameter_state_provider is not None:
+            parameter_state = parameter_state_provider()
+            if type(parameter_state) is not ParameterCaptureState:
+                raise TypeError(
+                    "parameter_state provider は exact ParameterCaptureState を返す必要があります"
+                )
             session = replace(
                 session,
-                parameter_load_provenance=load_provenance(),
+                parameter_source=_parameter_source_text(
+                    parameter_state.source
+                ),
+                parameter_load_provenance=parameter_state.load_provenance,
             )
         if provenance_seed != "session":
             session = replace(

@@ -15,11 +15,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from grafix.core.authoring_definitions import (
-    AuthoringDefinitionsSnapshot,
-    RegistrationTarget,
-    registration_scope,
-)
 from grafix._snapshot_import import (
     SnapshotImportGuard,
     SnapshotImportModule,
@@ -28,10 +23,16 @@ from grafix._snapshot_import import (
     remove_snapshot_modules,
     snapshot_import_context,
 )
+from grafix._source_import_policy import validate_source_import_policy
 from grafix.authoring_loader import (
     default_session_authoring_definitions,
     load_authoring_definitions_recipe,
     load_config_authoring_definitions,
+)
+from grafix.core.authoring_definitions import (
+    AuthoringDefinitionsSnapshot,
+    RegistrationTarget,
+    registration_scope,
 )
 from grafix.core.authoring_recipe import AuthoringDefinitionsRecipe
 from grafix.core.operation_catalog import OperationCatalog, bind_operation_catalog
@@ -258,7 +259,7 @@ def _collect_reachable_source_modules(
             if relative_path == main_relative_path and main_source_bytes is not None
             else source_path.read_bytes()
         )
-        tree = ast.parse(content, filename=str(source_path))
+        tree = validate_source_import_policy(content, path=source_path)
         collected[relative_path] = _SourceModuleSnapshot(
             relative_path=relative_path,
             source_path=source_path,
@@ -427,6 +428,13 @@ def _source_import_plan(
     )
 
 
+def _preflight_source_package(snapshot: _SourcePackageSnapshot) -> None:
+    """復元された worker recipe を含む全 source を実行前に検証する。"""
+
+    for source in snapshot.modules:
+        validate_source_import_policy(source.content, path=source.source_path)
+
+
 def _remove_source_modules(package_name: str | None) -> None:
     if package_name is None:
         return
@@ -521,12 +529,13 @@ def _execute_source_generation(
 ]:
     """source bytes を candidate target だけへ登録して実行する。"""
 
+    if type(source_package) is not _SourcePackageSnapshot:
+        raise TypeError("source_package は exact _SourcePackageSnapshot です")
+    _preflight_source_package(source_package)
     target = RegistrationTarget(
         operations=baseline.operations,
         presets=baseline.presets,
     )
-    if type(source_package) is not _SourcePackageSnapshot:
-        raise TypeError("source_package は exact _SourcePackageSnapshot です")
     plan = _source_import_plan(module_name, source_package)
     entry_module_name = f"{module_name}.{_ENTRY_MODULE_NAME}"
     with snapshot_import_context(
@@ -899,6 +908,7 @@ class SourceReloadController:
             # 通常の reload failure へ変換してはならない。
             if not isinstance(exc, Exception):
                 raise
+            raw_error_path = getattr(exc, "filename", None)
             if source_package is not None:
                 self._source_paths = tuple(
                     dict.fromkeys(
@@ -915,7 +925,6 @@ class SourceReloadController:
                             (*self._source_paths, *exc.candidate_paths)
                         )
                     )
-                raw_error_path = getattr(exc, "filename", None)
                 if type(raw_error_path) is str:
                     error_path = Path(raw_error_path).resolve(strict=False)
                     try:
@@ -930,6 +939,9 @@ class SourceReloadController:
             self._last_fingerprint = self._fingerprint()
             details = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
             source = str(self._path)
+            raw_error_lineno = getattr(exc, "lineno", None)
+            if type(raw_error_path) is str and type(raw_error_lineno) is int:
+                source = f"{raw_error_path}:{raw_error_lineno}"
             tb = exc.__traceback__
             while tb is not None:
                 try:

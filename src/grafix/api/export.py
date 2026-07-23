@@ -9,7 +9,7 @@ from grafix.export.capture import CaptureService
 from grafix.export.image import png_output_size
 
 
-def export(
+def save(
     frame: Frame,
     path: str | Path,
     *,
@@ -55,4 +55,4 @@ def export(
     )
 
 
-__all__ = ["export"]
+__all__ = ["save"]

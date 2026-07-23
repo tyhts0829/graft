@@ -20,6 +20,7 @@ from grafix.core.parameters.variations import (
     delete_variation,
     set_parameters_locked,
 )
+from tests.param_store_test_support import mutate_runtime, runtime_state
 
 
 _KEY = ParameterKey("rollback", "main", "amount")
@@ -52,21 +53,25 @@ def _store() -> ParamStore:
     _merge(store, _KEY, 1.0)
     set_parameters_favorite(store, (_KEY,), favorite=True)
     set_parameters_locked(store, (_KEY,), locked=True)
-    store._collapsed_headers_ref().add(
-        primitive_collapsed_header_key((_KEY.op, _KEY.site_id))
+    store.set_collapsed(
+        primitive_collapsed_header_key((_KEY.op, _KEY.site_id)),
+        collapsed=True,
     )
-    store._touch(structure=False)
     create_variation(store, "baseline", seed=11, created_at=1.0)
 
-    runtime = store._runtime_ref()
-    runtime.loaded_groups.add(("rollback", "loaded"))
-    runtime.warned_unknown_args.add(("rollback", "unknown"))
-    runtime.reconcile_applied.add((("rollback", "old"), ("rollback", "new")))
+    def update_runtime(runtime: object) -> None:
+        runtime.loaded_groups.add(("rollback", "loaded"))  # type: ignore[attr-defined]
+        runtime.warned_unknown_args.add(("rollback", "unknown"))  # type: ignore[attr-defined]
+        runtime.reconcile_applied.add(  # type: ignore[attr-defined]
+            (("rollback", "old"), ("rollback", "new"))
+        )
+
+    mutate_runtime(store, update_runtime)
     return store
 
 
 def _logical_state(store: ParamStore) -> object:
-    runtime = store._runtime_ref()
+    runtime = runtime_state(store)
     return deepcopy(
         (
             encode_param_store(store, preserve_explicit_overrides=True),
@@ -108,20 +113,21 @@ def _mutate_every_logical_area(store: ParamStore) -> None:
     set_parameters_locked(store, (_KEY,), locked=False)
     assert delete_variation(store, "baseline") is True
     create_variation(store, "transient", seed=22, created_at=2.0)
-    store._collapsed_headers_ref().clear()
-    store._touch(structure=False)
+    store.replace_collapsed_headers(())
 
-    runtime = store._runtime_ref()
-    runtime.loaded_groups.add(("rollback", "transient"))
-    runtime.observed_groups.add(("rollback", "transient"))
-    runtime.reconcile_applied.clear()
-    runtime.display_order_by_group[("rollback", "manual")] = 999
-    runtime.next_display_order = 1_000
-    runtime.last_effective_by_key[_KEY] = 9.0
-    runtime.warned_unknown_args.add(("rollback", "transient"))
-    runtime.last_source_by_key[_KEY] = "ui"
-    runtime.reconcile_orphans.clear()
-    runtime.record_effective_changes((_KEY,))
+    def update_runtime(runtime: object) -> None:
+        runtime.loaded_groups.add(("rollback", "transient"))  # type: ignore[attr-defined]
+        runtime.observed_groups.add(("rollback", "transient"))  # type: ignore[attr-defined]
+        runtime.reconcile_applied.clear()  # type: ignore[attr-defined]
+        runtime.display_order_by_group[("rollback", "manual")] = 999  # type: ignore[attr-defined]
+        runtime.next_display_order = 1_000  # type: ignore[attr-defined]
+        runtime.last_effective_by_key[_KEY] = 9.0  # type: ignore[attr-defined]
+        runtime.warned_unknown_args.add(("rollback", "transient"))  # type: ignore[attr-defined]
+        runtime.last_source_by_key[_KEY] = "ui"  # type: ignore[attr-defined]
+        runtime.reconcile_orphans.clear()  # type: ignore[attr-defined]
+        runtime.record_effective_changes((_KEY,))  # type: ignore[attr-defined]
+
+    mutate_runtime(store, update_runtime)
 
 
 def _assert_exactly_restored(
@@ -132,7 +138,7 @@ def _assert_exactly_restored(
     original_snapshot: object,
 ) -> None:
     assert _logical_state(store) == baseline
-    assert store._runtime_ref() is not original_runtime
+    assert store._read().runtime_token() != original_runtime
     restored_snapshot = store_snapshot(store)
     assert restored_snapshot == original_snapshot
     assert restored_snapshot is not original_snapshot
@@ -141,7 +147,7 @@ def _assert_exactly_restored(
 def test_transient_rollback_restores_exact_state_after_normal_exit() -> None:
     store = _store()
     original_snapshot = store_snapshot(store)
-    original_runtime = store._runtime_ref()
+    original_runtime = store._read().runtime_token()
     baseline = _logical_state(store)
 
     with store.begin_transient_rollback():
@@ -159,7 +165,7 @@ def test_transient_rollback_restores_exact_state_after_normal_exit() -> None:
 def test_transient_rollback_restores_exact_state_after_exception() -> None:
     store = _store()
     original_snapshot = store_snapshot(store)
-    original_runtime = store._runtime_ref()
+    original_runtime = store._read().runtime_token()
     baseline = _logical_state(store)
 
     with pytest.raises(RuntimeError, match="item failed"):
@@ -178,7 +184,7 @@ def test_transient_rollback_restores_exact_state_after_exception() -> None:
 def test_transient_rollback_restores_exact_state_after_base_exception() -> None:
     store = _store()
     original_snapshot = store_snapshot(store)
-    original_runtime = store._runtime_ref()
+    original_runtime = store._read().runtime_token()
     baseline = _logical_state(store)
 
     with pytest.raises(_StopBatch):

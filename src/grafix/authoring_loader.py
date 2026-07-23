@@ -13,6 +13,7 @@ from grafix._snapshot_import import (
     SnapshotModuleSource,
     snapshot_import_context,
 )
+from grafix._source_import_policy import validate_source_import_policy
 from grafix.core.authoring_definitions import (
     AuthoringDefinitionsSnapshot,
     RegistrationTarget,
@@ -103,6 +104,21 @@ def _candidate_sources(root: Path) -> tuple[AuthoringModuleSource, ...]:
     )
 
 
+def _preflight_authoring_recipe(recipe: AuthoringDefinitionsRecipe) -> None:
+    """全 source の path/import contract を candidate 実行前に検証する。"""
+
+    for root in recipe.roots:
+        for source in root.modules:
+            source_path = root.path / source.relative_path
+            if source.relative_path == Path("__init__.py"):
+                raise ValueError(
+                    "authoring source root は synthetic namespace のため "
+                    f"root __init__.py を使用できません: {source_path}"
+                )
+            _module_name(_CANONICAL_CANDIDATE_PACKAGE, source.relative_path)
+            validate_source_import_policy(source.content, path=source_path)
+
+
 def capture_authoring_definitions_recipe(
     config: RuntimeConfig,
 ) -> AuthoringDefinitionsRecipe:
@@ -111,12 +127,14 @@ def capture_authoring_definitions_recipe(
     if not isinstance(config, RuntimeConfig):
         raise TypeError("config は RuntimeConfig である必要があります")
     roots = tuple(Path(path).resolve(strict=False) for path in config.preset_module_dirs)
-    return AuthoringDefinitionsRecipe(
+    recipe = AuthoringDefinitionsRecipe(
         roots=tuple(
             AuthoringSourceRoot(path=root, modules=_candidate_sources(root))
             for root in roots
         )
     )
+    _preflight_authoring_recipe(recipe)
+    return recipe
 
 
 def _candidate_fingerprint(recipe: AuthoringDefinitionsRecipe) -> str:
@@ -187,9 +205,12 @@ def load_authoring_definitions_recipe(
 
     if type(recipe) is not AuthoringDefinitionsRecipe:
         raise TypeError("recipe は exact AuthoringDefinitionsRecipe です")
+    _preflight_authoring_recipe(recipe)
     base = default_session_authoring_definitions() if seed is None else seed
     if type(base) is not AuthoringDefinitionsSnapshot:
         raise TypeError("seed は exact AuthoringDefinitionsSnapshot である必要があります")
+    if base.recipe is not None:
+        _preflight_authoring_recipe(base.recipe)
 
     target = RegistrationTarget(
         operations=base.operations,
@@ -206,16 +227,8 @@ def load_authoring_definitions_recipe(
     plan = _candidate_import_plan(recipe)
     with snapshot_import_context(plan, retain_modules=False):
         with registration_scope(target):
-            for package_name, root in zip(
-                plan.package_names,
-                recipe.roots,
-                strict=True,
-            ):
-                for source in root.modules:
-                    if source.is_package:
-                        continue
-                    module_name = _module_name(package_name, source.relative_path)
-                    importlib.import_module(module_name)
+            for module in plan.modules:
+                importlib.import_module(module.name)
 
     return target.snapshot(recipe=combined_recipe)
 

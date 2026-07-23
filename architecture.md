@@ -30,7 +30,9 @@ Grafix は、線の生成と変形を **不変な Geometry DAG** として記述
 
 | レイヤ | 主な責務 |
 |---|---|
-| `grafix.api` | 公開 DSL (`G` / `E` / `L` / `P`)、`run`、`render`、`export` の facade / composition root |
+| `grafix` | 公開 DSL、application callable、共通公開型を定義 module へ対応付ける標準 PEP 562 root facade |
+| `grafix.api` | 公開 DSL (`G` / `E` / `L` / `P`)、公開 value type、application callable の定義 module |
+| `grafix.api._runner_application` | config、GUI、MIDI、window/runtime を組み立てる private interactive composition root |
 | `grafix.core` | Geometry、catalog、評価、parameters、immutable runtime/evaluation config の domain contract |
 | `grafix.core.geometry_kernels` | packed geometry、平面、grid、raster、marching、resample の数値 kernel |
 | `grafix.authoring_loader` | config authoring source の filesystem capture、candidate catalog 構築 |
@@ -79,13 +81,33 @@ grafix.export
 
 これらは `tests/architecture/test_dependency_boundaries.py` で検査する。
 
-### 2.1 import と facade の contract
+### 2.1 import と標準 namespace の contract
 
-`grafix` と `grafix.api` は公開 identity を保った lazy facade である。`import grafix` だけでは API
-implementation group を読み込まず、`G` / `E` / `L` / `P` の参照も render、export、variation batch、
-interactive runner を初期化しない。`run` は callable wrapper の参照時ではなく呼び出し時に runner を
-読み込む。API の `render` / `export`、root の `export` / `cc` と同名の submodule が先に import
-されても、facade の公開名は module object に置き換わらず、常に同じ callable identity を返す。
+`grafix` と `grafix.api` は通常の `ModuleType` であり、custom module class、代入 guard、
+callable/module の dual behavior を持たない。root は標準 PEP 562 `__getattr__` と
+`公開名 -> 定義 module/attribute` の静的 mapping だけで遅延解決する。各 dotted name の意味は
+一つに固定する。
+
+| 名前 | 意味 |
+|---|---|
+| `grafix.export` | encode、staging、publish を持つ package |
+| `grafix.api.export` | 保存 API module |
+| `grafix.save` / `grafix.api.export.save` | `Frame` を保存する同一 callable |
+| `grafix.render` / `grafix.api.render.render` | headless render callable |
+| `grafix.api.render` | render API module |
+| `grafix.run` / `grafix.api.runner.run` | interactive runner callable |
+| `grafix.api.runner` | runner API module |
+| `grafix.cc` | root から取得する `CcView` object |
+| `grafix.api.cc` | `CcView` の定義 module |
+
+application callable (`render` / `save` / `run` / `render_variation_batch`) は root または定義 module
+から取得し、`grafix.api` package 直下では re-export しない。`grafix.api.render` と
+`grafix.api.export` は常に module である。旧 `grafix.export(...)` callable と
+`grafix.cc` module は存在せず、互換 alias/shim も置かない。
+
+`import grafix` だけでは `grafix.api` を読み込まない。`run` の参照、signature inspection、
+help では GUI/runtime を初期化せず、`api.runner.run()` の呼び出し時にだけ private
+`api._runner_application` を importする。
 
 `grafix.core` の `__init__` は空の package boundary である。たとえば
 `import grafix.core.geometry` は `grafix.api`、`grafix.export`、`grafix.parameter_storage`、
@@ -159,6 +181,17 @@ config authoring は catalog snapshot 完成後に candidate module を除去す
 callable が module globals を使えるよう last-good generation の module だけを保持し、rollback/交換時に
 共通 helper から除去する。source 発見、relative-import policy、catalog registration、generation の
 accept/rollback は各 caller に残し、低水準 import primitive へ混ぜない。
+
+`preset_module_dirs` の各 directory は通常 package ではなく synthetic namespace source root である。
+したがって root 直下の `__init__.py` は全件 preflight で path と理由を示して拒否し、nested package の
+`__init__.py` は通常の package initializer として一度だけ実行する。relative import は module lexical
+scope にだけ置ける。module 直下の `if` / `try` / `with` 内は許可するが、function、async function、
+class の内側は `grafix._source_import_policy` が実行前に拒否する。
+
+authoring load は filesystem capture と worker から復元した recipe のどちらも、全 candidate source の
+path/import contract を一件も実行する前に検証する。source reload も dependency を enqueue する前と
+worker recipe の実行前に同じ pure validator を使う。deferred relative import のための長寿命 finder は
+持たず、error は source path、line、禁止 scope を含む。
 
 ## 4. Geometry DAG と operation identity
 
@@ -278,10 +311,25 @@ glyph outline の bounded LRU を所有し、eviction、`clear()`、`close()` �
 
 `ParamStore` が論理 state、revision、history integration を所有する。API/interactive は private
 container を読まず、`ParamRuntimeView`、`frozenset`、copy された mapping などの immutable query
-を使う。`ParamRuntimeView` は作成時に三つの runtime mapping を浅く copy して固定するため、後続
-frame の store mutation を既存 view が観測しない。key/value/source は canonical immutable value
-なので deep copy は行わない。変更は `ParameterEdit` / `apply_parameter_edits()`、collapse、variation、
-effect order、MIDI などの狭い command を通す。
+を使う。core parameter の sibling command も private `_ParamStoreRead` が返す copy/frozen view だけで
+`validate -> plan` を完了し、完成済み replacement を private `_ParamStoreMutation` へ一度だけ渡す。
+commit 区間は expected revision の再確認、参照 swap、revision/history/cache の確定だけであり、
+validation、allocation、外部 callback を実行しない。
+
+core parameter の sibling command は `_ParamStoreMutation` だけを write port として使う。
+`ParamStore` 自身は構築、contents replacement、transient rollback という store-owned operation を保つ。
+mutable container はこの store boundary の外へ出さず、mutation batch API は持たない。
+一つの完成済み plan を一つの domain commit へ渡し、対象の revision/history/cache を一度だけ確定する。
+複数 container の変更も read copy 上で replacement を完成させてから commit するため、planning failure は
+live state、history、cache を変更しない。
+
+frame merge が effective value/source だけを変える場合は
+`_ParamStoreMutation.commit_runtime_value_patch()` が sparse patch を適用する。full store/runtime copy を
+作らず、persistent revision と runtime object identity を保ったまま effective revision だけを一度進める。
+`ParamRuntimeView` は作成時に三つの runtime mapping を浅く copy して固定し、後続 frame の mutation を
+観測しない。key/value/source は canonical immutable value なので deep copy は行わない。変更は
+`ParameterEdit` / `apply_parameter_edits()`、collapse、variation、effect order、MIDI などの狭い command
+を通す。
 
 variation、history、snapshot slot が保存する GUI-owned state は frozen
 `ParameterAdjustmentSnapshot` に統一する。これは `ParamStateSnapshot` / `ParamMeta`、collapse、effect
@@ -328,11 +376,17 @@ status/error とともに storage result が一 generation を表し、`ParamSto
 provenance、diagnostics、accept command を持たない。この metadata は parameter persistence、history、
 adjustment snapshot、transient rollback に混入しない。
 
-interactive の `ParameterSession` は current `ParameterLoadState` を所有する。Keep/Discard は detached
-store と load state を束ねた新しい `ParamStoreLoadResult` を返し、session が一箇所で自身の store
-contents と load state の採用を揃える。capture/record/export は callable provider から frame ごとの current
-provenance を取得する。一方、headless `RenderSession` は構築時 result の state を
-`RenderSessionMetadata` と capture provenance に固定し、後から storage/runtime metadata を読まない。
+interactive の `ParameterSession` は current `KnownOperationSchemaSnapshot`、current
+`ParameterLoadState`、store/history/autosave と終了時 persist を一意に所有する。source reload 成功時だけ
+current schema を交換し、recovery の Keep は action dispatch 時のその schema で finalize する。
+Keep/Discard は detached store と load state を束ねた新しい `ParamStoreLoadResult` を返し、session が
+一箇所で store contents、load state、history/autosave 状態の採用を揃える。
+
+`ParameterSession.capture_state()` は一つの current load-state sample から
+`ParameterCaptureState(source, load_provenance)` の二項目を同時に導出する。interactive の
+capture/record/export はこの provider を frame ごとに一度だけ読む。一方、headless
+`RenderSession` は構築時 result から同じ value を作り、`RenderSessionMetadata` と capture provenance
+へ固定する。storage/runtime metadata を後から読み直す経路はない。
 
 codec と `ParamStore` domain は `core.parameters` に残り、filesystem mutation は持たない。
 
@@ -353,38 +407,46 @@ quality の evaluation context、cache/resource を構築時に固定する。`r
 返すだけで filesystem I/O を行わない。複数 frame では一つの `RenderSession` を使って cache/resource
 を再利用し、単発の `grafix.render()` は内部で session を作って必ず閉じる。
 
-公開 property は `options`、`param_store`、`config`、`runtime_limits`、`metadata` などの immutable
-metadata/session view に限る。派生 view の追加は妨げないが、`OperationCatalog`、`EvaluationContext`、
-`RealizeSession`、cache/resource のように独自の `close()` capability を持つ child owner は公開せず、
-caller が lifetime や evaluator capability を横取りできないようにする。
+公開 property は `options`、`config`、`runtime_limits`、`metadata` の immutable
+metadata/value に限る。mutable `ParamStore`、`OperationCatalog`、`EvaluationContext`、
+`RealizeSession`、cache/resource のような mutation/close capability を持つ child owner は公開せず、
+caller が state や lifetime を横取りできないようにする。
 
-`grafix.export(frame, path)` は公開 `Frame` を export-side `CaptureFrame` contract へ変換し、
+`grafix.save(frame, path)` は公開 `Frame` を export-side `CaptureFrame` contract へ変換し、
 encode/publish を実行する。render と保存を分けるため、同じ frame を複数形式へ安全に出力できる。
 
-named variation batch でも API と export の transaction owner を分ける。`api.variation_batch` は request
-順、unknown variation、item ごとの transient rollback、render/capture callback と partial failure 化を
-担当する。`export.variation_batch` は private workspace、contact sheet/summary encode、manifest path
-relocation、no-clobber generation retry、overwrite 時の旧 generation 復元を一括所有する。API は
-fsync/link/replace/staging codec を実装せず、export は API/interactive を importしない。
+named variation batch でも API と export の transaction owner を分ける。public session は raw store
+ではなく、variation 名の列挙と一時適用/render/rollback を閉じた private capability だけを提供する。
+`api.variation_batch` は request 順、unknown variation、item ごとの transient rollback、
+render/capture callback と partial failure 化を担当する。`export.variation_batch` は private workspace、
+contact sheet/summary encode、manifest path relocation、no-clobber generation retry、overwrite 時の
+旧 generation 復元を一括所有する。API は fsync/link/replace/staging codec を実装せず、export は
+API/interactive を importしない。
 
 ## 8. Interactive composition
 
-`api.runner.run()` は public 引数 validation、effective `RuntimeConfig` / `RenderOptions` の確定、
-private `_InteractiveApplication` の実行だけを行う。`_InteractiveApplication` が authoring definitions
-を一度確定し、同じ snapshot を `ParameterSession`、`DrawWindowSystem`、`SceneRunner`、GUI catalog
-へ渡す。部分構築に失敗した場合も、取得済み resource だけを逆順に閉じ、cleanup error より root
-error を優先する。主な owner は次の通り。
+`api.runner.run()` は core/public type と default だけを importする軽量 wrapper で、唯一の正規
+signature/docstring を持つ。呼び出し時に private `api._runner_application` を importし、public 引数を
+渡す。heavy module の `_run_interactive_application()` が validation、effective
+`RuntimeConfig` / `RenderOptions` の確定と `_InteractiveApplication` の実行を担う。
+`_InteractiveApplication` が authoring definitions を一度確定し、同じ snapshot を
+`ParameterSession`、`DrawWindowSystem`、`SceneRunner`、GUI catalog へ渡す。部分構築に失敗した場合も、
+取得済み resource だけを逆順に閉じ、cleanup error より root error を優先する。主な owner は次の通り。
 
 - `_InteractiveApplication`: workspace、parameter、MIDI、DWS、GUI、activation、window loop の lifetime
-- `ParameterSession`: current `ParameterLoadState`、load/recovery decision、history、autosave、
-  known-operation schema、終了時 persist
+- `ParameterSession`: current `KnownOperationSchemaSnapshot` / `ParameterLoadState`、load/recovery
+  decision、history、autosave、終了時 persist、atomic capture-state provider
 - `WorkspaceWindowController`: 二 window の配置、visibility、workspace persistence
 - `DrawWindowSystem`: renderer、SceneRunner、input/reload と frame call order の配線
 - `SceneRunner`: sync/mp draw、generation、draft/final evaluation、last-good scene。background 実装は
   constructor の `mp_draw_factory` から private `_MpDrawClient` Protocol として受け取り、initial/reload
   の両方を同じ factory で作る
-- `MpDraw`: process/Queue/restart/close。ACK、known revision、latest-task、stale-result の副作用を持たない
-  transition は process/Queue/thread/clock を所有しない `_MpDrawState` に委譲する
+- `_mp_draw_protocol`: pickle DTO、wire decode/validation、`DrawResult` / worker error /
+  frozen `MpDrawStats`
+- `_mp_draw_state`: ACK、known revision、latest-task、stale-result の I/O を持たない親側 transition
+- `_mp_draw_worker`: spawn 可能な top-level worker entrypoint、worker-side evaluation/cleanup
+- `MpDraw`: parent process、Queue、restart、timeout、close の resource owner。telemetry は scalar
+  forwarding property ではなく `MpDraw.stats` の一 immutable snapshot から読む
 - `PresentedFrameState`: last-good layers/t、snapshot revision/frame ID、fresh serial、preview/capture
   snapshot、provenance token の accept/prepare/publish
 - `CaptureQueue`: immutable capture intent、件数/geometry-byte admission、worker drain
@@ -398,6 +460,11 @@ error を優先する。主な owner は次の通り。
 `MultiWindowLoop` が preview と Inspector を一つの event loop で駆動する。GUI 変更は次 frame の
 parameter snapshot に反映され、実行中 frame の値は変えない。
 
+MIDI persistence path は `_InteractiveApplication` が解決済み `RuntimeConfig` と draw/run ID から
+`output_path_for_draw()` で一度だけ確定する。MIDI factory/controller/storage helper は必須の exact
+`snapshot_path: Path` を受け、live load/save、controller 不在時の frozen load、reconnect、discard の
+全経路が同じ path を使う。leaf は profile/save directory から再構築せず、CWD/HOME/YAML を探索しない。
+
 `PygletImguiBackend` は ImGui context、renderer、font texture と
 `sync IO -> new_frame -> render` の順序を所有する。`DrawRenderer` は ModernGL context、framebuffer、
 viewport、RGB readback と GPU cache を所有し、runtime が `.ctx` へ到達することはない。
@@ -405,8 +472,9 @@ viewport、RGB readback と GPU cache を所有し、runtime が `.ctx` へ到�
 diagnostics、transport、telemetry の immutable/Protocol contract は `interactive/` 直下に置き、
 GL/MIDI/GUI leaf が runtime concrete class に依存しない。
 
-variation thumbnail は GUI leaf に export service を持ち込まない。GUI は `Callable[[str], Path]` の
-capture contract と preview 表示だけを扱う。`interactive.runtime.variation_thumbnail_capture` が
+variation thumbnail は GUI leaf に export service を持ち込まない。GUI は exact `path: Path` と
+`discard()` だけを持つ `VariationThumbnailArtifact` の capture contract と preview 表示だけを扱う。
+`interactive.runtime.variation_thumbnail_capture` が
 `CaptureService`、live frame provider、base path、canvas size を受け、要求のたびに current frame を
 取得して no-clobber PNG capture へ適合する。古い frame を closure に固定せず、portable filename
 policy は export の variation batch と共有する。
@@ -414,9 +482,19 @@ policy は export の variation batch と共有する。
 source reload は entry source と、静的な package-relative import で到達する local helper の bytes
 だけを candidate generation として隔離実行し、draw signature、declaration snapshot、worker startup
 の成功後にだけ交換する。到達しない `.py` は監視せず、同じ directory の helper を absolute import
-することも許さない。失敗時は last-good callable、catalog、worker、frame、ParamStore を維持する。
+することも許さない。relative import は module lexical scope に限定し、全 reachable source を実行前に
+検証する。失敗時は last-good callable、catalog、worker、frame、ParamStore を維持する。
 candidate import は config authoring と同じ `_snapshot_import` lock/cleanup primitive を使うため、initial
 authoring load と reload が process-global finder/module stateを並行更新しない。
+
+GUI の named variation 保存は `prepare -> capture -> commit` の一方向 flow である。
+`prepare_variation()` が I/O より前に metadata、duplicate、immutable parameter snapshot と store revision
+を検証する。thumbnail callback は実 artifact path と `discard()` を所有する一回限りの artifact owner を
+返す。この callback は同期実行中に `ParamStore` を変更しない contract であり、違反/concurrent change は
+commit の revision 再確認で拒否する。capture failure は thumbnail なしで同じ draft を commitし、
+保存自体は成功扱いにする。
+commit は revision/duplicate を再確認して variation を一度だけ追加し、失敗時は controller が今回の
+artifact family だけを discardする。
 
 ## 9. Capture / export infrastructure
 

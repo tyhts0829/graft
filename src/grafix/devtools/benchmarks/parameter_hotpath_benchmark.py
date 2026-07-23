@@ -63,6 +63,7 @@ from grafix.interactive.parameter_gui.table_view import (
 
 ParameterHotPathOperation = Literal[
     "layout_reuse",
+    "merge_runtime_one",
     "merge_steady",
     "snapshot_one",
     "visibility_default",
@@ -163,6 +164,7 @@ def make_parameter_hot_path_scenario(
     operation = str(parameters["operation"])
     if operation not in {
         "layout_reuse",
+        "merge_runtime_one",
         "merge_steady",
         "snapshot_one",
         "visibility_default",
@@ -199,7 +201,6 @@ def make_parameter_hot_path_scenario(
     initial_merge_ms = (time.perf_counter_ns() - started) / 1_000_000.0
     if operation == "visibility_search":
         midi_keys: list[ParameterKey] = []
-        runtime = store._runtime_ref()
         for index in range(0, rows, _SEARCH_MIDI_STRIDE):
             record = records[index]
             ok, error = update_state_from_ui(
@@ -212,9 +213,17 @@ def make_parameter_hot_path_scenario(
             )
             if not ok:
                 raise RuntimeError(f"search fixture MIDI setup failed: {error}")
-            runtime.last_source_by_key[record.key] = "midi_live"
             midi_keys.append(record.key)
+        base_revision = store.revision
+        runtime = store._read().runtime()
+        for key in midi_keys:
+            runtime.last_source_by_key[key] = "midi_live"
         runtime.record_effective_changes(midi_keys)
+        store._mutation().commit_runtime(
+            expected_revision=base_revision,
+            runtime=runtime,
+            runtime_value_keys=tuple(midi_keys),
+        )
     snapshot = store_snapshot(store)
     target_key = records[0].key
 
@@ -268,6 +277,8 @@ def run_parameter_hot_path_scenario(
 
     if scenario.operation == "layout_reuse":
         return _run_layout_reuse(scenario)
+    if scenario.operation == "merge_runtime_one":
+        return _run_merge_runtime_one(scenario)
     if scenario.operation == "merge_steady":
         return _run_merge_steady(scenario)
     if scenario.operation == "snapshot_one":
@@ -391,10 +402,9 @@ def _run_merge_steady(
     scenario: ParameterHotPathScenario,
 ) -> BenchmarkOutput:
     store = scenario.store
-    runtime = store._runtime_ref()
     revision_before = int(store.revision)
     table_revision_before = int(store.table_revision)
-    effective_revision_before = int(runtime.effective_revision)
+    effective_revision_before = int(store.effective_revision)
     semantic_digest_before = _store_semantic_digest(store)
     elapsed_ms: list[float] = []
 
@@ -406,7 +416,9 @@ def _run_merge_steady(
 
     revision_delta = int(store.revision) - revision_before
     table_revision_delta = int(store.table_revision) - table_revision_before
-    effective_revision_delta = int(runtime.effective_revision) - effective_revision_before
+    effective_revision_delta = (
+        int(store.effective_revision) - effective_revision_before
+    )
     distribution = summarize_distribution(elapsed_ms)
     p95 = distribution.p95 if distribution.p95 is not None else distribution.max
     assert p95 is not None
@@ -487,6 +499,179 @@ def _run_merge_steady(
                 "le",
                 8.0,
                 "reference target for 10k steady merge is 8 ms p95",
+            ),
+        ),
+    )
+
+
+def _run_merge_runtime_one(
+    scenario: ParameterHotPathScenario,
+) -> BenchmarkOutput:
+    """一 key の effective/source 変更が store 全件 copy へ戻らないことを測る。"""
+
+    store = scenario.store
+    key = scenario.target_key
+    record = scenario.records[0]
+    revision_before = int(store.revision)
+    table_revision_before = int(store.table_revision)
+    effective_revision_before = int(store.effective_revision)
+    runtime_token_before = store._read().runtime_token()
+    snapshot_before = store_snapshot(store)
+    snapshot_digest_before = _snapshot_digest(snapshot_before)
+    elapsed_ms: list[float] = []
+    sparse_change_matches = 0
+
+    for index in range(scenario.samples):
+        effective = 0.25 if index % 2 == 0 else 0.75
+        changed_record = dataclasses.replace(
+            record,
+            effective=effective,
+            source="midi_live",
+        )
+        previous_effective_revision = store.effective_revision
+        started = time.perf_counter_ns()
+        merge_frame_params(store, [changed_record])
+        elapsed_ms.append(
+            (time.perf_counter_ns() - started) / 1_000_000.0
+        )
+        if store.effective_changes_since(
+            previous_effective_revision
+        ) == frozenset({key}):
+            sparse_change_matches += 1
+
+    revision_delta = int(store.revision) - revision_before
+    table_revision_delta = int(store.table_revision) - table_revision_before
+    effective_revision_delta = (
+        int(store.effective_revision) - effective_revision_before
+    )
+    runtime_identity_reused = (
+        store._read().runtime_token() == runtime_token_before
+    )
+    snapshot_after = store_snapshot(store)
+    snapshot_identity_reused = snapshot_after is snapshot_before
+    snapshot_digest_after = _snapshot_digest(snapshot_after)
+    final_effective = store.last_effective_value(key)
+    final_source = store.runtime_view().last_source_by_key.get(key)
+    expected_final_effective = (
+        0.25 if (scenario.samples - 1) % 2 == 0 else 0.75
+    )
+    distribution = summarize_distribution(elapsed_ms)
+    p95 = (
+        distribution.p95
+        if distribution.p95 is not None
+        else distribution.max
+    )
+    assert p95 is not None
+
+    return BenchmarkOutput(
+        value={
+            "operation": scenario.operation,
+            "rows": scenario.rows,
+            "samples": scenario.samples,
+            "revision_delta": revision_delta,
+            "table_revision_delta": table_revision_delta,
+            "effective_revision_delta": effective_revision_delta,
+            "runtime_identity_reused": runtime_identity_reused,
+            "snapshot_identity_reused": snapshot_identity_reused,
+            "snapshot_digest_before": snapshot_digest_before,
+            "snapshot_digest_after": snapshot_digest_after,
+            "final_effective": final_effective,
+            "final_source": final_source,
+            "sparse_change_matches": sparse_change_matches,
+        },
+        metrics=(
+            _distribution_metric(
+                "parameter_merge.runtime_one",
+                elapsed_ms,
+            ),
+            _gauge_metric(
+                "parameter_merge.runtime_one.rows",
+                scenario.rows,
+                unit="rows",
+            ),
+            _gauge_metric(
+                "parameter_merge.runtime_one.effective_revision_delta",
+                effective_revision_delta,
+                unit="revisions",
+            ),
+            _gauge_metric(
+                "parameter_merge.runtime_one.sparse_change_matches",
+                sparse_change_matches,
+                unit="frames",
+            ),
+        ),
+        contracts=(
+            _contract(
+                "parameter_merge.runtime_one.store_revision_stable",
+                "hard",
+                revision_delta,
+                "eq",
+                0,
+                "runtime-only frame must not advance persistent revision",
+            ),
+            _contract(
+                "parameter_merge.runtime_one.table_revision_stable",
+                "hard",
+                table_revision_delta,
+                "eq",
+                0,
+                "runtime-only frame must not rebuild table structure",
+            ),
+            _contract(
+                "parameter_merge.runtime_one.effective_revision_exact",
+                "hard",
+                effective_revision_delta,
+                "eq",
+                scenario.samples,
+                "each changed runtime frame must advance effective revision",
+            ),
+            _contract(
+                "parameter_merge.runtime_one.sparse_changes_exact",
+                "hard",
+                sparse_change_matches,
+                "eq",
+                scenario.samples,
+                "each frame must report only the changed key",
+            ),
+            _contract(
+                "parameter_merge.runtime_one.snapshot_identity",
+                "hard",
+                snapshot_identity_reused,
+                "eq",
+                True,
+                "runtime-only changes must reuse the persistent snapshot",
+            ),
+            _contract(
+                "parameter_merge.runtime_one.snapshot_semantics",
+                "hard",
+                snapshot_digest_after,
+                "eq",
+                snapshot_digest_before,
+                "runtime-only changes must preserve persistent parameters",
+            ),
+            _contract(
+                "parameter_merge.runtime_one.runtime_identity",
+                "hard",
+                runtime_identity_reused,
+                "eq",
+                True,
+                "sparse runtime patch must preserve runtime identity",
+            ),
+            _contract(
+                "parameter_merge.runtime_one.final_value",
+                "hard",
+                (final_effective, final_source),
+                "eq",
+                (expected_final_effective, "midi_live"),
+                "last changed frame must publish its effective/source pair",
+            ),
+            _contract(
+                "parameter_merge.runtime_one.reference_p95",
+                "soft",
+                float(p95),
+                "le",
+                0.1,
+                "1,000-row sparse runtime merge reference is 0.1 ms p95",
             ),
         ),
     )
@@ -1026,7 +1211,8 @@ def _snapshot_digest(snapshot: ParamSnapshot) -> str:
 
 
 def _store_semantic_digest(store: ParamStore) -> str:
-    runtime = store._runtime_ref()
+    read = store._read()
+    runtime = read.runtime()
     snapshot = store_snapshot(store)
     keys = sorted(
         snapshot,
@@ -1040,7 +1226,7 @@ def _store_semantic_digest(store: ParamStore) -> str:
                     _key_token(key),
                     runtime.last_effective_by_key.get(key),
                     runtime.last_source_by_key.get(key),
-                    store._explicit_by_key.get(key),
+                    read.explicit(key),
                 )
                 for key in keys
             ),
@@ -1203,6 +1389,32 @@ def _hotpath_case_definitions() -> list[CaseDefinition]:
         )
     definitions.append(
         define_case(
+            "runtime.parameter_merge.rows_1000.change_runtime_one",
+            "one-key runtime parameter merge (1,000 rows)",
+            category="runtime",
+            suite="parameters",
+            fixture="parameter_store_single_runtime_change",
+            parameters={
+                "operation": "merge_runtime_one",
+                "rows": 1_000,
+                "samples": 200,
+            },
+            tags=(
+                "PARAM-06",
+                "single-key",
+                "runtime-only",
+                "no-imgui",
+                "exact-checksum",
+            ),
+            selectable_suites=("parameters",),
+            setup=setup_parameter_hotpath_scenario,
+            workload=workload_parameter_hotpath_scenario,
+            support_source_files=(Path(__file__),),
+            self_sampling=True,
+        )
+    )
+    definitions.append(
+        define_case(
             "gui.parameter_visibility.rows_10000.mode_search",
             "parameter search visibility (10,000 rows)",
             category="gui",
@@ -1259,6 +1471,7 @@ def benchmark_draw(_t: float) -> tuple[()]:
 
 
 def setup_provenance(parameters: dict[str, Any], _seed: int) -> object:
+    from grafix.core.parameters import ParameterCaptureState
     from grafix.export.capture_provenance import CaptureProvenanceBuilder
     from grafix.runtime_config_loader import runtime_config
 
@@ -1266,9 +1479,8 @@ def setup_provenance(parameters: dict[str, Any], _seed: int) -> object:
     builder = CaptureProvenanceBuilder(
         benchmark_draw,
         config=runtime_config(),
-        parameter_source="code",
+        parameter_state=ParameterCaptureState("code", "primary"),
         parameter_store_path=None,
-        parameter_load_provenance="primary",
     )
     return builder, store
 
@@ -1308,7 +1520,7 @@ def setup_provenance_changed(parameters: dict[str, Any], seed: int) -> object:
         tuple[Any, Any],
         setup_provenance(parameters, seed),
     )
-    runtime = store._runtime_ref()
+    runtime = store._read().runtime()
     key = next(iter(runtime.last_effective_by_key))
     meta = store.get_meta(key)
     if meta is None:
@@ -1466,7 +1678,6 @@ def parameter_snapshot_model_workload(
     """実 UI を呼ばず、snapshot/model と毎frame準備だけを通す。"""
 
     frame_count = max(2, int(frames))
-    store._touch()
     table_cache = ParameterTableViewCache(current_parameter_gui_catalog())
     render_calls = 0
     visible_rows = 0

@@ -113,7 +113,7 @@ def test_render_session_reuses_store_config_style_and_internal_realize_cache() -
         _constant_draw(),
         options=RenderOptions(background_color="white"),
     )
-    store = session.param_store
+    store = session._store
     config = session.config
 
     first = session.render(0.0)
@@ -131,7 +131,7 @@ def test_render_session_reuses_store_config_style_and_internal_realize_cache() -
 
     second = session.render(1.0)
 
-    assert session.param_store is store
+    assert not hasattr(session, "param_store")
     assert session.config is config
     assert first.metadata is session.metadata
     assert second.metadata is session.metadata

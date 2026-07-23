@@ -57,8 +57,7 @@ def test_autosave_waits_until_changes_settle(tmp_path: Path) -> None:
     now[0] = 0.9
     assert autosave.tick() is False
     header = primitive_collapsed_header_key(("line", "site-1"))
-    store._collapsed_headers_ref().add(header)
-    store._touch()
+    store.set_collapsed(header, collapsed=True)
     assert autosave.tick() is False
     now[0] = 1.89
     assert autosave.tick() is False
@@ -93,17 +92,17 @@ def test_autosave_flushes_at_max_interval_during_continuous_revisions(
     # 観測から max_interval で recovery を確定する。
     for index, current_time in enumerate((0.5, 1.0, 1.5), start=1):
         now[0] = current_time
-        store._collapsed_headers_ref().add(
-            primitive_collapsed_header_key(("continuous", str(index)))
+        store.set_collapsed(
+            primitive_collapsed_header_key(("continuous", str(index))),
+            collapsed=True,
         )
-        store._touch()
         assert autosave.tick() is False
 
     now[0] = 2.0
-    store._collapsed_headers_ref().add(
-        primitive_collapsed_header_key(("continuous", "final"))
+    store.set_collapsed(
+        primitive_collapsed_header_key(("continuous", "final")),
+        collapsed=True,
     )
-    store._touch()
     assert autosave.tick() is True
     assert calls == [store.revision]
     assert autosave.dirty is False
@@ -157,8 +156,7 @@ def test_autosave_flush_uses_injected_save_callback(tmp_path: Path) -> None:
 
     # 生成時点の revision は clean。その後の変更だけを保存する。
     header = primitive_collapsed_header_key(("line", "site-1"))
-    store._collapsed_headers_ref().add(header)
-    store._touch()
+    store.set_collapsed(header, collapsed=True)
     assert autosave.flush() is True
     assert calls == [(store, path)]
     assert autosave.flush() is False

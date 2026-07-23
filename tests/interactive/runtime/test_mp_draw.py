@@ -131,7 +131,7 @@ def test_workers_report_ready_and_normal_close_leaves_no_children(
     procs = list(mp_draw._procs)
     worker_pids = {int(proc.pid) for proc in procs if proc.pid is not None}
 
-    assert mp_draw.ready_worker_pids == worker_pids
+    assert mp_draw.stats.ready_worker_pids == worker_pids
 
     mp_draw.submit(
         t=0.125,
@@ -283,9 +283,9 @@ def test_hung_evaluation_restarts_worker_and_recovers_without_child_leak() -> No
             time.sleep(0.01)
 
         assert mp_draw.generation == 1
-        assert mp_draw.restart_count == 1
-        assert mp_draw.last_restart_reason is not None
-        assert "evaluation timeout" in mp_draw.last_restart_reason
+        assert mp_draw.stats.restart_count == 1
+        assert mp_draw.stats.last_restart_reason is not None
+        assert "evaluation timeout" in mp_draw.stats.last_restart_reason
         # timeout/restart の呼び出しは ready 待ちをせず、UI loop を有界に保つ。
         assert max(call_durations) < 0.75
         # restart 中も preview fallback は直近の成功 frame を保持する。

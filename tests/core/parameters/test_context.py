@@ -15,6 +15,7 @@ from grafix.core.parameters.meta import ParamMeta
 from grafix.core.parameters.source import MidiFrameSnapshot
 from grafix.core.parameters.snapshot_ops import store_snapshot
 from grafix.core.parameters.store import ParamStore
+from tests.param_store_test_support import runtime_state
 
 
 def _assert_current_context(
@@ -111,4 +112,4 @@ def test_parameter_context_rolls_back_frame_observations_when_body_raises() -> N
 
     assert key not in store_snapshot(store)
     assert store.get_label(key.op, key.site_id) is None
-    assert (key.op, key.site_id) not in store._runtime_ref().observed_groups
+    assert (key.op, key.site_id) not in runtime_state(store).observed_groups

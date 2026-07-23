@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from grafix.interactive.runtime.mp_draw import (
+from grafix.interactive.runtime._mp_draw_protocol import (
     DrawResult,
     _DrawTask,
-    _MpDrawState,
     _SnapshotAck,
     _SnapshotUpdate,
 )
+from grafix.interactive.runtime._mp_draw_state import _MpDrawState
 
 
 def _ack(*, pid: int, requested: int, applied: int) -> _SnapshotAck:

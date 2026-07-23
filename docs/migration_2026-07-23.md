@@ -1,4 +1,9 @@
-# Ownership / import migration notes (2026-07-23)
+# Ownership / import migration notes (2026-07-23, R1/R2)
+
+> **Current migration:** R3 まで含む最終 contract と破壊的変更一覧は
+> [`migration_2026-07-23_r3.md`](migration_2026-07-23_r3.md) を参照する。
+> 本文の storage/config/GUI ownership の説明は背景資料として残すが、公開 namespace は以下の
+> R3 同期済み記述を正とする。
 
 この変更は authoring import、output transaction、parameter load metadata、Parameter GUI cache、公開
 facade の owner を一意にする破壊的変更である。削除した path/API の compatibility wrapper、alias、
@@ -7,22 +12,26 @@ re-export shim は追加していない。
 通常の sketch は引き続き `from grafix import G, E, L, P, run` を使える。deep import を使う extension、
 tool、test は以下の差分を同時に移行する。
 
-## 1. 公開 facade と core-only import
+## 1. 標準 namespace と core-only import
 
-`grafix` と `grafix.api` は lazy facade になった。公開名と object identity は維持するが、実装 group は
-必要になるまで importしない。
+`grafix` と `grafix.api` は通常の `ModuleType` である。root は標準 PEP 562 mapping から公開名を
+定義 module へ遅延解決するが、custom module class、代入 guard、callable/module の dual behavior は
+使わない。
 
-- `import grafix` だけでは `grafix.api` を初期化しない。
-- `G` / `E` / `L` / `P` の参照では render、export、variation batch、interactive runner を loadしない。
-- `run` は参照時ではなく呼び出し時に runner を loadする。
-- `grafix.export` や `grafix.cc` submoduleを先に importしても、root の `export` / `cc` は同じ callableを
-  返す。
+- `grafix.export` は subsystem package、`grafix.api.export` は保存 API module である。
+- 保存 callable は `grafix.save` / `grafix.api.export.save` であり、root `export` callable はない。
+- `grafix.api.render`、`grafix.api.export`、`grafix.api.runner`、`grafix.api.cc` は通常 module である。
+- root `grafix.cc` は `CcView` object であり、旧 `grafix.cc` module はない。
+- application callable は root または定義 module から取得し、`grafix.api` package 直下では
+  re-export しない。
+- `import grafix` だけでは `grafix.api` を初期化せず、`run` の参照/signature inspection では
+  GUI/runtime を loadしない。heavy composition は `run()` 呼び出し時にだけ loadする。
 - `import grafix.core.geometry` は API、export、parameter storage、runtime config loader を loadしない。
 
 公開利用では deep implementation import を避け、次を正規入口にする。
 
 ```python
-from grafix import G, RenderSession, export, render, run
+from grafix import G, RenderSession, render, run, save
 ```
 
 core module から convenience のために root facade を importすると core-only contract を壊す。domain
@@ -117,7 +126,13 @@ export側から API/interactive を importしない。batch directory全体が�
 Parameter GUI leafから export dependencyを削除した。GUI extensionは capture/preview callableだけを扱う。
 concrete adapterは `grafix.interactive.runtime.variation_thumbnail_capture` にあり、`CaptureService`、
 live frame provider、base path、canvas sizeを受ける。capture要求ごとに current frameを取得するため、
-以前の frameを closureに固定しない。返り値は `CaptureService` が実際に公開した no-clobber pathである。
+以前の frameを closureに固定しない。
+
+R3 では GUI の保存順を `prepare -> capture -> commit` に固定した。capture callable は raw `Path`
+ではなく、`CaptureService` が実際に公開した no-clobber path と `discard()` を持つ owned artifact を
+返す。commit failure では今回の PNG/manifest family だけを破棄し、capture failure では thumbnail
+なしで Variation を commitする。詳細は
+[`migration_2026-07-23_r3.md`](migration_2026-07-23_r3.md) の Variation 節を参照する。
 
 ## 4. ParamStoreLoadResult / ParameterLoadState
 
@@ -171,13 +186,16 @@ loaded = recover_param_store_session(path)
 state = loaded.store.get_state(key)
 ```
 
-storage moduleから `ParamStore._runtime_ref()` へ metadataを書き込む経路はない。load stateは parameter
-persistence、history、adjustment snapshot、transient rollbackに含めない。
+旧 `ParamStore._runtime_ref()` API は削除済みであり、storage module が mutable runtime container へ
+metadataを書き込む経路はない。load stateは parameter persistence、history、adjustment snapshot、
+transient rollbackに含めない。
 
-interactive の `ParameterSession` は current `ParameterLoadState` を所有する。Keep/Discard は detached
-store と load state を束ねた新 result を返し、session が一箇所で自身の store contents と load state を
-同時に採用する。capture/record/export は frame ごとに current provenance provider を読む。一方、
-headless `RenderSession` は構築時 load result を
+interactive の `ParameterSession` は current `KnownOperationSchemaSnapshot` と
+`ParameterLoadState` を所有する。Keep/Discard は detached store と load state を束ねた新 result を
+返し、session が一箇所で自身の store contents と load state を同時に採用する。Keep は action
+dispatch 時の current schema を使う。capture/record/export は frame ごとに一つの current
+`ParameterCaptureState` provider を読み、同じ load-state sample から source と provenance を得る。
+一方、headless `RenderSession` は構築時 load result を
 `RenderSession.metadata.parameter_load_state` と capture provenance へ固定する。
 
 ## 5. Parameter GUI table internals

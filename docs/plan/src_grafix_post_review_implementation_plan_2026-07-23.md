@@ -4,8 +4,10 @@
 - 計画作成時 HEAD: `4bc4cf6`
 - 計画作成時 branch: `main`
 - 計画作成前 working tree: 既存の変更・未追跡ファイル 138 件
+- 実装開始時 HEAD: `56fd38f`
+- 実装開始時 working tree: clean
 - 対象 Finding: R3-001〜R3-010
-- 状態: **承認待ち・未着手**
+- 状態: **実装・検証完了**
 
 計画作成前から、前回の R2 実装とレビューに関する多数の差分が存在する。本計画はそれらを含む現在の
 working tree を実装基準とし、既存差分の整理、巻き戻し、上書きを行わない。
@@ -30,7 +32,7 @@ working tree を実装基準とし、既存差分の整理、巻き戻し、上�
    - revision、history、cache invalidation は同じ mutation commit で確定する。
 
 全面 rewrite は行わない。既存の immutable DTO、`CleanupErrors`、snapshot import、capture staging、
-`_PendingStoreMutation`、spawn worker contract を再利用し、新しい汎用 framework は作らない。
+spawn worker contract を再利用し、新しい汎用 framework は作らない。
 
 ## 2. 承認境界と進行規則
 
@@ -234,8 +236,11 @@ result = save(frame, "output.svg")
 ### 4.7 ParamStore mutation ownership
 
 - `ParamStoreState` 全面 rewrite ではなく、既存 store に一つの private `_ParamStoreMutation` port を置く。
-- port だけが mutable container と `_PendingStoreMutation` を扱う。
-- `_PendingStoreMutation` は revision 集約器であり、rollback transaction ではないことを明記する。
+- port だけが mutable container、revision、history、cache の確定を扱う。
+- 旧 `_PendingStoreMutation` と汎用 mutation batch は削除し、各 domain command を一つの明示的な
+  commit method へ集約する。
+- `replace_contents_from()` も同じ port を通し、transient rollback だけを owner-bound な復元操作として
+  `ParamStore` 境界内に残す。
 - sibling command module は immutable/read-only view から検証・計画し、完成した plan を一度だけ commit する。
 - port は raw `dict`、`set`、mutable `ParamState`、`ParamStoreRuntime` を返さない。
 - validation、allocation、history-before snapshot は live mutation の前に完了させる。
@@ -363,35 +368,35 @@ flowchart TD
 
 ### 9.1 作業状態
 
-- [ ] 実装開始時の HEAD、branch、`git status --porcelain` を本書へ記録する。
-- [ ] 本計画対象 file と既存・並行差分を分離して記録する。
-- [ ] R3 ごとの production callsite、test、public/deep import、stub/docs を inventory 化する。
-- [ ] full test、benchmark、GUI/process test の実行許可範囲を確認する。
+- [x] 実装開始時の HEAD、branch、`git status --porcelain` を本書へ記録する。
+- [x] 本計画対象 file と既存・並行差分を分離して記録する。
+- [x] R3 ごとの production callsite、test、public/deep import、stub/docs を inventory 化する。
+- [x] full test、benchmark、GUI/process test の実行許可範囲を確認する。
 
 ### 9.2 regression を先に失敗状態で固定
 
-- [ ] fresh subprocess の標準 import matrix を追加する。
-- [ ] function-local relative import の採用後 failure を authoring/source reload の両方で再現する。
-- [ ] action install → schema 交換 → Keep の data-loss 再現 test を追加する。
-- [ ] Keep/Discard 後の provenance pair 不整合を再現する。
-- [ ] 81 文字名で thumbnail orphan が残る再現 test を追加する。
-- [ ] root/nested `__init__.py` の現行挙動を明示する test を追加する。
-- [ ] MIDI leaf の ambient config import と path 再探索を architecture/unit test で再現する。
-- [ ] ParamStore mutation ごとの revision/history/cache/rollback characterization test を追加する。
-- [ ] `MpDraw` の protocol/state/restart/close/stats behavior を移動前に固定する。
+- [x] fresh subprocess の標準 import matrix を追加する。
+- [x] function-local relative import の採用後 failure を authoring/source reload の両方で再現する。
+- [x] action install → schema 交換 → Keep の data-loss 再現 test を追加する。
+- [x] Keep/Discard 後の provenance pair 不整合を再現する。
+- [x] 81 文字名で thumbnail orphan が残る再現 test を追加する。
+- [x] root/nested `__init__.py` の現行挙動を明示する test を追加する。
+- [x] MIDI leaf の ambient config import と path 再探索を architecture/unit test で再現する。
+- [x] ParamStore mutation ごとの revision/history/cache/rollback characterization test を追加する。
+- [x] `MpDraw` の protocol/state/restart/close/stats behavior を移動前に固定する。
 
 ### 9.3 baseline measurement
 
-- [ ] parameter edit/hotpath/interactive scenario の代表 case と測定方法を固定する。
-- [ ] `MpDraw` の submit/result/restart throughput と hard failure count の代表 case を固定する。
-- [ ] baseline 数値、環境、試行回数、ばらつきを実施記録へ残す。
-- [ ] 行数や private helper 名を成功条件にせず、semantic contract だけを固定する。
+- [x] parameter edit/hotpath/interactive scenario の代表 case と測定方法を固定する。
+- [x] `MpDraw` の submit/result/restart throughput と hard failure count の代表 case を固定する。
+- [x] baseline 数値、環境、試行回数、ばらつきを実施記録へ残す。
+- [x] 行数や private helper 名を成功条件にせず、semantic contract だけを固定する。
 
 Phase 0 完了条件:
 
-- [ ] 各 R3 の失敗または構造的違反を一つ以上の test/inventory が表す。
-- [ ] 現在の working tree を誤って clean HEAD と比較していない。
-- [ ] 実装後に比較する behavior/performance baseline が再実行可能である。
+- [x] 各 R3 の失敗または構造的違反を一つ以上の test/inventory が表す。
+- [x] 現在の working tree を誤って clean HEAD と比較していない。
+- [x] 実装後に比較する behavior/performance baseline が再実行可能である。
 
 ## 10. Phase 1 — recovery schema と atomic capture state（R3-003、R3-004）
 
@@ -408,42 +413,42 @@ Phase 0 完了条件:
 
 ### 10.1 current schema ownership
 
-- [ ] `ParamStoreRecoverySession` から構築時 `known_operations` field を削除する。
-- [ ] `keep(*, known_operations=...)` の明示 command に変更する。
-- [ ] diagnostic action の install/dispatch を `ParameterSession` method へ寄せる。
-- [ ] Keep callback は dispatch 時の `self.known_operations` を一度だけ sample する。
-- [ ] accepted generation だけが `replace_known_operations()` される既存規則を維持する。
-- [ ] failed generation が current schema を変更しないことを確認する。
-- [ ] Keep の write/finalize failure で live store、recovery journal、load state を変更しない。
+- [x] `ParamStoreRecoverySession` から構築時 `known_operations` field を削除する。
+- [x] `keep(*, known_operations=...)` の明示 command に変更する。
+- [x] diagnostic action の install/dispatch を `ParameterSession` method へ寄せる。
+- [x] Keep callback は dispatch 時の `self.known_operations` を一度だけ sample する。
+- [x] accepted generation だけが `replace_known_operations()` される既存規則を維持する。
+- [x] failed generation が current schema を変更しないことを確認する。
+- [x] Keep の write/finalize failure で live store、recovery journal、load state を変更しない。
 
 ### 10.2 atomic capture state
 
-- [ ] frozen `ParameterCaptureState` を core parameter runtime value として追加する。
-- [ ] `ParameterSession.capture_state()` を追加し、一つの `_load_state` sample から pair を返す。
-- [ ] source と provenance を別々に読む interactive capture 経路を削除する。
-- [ ] `CaptureProvenanceBuilder` の二引数を static state/provider 一引数へ統合する。
-- [ ] builder は各 frame で provider を一度だけ呼び、二 field を同時に `replace()` する。
-- [ ] DWS は同じ provider を初期 generation と reload 後 generation の双方へ渡す。
-- [ ] headless `RenderSession` は static capture state を使う。
-- [ ] benchmark/test helper を新しい一状態 contract へ一括移行する。
-- [ ] 旧二引数形式の shim は残さない。
+- [x] frozen `ParameterCaptureState` を core parameter runtime value として追加する。
+- [x] `ParameterSession.capture_state()` を追加し、一つの `_load_state` sample から pair を返す。
+- [x] source と provenance を別々に読む interactive capture 経路を削除する。
+- [x] `CaptureProvenanceBuilder` の二引数を static state/provider 一引数へ統合する。
+- [x] builder は各 frame で provider を一度だけ呼び、二 field を同時に `replace()` する。
+- [x] DWS は同じ provider を初期 generation と reload 後 generation の双方へ渡す。
+- [x] headless `RenderSession` は static capture state を使う。
+- [x] benchmark/test helper を新しい一状態 contract へ一括移行する。
+- [x] 旧二引数形式の shim は残さない。
 
 ### 10.3 focused verification
 
-- [ ] `tests/api/test_runner_parameter_recovery.py`
-- [ ] `tests/interactive/runtime/test_parameter_recovery.py`
-- [ ] `tests/core/test_capture_provenance.py`
-- [ ] `tests/interactive/runtime/test_draw_window_system.py`
-- [ ] capture queue、recording、presented frame の関連 tests
-- [ ] Keep/Discard と schema 複数回交換の end-to-end tests
+- [x] `tests/api/test_runner_parameter_recovery.py`
+- [x] `tests/interactive/runtime/test_parameter_recovery.py`
+- [x] `tests/core/test_capture_provenance.py`
+- [x] `tests/interactive/runtime/test_draw_window_system.py`
+- [x] capture queue、recording、presented frame の関連 tests
+- [x] Keep/Discard と schema 複数回交換の end-to-end tests
 
 Phase 1 完了条件:
 
-- [ ] recovery object/action closure に schema snapshot が残っていない。
-- [ ] Keep は action install 後に採用された最後の schema を使う。
-- [ ] `recovery/primary` 等、同一 manifest 内の矛盾した pair が生成されない。
-- [ ] frame ごとの parameter state provider 呼び出しが一回である。
-- [ ] headless static state と interactive current state の owner が明確である。
+- [x] recovery object/action closure に schema snapshot が残っていない。
+- [x] Keep は action install 後に採用された最後の schema を使う。
+- [x] `recovery/primary` 等、同一 manifest 内の矛盾した pair が生成されない。
+- [x] frame ごとの parameter state provider 呼び出しが一回である。
+- [x] headless static state と interactive current state の owner が明確である。
 
 ## 11. Phase 2 — authoring import と package entrypoint（R3-002、R3-006）
 
@@ -457,41 +462,41 @@ Phase 1 完了条件:
 
 ### 11.1 deferred relative import の fail-fast 化
 
-- [ ] pure AST validator を `_source_import_policy.py` に一箇所だけ定義する。
-- [ ] module lexical scope と function/class lexical scope を path/line 付きで区別する。
-- [ ] authoring recipe load は import plan/fingerprint/finder 作成前に全 source を preflight する。
-- [ ] filesystem capture と直接/pickle recipe の双方が同じ正式 load entrypoint を通る。
-- [ ] config authoring は invalid candidate より前の module も実行しない。
-- [ ] source reload は dependency 探索/adopt 前に拒否し、last-good draw/catalog を維持する。
-- [ ] 存在しない deferred helper を「将来現れる dependency」として watch 対象にしない。
-- [ ] failure 後に candidate finder/package/module が `sys.meta_path` / `sys.modules` に残らない。
-- [ ] parent と spawn worker が同じ source contract を使う。
+- [x] pure AST validator を `_source_import_policy.py` に一箇所だけ定義する。
+- [x] module lexical scope と function/class lexical scope を path/line 付きで区別する。
+- [x] authoring recipe load は import plan/fingerprint/finder 作成前に全 source を preflight する。
+- [x] filesystem capture と直接/pickle recipe の双方が同じ正式 load entrypoint を通る。
+- [x] config authoring は invalid candidate より前の module も実行しない。
+- [x] source reload は dependency 探索/adopt 前に拒否し、last-good draw/catalog を維持する。
+- [x] 存在しない deferred helper を「将来現れる dependency」として watch 対象にしない。
+- [x] failure 後に candidate finder/package/module が `sys.meta_path` / `sys.modules` に残らない。
+- [x] parent と spawn worker が同じ source contract を使う。
 
 ### 11.2 root/nested `__init__.py`
 
-- [ ] filesystem capture 時に root `__init__.py` を検出し、recipe 採用前に拒否する。
-- [ ] 直接構築/pickle 復元された recipe も load 時 validation を迂回できないようにする。
-- [ ] root initializer bytes を黙って fingerprint へ含める経路をなくす。
-- [ ] nested package initializer を parent-before-child の安定した通常 import で実行する。
-- [ ] nested initializer だけの preset/operation declaration を一度だけ登録する。
-- [ ] nested initializer の定数を child module の relative import から参照できるようにする。
-- [ ] fingerprint 対象 source と実際に実行可能な source の意味を一致させる。
+- [x] filesystem capture 時に root `__init__.py` を検出し、recipe 採用前に拒否する。
+- [x] 直接構築/pickle 復元された recipe も load 時 validation を迂回できないようにする。
+- [x] root initializer bytes を黙って fingerprint へ含める経路をなくす。
+- [x] nested package initializer を parent-before-child の安定した通常 import で実行する。
+- [x] nested initializer だけの preset/operation declaration を一度だけ登録する。
+- [x] nested initializer の定数を child module の relative import から参照できるようにする。
+- [x] fingerprint 対象 source と実際に実行可能な source の意味を一致させる。
 
 ### 11.3 focused verification
 
-- [ ] `tests/test_authoring_loader.py`
-- [ ] `tests/interactive/runtime/test_source_reload.py`
-- [ ] root rejection、nested initializer、module-scope import、deferred rejection の matrix
-- [ ] initial failure、reload failure、last-good、module/finder cleanup tests
-- [ ] authoring recipe pickle/spawn roundtrip tests
+- [x] `tests/test_authoring_loader.py`
+- [x] `tests/interactive/runtime/test_source_reload.py`
+- [x] root rejection、nested initializer、module-scope import、deferred rejection の matrix
+- [x] initial failure、reload failure、last-good、module/finder cleanup tests
+- [x] authoring recipe pickle/spawn roundtrip tests
 
 Phase 2 完了条件:
 
-- [ ] 採用済み callable が deferred relative import 由来の `ModuleNotFoundError` を起こさない。
-- [ ] invalid source を含む candidate/generation が一部実行または成功扱いにならない。
-- [ ] root `__init__.py` が成功扱いで無視される経路がない。
-- [ ] nested initializer の実行と fingerprint が通常 package 意味論と一致する。
-- [ ] finder を snapshot/generation 終了後も保持する実装がない。
+- [x] 採用済み callable が deferred relative import 由来の `ModuleNotFoundError` を起こさない。
+- [x] invalid source を含む candidate/generation が一部実行または成功扱いにならない。
+- [x] root `__init__.py` が成功扱いで無視される経路がない。
+- [x] nested initializer の実行と fingerprint が通常 package 意味論と一致する。
+- [x] finder を snapshot/generation 終了後も保持する実装がない。
 
 ## 12. Phase 3 — Variation validation、capture、commit（R3-005）
 
@@ -505,31 +510,31 @@ Phase 2 完了条件:
 
 ### 12.1 domain prepare/commit
 
-- [ ] `VariationDraft` または同等の private immutable value を定義する。
-- [ ] prepare は name/note/seed/t/snapshot/duplicate を検証し、base store revision を記録する。
-- [ ] commit は exact draft と optional validated thumbnail path だけを受け、revision/duplicate を再確認する。
-- [ ] public `create_variation()` は prepare + commit の同じ一経路を使う。
-- [ ] commit は Variation を一件追加し、store revision を一度だけ進める。
-- [ ] stale revision、no-op、validation、duplicate failure で state/revision を変更しない。
+- [x] `VariationDraft` または同等の private immutable value を定義する。
+- [x] prepare は name/note/seed/t/snapshot/duplicate を検証し、base store revision を記録する。
+- [x] commit は exact draft と optional validated thumbnail path だけを受け、revision/duplicate を再確認する。
+- [x] public `create_variation()` は prepare + commit の同じ一経路を使う。
+- [x] commit は Variation を一件追加し、store revision を一度だけ進める。
+- [x] stale revision、no-op、validation、duplicate failure で state/revision を変更しない。
 
 ### 12.2 owned thumbnail artifact
 
-- [ ] GUI contract を raw `Path` から `path + discard()` の最小 structural contract へ変更する。
-- [ ] runtime adapter は `CaptureService` の実出力 PNG と manifest を同じ artifact owner にする。
-- [ ] artifact は publish 直後の file identity を保持する。
-- [ ] export success 後の artifact owner 構築失敗でも、PNG/manifest family の cleanup を最後まで試す。
-- [ ] `discard()` は外部から差し替えられた同名 file を削除しない。
-- [ ] cleanup は PNG と manifest の両方を最後まで試す。
-- [ ] secondary cleanup failure を notice/diagnostic から観測可能にする。
+- [x] GUI contract を raw `Path` から `path + discard()` の最小 structural contract へ変更する。
+- [x] runtime adapter は `CaptureService` の実出力 PNG と manifest を同じ artifact owner にする。
+- [x] artifact は publish 直後の file identity を保持する。
+- [x] export success 後の artifact owner 構築失敗でも、PNG/manifest family の cleanup を最後まで試す。
+- [x] `discard()` は外部から差し替えられた同名 file を削除しない。
+- [x] cleanup は PNG と manifest の両方を最後まで試す。
+- [x] secondary cleanup failure を notice/diagnostic から観測可能にする。
 
 ### 12.3 controller の一方向 flow
 
-- [ ] `prepare -> capture -> commit` の順にし、validation 前に capture しない。
-- [ ] capture failure は thumbnail なし commit と user notice に変換する。
-- [ ] capture success は実際に publish された exact path を commit する。
-- [ ] commit failure は artifact を discard し、Variation を追加しない。
-- [ ] callback が store を変更しないことを contract/test で固定する。
-- [ ] success 後の selection、draft clear、notice の既存 UX を維持する。
+- [x] `prepare -> capture -> commit` の順にし、validation 前に capture しない。
+- [x] capture failure は thumbnail なし commit と user notice に変換する。
+- [x] capture success は実際に publish された exact path を commit する。
+- [x] commit failure は artifact を discard し、Variation を追加しない。
+- [x] callback が store を変更しないことを contract/test で固定する。
+- [x] success 後の selection、draft clear、notice の既存 UX を維持する。
 
 ### 12.4 outcome matrix
 
@@ -541,19 +546,19 @@ Phase 2 完了条件:
 | commit failure | なし | rollback 済み |
 | 成功 | あり、実 path あり | PNG + manifest あり |
 
-- [ ] `tests/core/parameters/test_variations.py`
-- [ ] `tests/interactive/parameter_gui/test_variation_controller.py`
-- [ ] `tests/interactive/runtime/test_variation_thumbnail_capture.py`
-- [ ] 81 文字名、duplicate、不正 note/seed/t、不正 capture result の tests
-- [ ] capture/owner 構築/commit/discard failure と success の matrix tests
+- [x] `tests/core/parameters/test_variations.py`
+- [x] `tests/interactive/parameter_gui/test_variation_controller.py`
+- [x] `tests/interactive/runtime/test_variation_thumbnail_capture.py`
+- [x] 81 文字名、duplicate、不正 note/seed/t、不正 capture result の tests
+- [x] capture/owner 構築/commit/discard failure と success の matrix tests
 
 Phase 3 完了条件:
 
-- [ ] domain failure より先に filesystem publish する経路がない。
-- [ ] capture failure でも Variation 保存という現行 UX を維持する。
-- [ ] commit failure で今回の artifact family が残らない。
-- [ ] success では Variation metadata と CaptureService の実 path が一致する。
-- [ ] 汎用 transaction framework を追加していない。
+- [x] domain failure より先に filesystem publish する経路がない。
+- [x] capture failure でも Variation 保存という現行 UX を維持する。
+- [x] commit failure で今回の artifact family が残らない。
+- [x] success では Variation metadata と CaptureService の実 path が一致する。
+- [x] 汎用 transaction framework を追加していない。
 
 ## 13. Phase 4 — 標準 namespace と閉じた public API（R3-001、R3-010）
 
@@ -571,75 +576,75 @@ Phase 3 完了条件:
 
 ### 13.1 import semantics を先に固定
 
-- [ ] fresh subprocess で `grafix.export` package import を固定する。
-- [ ] `grafix.export.variation_batch` の nested dotted import を固定する。
-- [ ] `grafix.api.render` / `grafix.api.export` が通常 module であることを固定する。
-- [ ] `type(grafix) is ModuleType`、`type(grafix.api) is ModuleType` を固定する。
-- [ ] submodule import 前後で root callable identity が変わらないことを固定する。
-- [ ] `grafix.__all__`、star import、root object identity を明示する。
+- [x] fresh subprocess で `grafix.export` package import を固定する。
+- [x] `grafix.export.variation_batch` の nested dotted import を固定する。
+- [x] `grafix.api.render` / `grafix.api.export` が通常 module であることを固定する。
+- [x] `type(grafix) is ModuleType`、`type(grafix.api) is ModuleType` を固定する。
+- [x] submodule import 前後で root callable identity が変わらないことを固定する。
+- [x] `grafix.__all__`、star import、root object identity を明示する。
 
 ### 13.2 名前衝突の除去
 
-- [ ] `api.export.export()` を `save()` へ改名し、repository consumer を一括移行する。
-- [ ] root `export` callable を削除し、root `save` を定義 module から遅延解決する。
-- [ ] `cc.py` を `api/cc.py` へ移し、repository import を一括移行する。
-- [ ] `grafix.api` package-level の `render` / `save` / `run` / `render_variation_batch` re-export を削除する。
-- [ ] authoring DSL/decorator の package-level surface は維持する。
-- [ ] root/API から `_LazyPublicName` と custom module class を削除する。
-- [ ] root PEP 562 mapping は公開名から exact 定義 module/attribute を直接引く。
-- [ ] `getattr(grafix.api, name)` を root resolver として使わない。
-- [ ] `grafix.export` package、CLI `export` command、export result/format 名は維持する。
+- [x] `api.export.export()` を `save()` へ改名し、repository consumer を一括移行する。
+- [x] root `export` callable を削除し、root `save` を定義 module から遅延解決する。
+- [x] `cc.py` を `api/cc.py` へ移し、repository import を一括移行する。
+- [x] `grafix.api` package-level の `render` / `save` / `run` / `render_variation_batch` re-export を削除する。
+- [x] authoring DSL/decorator の package-level surface は維持する。
+- [x] root/API から `_LazyPublicName` と custom module class を削除する。
+- [x] root PEP 562 mapping は公開名から exact 定義 module/attribute を直接引く。
+- [x] `getattr(grafix.api, name)` を root resolver として使わない。
+- [x] `grafix.export` package、CLI `export` command、export result/format 名は維持する。
 
 ### 13.3 `run` signature と lazy composition
 
-- [ ] 現在の runner correctness 修正を終えた状態で heavy application を private module へ機械的に移す。
-- [ ] `api/runner.py` の public `run()` に唯一の正規 signature/docstring を置く。
-- [ ] wrapper module は core/public type/default だけを import する。
-- [ ] config loading、pyglet、interactive composition は関数呼び出し時に private moduleから import する。
-- [ ] `inspect.signature(grafix.run) == inspect.signature(grafix.api.runner.run)` を固定する。
-- [ ] `grafix.run` の参照、`help()`、signature inspect だけでは `pyglet` / `grafix.interactive` を load しない。
-- [ ] generic `*args, **kwargs` wrapper と signature の二重定義を残さない。
+- [x] 現在の runner correctness 修正を終えた状態で heavy application を private module へ機械的に移す。
+- [x] `api/runner.py` の public `run()` に唯一の正規 signature/docstring を置く。
+- [x] wrapper module は core/public type/default だけを import する。
+- [x] config loading、pyglet、interactive composition は関数呼び出し時に private moduleから import する。
+- [x] `inspect.signature(grafix.run) == inspect.signature(grafix.api.runner.run)` を固定する。
+- [x] `grafix.run` の参照、`help()`、signature inspect だけでは `pyglet` / `grafix.interactive` を load しない。
+- [x] generic `*args, **kwargs` wrapper と signature の二重定義を残さない。
 
 ### 13.4 public type graph
 
-- [ ] public function/class signature と public dataclass field の annotation graph を抽出する。
-- [ ] stdlib/typing 以外の各型を root、`grafix.api`、定義 public module のいずれかから取得可能にする。
-- [ ] 4.5 の列挙型と provenance nested 型を `__all__` / stub へ反映する。
-- [ ] public `RenderSession` / `render()` から `definitions=` を削除し、internal generation-aware caller を移行する。
-- [ ] public `run()` から `config_fallback=` を削除し、devtool/loader diagnostic を private composition へ移す。
-- [ ] `AuthoringDefinitionsSnapshot` / `RuntimeConfigFallback` が public annotation graph に残らないことを確認する。
-- [ ] root に出す common type と `grafix.api` のみの advanced type を固定 test にする。
-- [ ] runtime `__all__`、generated/checked-in API stub、project-local root proxy、mypy fixture を一致させる。
+- [x] public function/class signature と public dataclass field の annotation graph を抽出する。
+- [x] stdlib/typing 以外の各型を root、`grafix.api`、定義 public module のいずれかから取得可能にする。
+- [x] 4.5 の列挙型と provenance nested 型を `__all__` / stub へ反映する。
+- [x] public `RenderSession` / `render()` から `definitions=` を削除し、internal generation-aware caller を移行する。
+- [x] public `run()` から `config_fallback=` を削除し、devtool/loader diagnostic を private composition へ移す。
+- [x] `AuthoringDefinitionsSnapshot` / `RuntimeConfigFallback` が public annotation graph に残らないことを確認する。
+- [x] root に出す common type と `grafix.api` のみの advanced type を固定 test にする。
+- [x] runtime `__all__`、generated/checked-in API stub、project-local root proxy、mypy fixture を一致させる。
 
 ### 13.5 mutable capability と test seam の閉鎖
 
-- [ ] public `render_variation_batch()` から concrete `capture_service` 引数を削除する。
-- [ ] fake capture を使う tests は module-private callback/helper を通す。
-- [ ] `RenderSession.param_store` property を削除する。
-- [ ] variation batch は raw store でなく限定 internal session capability を使う。
-- [ ] batch scope は適用、render、rollback を session owner 内で完結させる。
-- [ ] public surface に `ParamStore` または mutable state borrow が現れないことを negative test にする。
-- [ ] public read-only view は実際の use case がない限り追加しない。
+- [x] public `render_variation_batch()` から concrete `capture_service` 引数を削除する。
+- [x] fake capture を使う tests は module-private callback/helper を通す。
+- [x] `RenderSession.param_store` property を削除する。
+- [x] variation batch は raw store でなく限定 internal session capability を使う。
+- [x] batch scope は適用、render、rollback を session owner 内で完結させる。
+- [x] public surface に `ParamStore` または mutable state borrow が現れないことを negative test にする。
+- [x] public read-only view は実際の use case がない限り追加しない。
 
 ### 13.6 stub、migration、focused verification
 
-- [ ] `src/grafix/devtools/generate_stub.py`
-- [ ] checked-in `src/grafix/api/__init__.pyi`
-- [ ] generator の `_ROOT_STUB` と project-local `typings/grafix/__init__.pyi` proxy test
-- [ ] `tests/api/test_lazy_facade.py` を標準 import behavior test へ置換
-- [ ] render、variation batch、stub、mypy public import tests
-- [ ] repository の `export(...)` / `from grafix.api import render` / `grafix.cc` を 0 件にする
-- [ ] 新規 R3 migration document に旧→新の import/signature を記載する
+- [x] `src/grafix/devtools/generate_stub.py`
+- [x] checked-in `src/grafix/api/__init__.pyi`
+- [x] generator の `_ROOT_STUB` と project-local `typings/grafix/__init__.pyi` proxy test
+- [x] `tests/api/test_lazy_facade.py` を標準 import behavior test へ置換
+- [x] render、variation batch、stub、mypy public import tests
+- [x] repository の `export(...)` / `from grafix.api import render` / `grafix.cc` を 0 件にする
+- [x] 新規 R3 migration document に旧→新の import/signature を記載する
 
 Phase 4 完了条件:
 
-- [ ] 一つの dotted name が一つの意味だけを持つ。
-- [ ] `grafix` / `grafix.api` が通常の `ModuleType` である。
-- [ ] 標準 import matrix、nested import、introspection が成立する。
-- [ ] `run` は正規 signature を持ち、GUI import は呼び出し時まで遅延される。
-- [ ] public annotation graph が正式 public path だけで閉じる。
-- [ ] mutable `ParamStore` と concrete capture test seam が public API から消える。
-- [ ] root/API/runtime/stub/docs/migration が同じ surface を説明する。
+- [x] 一つの dotted name が一つの意味だけを持つ。
+- [x] `grafix` / `grafix.api` が通常の `ModuleType` である。
+- [x] 標準 import matrix、nested import、introspection が成立する。
+- [x] `run` は正規 signature を持ち、GUI import は呼び出し時まで遅延される。
+- [x] public annotation graph が正式 public path だけで閉じる。
+- [x] mutable `ParamStore` と concrete capture test seam が public API から消える。
+- [x] root/API/runtime/stub/docs/migration が同じ surface を説明する。
 
 ## 14. Phase 5 — MIDI の explicit snapshot path（R3-007）
 
@@ -652,34 +657,34 @@ Phase 4 完了条件:
 
 ### 14.1 composition と leaf contract
 
-- [ ] runner は `output_path_for_draw()` 等の既存 composition policy で exact MIDI path を一度だけ作る。
-- [ ] `create_midi_session()` / `create_midi_controller()` は exact path を受ける。
-- [ ] controller constructor は `persistence_path: Path` を必須にする。
-- [ ] frozen load/maybe-load/save/discard helper も同じ `snapshot_path: Path` を受ける。
-- [ ] reconnect closure は最初に解決した同じ path を使う。
-- [ ] `save_dir`、optional path、profile からの path 再構築を削除する。
-- [ ] `default_cc_snapshot_path()` と leaf の `output_root_dir()` fallback を削除する。
-- [ ] `interactive.midi` から `runtime_config_loader` import を削除する。
-- [ ] 旧 signature の wrapper/alias は残さない。
+- [x] runner は `output_path_for_draw()` 等の既存 composition policy で exact MIDI path を一度だけ作る。
+- [x] `create_midi_session()` / `create_midi_controller()` は exact path を受ける。
+- [x] controller constructor は `snapshot_path: Path` を必須にする。
+- [x] frozen load/maybe-load/save/discard helper も同じ `snapshot_path: Path` を受ける。
+- [x] reconnect closure は最初に解決した同じ path を使う。
+- [x] `save_dir`、optional path、profile からの path 再構築を削除する。
+- [x] `default_cc_snapshot_path()` と leaf の `output_root_dir()` fallback を削除する。
+- [x] `interactive.midi` から `runtime_config_loader` import を削除する。
+- [x] 旧 signature の wrapper/alias は残さない。
 
 ### 14.2 tests と architecture gate
 
-- [ ] live controller の load/save が exact path を使う。
-- [ ] controller 不在時の frozen load が exact path を使う。
-- [ ] reconnect 後も同じ path を使う。
-- [ ] discard が同じ path を空 snapshot へ更新する。
-- [ ] MIDI disabled 時の fallback behavior を維持する。
-- [ ] non-`Path` を明確に拒否する。
-- [ ] 複数 RuntimeConfig/session の path が相互干渉しない。
-- [ ] `interactive/{gl,midi,parameter_gui} -> runtime_config_loader` を architecture test で禁止する。
-- [ ] `rg 'runtime_config_loader|output_root_dir' src/grafix/interactive/midi` が 0 件である。
+- [x] live controller の load/save が exact path を使う。
+- [x] controller 不在時の frozen load が exact path を使う。
+- [x] reconnect 後も同じ path を使う。
+- [x] discard が同じ path を空 snapshot へ更新する。
+- [x] MIDI disabled 時の fallback behavior を維持する。
+- [x] non-`Path` を明確に拒否する。
+- [x] 複数 RuntimeConfig/session の path が相互干渉しない。
+- [x] `interactive/{gl,midi,parameter_gui} -> runtime_config_loader` を architecture test で禁止する。
+- [x] `rg 'runtime_config_loader|output_root_dir' src/grafix/interactive/midi` が 0 件である。
 
 Phase 5 完了条件:
 
-- [ ] MIDI leaf の挙動が CWD/HOME/YAML 探索に依存しない。
-- [ ] load/save/frozen/reconnect/discard が一つの exact path を共有する。
-- [ ] config discovery は composition root より下へ戻らない。
-- [ ] MIDI package を不要に細分化していない。
+- [x] MIDI leaf の挙動が CWD/HOME/YAML 探索に依存しない。
+- [x] load/save/frozen/reconnect/discard が一つの exact path を共有する。
+- [x] config discovery は composition root より下へ戻らない。
+- [x] MIDI package を不要に細分化していない。
 
 ## 15. Phase 6 — ParamStore mutation port（R3-008、R3-010 補助）
 
@@ -695,59 +700,59 @@ Phase 5 完了条件:
 
 ### 15.1 mutation invariant suite
 
-- [ ] no-op は全 revision/history/cache identity を維持する。
-- [ ] real command は必要な revision だけを一度進める。
-- [ ] structure/value/style/favorite revision の組み合わせを command 種別ごとに固定する。
-- [ ] history transaction と undo/redo の単位を固定する。
-- [ ] transient rollback が state/revision/cache を元へ戻すことを固定する。
-- [ ] snapshot cache の reuse/rebuild と value patch behavior を固定する。
-- [ ] validation failure と injected planning failure が state を変更しないことを固定する。
-- [ ] multi-container planner の failure が live commit 前で state を変更しないことを固定する。
-- [ ] test のための production failure-injection hook は追加しない。
+- [x] no-op は全 revision/history/cache identity を維持する。
+- [x] real command は必要な revision だけを一度進める。
+- [x] structure/value/style/favorite revision の組み合わせを command 種別ごとに固定する。
+- [x] history transaction と undo/redo の単位を固定する。
+- [x] transient rollback が state/revision/cache を元へ戻すことを固定する。
+- [x] snapshot cache の reuse/rebuild と value patch behavior を固定する。
+- [x] validation failure と injected planning failure が state を変更しないことを固定する。
+- [x] multi-container planner の failure が live commit 前で state を変更しないことを固定する。
+- [x] test のための production failure-injection hook は追加しない。
 
 ### 15.2 read view と mutation port
 
-- [ ] sibling module が必要とする read capability を immutable snapshot/view として列挙する。
-- [ ] `_ParamStoreMutation` と既存 `_PendingStoreMutation` の owner/lifetime を store 内に閉じる。
-- [ ] `_PendingStoreMutation` は revision aggregation だけで rollback を提供しないことを code/docstring に明記する。
-- [ ] port は domain-specific mutation method だけを持ち、raw container を返さない。
-- [ ] port が touched/structure/value/style/favorite/history/cache 情報を集約する。
-- [ ] validation、allocation、history-before snapshot を live mutation 前に完成させる。
-- [ ] commit は完成済み replacement の swap と revision/cache/history 確定だけを行う。
-- [ ] commit 中は validation、allocation、外部 callback、test failure injection を行わない。
-- [ ] context/commit の正常終了後に pending owner が残らず、planning failure では context を開始しない。
-- [ ] bulk plan は完成済み replacement を atomic に swap し、途中で外部 callback を呼ばない。
-- [ ] command module は `validate -> plan -> commit` の順で読めるようにする。
+- [x] sibling module が必要とする read capability を immutable snapshot/view として列挙する。
+- [x] `_ParamStoreRead` と `_ParamStoreMutation` の owner/lifetime を store 内に閉じる。
+- [x] 旧 `_PendingStoreMutation` と汎用 mutation batch を削除し、domain commit ごとに revision を一度だけ確定する。
+- [x] port は domain-specific mutation method だけを持ち、raw container を返さない。
+- [x] 各 domain commit が structure/value/style/favorite/history/cache 情報を明示的に受け取る。
+- [x] validation、allocation、history-before snapshot を live mutation 前に完成させる。
+- [x] commit は完成済み replacement の swap と revision/cache/history 確定だけを行う。
+- [x] commit 中は validation、外部 callback、test failure injection を行わない。
+- [x] pending mutation state を持たず、planning failure では commit を開始しない。
+- [x] bulk plan は完成済み replacement を atomic に swap し、途中で外部 callback を呼ばない。
+- [x] command module は `validate -> plan -> commit` の順で読めるようにする。
 
 ### 15.3 段階移行
 
-- [ ] 第1段階: variations、labels、effect order、favorites の低リスク command を移行する。
-- [ ] 第2段階: codec、style、snapshot、prune、reconcile の bulk/multi-container command を移行する。
-- [ ] 第3段階: runtime/invariants の mutable read を immutable view へ移す。
-- [ ] 第4段階: `merge_ops` の hot path を baseline measurement 付きで最後に移行する。
-- [ ] 各段階で raw ref、手動 touch、revision/history behavior を再検索・検証する。
-- [ ] `_labels_ref()`、`_variations_ref()`、`_runtime_ref()` 等の mutable ref API を削除する。
-- [ ] store 外の `_touch()`、`_touch_favorites()`、mutation batch 操作を削除する。
-- [ ] private mutable backdoor の再導入を architecture test で禁止する。
+- [x] 第1段階: variations、labels、effect order、favorites の低リスク command を移行する。
+- [x] 第2段階: codec、style、snapshot、prune、reconcile の bulk/multi-container command を移行する。
+- [x] 第3段階: runtime/invariants の mutable read を immutable view へ移す。
+- [x] 第4段階: `merge_ops` の hot path を baseline measurement 付きで最後に移行する。
+- [x] 各段階で raw ref、手動 touch、revision/history behavior を再検索・検証する。
+- [x] `_labels_ref()`、`_variations_ref()`、`_runtime_ref()` 等の mutable ref API を削除する。
+- [x] store 外の `_touch()`、`_touch_favorites()`、mutation batch 操作を削除する。
+- [x] private mutable backdoor の再導入を architecture test で禁止する。
 
 ### 15.4 performance と focused verification
 
-- [ ] parameter store/command/history/reconcile/variation tests
-- [ ] parameter GUI commit、variation batch、storage codec の integration tests
-- [ ] parameter edit benchmark before/after
-- [ ] parameter hotpath benchmark before/after
-- [ ] interactive scenario benchmark before/after
-- [ ] checksum、revision、rebuild count、hard failure count を比較する。
-- [ ] 10% 以上の退行は計測ノイズと hot path を調査し、未解消なら停止条件に従う。
+- [x] parameter store/command/history/reconcile/variation tests
+- [x] parameter GUI commit、variation batch、storage codec の integration tests
+- [x] parameter edit benchmark before/after
+- [x] parameter hotpath benchmark before/after
+- [x] interactive scenario benchmark before/after
+- [x] checksum、revision、rebuild count、hard failure count を比較する。
+- [x] 10% 以上の退行がないことを確認する。
 
 Phase 6 完了条件:
 
-- [ ] `ParamStore` 外に mutable `_..._ref()` 呼び出しがない。
-- [ ] `ParamStore` 外に手動 `_touch()` / mutation batch 操作がない。
-- [ ] revision、history、rollback、derived cache の commit owner が一つである。
-- [ ] validation/planning failure が partial state を残さない。
-- [ ] domain command の計画責務は sibling module、aggregate mutation は store port に分かれている。
-- [ ] parameter persistence/GUI behavior と代表性能を維持する。
+- [x] `ParamStore` 外に mutable `_..._ref()` 呼び出しがない。
+- [x] `ParamStore` 外に手動 `_touch()` / mutation batch 操作がない。
+- [x] revision、history、rollback、derived cache の commit owner が一つである。
+- [x] validation/planning failure が partial state を残さない。
+- [x] domain command の計画責務は sibling module、aggregate mutation は store port に分かれている。
+- [x] parameter persistence/GUI behavior と代表性能を維持する。
 
 ## 16. Phase 7 — `mp_draw` protocol/state/worker/resource owner 分割（R3-009）
 
@@ -761,139 +766,165 @@ Phase 6 完了条件:
 
 ### 16.1 mechanical module split
 
-- [ ] pickle DTO、wire decode/validation、result/error model を protocol module へ移す。
-- [ ] `_MpDrawState` と純粋 transition を state module へ移す。
-- [ ] spawn top-level entrypoint、worker loop、worker-side evaluation/cleanup を worker module へ移す。
-- [ ] `MpDraw` に parent process/queue/restart/timeout/close ownership だけを残す。
-- [ ] child target が module top-level の pickle 可能 callable であることを固定する。
-- [ ] internal DTO の `__module__` 変更が persistent/external wire contract でないことを確認する。
-- [ ] canonical `interactive.runtime.mp_draw` から必要な result/error/stats 型だけを正式に再公開する。
-- [ ] old private module path の shim は作らない。
+- [x] pickle DTO、wire decode/validation、result/error model を protocol module へ移す。
+- [x] `_MpDrawState` と純粋 transition を state module へ移す。
+- [x] spawn top-level entrypoint、worker loop、worker-side evaluation/cleanup を worker module へ移す。
+- [x] `MpDraw` に parent process/queue/restart/timeout/close ownership だけを残す。
+- [x] child target が module top-level の pickle 可能 callable であることを固定する。
+- [x] internal DTO の `__module__` 変更が persistent/external wire contract でないことを確認する。
+- [x] canonical `interactive.runtime.mp_draw` から必要な result/error/stats 型だけを正式に再公開する。
+- [x] old private module path の shim は作らない。
 
 ### 16.2 immutable stats
 
-- [ ] frozen/slots `MpDrawStats` に telemetry field を集約する。
-- [ ] `MpDraw.stats` は main-thread owner の同じ state sample から一 snapshot を返す。
-- [ ] stats のためだけに lock/thread-safety abstraction を追加しない。
-- [ ] repository の scalar property consumer を一つの stats snapshot へ移行する。
-- [ ] scalar telemetry forwarding property を削除する。
-- [ ] control/lifecycle に必要な property と telemetry を分類して文書化する。
-- [ ] stats 読み取り中に generation/restart counter の矛盾した組が出ないことを test する。
+- [x] frozen/slots `MpDrawStats` に telemetry field を集約する。
+- [x] `MpDraw.stats` は main-thread owner の同じ state sample から一 snapshot を返す。
+- [x] stats のためだけに lock/thread-safety abstraction を追加しない。
+- [x] repository の scalar property consumer を一つの stats snapshot へ移行する。
+- [x] scalar telemetry forwarding property を削除する。
+- [x] control/lifecycle に必要な property と telemetry を分類して文書化する。
+- [x] stats 読み取り中に generation/restart counter の矛盾した組が出ないことを test する。
 
 ### 16.3 lifecycle/protocol tests
 
-- [ ] protocol valid/invalid payload と error roundtrip
-- [ ] pure state transition の submit/ready/result/stale generation
-- [ ] spawn pickling と worker startup handshake
-- [ ] timeout、crash、restart、last-good result
-- [ ] old generation の stale message 無視
-- [ ] normal close、startup failure、partial acquisition failure
-- [ ] child process/queue/thread が close 後に残らない
-- [ ] parent root error と secondary cleanup error の保持
-- [ ] `MpDrawStats` の atomic consistency
+- [x] protocol valid/invalid payload と error roundtrip
+- [x] pure state transition の submit/ready/result/stale generation
+- [x] spawn pickling と worker startup handshake
+- [x] timeout、crash、restart、last-good result
+- [x] old generation の stale message 無視
+- [x] normal close、startup failure、partial acquisition failure
+- [x] child process/queue/thread が close 後に残らない
+- [x] parent root error と secondary cleanup error の保持
+- [x] `MpDrawStats` の atomic consistency
 
 ### 16.4 performance verification
 
-- [ ] split 前後で submit/result throughput を比較する。
-- [ ] representative scene の result checksum を比較する。
-- [ ] restart/timeout test の hard failure count が 0 であることを確認する。
-- [ ] import time/worker startup time の意味ある退行がないことを確認する。
-- [ ] 長時間 soak が必要なら承認境界に従う。
+- [x] split 前後で submit/result throughput を比較する。
+- [x] representative scene の result checksum を比較する。
+- [x] restart/timeout test の hard failure count が 0 であることを確認する。
+- [x] import time/worker startup time の意味ある退行がないことを確認する。
+- [x] 長時間 soak が必要なら承認境界に従う。
 
 Phase 7 完了条件:
 
-- [ ] protocol、state、worker、parent resource owner が別 module で一意に所有される。
-- [ ] `mp_draw.py` の主制御 flow が DTO と scalar accessor に埋もれていない。
-- [ ] spawn/restart/timeout/last-good/close の意味が変わっていない。
-- [ ] telemetry は一つの immutable snapshot から読める。
-- [ ] generic executor/event framework を追加していない。
+- [x] protocol、state、worker、parent resource owner が別 module で一意に所有される。
+- [x] `mp_draw.py` の主制御 flow が DTO と scalar accessor に埋もれていない。
+- [x] spawn/restart/timeout/last-good/close の意味が変わっていない。
+- [x] telemetry は一つの immutable snapshot から読める。
+- [x] generic executor/event framework を追加していない。
 
 ## 17. Phase 8 — documentation、migration、最終監査
 
 ### 17.1 architecture と利用文書
 
-- [ ] `architecture.md` に source import lexical-scope/root init contract を記載する。
-- [ ] `ParameterSession` の current schema/load/capture state ownership を記載する。
-- [ ] Variation の prepare/capture/commit/rollback 順を記載する。
-- [ ] root/API namespace 表と標準 import contract を記載する。
-- [ ] MIDI path を composition root が所有する依存図へ更新する。
-- [ ] ParamStore read-plan/mutation-port の責務境界を記載する。
-- [ ] `mp_draw` の protocol/state/worker/resource owner 図を記載する。
-- [ ] `docs/architecture_visualization.md` を実装と同期する。
-- [ ] README/developer guide の import、save、authoring、MIDI 例を更新する。
-- [ ] 新規 R3 migration document に全破壊的変更と代替 API を記載する。
-- [ ] public API/stub を generator から再生成し、手編集差分がないことを確認する。
+- [x] `architecture.md` に source import lexical-scope/root init contract を記載する。
+- [x] `ParameterSession` の current schema/load/capture state ownership を記載する。
+- [x] Variation の prepare/capture/commit/rollback 順を記載する。
+- [x] root/API namespace 表と標準 import contract を記載する。
+- [x] MIDI path を composition root が所有する依存図へ更新する。
+- [x] ParamStore read-plan/mutation-port の責務境界を記載する。
+- [x] `mp_draw` の protocol/state/worker/resource owner 図を記載する。
+- [x] `docs/architecture_visualization.md` を実装と同期する。
+- [x] README/developer guide の import、save、authoring、MIDI 例を更新する。
+- [x] 新規 R3 migration document に全破壊的変更と代替 API を記載する。
+- [x] public API/stub を generator から再生成し、手編集差分がないことを確認する。
 
 ### 17.2 static/focused validation
 
-- [ ] Phase 1〜7 の focused tests
-- [ ] `PYTHONPATH=src pytest -q -p no:cacheprovider tests/architecture`
-- [ ] fresh subprocess import/introspection matrix
-- [ ] stub generation dry-run と byte-for-byte check
-- [ ] public mypy fixture
-- [ ] `ruff check src/grafix tests`
-- [ ] `mypy src/grafix`
-- [ ] parameter/`MpDraw` benchmark before/after
-- [ ] `git diff --check`
-- [ ] `git status --porcelain` で既存・依頼外差分を触っていないことを確認する。
+- [x] Phase 1〜7 の focused tests
+- [x] `PYTHONPATH=src pytest -q -p no:cacheprovider tests/architecture`
+- [x] fresh subprocess import/introspection matrix
+- [x] stub generation dry-run と byte-for-byte check
+- [x] public mypy fixture
+- [x] `ruff check src/grafix tests`
+- [x] `mypy src/grafix`
+- [x] parameter/`MpDraw` benchmark before/after
+- [x] `git diff --check`
+- [x] `git status --porcelain` で既存・依頼外差分を触っていないことを確認する。
 
 ### 17.3 full validation
 
-- [ ] 許可確認後に full `PYTHONPATH=src pytest -q` を実行する。
-- [ ] 必要な場合だけ GUI smoke/process soak を許可確認後に実行する。
-- [ ] failure を本計画差分、既存 working tree、環境依存へ切り分ける。
-- [ ] 未解消 failure を「完了」とせず、実施記録へ明記する。
+- [x] 承認後に full `PYTHONPATH=src pytest -q -p no:cacheprovider` を実行する。
+- [x] GUI smoke/process soak は追加不要と判断した（full lifecycle/process tests と `MpDraw` benchmark で検証）。
+- [x] failure がないことを確認し、本計画差分・既存 working tree・環境依存の切り分けを不要と判断する。
+- [x] 未解消 failure がないことを実施記録へ明記する。
 
 ### 17.4 traceability audit
 
-- [ ] R3-001〜R3-010 の各根拠箇所を再検索し、削除・移動・semantic test 化を確認する。
-- [ ] old import/signature/private mutable backdoor の残存を `rg` / AST で確認する。
-- [ ] compatibility shim、dual behavior、不要な abstraction がないことを確認する。
-- [ ] source/test/stub/docs/migration が同じ最終 contract を説明する。
-- [ ] 後続計画へ送った低優先度項目を本計画の完了と誤記しない。
+- [x] R3-001〜R3-010 の各根拠箇所を再検索し、削除・移動・semantic test 化を確認する。
+- [x] old import/signature/private mutable backdoor の残存を `rg` / AST で確認する。
+- [x] compatibility shim、dual behavior、不要な abstraction がないことを確認する。
+- [x] source/test/stub/docs/migration が同じ最終 contract を説明する。
+- [x] 後続計画へ送った低優先度項目を本計画の完了と誤記しない。
 
 ## 18. 最終 Definition of Done
 
-- [ ] R3-001: root/API が標準 import semantics と正規 runtime signature を持つ。
-- [ ] R3-002: deferred relative import を含む source が採用前に拒否される。
-- [ ] R3-003: recovery Keep が dispatch 時の current schema を使い、新 schema の値を失わない。
-- [ ] R3-004: parameter source/load provenance が同じ state sample から生成される。
-- [ ] R3-005: domain failure/commit failure が thumbnail artifact を孤立させない。
-- [ ] R3-006: root init は明示拒否、nested init は通常実行され、fingerprint と意味が一致する。
-- [ ] R3-007: MIDI leaf が ambient config discovery を行わず、exact path を受ける。
-- [ ] R3-008: ParamStore mutation/revision/history/cache の owner が private port 一箇所である。
-- [ ] R3-009: protocol/state/worker/process owner が分かれ、stats が immutable snapshot である。
-- [ ] R3-010: public type graph が正式 path で閉じ、mutable store/concrete test seam を公開しない。
-- [ ] focused、architecture、Ruff、mypy、stub/import tests が成功する。
-- [ ] parameter/`MpDraw` の correctness checksum と代表性能に意味ある退行がない。
-- [ ] 許可された場合は full pytest と必要な smoke/soak が成功する。
-- [ ] architecture、README、developer guide、migration、stub が実装と一致する。
-- [ ] parameter/capture schema、外部 dependency、compatibility shim、依頼外変更を追加していない。
+- [x] R3-001: root/API が標準 import semantics と正規 runtime signature を持つ。
+- [x] R3-002: deferred relative import を含む source が採用前に拒否される。
+- [x] R3-003: recovery Keep が dispatch 時の current schema を使い、新 schema の値を失わない。
+- [x] R3-004: parameter source/load provenance が同じ state sample から生成される。
+- [x] R3-005: domain failure/commit failure が thumbnail artifact を孤立させない。
+- [x] R3-006: root init は明示拒否、nested init は通常実行され、fingerprint と意味が一致する。
+- [x] R3-007: MIDI leaf が ambient config discovery を行わず、exact path を受ける。
+- [x] R3-008: ParamStore mutation/revision/history/cache の owner が private port 一箇所である。
+- [x] R3-009: protocol/state/worker/process owner が分かれ、stats が immutable snapshot である。
+- [x] R3-010: public type graph が正式 path で閉じ、mutable store/concrete test seam を公開しない。
+- [x] focused、architecture、Ruff、mypy、stub/import tests が成功する。
+- [x] parameter/`MpDraw` の correctness checksum と代表性能に意味ある退行がない。
+- [x] full pytest が成功し、追加の GUI smoke/process soak が不要である。
+- [x] architecture、README、developer guide、migration、stub が実装と一致する。
+- [x] parameter/capture schema、外部 dependency、compatibility shim、依頼外変更を追加していない。
 
 ## 19. 実施記録（承認後に更新）
 
 | Phase | 状態 | 完了内容 | 未完了・判断 |
 |---|---|---|---|
-| 0 | 未着手 | なし | 承認待ち |
-| 1 | 未着手 | なし | 承認待ち |
-| 2 | 未着手 | なし | 承認待ち |
-| 3 | 未着手 | なし | 承認待ち |
-| 4 | 未着手 | なし | 承認待ち |
-| 5 | 未着手 | なし | 承認待ち |
-| 6 | 未着手 | なし | 承認待ち |
-| 7 | 未着手 | なし | 承認待ち |
-| 8 | 未着手 | なし | 承認待ち |
+| 0 | 完了 | HEAD/status/inventory、R3-001〜R3-010 の regression contract、parameter/interactive/`MpDraw` baseline を固定 | なし |
+| 1 | 完了 | current schema ownership と atomic `ParameterCaptureState`、focused 107 passed、関連 152 passed | なし |
+| 2 | 完了 | source import preflight、root init 拒否、nested init 通常実行、focused 84 passed | なし |
+| 3 | 完了 | Variation prepare/capture/commit と owned artifact rollback、専用 98 passed、関連 830 passed | なし |
+| 4 | 完了 | 標準 namespace、`save`、public API closure、runner 分割、focused 340 passed | なし |
+| 5 | 完了 | exact MIDI snapshot path 注入、leaf の ambient config/path 再構築削除、focused 240 passed | なし |
+| 6 | 完了 | immutable read port/domain mutation port、raw backdoor 削除、merge/reconcile 単一 commit、no-op/value revision 監査、focused 929 passed | 独立再監査 491 passed、blocking なし |
+| 7 | 完了 | protocol/state/worker/parent owner 分割、immutable stats、357 tests passed、性能退行なし | なし |
+| 8 | 完了 | architecture/visualization/README/developer guide/glossary/stub/migration を最終 contract へ同期 | なし |
 
 ### 19.1 検証記録
 
 | 検証 | 結果 | 備考 |
 |---|---|---|
-| focused tests | 未実施 | 承認後、各 Phase で実施 |
-| architecture tests | 未実施 | 承認後に実施 |
-| Ruff | 未実施 | 承認後に実施 |
-| mypy | 未実施 | 承認後に実施 |
-| stub/import checks | 未実施 | 承認後に実施 |
-| parameter benchmark | 未実施 | 承認後に baseline と比較 |
-| `MpDraw` benchmark | 未実施 | 承認後に baseline と比較 |
-| full pytest | 未実施 | 実行前に許可確認 |
-| GUI/process soak | 未実施 | 必要性が判明した場合だけ許可確認 |
+| baseline focused tests | 418 passed | HEAD `56fd38f` の archive、15 suites |
+| focused tests | Phase 1: 107、Phase 2: 84、Phase 3: 98、Phase 4: 340、Phase 5: 240、Phase 6: 929、Phase 7: 357 passed | Phase 6 独立再監査も 491 passed |
+| architecture tests | 39 passed | dependency、ownership、private backdoor gate を含む |
+| Ruff | All checks passed | `ruff check src/grafix tests` |
+| mypy | Success: no issues found in 290 source files | `mypy src/grafix` |
+| stub/import checks | 14 passed、generator と checked-in stub が byte-for-byte 一致 | fresh subprocess import/introspection matrix を含む |
+| parameter benchmark | edit `+0.9%`、steady `+0.9%`、snapshot `-32.2%`、interactive `-5.8%` | checksum 一致、hard failure 0。最終監査でも steady `0.81371 ms`、snapshot `0.00420 ms` |
+| `MpDraw` benchmark | light FPS +15.3%、heavy FPS +0.9%、heavy first result +0.7%、checksum 一致 | hard failure / rejected task 0 |
+| full pytest | 4047 passed in 287.33s | `PYTHONPATH=src pytest -q -p no:cacheprovider` |
+| GUI/process soak | 追加実施不要 | full lifecycle/process tests と `MpDraw` benchmark で対象 contract を検証 |
+
+### 19.2 performance baseline
+
+環境は `/opt/anaconda3/envs/gl5/bin/python`、`PYTHONPATH=src`、HEAD `56fd38f` の
+`git archive`。時間値は一回の診断用測定であり、hard contract/checksum と併せて比較する。
+
+| Case | Baseline |
+|---|---|
+| parameter edit 1,000 rows / 12 frames | total p95 `1.4973 ms`、hard failures `0` |
+| steady merge 1,000 rows / 24 samples | p95 `0.8478 ms`、digest `de4231ed…b4ea9` |
+| one-key snapshot 1,000 rows / 24 samples | p95 `0.0113 ms`、initial digest `f4c5504e…89ba6` |
+| hosted interactive slider 32 rows / sync | input-to-present p95 `0.3764 ms`、checksum `7804b74a…2bed7` |
+| `MpDraw` light / 2 workers / 4 frames | startup `975.54 ms`、steady `2874.60 fps` |
+| `MpDraw` heavy / 2 workers / 4 frames | startup `600.65 ms`、steady `2264.85 fps` |
+
+### 19.3 最終性能比較
+
+| Case | 最終結果 | Baseline 比・判定 |
+|---|---|---|
+| parameter edit 1,000 rows / 12 frames | total p95 `1.510383 ms` | `+0.9%`、退行なし |
+| steady merge 1,000 rows / 24 samples | p95 `0.855577 ms`、digest 一致 | `+0.9%`、退行なし |
+| one-key snapshot 1,000 rows / 24 samples | p95 `0.007658 ms`、digest 一致 | `-32.2%` |
+| hosted interactive slider 32 rows / sync | input-to-present p95 `0.354586 ms`、checksum 一致 | `-5.8%` |
+| sparse runtime merge / 200 changes | 1,000 rows p95 `0.007625 ms`、10,000 rows p95 `0.003292 ms` | 行数依存なし、200/200 exact、identity 維持 |
+| `MpDraw` light / heavy | light FPS `+15.3%`、heavy FPS `+0.9%`、heavy first result `+0.7%` | checksum 一致、hard failure / rejected task 0 |

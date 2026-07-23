@@ -82,31 +82,35 @@ class ParamStoreRecoverySession:
 
     store: ParamStore
     primary_path: Path
-    known_operations: KnownOperationSchemaSnapshot
 
     def __post_init__(self) -> None:
         if not isinstance(self.store, ParamStore):
             raise TypeError("store は ParamStore である必要があります")
         if not isinstance(self.primary_path, Path):
             raise TypeError("primary_path は Path である必要があります")
-        if type(self.known_operations) is not KnownOperationSchemaSnapshot:
-            raise TypeError(
-                "known_operations は exact KnownOperationSchemaSnapshot である必要があります"
-            )
 
     @property
     def recovery_path(self) -> Path:
         return param_store_recovery_path(self.primary_path)
 
-    def keep(self) -> ParamStoreLoadResult:
-        """復元済みの現在状態を primary として確定する。"""
+    def keep(
+        self,
+        *,
+        known_operations: KnownOperationSchemaSnapshot,
+    ) -> ParamStoreLoadResult:
+        """復元済みの現在状態を current schema で primary として確定する。"""
+
+        if type(known_operations) is not KnownOperationSchemaSnapshot:
+            raise TypeError(
+                "known_operations は exact KnownOperationSchemaSnapshot である必要があります"
+            )
 
         candidate = ParamStore()
         candidate.replace_contents_from(self.store)
         finalize_parameter_session(
             candidate,
             self.primary_path,
-            known_operations=self.known_operations,
+            known_operations=known_operations,
         )
         return ParamStoreLoadResult(
             store=candidate,

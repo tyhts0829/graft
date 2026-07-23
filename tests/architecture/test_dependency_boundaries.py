@@ -664,14 +664,17 @@ def test_interactive_does_not_depend_on_api() -> None:
     )
 
 
-def test_interactive_leaf_packages_do_not_depend_on_runtime_composition() -> None:
-    """GL/MIDI/GUI の leaf 実装を runtime composition へ逆依存させない。"""
+def test_interactive_leaf_packages_do_not_depend_on_composition_or_config_discovery() -> None:
+    """GL/MIDI/GUI leaf を runtime composition と config 探索へ逆依存させない。"""
 
     root = _repo_root()
     for package in ("gl", "midi", "parameter_gui"):
         _assert_no_forbidden_imports(
             root=root / "src" / "grafix" / "interactive" / package,
-            forbidden_prefixes=("grafix.interactive.runtime",),
+            forbidden_prefixes=(
+                "grafix.interactive.runtime",
+                "grafix.runtime_config_loader",
+            ),
         )
 
 
@@ -916,7 +919,7 @@ def test__resolve_importfrom_targets_handles_relative_imports() -> None:
     )
     assert "grafix.interactive" in got
 
-    node = _parse_single_stmt("from grafix import export\n")
+    node = _parse_single_stmt("from grafix import save\n")
     assert isinstance(node, ast.ImportFrom)
     got = _resolve_importfrom_targets(
         current_module="grafix.core.pipeline",
@@ -924,7 +927,7 @@ def test__resolve_importfrom_targets_handles_relative_imports() -> None:
         node=node,
     )
     assert "grafix" in got
-    assert "grafix.export" in got
+    assert "grafix.save" in got
 
     node = _parse_single_stmt("from . import context\n")
     assert isinstance(node, ast.ImportFrom)
@@ -966,7 +969,7 @@ def test__import_modules_in_file_detects_constant_dynamic_and_root_imports(
                 "import importlib",
                 'importlib.import_module("grafix.api.render")',
                 'importlib.import_module(name="grafix.api.preset")',
-                "from grafix import G, api, export as export_frame, interactive, run",
+                "from grafix import G, api, interactive, run, save as save_frame",
                 "",
             ]
         ),
@@ -979,7 +982,7 @@ def test__import_modules_in_file_detects_constant_dynamic_and_root_imports(
         "grafix",
         "grafix.G",
         "grafix.api",
-        "grafix.export",
+        "grafix.save",
         "grafix.interactive",
         "grafix.run",
         "grafix.api.render",

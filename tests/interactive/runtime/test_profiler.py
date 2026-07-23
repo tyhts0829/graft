@@ -4,6 +4,7 @@ import json
 import time
 from collections.abc import Callable
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 
@@ -396,10 +397,10 @@ class _LaggedMpDraw:
     def __init__(self, result: DrawResult) -> None:
         self._result = result
         self._published = False
-        self.last_submitted_frame_id = 0
+        self.stats = SimpleNamespace(last_submitted_frame_id=0)
 
     def submit(self, **_kwargs: object) -> None:
-        self.last_submitted_frame_id += 1
+        self.stats.last_submitted_frame_id += 1
         return
 
     def poll_latest(self) -> DrawResult | None:

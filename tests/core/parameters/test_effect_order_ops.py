@@ -271,13 +271,13 @@ def test_reload_generation_prunes_only_once_from_canonical_success_topology() ->
         chain_id=stale.chain_id,
         order=tuple(step.key for step in reversed(stale.steps)),
     )
-    collapsed = store._collapsed_headers_ref()
-    collapsed.update(
+    store.set_all_collapsed(
         {
             effect_chain_collapsed_header_key("keep-chain"),
             effect_chain_collapsed_header_key("stale-chain"),
             effect_chain_collapsed_header_key("orphan-chain"),
-        }
+        },
+        collapsed=True,
     )
 
     revision = store.revision
@@ -294,6 +294,7 @@ def test_reload_generation_prunes_only_once_from_canonical_success_topology() ->
     assert set(store.effect_chain_topologies()) == {"keep-chain", "added-chain"}
     assert set(store.chain_ordinals()) == {"keep-chain", "added-chain"}
     assert "stale-chain" not in store.effect_order_overrides()
+    collapsed = store.collapsed_headers()
     assert effect_chain_collapsed_header_key("keep-chain") in collapsed
     assert effect_chain_collapsed_header_key("stale-chain") not in collapsed
     assert effect_chain_collapsed_header_key("orphan-chain") not in collapsed

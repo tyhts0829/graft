@@ -1054,8 +1054,8 @@ def generate_stubs_str(
     lines.append("from pathlib import Path\n")
     lines.append("from typing import Any, Literal, Protocol, TypeAlias\n\n")
 
-    lines.append("from grafix.core.geometry import Geometry\n")
-    lines.append("from grafix.core.layer import Layer\n")
+    lines.append("from grafix.core.geometry import Geometry as Geometry\n")
+    lines.append("from grafix.core.layer import Layer as Layer\n")
     lines.append("from grafix.api.operation_info import OperationInfo as OperationInfo\n")
     lines.append("from grafix.core.scene import SceneItem\n\n")
 
@@ -1072,23 +1072,48 @@ def generate_stubs_str(
     lines.append("L: _L\n\n")
     lines.append("P: _P\n\n")
 
-    # 実行時 API と整合する再エクスポート
-    lines.append("from grafix.api.export import export as export\n")
+    # 実行時の ``grafix.api`` と整合する authoring surface / public value type。
+    lines.append("from grafix.api.cc import CcView as CcView\n")
     lines.append(
-        "from grafix.api.render import (Color as Color, ExportFormat as ExportFormat, "
-        "ExportResult as ExportResult, Frame as Frame, RenderOptions as RenderOptions, "
-        "RenderSession as RenderSession, RenderSessionMetadata as RenderSessionMetadata, "
-        "render as render)\n"
+        "from grafix.api.render import ("
+        "CaptureProvenance as CaptureProvenance, Color as Color, "
+        "ColorInput as ColorInput, ConfigProvenance as ConfigProvenance, "
+        "ExportFormat as ExportFormat, ExportResult as ExportResult, Frame as Frame, "
+        "FrameProvenance as FrameProvenance, FrameStyle as FrameStyle, "
+        "GitProvenance as GitProvenance, LoadProvenance as LoadProvenance, "
+        "ParameterLoadMode as ParameterLoadMode, "
+        "ParameterLoadState as ParameterLoadState, "
+        "ParameterSnapshotProvenance as ParameterSnapshotProvenance, "
+        "ParamStoreLoadDiagnostic as ParamStoreLoadDiagnostic, "
+        "RGB01 as RGB01, RGB8 as RGB8, RealizedLayer as RealizedLayer, "
+        "RenderOptions as RenderOptions, "
+        "RenderSession as RenderSession, "
+        "RenderSessionMetadata as RenderSessionMetadata, "
+        "RuntimeConfig as RuntimeConfig, SessionProvenance as SessionProvenance, "
+        "SourceProvenance as SourceProvenance)\n"
     )
     lines.append(
-        "from grafix.api.variation_batch import ("
+        "from grafix.export.variation_batch import ("
         "VariationBatchResult as VariationBatchResult, "
         "VariationRenderResult as VariationRenderResult, "
-        "render_variation_batch as render_variation_batch)\n"
+        "VariationRenderStatus as VariationRenderStatus)\n"
     )
     lines.append("from grafix.api.preset import preset as preset\n")
+    lines.append(
+        "from grafix.core.gcode_params import GCodeParams as GCodeParams\n"
+    )
     lines.append("from grafix.core.operation_authoring import effect as effect\n")
     lines.append("from grafix.core.operation_authoring import primitive as primitive\n")
+    lines.append(
+        "from grafix.core.parameters.meta import ParamMeta as ParamMeta\n"
+    )
+    lines.append(
+        "from grafix.core.realize import GeometryCacheKey as GeometryCacheKey\n"
+    )
+    lines.append(
+        "from grafix.core.realized_geometry import "
+        "RealizedGeometry as RealizedGeometry\n"
+    )
     lines.append(
         "from grafix.core.resource_budget import ResourceBudget as ResourceBudget, "
         "ResourceLimitError as ResourceLimitError\n\n"
@@ -1098,46 +1123,20 @@ def generate_stubs_str(
         "RuntimeLimitProfiles as RuntimeLimitProfiles, "
         "RuntimeLimits as RuntimeLimits)\n\n"
     )
-    lines.append("from grafix.core.runtime_config import RuntimeConfig, RuntimeConfigFallback\n\n")
-
-    # `grafix.api.__init__.py` は遅延 import だが、型はここで固定する。
     lines.append(
-        "def run(\n"
-        "    draw: Callable[[float], SceneItem],\n"
-        "    *,\n"
-        "    config_path: str | Path | None = ...,\n"
-        "    config: RuntimeConfig | None = ...,\n"
-        "    config_fallback: RuntimeConfigFallback | None = ...,\n"
-        "    run_id: str | None = ...,\n"
-        "    background_color: Vec3 = ...,\n"
-        "    line_thickness: float = ...,\n"
-        "    line_color: Vec3 = ...,\n"
-        "    render_scale: float = ...,\n"
-        "    canvas_size: tuple[int, int] = ...,\n"
-        "    parameter_gui: bool = ...,\n"
-        "    parameter_persistence: bool = ...,\n"
-        "    midi_port_name: str | None = ...,\n"
-        "    midi_mode: str = ...,\n"
-        "    n_worker: int = ...,\n"
-        "    evaluation_timeout: float | None = ...,\n"
-        "    fps: float = ...,\n"
-        "    seed: int | None = ...,\n"
-        "    runtime_limit_profiles: RuntimeLimitProfiles = ...,\n"
-        ") -> None:\n"
-        '    """`draw(t)` を既定の background 1 worker で評価し、リアルタイム描画する。\n\n'
-        "    `n_worker=0` の場合だけ同期評価し、`>=1` は background worker 数を表す。\n"
-        '    """\n'
-        "    ...\n\n"
-    )
-
-    lines.append(
-        "__all__ = ['Color', 'E', 'ExportFormat', 'ExportResult', 'Frame', "
-        "'G', 'L', 'OperationInfo', 'P', 'RenderOptions', 'RenderSession', "
-        "'RenderSessionMetadata', "
+        "__all__ = ['CaptureProvenance', 'CcView', 'Color', 'ColorInput', "
+        "'ConfigProvenance', 'E', 'ExportFormat', 'ExportResult', 'Frame', "
+        "'FrameProvenance', 'FrameStyle', 'G', 'GCodeParams', 'Geometry', "
+        "'GeometryCacheKey', 'GitProvenance', 'L', 'Layer', "
+        "'LoadProvenance', 'OperationInfo', 'P', 'ParamMeta', 'ParameterLoadMode', "
+        "'ParameterLoadState', 'ParameterSnapshotProvenance', "
+        "'ParamStoreLoadDiagnostic', 'RGB01', 'RGB8', 'RealizedGeometry', "
+        "'RealizedLayer', 'RenderOptions', "
+        "'RenderSession', 'RenderSessionMetadata', "
         "'ResourceBudget', 'ResourceLimitError', 'RuntimeLimitProfiles', "
-        "'RuntimeLimits', 'VariationBatchResult', 'VariationRenderResult', "
-        "'effect', 'export', 'preset', 'primitive', 'render', "
-        "'render_variation_batch', 'run']\n"
+        "'RuntimeLimits', 'RuntimeConfig', 'SceneItem', 'SessionProvenance', "
+        "'SourceProvenance', 'VariationBatchResult', 'VariationRenderResult', "
+        "'VariationRenderStatus', 'effect', 'preset', 'primitive']\n"
     )
     return "".join(lines)
 
@@ -1185,62 +1184,69 @@ def _import_project_target(project_root: Path, target: str) -> None:
         raise
 
 
-_ROOT_STUB = """from grafix.api import (
-    Color as Color,
-    E as E,
-    ExportFormat as ExportFormat,
-    ExportResult as ExportResult,
-    Frame as Frame,
-    G as G,
-    L as L,
-    OperationInfo as OperationInfo,
-    P as P,
-    RenderOptions as RenderOptions,
-    RenderSession as RenderSession,
-    RenderSessionMetadata as RenderSessionMetadata,
-    ResourceBudget as ResourceBudget,
-    ResourceLimitError as ResourceLimitError,
-    RuntimeLimitProfiles as RuntimeLimitProfiles,
-    RuntimeLimits as RuntimeLimits,
-    VariationBatchResult as VariationBatchResult,
-    VariationRenderResult as VariationRenderResult,
-    effect as effect,
-    export as export,
-    preset as preset,
-    primitive as primitive,
-    render as render,
-    render_variation_batch as render_variation_batch,
-    run as run,
-)
-from grafix.cc import cc as cc
+_ROOT_STUB = """from grafix.api import E as E, G as G, L as L, P as P
+from grafix.api.cc import CcView as CcView, cc as cc
+from grafix.api.export import save as save
+from grafix.api.operation_info import OperationInfo as OperationInfo
+from grafix.api.preset import preset as preset
+from grafix.api.render import Frame as Frame, RenderSession as RenderSession, RenderSessionMetadata as RenderSessionMetadata, render as render
+from grafix.api.runner import run as run
+from grafix.api.variation_batch import render_variation_batch as render_variation_batch
+from grafix.core.capture_provenance import CaptureProvenance as CaptureProvenance, SessionProvenance as SessionProvenance
+from grafix.core.export_format import ExportFormat as ExportFormat
+from grafix.core.export_result import ExportResult as ExportResult
+from grafix.core.operation_authoring import effect as effect, primitive as primitive
+from grafix.core.parameters.runtime import LoadProvenance as LoadProvenance, ParameterLoadState as ParameterLoadState, ParamStoreLoadDiagnostic as ParamStoreLoadDiagnostic
+from grafix.core.parameters.source import ParameterLoadMode as ParameterLoadMode
+from grafix.core.parameters.style_resolver import FrameStyle as FrameStyle
+from grafix.core.pipeline import RealizedLayer as RealizedLayer
+from grafix.core.render_options import Color as Color, ColorInput as ColorInput, RGB01 as RGB01, RGB8 as RGB8, RenderOptions as RenderOptions
+from grafix.core.resource_budget import ResourceBudget as ResourceBudget, ResourceLimitError as ResourceLimitError
+from grafix.core.runtime_config import RuntimeConfig as RuntimeConfig
+from grafix.core.runtime_limits import RuntimeLimitProfiles as RuntimeLimitProfiles, RuntimeLimits as RuntimeLimits
+from grafix.export.variation_batch import VariationBatchResult as VariationBatchResult, VariationRenderResult as VariationRenderResult, VariationRenderStatus as VariationRenderStatus
 
 __all__ = [
+    "CaptureProvenance",
+    "CcView",
     "Color",
+    "ColorInput",
     "E",
     "ExportFormat",
     "ExportResult",
     "Frame",
+    "FrameStyle",
     "G",
     "L",
+    "LoadProvenance",
     "OperationInfo",
     "P",
+    "ParameterLoadMode",
+    "ParameterLoadState",
+    "ParamStoreLoadDiagnostic",
+    "RGB01",
+    "RGB8",
+    "RealizedLayer",
     "RenderOptions",
     "RenderSession",
     "RenderSessionMetadata",
     "ResourceBudget",
     "ResourceLimitError",
+    "RuntimeConfig",
     "RuntimeLimitProfiles",
     "RuntimeLimits",
+    "SessionProvenance",
     "VariationBatchResult",
     "VariationRenderResult",
+    "VariationRenderStatus",
     "cc",
     "effect",
-    "export",
     "preset",
     "primitive",
     "render",
     "render_variation_batch",
     "run",
+    "save",
 ]
 """
 

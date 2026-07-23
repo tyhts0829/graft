@@ -4,16 +4,19 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NoReturn, cast
 
 from grafix.core.parameters.history import ParamStoreHistory
 from grafix.core.parameters.store import ParamStore
 from grafix.core.parameters.variations import (
-    create_variation,
+    commit_variation,
     delete_variation,
     duplicate_variation,
     morph_variations,
+    prepare_variation,
     randomize_parameters,
     rename_variation,
     restore_variation,
@@ -34,6 +37,14 @@ from .variation_panel import (
 
 if TYPE_CHECKING:
     from .table_view import ParameterTableView
+
+
+@dataclass(frozen=True, slots=True)
+class _ThumbnailArtifactOwnership:
+    """Capture callback から一度だけ読み取った exact path と rollback command。"""
+
+    path: Path
+    discard: Callable[[], None]
 
 
 class VariationController:
@@ -126,33 +137,52 @@ class VariationController:
         if not name:
             state.notice = "Enter a variation name before saving."
             return False
-        if name in variation_panel_model(self._store).names:
-            state.notice = f"Variation already exists: {name}."
+        transport = self._transport
+        try:
+            t = None if transport is None else transport.snapshot().t
+            draft = prepare_variation(
+                self._store,
+                name,
+                note=state.new_note,
+                seed=state.random_seed if state.include_seed else None,
+                t=t,
+            )
+        except (KeyError, TypeError, ValueError, RuntimeError) as exc:
+            if str(exc).startswith("variation already exists:"):
+                state.notice = f"Variation already exists: {name}."
+            else:
+                state.notice = f"Could not save variation: {exc}"
             return False
 
-        thumbnail_path: str | Path | None = None
+        artifact: _ThumbnailArtifactOwnership | None = None
         thumbnail_error: str | None = None
         capture = self._thumbnail_capture
         if callable(capture):
             try:
-                thumbnail_path = capture(name)
+                artifact = _validated_thumbnail_artifact(capture(draft.name))
             except Exception as exc:
                 # CaptureService boundary の失敗で parameter snapshot 自体を失わない。
-                thumbnail_error = str(exc)
+                thumbnail_error = _error_detail(exc)
 
-        transport = self._transport
-        t = None if transport is None else float(transport.snapshot().t)
         try:
-            variation = create_variation(
+            variation = commit_variation(
                 self._store,
-                name,
-                note=state.new_note,
-                seed=int(state.random_seed) if state.include_seed else None,
-                t=t,
-                thumbnail_path=thumbnail_path,
+                draft,
+                thumbnail_path=None if artifact is None else artifact.path,
             )
-        except (KeyError, TypeError, ValueError) as exc:
-            state.notice = f"Could not save variation: {exc}"
+        except (KeyError, TypeError, ValueError, RuntimeError) as exc:
+            cleanup_error: str | None = None
+            if artifact is not None:
+                try:
+                    artifact.discard()
+                except Exception as discard_error:
+                    cleanup_error = _error_detail(discard_error)
+            details = [f"Could not save variation: {exc}"]
+            if thumbnail_error is not None:
+                details.append(f"thumbnail failed: {thumbnail_error}")
+            if cleanup_error is not None:
+                details.append(f"thumbnail cleanup failed: {cleanup_error}")
+            state.notice = "; ".join(details)
             return False
 
         state.selected_name = variation.name
@@ -383,6 +413,61 @@ class VariationController:
         except Exception as exc:
             return f"Thumbnail unavailable: {exc}"
         return None
+
+
+def _validated_thumbnail_artifact(
+    value: object,
+) -> _ThumbnailArtifactOwnership:
+    """Capture callback の最小 ownership contract を実行前に検証する。"""
+
+    try:
+        discard = getattr(value, "discard")
+    except AttributeError:
+        raise TypeError(
+            "thumbnail capture must return an artifact with path and discard()"
+        ) from None
+    if not callable(discard):
+        raise TypeError("thumbnail artifact discard must be callable")
+
+    try:
+        path = getattr(value, "path")
+    except AttributeError:
+        error = TypeError(
+            "thumbnail capture must return an artifact with path and discard()"
+        )
+        _discard_invalid_thumbnail(discard, error)
+    if not isinstance(path, Path):
+        error = TypeError("thumbnail artifact path must be a Path")
+        _discard_invalid_thumbnail(discard, error)
+
+    return _ThumbnailArtifactOwnership(
+        path=path,
+        discard=cast(Callable[[], None], discard),
+    )
+
+
+def _discard_invalid_thumbnail(
+    discard: Callable[..., object],
+    error: Exception,
+) -> NoReturn:
+    """不正 contract でも rollback command があれば試し、元の診断を保つ。"""
+
+    try:
+        discard()
+    except BaseException as cleanup_error:
+        error.add_note(
+            "Secondary cleanup failure (discard invalid thumbnail artifact): "
+            f"{type(cleanup_error).__name__}: {cleanup_error}"
+        )
+    raise error
+
+
+def _error_detail(error: BaseException) -> str:
+    """Primary error と cleanup note を一つの user-facing 診断へ整形する。"""
+
+    message = str(error) or type(error).__name__
+    notes = tuple(str(note) for note in getattr(error, "__notes__", ()))
+    return "; ".join((message, *notes))
 
 
 __all__ = ["VariationController"]

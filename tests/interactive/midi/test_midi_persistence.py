@@ -34,12 +34,12 @@ class DummyInPort:
         self.closed = True
 
 
-def test_persistence_path_roundtrip(tmp_path: Path) -> None:
+def test_snapshot_path_roundtrip(tmp_path: Path) -> None:
     path = tmp_path / "main.json"
     ctrl = MidiController(
         "Dummy Port",
+        snapshot_path=path,
         mode="7bit",
-        persistence_path=path,
         inport=DummyInPort([]),
     )
     ctrl.cc = {1: 0.5, 2: 1.0}
@@ -47,8 +47,8 @@ def test_persistence_path_roundtrip(tmp_path: Path) -> None:
 
     ctrl2 = MidiController(
         "Dummy Port",
+        snapshot_path=path,
         mode="7bit",
-        persistence_path=path,
         inport=DummyInPort([]),
     )
     assert ctrl2.cc == {1: 0.5, 2: 1.0}
@@ -58,8 +58,8 @@ def test_restored_values_are_visible_via_cc_snapshot(tmp_path: Path) -> None:
     path = tmp_path / "main.json"
     ctrl = MidiController(
         "Dummy Port",
+        snapshot_path=path,
         mode="7bit",
-        persistence_path=path,
         inport=DummyInPort([]),
     )
     ctrl.cc = {1: 0.25}
@@ -67,8 +67,8 @@ def test_restored_values_are_visible_via_cc_snapshot(tmp_path: Path) -> None:
 
     ctrl2 = MidiController(
         "Dummy Port",
+        snapshot_path=path,
         mode="7bit",
-        persistence_path=path,
         inport=DummyInPort([DummyCcMsg(type="control_change", control=2, value=127)]),
     )
     ctrl2.poll_pending()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import builtins
 import os
+import pickle
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -11,6 +12,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from grafix._source_import_policy import SourceImportPolicyError
 from grafix.core.authoring_definitions import default_authoring_definitions
 from grafix.core.evaluation_context import EvaluationContext
 from grafix.core.evaluation_config import EvaluationConfig
@@ -480,6 +482,170 @@ def test_relative_helper_edit_creates_a_new_isolated_generation(
             _realize_for_controller(controller, second_geometry).coords[:, 0],
             [9.0, 10.0],
         )
+
+
+def test_deferred_relative_import_is_rejected_before_reload_adoption(
+    tmp_path: Path,
+) -> None:
+    source_path = tmp_path / "sketch.py"
+    missing_helper_path = tmp_path / "missing_helper.py"
+    _write_source(
+        source_path,
+        "from grafix import G\n\n"
+        "def draw(t):\n"
+        "    return G.line(length=1.0)\n",
+    )
+
+    with SourceReloadController(source_path) as controller:
+        original_draw = controller.draw
+        original_definitions = controller.definitions
+        failed_package = f"_grafix_watch_{controller._namespace_token}_2"
+        meta_path_before = tuple(sys.meta_path)
+        _write_source(
+            source_path,
+            "from grafix import G\n\n"
+            "def draw(t):\n"
+            "    from .missing_helper import OFFSET\n"
+            "    return G.line(length=OFFSET)\n",
+        )
+
+        failed = controller.poll()
+
+        assert failed.status == "failed"
+        assert failed.generation == 0
+        assert failed.summary is not None
+        assert "SourceImportPolicyError" in failed.summary
+        assert f"{source_path}:4" in failed.summary
+        assert "function 'draw'" in failed.summary
+        assert failed.source == f"{source_path}:4"
+        assert controller.draw is original_draw
+        assert controller.definitions is original_definitions
+        assert dict(controller.draw(0.0).args)["length"] == 1.0
+        assert tuple(sys.meta_path) == meta_path_before
+        assert not any(
+            name == failed_package or name.startswith(f"{failed_package}.")
+            for name in sys.modules
+        )
+
+        _write_source(missing_helper_path, "OFFSET = 8.0\n")
+        unchanged = controller.poll()
+        assert unchanged.status == "unchanged"
+        assert controller.draw is original_draw
+
+        _write_source(
+            source_path,
+            "from .missing_helper import OFFSET\n"
+            "from grafix import G\n\n"
+            "def draw(t):\n"
+            "    return G.line(length=OFFSET)\n",
+        )
+        recovered = controller.poll()
+
+        assert recovered.status == "reloaded"
+        assert dict(controller.draw(0.0).args)["length"] == 8.0
+
+
+def test_deferred_import_in_helper_does_not_watch_its_missing_dependency(
+    tmp_path: Path,
+) -> None:
+    source_path = tmp_path / "sketch.py"
+    helper_path = tmp_path / "helper.py"
+    missing_path = tmp_path / "missing.py"
+    _write_source(
+        source_path,
+        "from grafix import G\n\n"
+        "def draw(t):\n"
+        "    return G.line(length=1.0)\n",
+    )
+
+    with SourceReloadController(source_path) as controller:
+        original_draw = controller.draw
+        _write_source(
+            helper_path,
+            "def value():\n"
+            "    from .missing import OFFSET\n"
+            "    return OFFSET\n",
+        )
+        _write_source(
+            source_path,
+            "from .helper import value\n"
+            "from grafix import G\n\n"
+            "def draw(t):\n"
+            "    return G.line(length=value())\n",
+        )
+
+        failed = controller.poll()
+
+        assert failed.status == "failed"
+        assert failed.summary is not None
+        assert f"{helper_path}:2" in failed.summary
+        assert failed.source == f"{helper_path}:2"
+        assert controller.draw is original_draw
+
+        _write_source(missing_path, "OFFSET = 13.0\n")
+        unchanged = controller.poll()
+        assert unchanged.status == "unchanged"
+        assert controller.draw is original_draw
+
+        _write_source(
+            helper_path,
+            "from .missing import OFFSET\n\n"
+            "def value():\n"
+            "    return OFFSET\n",
+        )
+        recovered = controller.poll()
+
+        assert recovered.status == "reloaded"
+        assert dict(controller.draw(0.0).args)["length"] == 13.0
+
+
+def test_pickled_reloaded_draw_revalidates_captured_source_policy(
+    tmp_path: Path,
+) -> None:
+    source_path = tmp_path / "sketch.py"
+    _write_source(
+        source_path,
+        "from grafix import G\n\n"
+        "def draw(t):\n"
+        "    return G.line(length=1.0)\n",
+    )
+
+    with SourceReloadController(source_path) as controller:
+        draw = controller.draw
+        assert isinstance(draw, ReloadedDraw)
+        source_package = draw._source_package
+        assert source_package is not None
+        invalid_content = (
+            b"from grafix import G\n\n"
+            b"def draw(t):\n"
+            b"    from .helper import OFFSET\n"
+            b"    return G.line(length=OFFSET)\n"
+        )
+        invalid_modules = tuple(
+            replace(module, content=invalid_content)
+            if module.relative_path == source_package.main_relative_path
+            else module
+            for module in source_package.modules
+        )
+        invalid_package = replace(source_package, modules=invalid_modules)
+        worker_draw = ReloadedDraw(
+            path=source_path,
+            source_bytes=invalid_content,
+            module_name="_source_policy_roundtrip",
+            draw_attribute="draw",
+            baseline=controller.baseline,
+            source_package=invalid_package,
+        )
+
+        restored = pickle.loads(pickle.dumps(worker_draw))
+        with pytest.raises(SourceImportPolicyError, match=r"sketch\.py:4"):
+            restored(0.0)
+
+    assert not any(
+        name == "_source_policy_roundtrip_worker"
+        or name.startswith("_source_policy_roundtrip_worker.")
+        for name in sys.modules
+    )
 
 
 def test_unreferenced_python_file_is_not_snapshotted_or_polled(

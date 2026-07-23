@@ -27,7 +27,7 @@ def test_run_cli_passes_transactional_controller_only_with_watch(
     sketch = tmp_path / "art.py"
     _write_sketch(sketch)
     calls: list[dict[str, object]] = []
-    runner_module = importlib.import_module("grafix.api.runner")
+    runner_module = importlib.import_module("grafix.api._runner_application")
     source_reload_module = importlib.import_module(
         "grafix.interactive.runtime.source_reload"
     )
@@ -40,7 +40,7 @@ def test_run_cli_passes_transactional_controller_only_with_watch(
             }
         )
 
-    monkeypatch.setattr(runner_module, "run", fake_run)
+    monkeypatch.setattr(runner_module, "_run_interactive_application", fake_run)
 
     assert run_sketch.main([str(sketch), "--watch", "--no-parameter-gui"]) == 0
     assert calls[0]["parameter_gui"] is False
@@ -85,14 +85,14 @@ def test_run_cli_uses_only_exact_none_to_disable_midi(
     sketch = tmp_path / "art.py"
     _write_sketch(sketch)
     seen: list[str | None] = []
-    runner_module = importlib.import_module("grafix.api.runner")
+    runner_module = importlib.import_module("grafix.api._runner_application")
 
     def fake_run(_draw: object, **kwargs: object) -> None:
         value = kwargs["midi_port_name"]
         assert value is None or isinstance(value, str)
         seen.append(value)
 
-    monkeypatch.setattr(runner_module, "run", fake_run)
+    monkeypatch.setattr(runner_module, "_run_interactive_application", fake_run)
 
     assert run_sketch.main([str(sketch), "--midi-port", token]) == 0
     assert seen == [expected]
@@ -128,8 +128,12 @@ def test_run_cli_binds_explicit_config_during_initial_source_execution(
         "    return []\n",
         encoding="utf-8",
     )
-    runner_module = importlib.import_module("grafix.api.runner")
-    monkeypatch.setattr(runner_module, "run", lambda *_args, **_kwargs: None)
+    runner_module = importlib.import_module("grafix.api._runner_application")
+    monkeypatch.setattr(
+        runner_module,
+        "_run_interactive_application",
+        lambda *_args, **_kwargs: None,
+    )
 
     assert run_sketch.main(
         [
@@ -150,10 +154,10 @@ def test_run_cli_forwards_invalid_config_fallback_to_runner(
     sketch = tmp_path / "art.py"
     _write_sketch(sketch)
     seen: list[dict[str, object]] = []
-    runner_module = importlib.import_module("grafix.api.runner")
+    runner_module = importlib.import_module("grafix.api._runner_application")
     monkeypatch.setattr(
         runner_module,
-        "run",
+        "_run_interactive_application",
         lambda _draw, **kwargs: seen.append(kwargs),
     )
 

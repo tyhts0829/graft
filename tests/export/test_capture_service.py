@@ -15,8 +15,8 @@ from grafix import (
     Frame,
     RenderOptions,
     RenderSession,
-    export,
     render,
+    save,
 )
 from grafix.export.capture_publish import capture_manifest_path_for
 from grafix.runtime_config_loader import runtime_config
@@ -48,7 +48,7 @@ def test_export_infers_suffix_versions_existing_and_writes_manifest(
     base = tmp_path / "drawing.svg"
     base.write_bytes(b"existing artwork")
 
-    result = export(frame, base)
+    result = save(frame, base)
 
     assert result.path == tmp_path / "drawing_001.svg"
     assert result.format is ExportFormat.SVG
@@ -104,7 +104,7 @@ def test_public_export_returns_capture_service_result_without_rewrapping(
 
     monkeypatch.setattr(CaptureService, "export", fake_export)
 
-    assert export(frame, output) is expected
+    assert save(frame, output) is expected
 
 
 def test_capture_service_returns_the_public_canonical_result(
@@ -152,7 +152,7 @@ def test_manifest_only_collision_is_allocated_as_next_version(
     old_manifest = capture_manifest_path_for(base)
     old_manifest.write_bytes(b"external manifest")
 
-    result = export(frame, base)
+    result = save(frame, base)
 
     assert result.path == tmp_path / "drawing_001.svg"
     assert old_manifest.read_bytes() == b"external manifest"
@@ -208,7 +208,7 @@ def test_encoder_failure_removes_private_staging_and_publishes_nothing(
     monkeypatch.setattr(capture_module, "export_svg", fail_svg)
 
     with pytest.raises(RuntimeError, match="encoder failed"):
-        export(frame, output)
+        save(frame, output)
 
     assert not output.exists()
     assert not capture_manifest_path_for(output).exists()
@@ -224,7 +224,7 @@ def test_overwrite_replaces_artifact_and_manifest_as_requested(
     manifest = capture_manifest_path_for(output)
     manifest.write_bytes(b"old manifest")
 
-    result = export(frame, output, overwrite=True)
+    result = save(frame, output, overwrite=True)
 
     assert result.path == output
     assert output.read_bytes().startswith(b"<?xml")
@@ -238,7 +238,7 @@ def test_export_rejects_non_boolean_overwrite(
     tmp_path: Path,
 ) -> None:
     with pytest.raises(TypeError, match="overwrite"):
-        export(
+        save(
             frame,
             tmp_path / "drawing.svg",
             overwrite="false",  # type: ignore[arg-type]
@@ -461,7 +461,7 @@ def test_gcode_export_uses_closed_render_session_effective_config(
     frame = render(lambda _t: (), config_path=render_config_path)
     assert runtime_config() == default_config
 
-    result = export(frame, tmp_path / "closed-session.gcode")
+    result = save(frame, tmp_path / "closed-session.gcode")
     assert result.format is ExportFormat.GCODE
     assert "G1 Z37.0" in result.path.read_text(encoding="utf-8")
     assert result.manifest_path is not None
@@ -501,7 +501,7 @@ def test_png_export_uses_closed_render_session_effective_scale(
     )
     assert runtime_config() == default_config
 
-    result = export(frame, tmp_path / "closed-session.png")
+    result = save(frame, tmp_path / "closed-session.png")
     assert result.format is ExportFormat.PNG
     assert observed_sizes == [(35, 28)]
     assert result.manifest_path is not None
@@ -517,7 +517,7 @@ def test_export_rejects_unsupported_suffix_before_creating_parent(
     parent = tmp_path / "missing"
 
     with pytest.raises(ValueError, match="suffix"):
-        export(frame, parent / "drawing.jpg")
+        save(frame, parent / "drawing.jpg")
 
     assert not parent.exists()
 
@@ -526,7 +526,7 @@ def test_public_export_validates_frame_before_path_suffix(tmp_path: Path) -> Non
     parent = tmp_path / "missing"
 
     with pytest.raises(TypeError, match="frame は Frame"):
-        export(object(), parent / "drawing.jpg")  # type: ignore[arg-type]
+        save(object(), parent / "drawing.jpg")  # type: ignore[arg-type]
 
     assert not parent.exists()
 

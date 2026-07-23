@@ -31,6 +31,7 @@ from .state import ParamState
 from .store import ParamStore, ParamStoreRollback
 from .runtime import (
     LoadProvenance,
+    ParameterCaptureState,
     ParameterLoadState,
     ParamRuntimeView,
     ParamStoreLoadDiagnostic,
@@ -101,6 +102,7 @@ __all__ = [
     "ParamStore",
     "ParamStoreRollback",
     "LoadProvenance",
+    "ParameterCaptureState",
     "ParameterLoadState",
     "ParamRuntimeView",
     "MidiFrameSnapshot",

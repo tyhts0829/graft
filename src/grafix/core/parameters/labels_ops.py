@@ -11,22 +11,30 @@ from .store import ParamStore
 def set_label(store: ParamStore, *, op: str, site_id: str, label: str) -> None:
     """(op, site_id) のラベルを上書きする。"""
 
-    labels = store._labels_ref()
+    base_revision = store.revision
+    labels = store._read().labels()
     before = labels.get(op, site_id)
     labels.set(op, site_id, label)
     if labels.get(op, site_id) != before:
-        store._touch()
+        store._mutation().commit_labels(
+            expected_revision=base_revision,
+            labels=labels,
+        )
 
 
 def merge_frame_labels(store: ParamStore, labels: list[FrameLabelRecord]) -> None:
     """フレーム内で観測したラベル設定をストアへ反映する。"""
 
-    store_labels = store._labels_ref()
+    base_revision = store.revision
+    store_labels = store._read().labels()
+    before = store_labels.as_dict()
     for rec in labels:
-        before = store_labels.get(rec.op, rec.site_id)
         store_labels.set(rec.op, rec.site_id, rec.label)
-        if store_labels.get(rec.op, rec.site_id) != before:
-            store._touch()
+    if store_labels.as_dict() != before:
+        store._mutation().commit_labels(
+            expected_revision=base_revision,
+            labels=store_labels,
+        )
 
 
 __all__ = ["set_label", "merge_frame_labels"]

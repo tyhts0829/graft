@@ -17,6 +17,11 @@ from .codec_parser import (
     parse_param_store_payload,
 )
 from .meta_spec import meta_to_spec
+from .effects import EffectChainIndex
+from .labels import ParamLabels
+from .ordinals import GroupOrdinals
+from .runtime import ParamStoreRuntime
+from .state import ParamState
 from .store import ParamStore
 from .variations import Variation
 
@@ -36,8 +41,9 @@ def encode_param_store(
 ) -> dict[str, Any]:
     """ParamStore を現行 schema の JSON 化可能な dict へ変換する。"""
 
-    labels = store._labels_ref().as_dict()
-    effects = store._effects_ref()
+    read = store._read()
+    labels = read.label_items()
+    effects = read.effects()
     adjustments = store.capture_adjustment_snapshot()
     persisted_items = adjustments.items()
     return {
@@ -52,7 +58,7 @@ def encode_param_store(
                     if preserve_explicit_overrides
                     else (
                         False
-                        if store._get_explicit_ref(key)
+                        if read.explicit(key)
                         else adjustment.state.override
                     )
                 ),
@@ -74,7 +80,7 @@ def encode_param_store(
             {"op": op, "site_id": site_id, "label": label}
             for (op, site_id), label in labels.items()
         ],
-        "ordinals": store._ordinals_ref().as_dict(),
+        "ordinals": read.ordinal_items(),
         "effect_steps": [
             {
                 "op": step.op,
@@ -92,7 +98,7 @@ def encode_param_store(
                 "op": key.op,
                 "site_id": key.site_id,
                 "arg": key.arg,
-                "explicit": bool(store._get_explicit_ref(key)),
+                "explicit": bool(read.explicit(key)),
             }
             for key, _adjustment in persisted_items
         ],
@@ -117,20 +123,20 @@ def encode_param_store(
             "locked_parameters": [
                 {"op": key.op, "site_id": key.site_id, "arg": key.arg}
                 for key in sorted(
-                    store._locked_keys_ref(),
+                    read.locked_keys(),
                     key=lambda item: (item.op, item.site_id, item.arg),
                 )
             ],
             "favorite_parameters": [
                 {"op": key.op, "site_id": key.site_id, "arg": key.arg}
                 for key in sorted(
-                    store._favorite_keys_ref(),
+                    read.favorite_keys(),
                     key=lambda item: (item.op, item.site_id, item.arg),
                 )
             ],
         },
         "variations": [
-            _encode_variation(variation) for variation in store._variations_ref().values()
+            _encode_variation(variation) for variation in read.variations()
         ],
     }
 
@@ -232,26 +238,55 @@ def _store_from_parsed(
 ) -> ParamStore:
     """typed intermediate を追加検証せず ParamStore へ一度だけ適用する。"""
 
-    store = ParamStore()
-    store._load_persisted_parameters(
-        states={key: entry.value for key, entry in parsed.states.items()},
-        meta=parsed.meta,
-        explicit_by_key=parsed.explicit_by_key,
-        preserve_explicit_overrides=preserve_explicit_overrides,
+    states = {
+        key: ParamState(
+            override=(
+                entry.value.override
+                if preserve_explicit_overrides or not parsed.explicit_by_key[key]
+                else False
+            ),
+            ui_value=entry.value.ui_value,
+            cc_key=entry.value.cc_key,
+        )
+        for key, entry in parsed.states.items()
+        if key in parsed.meta
+    }
+    meta = dict(parsed.meta)
+    explicit_by_key = dict(parsed.explicit_by_key)
+    labels = ParamLabels()
+    labels.replace(dict(parsed.labels))
+    ordinals = GroupOrdinals()
+    ordinals.replace(
+        {op: dict(by_site) for op, by_site in parsed.ordinals.items()}
     )
-    store._labels_ref().replace(dict(parsed.labels))
-    store._ordinals_ref().replace({op: dict(by_site) for op, by_site in parsed.ordinals.items()})
-    store._effects_ref().replace_persisted_state(
+    effects = EffectChainIndex()
+    effects.replace_persisted_state(
         topologies=dict(parsed.topologies),
         chain_ordinals=dict(parsed.chain_ordinals),
         order_overrides=dict(parsed.effect_order_overrides),
     )
-    store._collapsed_headers_ref().update(parsed.collapsed_headers)
-    store._locked_keys_ref().update(parsed.locked_parameters)
-    store._replace_favorite_keys(parsed.favorite_parameters)
-    store._variations_ref().update({variation.name: variation for variation in parsed.variations})
+    runtime = ParamStoreRuntime()
+    runtime.loaded_groups = {(key.op, key.site_id) for key in states}
+    variations = {
+        variation.name: variation
+        for variation in parsed.variations
+    }
 
-    store._touch()
+    store = ParamStore()
+    store._mutation().commit_decoded(
+        expected_revision=0,
+        states=states,
+        meta=meta,
+        explicit_by_key=explicit_by_key,
+        labels=labels,
+        ordinals=ordinals,
+        effects=effects,
+        collapsed_headers=set(parsed.collapsed_headers),
+        locked_keys=set(parsed.locked_parameters),
+        favorite_keys=set(parsed.favorite_parameters),
+        variations=variations,
+        runtime=runtime,
+    )
     return store
 
 

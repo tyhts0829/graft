@@ -74,7 +74,7 @@ def test_main_passes_render_inputs_and_prints_actual_capture_result(
 
     monkeypatch.setattr(export_frame, "_resolve_callable", resolve_callable)
     monkeypatch.setattr(export_frame, "RenderSession", make_session)
-    monkeypatch.setattr(export_frame, "export", fake_export)
+    monkeypatch.setattr(export_frame, "save", fake_export)
 
     code = export_frame.main(
         [
@@ -156,7 +156,7 @@ def test_main_batch_supports_all_formats_and_no_clobber_by_default(
     monkeypatch.setattr(export_frame, "_resolve_callable", lambda _spec: _draw)
     monkeypatch.setattr(export_frame, "RenderSession", make_session)
     monkeypatch.setattr(export_frame, "_default_output_path", fake_default_path)
-    monkeypatch.setattr(export_frame, "export", fake_export)
+    monkeypatch.setattr(export_frame, "save", fake_export)
 
     output_dir = tmp_path / "frames"
     code = export_frame.main(

@@ -5,17 +5,15 @@ from __future__ import annotations
 import multiprocessing as mp
 import queue
 from collections.abc import Iterator
+from dataclasses import FrozenInstanceError
 from typing import Any, cast
 
 import pytest
 
 from grafix.core.geometry import Geometry
 from grafix.core.scene import normalize_scene
-from grafix.interactive.runtime.mp_draw import (
-    DrawResult,
-    MpDraw,
-    _DrawTask,
-)
+from grafix.interactive.runtime._mp_draw_protocol import _DrawTask
+from grafix.interactive.runtime.mp_draw import DrawResult, MpDraw, MpDrawStats
 from grafix.runtime_config_loader import runtime_config
 
 _EFFECTIVE_CONFIG = runtime_config()
@@ -78,6 +76,64 @@ def initialized_mp_draw(monkeypatch: pytest.MonkeyPatch) -> Iterator[MpDraw]:
 def test_mp_draw_rejects_zero_workers() -> None:
     with pytest.raises(ValueError, match="1 以上"):
         _mp_draw(_empty_draw, n_worker=0)
+
+
+def test_stats_is_frozen_slotted_snapshot(
+    initialized_mp_draw: MpDraw,
+) -> None:
+    stats = initialized_mp_draw.stats
+
+    assert type(stats) is MpDrawStats
+    assert not hasattr(stats, "__dict__")
+    with pytest.raises(FrozenInstanceError):
+        setattr(stats, "restart_count", 1)
+
+
+def test_scalar_telemetry_properties_are_not_forwarded() -> None:
+    telemetry_names = (
+        "snapshot_broadcast_count",
+        "last_submitted_frame_id",
+        "snapshot_ack_count",
+        "snapshot_payload_copy_count",
+        "worker_snapshot_revisions",
+        "ready_worker_pids",
+        "last_snapshot_ack",
+        "rejected_task_count",
+        "task_enqueue_count",
+        "task_drop_count",
+        "completed_result_count",
+        "restart_count",
+        "last_restart_reason",
+        "stale_result_count",
+        "last_stale_result",
+        "stale_generation_result_count",
+        "last_stale_generation_result",
+        "pending_snapshot_update_count",
+        "queued_snapshot_update_count",
+        "last_rejection",
+    )
+
+    assert all(not hasattr(MpDraw, name) for name in telemetry_names)
+    assert isinstance(MpDraw.current_epoch, property)
+    assert isinstance(MpDraw.generation, property)
+    assert isinstance(MpDraw.evaluation_timeout, property)
+
+
+def test_stats_observes_generation_and_restart_as_one_sample(
+    initialized_mp_draw: MpDraw,
+) -> None:
+    mp_draw = initialized_mp_draw
+
+    for expected_generation in range(1, 4):
+        reason = f"restart {expected_generation}"
+        assert mp_draw.restart(reason) == expected_generation
+
+        stats = mp_draw.stats
+        assert (
+            stats.generation,
+            stats.restart_count,
+            stats.last_restart_reason,
+        ) == (expected_generation, expected_generation, reason)
 
 
 @pytest.mark.parametrize("n_worker", [True, 1.0, "1"])
@@ -171,7 +227,7 @@ def test_submit_rejects_noncanonical_scalars_before_enqueue(
     with pytest.raises(error_type, match=field):
         initialized_mp_draw.submit(**cast(Any, arguments))
 
-    assert initialized_mp_draw.last_submitted_frame_id == 0
+    assert initialized_mp_draw.stats.last_submitted_frame_id == 0
 
 
 @pytest.mark.parametrize(
@@ -205,7 +261,7 @@ def test_submit_rejects_wrong_snapshot_composition_before_enqueue(
     with pytest.raises(TypeError, match=field):
         initialized_mp_draw.submit(**cast(Any, arguments))
 
-    assert initialized_mp_draw.last_submitted_frame_id == 0
+    assert initialized_mp_draw.stats.last_submitted_frame_id == 0
 
 
 class _ConstructorFaultQueue:
@@ -411,8 +467,8 @@ def test_single_slot_task_queue_drops_old_frame_and_keeps_latest(
     assert latest.frame_id == 1
     assert latest.t == 2.0
     assert latest.snapshot_revision == 7
-    assert mp_draw.task_enqueue_count == 1
-    assert mp_draw.task_drop_count == 1
+    assert mp_draw.stats.task_enqueue_count == 1
+    assert mp_draw.stats.task_drop_count == 1
 
 
 def test_batched_drain_keeps_success_time_when_a_later_result_is_an_error(
@@ -488,9 +544,9 @@ def test_result_drain_discards_old_epoch_and_keeps_diagnostic(
 
     assert latest_received is fresh
     assert mp_draw.latest_successful_result() is fresh
-    assert mp_draw.completed_result_count == 2
-    assert mp_draw.stale_result_count == 1
-    assert mp_draw.last_stale_result == (10, 1, 2)
+    assert mp_draw.stats.completed_result_count == 2
+    assert mp_draw.stats.stale_result_count == 1
+    assert mp_draw.stats.last_stale_result == (10, 1, 2)
 
 
 def test_result_drain_rejects_result_from_old_worker_generation(
@@ -522,15 +578,15 @@ def test_result_drain_rejects_result_from_old_worker_generation(
     assert mp_draw.restart("test generation boundary") == 1
     mp_draw._result_q.put(cached)
     assert mp_draw.poll_latest() is cached
-    completed_before_stale = mp_draw.completed_result_count
+    completed_before_stale = mp_draw.stats.completed_result_count
 
     mp_draw._result_q.put(stale)
     assert mp_draw.poll_latest() is None
 
     assert mp_draw.latest_successful_result() is cached
-    assert mp_draw.completed_result_count == completed_before_stale
-    assert mp_draw.stale_generation_result_count == 1
-    assert mp_draw.last_stale_generation_result == (999, 0, 1)
+    assert mp_draw.stats.completed_result_count == completed_before_stale
+    assert mp_draw.stats.stale_generation_result_count == 1
+    assert mp_draw.stats.last_stale_generation_result == (999, 0, 1)
 
 
 def test_begin_epoch_invalidates_cached_result_and_queued_task(

@@ -13,21 +13,27 @@ from threading import Event
 import pytest
 
 from grafix import G, P
+from grafix._source_import_policy import SourceImportPolicyError
 from grafix.api import preset
-from grafix.core.authoring_definitions import (
-    AuthoringDefinitionsSnapshot,
-    RegistrationTarget,
-    registration_scope,
-)
 from grafix.authoring_loader import (
     capture_authoring_definitions_recipe,
     default_session_authoring_definitions,
     load_authoring_definitions_recipe,
     load_config_authoring_definitions,
 )
-from grafix.core.preset_catalog import bind_preset_catalog
+from grafix.core.authoring_definitions import (
+    AuthoringDefinitionsSnapshot,
+    RegistrationTarget,
+    registration_scope,
+)
+from grafix.core.authoring_recipe import (
+    AuthoringDefinitionsRecipe,
+    AuthoringModuleSource,
+    AuthoringSourceRoot,
+)
 from grafix.core.geometry import Geometry
 from grafix.core.operation_catalog import bind_operation_catalog
+from grafix.core.preset_catalog import bind_preset_catalog
 from grafix.core.runtime_config import RuntimeConfig
 from grafix.interactive.runtime.source_reload import SourceReloadController
 from grafix.runtime_config_loader import load_runtime_config
@@ -270,6 +276,239 @@ def test_relative_helper_import_is_isolated_and_removed_from_sys_modules(
     snapshot = load_config_authoring_definitions(_config_for_dirs(tmp_path, "relative", (root,)))
 
     assert _preset_value(snapshot, "relative_helper_preset") == 17
+    assert not any(name.startswith("_grafix_config_authoring_") for name in sys.modules)
+
+
+@pytest.mark.parametrize(
+    ("source", "scope"),
+    [
+        (
+            "def load_later():\n"
+            "    from .helper import value\n"
+            "    return value\n",
+            "function 'load_later'",
+        ),
+        (
+            "async def load_later():\n"
+            "    from .helper import value\n"
+            "    return value\n",
+            "async function 'load_later'",
+        ),
+        (
+            "class Deferred:\n"
+            "    from .helper import value\n",
+            "class 'Deferred'",
+        ),
+    ],
+)
+def test_candidate_preflight_rejects_deferred_relative_import_with_location(
+    tmp_path: Path,
+    source: str,
+    scope: str,
+) -> None:
+    root = tmp_path / "deferred"
+    root.mkdir()
+    candidate_path = root / "candidate.py"
+    candidate_path.write_text(source, encoding="utf-8")
+    config = _config_for_dirs(tmp_path, "deferred", (root,))
+
+    with pytest.raises(SourceImportPolicyError) as caught:
+        load_config_authoring_definitions(config)
+
+    assert caught.value.filename == str(candidate_path)
+    assert caught.value.lineno == 2
+    assert scope in str(caught.value)
+    assert "module lexical scope" in str(caught.value)
+    assert not any(name.startswith("_grafix_config_authoring_") for name in sys.modules)
+
+
+def test_candidate_preflight_finishes_before_any_candidate_executes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "all-source-preflight"
+    root.mkdir()
+    events: list[str] = []
+    monkeypatch.setattr(
+        builtins,
+        "_grafix_test_authoring_preflight_events",
+        events,
+        raising=False,
+    )
+    (root / "a_side_effect.py").write_text(
+        "import builtins\n"
+        "builtins._grafix_test_authoring_preflight_events.append('executed')\n",
+        encoding="utf-8",
+    )
+    invalid_path = root / "z_invalid.py"
+    invalid_path.write_text(
+        "def load_later():\n"
+        "    from .missing_helper import value\n"
+        "    return value\n",
+        encoding="utf-8",
+    )
+    meta_path_before = tuple(sys.meta_path)
+
+    with pytest.raises(SourceImportPolicyError, match="z_invalid.py:2"):
+        load_config_authoring_definitions(
+            _config_for_dirs(tmp_path, "all-source-preflight", (root,))
+        )
+
+    assert events == []
+    assert tuple(sys.meta_path) == meta_path_before
+    assert not any(name.startswith("_grafix_config_authoring_") for name in sys.modules)
+
+
+def test_module_scope_relative_import_inside_control_flow_is_supported(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "module-control-flow"
+    root.mkdir()
+    (root / "helper.py").write_text("VALUE = 23\n", encoding="utf-8")
+    (root / "candidate.py").write_text(
+        "if True:\n"
+        "    from .helper import VALUE\n"
+        "from grafix.api import preset\n"
+        "from grafix.core.geometry import Geometry\n"
+        "@preset(meta={})\n"
+        "def module_control_flow_preset():\n"
+        "    return Geometry.create(op='concat', params={'value': VALUE})\n",
+        encoding="utf-8",
+    )
+
+    snapshot = load_config_authoring_definitions(
+        _config_for_dirs(tmp_path, "module-control-flow", (root,))
+    )
+
+    assert _preset_value(snapshot, "module_control_flow_preset") == 23
+
+
+def test_filesystem_capture_rejects_root_initializer(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "root-initializer"
+    root.mkdir()
+    initializer_path = root / "__init__.py"
+    initializer_path.write_text("", encoding="utf-8")
+    config = _config_for_dirs(tmp_path, "root-initializer", (root,))
+
+    with pytest.raises(
+        ValueError,
+        match=r"synthetic namespace.*root __init__\.py",
+    ) as caught:
+        capture_authoring_definitions_recipe(config)
+
+    assert str(initializer_path) in str(caught.value)
+
+
+def test_pickled_recipe_cannot_bypass_root_initializer_rejection(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "restored-root-initializer"
+    initializer_path = root / "__init__.py"
+    recipe = AuthoringDefinitionsRecipe(
+        roots=(
+            AuthoringSourceRoot(
+                path=root,
+                modules=(
+                    AuthoringModuleSource(
+                        relative_path=Path("__init__.py"),
+                        content=b"",
+                    ),
+                ),
+            ),
+        )
+    )
+    restored = pickle.loads(pickle.dumps(recipe))
+
+    with pytest.raises(ValueError, match=r"root __init__\.py") as caught:
+        load_authoring_definitions_recipe(restored)
+
+    assert str(initializer_path) in str(caught.value)
+    assert not any(name.startswith("_grafix_config_authoring_") for name in sys.modules)
+
+
+def test_pickled_recipe_cannot_bypass_deferred_import_preflight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "restored-deferred"
+    events: list[str] = []
+    monkeypatch.setattr(
+        builtins,
+        "_grafix_test_restored_preflight_events",
+        events,
+        raising=False,
+    )
+    recipe = AuthoringDefinitionsRecipe(
+        roots=(
+            AuthoringSourceRoot(
+                path=root,
+                modules=(
+                    AuthoringModuleSource(
+                        relative_path=Path("a_side_effect.py"),
+                        content=(
+                            b"import builtins\n"
+                            b"builtins._grafix_test_restored_preflight_events"
+                            b".append('executed')\n"
+                        ),
+                    ),
+                    AuthoringModuleSource(
+                        relative_path=Path("z_invalid.py"),
+                        content=(
+                            b"def load_later():\n"
+                            b"    from .missing import VALUE\n"
+                            b"    return VALUE\n"
+                        ),
+                    ),
+                ),
+            ),
+        )
+    )
+    restored = pickle.loads(pickle.dumps(recipe))
+
+    with pytest.raises(SourceImportPolicyError, match=r"z_invalid\.py:2"):
+        load_authoring_definitions_recipe(restored)
+
+    assert events == []
+    assert not any(name.startswith("_grafix_config_authoring_") for name in sys.modules)
+
+
+def test_nested_initializer_executes_once_and_can_publish_declarations(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "nested-initializer"
+    package = root / "package"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text(
+        "from grafix.api import preset, primitive\n"
+        "from grafix.core.geometry import Geometry\n"
+        "OFFSET = 29\n"
+        "@primitive(meta={})\n"
+        "def nested_initializer_operation():\n"
+        "    return ((), ())\n"
+        "@preset(meta={})\n"
+        "def nested_initializer_preset():\n"
+        "    return Geometry.create(op='concat', params={'value': OFFSET})\n",
+        encoding="utf-8",
+    )
+    (package / "child.py").write_text(
+        "from . import OFFSET\n"
+        "from grafix.api import preset\n"
+        "from grafix.core.geometry import Geometry\n"
+        "@preset(meta={})\n"
+        "def nested_initializer_child_preset():\n"
+        "    return Geometry.create(op='concat', params={'value': OFFSET + 1})\n",
+        encoding="utf-8",
+    )
+
+    snapshot = load_config_authoring_definitions(
+        _config_for_dirs(tmp_path, "nested-initializer", (root,))
+    )
+
+    assert snapshot.operations.resolve("primitive", "nested_initializer_operation")
+    assert _preset_value(snapshot, "nested_initializer_preset") == 29
+    assert _preset_value(snapshot, "nested_initializer_child_preset") == 30
     assert not any(name.startswith("_grafix_config_authoring_") for name in sys.modules)
 
 

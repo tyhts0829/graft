@@ -13,6 +13,7 @@ from grafix.core.parameters.key import ParameterKey
 from grafix.core.parameters.merge_ops import merge_frame_params
 from grafix.core.parameters.meta import ParamMeta
 from grafix.core.parameters.store import ParamStore
+from tests.param_store_test_support import mutate_runtime, runtime_state
 
 
 _META = ParamMeta(kind="float", ui_min=0.0, ui_max=1.0)
@@ -118,12 +119,15 @@ def test_collapsed_command_is_one_history_operation() -> None:
 
 def test_runtime_view_is_frozen_and_does_not_expose_mutable_sets() -> None:
     store, key = _store_with_parameter()
-    runtime = store._runtime_ref()
-    runtime.loaded_groups.add((key.op, key.site_id))
-    runtime.observed_groups.add((key.op, key.site_id))
-    runtime.last_effective_by_key[key] = 0.75
-    runtime.last_source_by_key[key] = "midi_live"
-    runtime.record_effective_changes((key,))
+
+    def seed_runtime(runtime: object) -> None:
+        runtime.loaded_groups.add((key.op, key.site_id))  # type: ignore[attr-defined]
+        runtime.observed_groups.add((key.op, key.site_id))  # type: ignore[attr-defined]
+        runtime.last_effective_by_key[key] = 0.75  # type: ignore[attr-defined]
+        runtime.last_source_by_key[key] = "midi_live"  # type: ignore[attr-defined]
+
+    mutate_runtime(store, seed_runtime)
+    runtime = runtime_state(store)
 
     view = store.runtime_view()
 
@@ -157,8 +161,13 @@ def test_runtime_view_keeps_a_point_in_time_mapping_snapshot() -> None:
             ),
         ),
     )
-    runtime = store._runtime_ref()
-    runtime.display_order_by_group[("line", "later")] = 999
+    mutate_runtime(
+        store,
+        lambda runtime: runtime.display_order_by_group.__setitem__(
+            ("line", "later"),
+            999,
+        ),
+    )
 
     assert dict(view.display_order_by_group) == display_order
     assert view.last_effective_by_key[key] == 0.25
@@ -169,8 +178,10 @@ def test_runtime_view_keeps_a_point_in_time_mapping_snapshot() -> None:
 
 def test_narrow_runtime_queries_and_commands_do_not_touch_store_revision() -> None:
     store, key = _store_with_parameter()
-    runtime = store._runtime_ref()
-    runtime.last_effective_by_key[key] = 0.5
+    mutate_runtime(
+        store,
+        lambda runtime: runtime.last_effective_by_key.__setitem__(key, 0.5),
+    )
     revision = store.revision
 
     assert store.last_effective_value(key) == 0.5

@@ -8,6 +8,7 @@ from typing import Any
 
 from .key import ParameterKey
 from .meta import ParamMeta
+from .state import ParamState
 from .store import ParamStore
 from .validation import validate_cc_key, validate_parameter_value
 
@@ -46,11 +47,10 @@ def update_state_from_ui(
     except (TypeError, ValueError) as exc:
         return False, str(exc)
 
-    # History の patch transaction は変更対象が判明した時点で、この 1 key
-    # だけの変更前値を退避する。既存 key の slider 操作で store 全体を
-    # deepcopy しないため、代入より前に通知する必要がある。
-    store._observe_history_key_before(key)
-    state = store._ensure_state(key, base_value=canonical, explicit=False)
+    base_revision = store.revision
+    read = store._read()
+    current = read.state(key)
+    state = ParamState(ui_value=canonical) if current is None else current
     before = (state.ui_value, state.override, state.cc_key)
     state.ui_value = canonical
     if override is not None:
@@ -59,8 +59,36 @@ def update_state_from_ui(
     if not isinstance(canonical_cc, _KeepCcKey):
         state.cc_key = canonical_cc
 
-    if (state.ui_value, state.override, state.cc_key) != before:
-        store._touch(structure=False, value_keys=(key,))
+    structure_changed = current is None
+    value_changed = (state.ui_value, state.override, state.cc_key) != before
+    if structure_changed or value_changed:
+        mutation = store._mutation()
+        mutation.prepare_history(
+            expected_revision=base_revision,
+            keys=(key,),
+        )
+        if not structure_changed:
+            mutation.commit_existing_parameter_state(
+                expected_revision=base_revision,
+                key=key,
+                state=state,
+                value_changed=value_changed,
+            )
+            return True, None
+
+        states = read.states()
+        meta_by_key = read.all_meta()
+        explicit_by_key = read.all_explicit()
+        states[key] = state
+        explicit_by_key[key] = False
+        mutation.commit_parameter_state(
+            expected_revision=base_revision,
+            states=states,
+            meta=meta_by_key,
+            explicit_by_key=explicit_by_key,
+            structure=structure_changed,
+            value_keys=(key,) if value_changed else (),
+        )
 
     return True, None
 

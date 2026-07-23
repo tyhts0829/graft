@@ -12,6 +12,7 @@ from grafix.core.parameters.ui_ops import update_state_from_ui
 from grafix.interactive.parameter_gui.table_commit import _apply_updated_rows_to_store
 from grafix.interactive.parameter_gui.session_state import WidgetSessionState
 from grafix.interactive.parameter_gui.table import render_parameter_row_4cols
+from tests.param_store_test_support import mutate_runtime
 
 
 class _ClosedPopup:
@@ -249,7 +250,10 @@ def test_cc_unassign_bakes_scalar_effective_and_enables_override() -> None:
     stored_meta = store.get_meta(key)
     assert stored_meta is not None
     update_state_from_ui(store, key, 0.1, meta=stored_meta, override=False, cc_key=12)
-    store._runtime_ref().last_effective_by_key[key] = 0.75
+    mutate_runtime(
+        store,
+        lambda runtime: runtime.last_effective_by_key.__setitem__(key, 0.75),
+    )
 
     snapshot = store_snapshot_for_gui(store)
     rows_before = rows_from_snapshot(snapshot)
@@ -290,7 +294,13 @@ def test_cc_component_unassign_bakes_vec3_effective_and_keeps_other_cc() -> None
         override=False,
         cc_key=(10, 11, 12),
     )
-    store._runtime_ref().last_effective_by_key[key] = (-1.0, 0.25, 1.0)
+    mutate_runtime(
+        store,
+        lambda runtime: runtime.last_effective_by_key.__setitem__(
+            key,
+            (-1.0, 0.25, 1.0),
+        ),
+    )
 
     snapshot = store_snapshot_for_gui(store)
     rows_before = rows_from_snapshot(snapshot)
@@ -324,7 +334,10 @@ def test_cc_reassign_does_not_bake_effective() -> None:
     stored_meta = store.get_meta(key)
     assert stored_meta is not None
     update_state_from_ui(store, key, 0.1, meta=stored_meta, override=False, cc_key=12)
-    store._runtime_ref().last_effective_by_key[key] = 0.75
+    mutate_runtime(
+        store,
+        lambda runtime: runtime.last_effective_by_key.__setitem__(key, 0.75),
+    )
 
     snapshot = store_snapshot_for_gui(store)
     rows_before = rows_from_snapshot(snapshot)
@@ -365,7 +378,10 @@ def test_explicit_reset_to_code_clears_midi_without_baking_effective() -> None:
         override=False,
         cc_key=12,
     )
-    store._runtime_ref().last_effective_by_key[key] = 0.75
+    mutate_runtime(
+        store,
+        lambda runtime: runtime.last_effective_by_key.__setitem__(key, 0.75),
+    )
 
     snapshot = store_snapshot_for_gui(store)
     rows_before = rows_from_snapshot(snapshot)

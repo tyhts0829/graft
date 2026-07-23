@@ -5,7 +5,7 @@ from typing import Any, cast
 import pytest
 
 from grafix.core.capture_provenance import CaptureProvenance
-from grafix.core.parameters import ParamStore
+from grafix.core.parameters import ParameterCaptureState, ParamStore
 from grafix.core.pipeline import RealizedLayer
 from grafix.runtime_config_loader import runtime_config
 from grafix.export.capture_provenance import CaptureProvenanceBuilder
@@ -14,6 +14,7 @@ from grafix.interactive.runtime.presented_frame import (
     PresentedFrame,
     PresentedFrameState,
 )
+from tests.param_store_test_support import publish_structure_change_for_test
 
 
 def _draw(_t: float) -> list[object]:
@@ -27,9 +28,8 @@ class _ProvenanceBuilderSpy:
         self._builder = CaptureProvenanceBuilder(
             draw,
             config=runtime_config(),
-            parameter_source="code",
+            parameter_state=ParameterCaptureState("code", "primary"),
             parameter_store_path=None,
-            parameter_load_provenance="primary",
         )
         self.calls: list[dict[str, object]] = []
 
@@ -162,7 +162,7 @@ def test_stale_preview_token_requires_final_reevaluation_at_shutdown() -> None:
     _publish(state, fresh=True, revision=0)
     snapshot = state.export_snapshot
     assert snapshot is not None
-    store._touch()
+    publish_structure_change_for_test(store)
 
     with pytest.raises(RuntimeError, match="parameters changed"):
         state.materialize_capture_snapshot(snapshot)

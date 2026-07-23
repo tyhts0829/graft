@@ -23,6 +23,7 @@ from grafix.interactive.parameter_gui.table_view import (
     _parameter_table_model_for_store,
     parameter_table_view_for_store,
 )
+from tests.param_store_test_support import mutate_runtime
 
 
 def _layout_rows(group_layout, model_rows):
@@ -98,7 +99,13 @@ def test_1000_rows_reuse_one_table_model_for_60_frames(monkeypatch) -> None:
     assert _parameter_table_model_for_store(store, cache=table_cache) is first
 
     # effective はフレーム動的値なので、更新しても静的モデルは作り直さない。
-    store._runtime_ref().last_effective_by_key[records[0].key] = 999.0
+    mutate_runtime(
+        store,
+        lambda runtime: runtime.last_effective_by_key.__setitem__(
+            records[0].key,
+            999.0,
+        ),
+    )
     assert _parameter_table_model_for_store(store, cache=table_cache) is first
     assert table_cache.model_build_count == 1
 
@@ -497,9 +504,13 @@ def test_view_cache_invalidates_value_effective_visibility_and_external_flags() 
         == 1
     )
 
-    runtime = store._runtime_ref()
-    runtime.last_source_by_key[records[0].key] = "midi_live"
-    runtime.effective_revision += 1
+    mutate_runtime(
+        store,
+        lambda runtime: runtime.last_source_by_key.__setitem__(
+            records[0].key,
+            "midi_live",
+        ),
+    )
     effective_changed = parameter_table_view_for_store(
         store,
         cache=table_cache,
@@ -516,7 +527,10 @@ def test_view_cache_invalidates_value_effective_visibility_and_external_flags() 
         == 1
     )
 
-    runtime.loaded_groups.add(("model_bench", "loaded-only"))
+    mutate_runtime(
+        store,
+        lambda runtime: runtime.loaded_groups.add(("model_bench", "loaded-only")),
+    )
     visibility_changed = parameter_table_view_for_store(
         store,
         cache=table_cache,

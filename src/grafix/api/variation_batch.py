@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Protocol
 
-from grafix.api.render import ExportFormat, RenderSession
-from grafix.core.parameters.store import ParamStore
-from grafix.core.parameters.variations import Variation, list_variations
-from grafix.core.preview_quality import preview_quality_context
+from grafix.api.render import ExportFormat, ExportResult, Frame, RenderSession
+from grafix.core.parameters.variations import Variation
 from grafix.core.value_validation import (
     exact_bool,
     exact_integer,
@@ -24,6 +23,23 @@ from grafix.export.variation_batch import (
     export_variation_batch,
     variation_thumbnail_name,
 )
+
+
+class _VariationSession(Protocol):
+    def _named_variations(self) -> tuple[Variation, ...]: ...
+
+    def _render_variation(self, variation: Variation, t: float) -> Frame: ...
+
+
+class _CaptureFrame(Protocol):
+    def __call__(
+        self,
+        frame: Frame,
+        path: str | Path,
+        *,
+        overwrite: bool = False,
+        output_size: tuple[int, int] | None = None,
+    ) -> ExportResult: ...
 
 
 def _path_input(value: object, *, name: str) -> Path:
@@ -47,7 +63,6 @@ def render_variation_batch(
     columns: int | None = None,
     batch_name: str = "variations",
     overwrite: bool = False,
-    capture_service: CaptureService | None = None,
 ) -> VariationBatchResult:
     """RenderSession 内の named variations を順に復元・capture する。
 
@@ -73,9 +88,6 @@ def render_variation_batch(
     overwrite : bool, optional
         False は batch directory 自体を連番化する。True の場合だけ既存 generation
         を完成済み staging generation で一括置換する。公開失敗時は旧版へ戻す。
-    capture_service : CaptureService or None, optional
-        capture backend。省略時は新しい CaptureService を使う。
-
     Returns
     -------
     VariationBatchResult
@@ -89,9 +101,34 @@ def render_variation_batch(
     revision/runtime/UI state/named variations を含む呼び出し前の状態へ戻す。
     """
 
-    store = session.param_store
-    if not isinstance(store, ParamStore):
-        raise TypeError("session.param_store は ParamStore である必要があります")
+    return _render_variation_batch(
+        session,
+        output_root,
+        variation_names=variation_names,
+        default_t=default_t,
+        thumbnail_format=thumbnail_format,
+        thumbnail_size=thumbnail_size,
+        columns=columns,
+        batch_name=batch_name,
+        overwrite=overwrite,
+    )
+
+
+def _render_variation_batch(
+    session: _VariationSession,
+    output_root: str | Path,
+    *,
+    variation_names: tuple[str, ...] | None = None,
+    default_t: float = 0.0,
+    thumbnail_format: ExportFormat = ExportFormat.PNG,
+    thumbnail_size: tuple[int, int] = (320, 320),
+    columns: int | None = None,
+    batch_name: str = "variations",
+    overwrite: bool = False,
+    capture_frame: _CaptureFrame | None = None,
+) -> VariationBatchResult:
+    """公開入力を検証し、任意の private capture callback で batch を構成する。"""
+
     output_root_path = _path_input(output_root, name="output_root")
     replace_existing = exact_bool(overwrite, name="overwrite")
     render_t = finite_real(default_t, name="default_t")
@@ -106,76 +143,68 @@ def render_variation_batch(
     image_format = thumbnail_format
     if image_format not in {ExportFormat.PNG, ExportFormat.SVG}:
         raise ValueError("thumbnail_format は PNG または SVG である必要があります")
-    requests = _variation_requests(store, variation_names)
+    requests = _variation_requests(session._named_variations(), variation_names)
     if not requests:
         raise ValueError("render 対象の named variation がありません")
     name = _batch_name(batch_name)
 
     def render_items(output_directory: Path) -> VariationBatchArtifacts:
-        service = CaptureService() if capture_service is None else capture_service
+        capture = CaptureService().export if capture_frame is None else capture_frame
         items: list[VariationRenderResult] = []
         for index, (requested_name, variation) in enumerate(requests, start=1):
-            # item ごとに batch 呼び出し時の論理状態を退避し、render/export の
-            # 成否にかかわらず次 item の前に正確に戻す。
-            with store.begin_transient_rollback():
-                if variation is None:
-                    items.append(
-                        VariationRenderResult(
-                            variation_name=requested_name,
-                            seed=None,
-                            t=render_t,
-                            status="failed",
-                            error_type="KeyError",
-                            error_message=f"unknown variation: {requested_name!r}",
-                        )
+            if variation is None:
+                items.append(
+                    VariationRenderResult(
+                        variation_name=requested_name,
+                        seed=None,
+                        t=render_t,
+                        status="failed",
+                        error_type="KeyError",
+                        error_message=f"unknown variation: {requested_name!r}",
                     )
-                    continue
+                )
+                continue
 
-                item_t = render_t if variation.t is None else variation.t
-                try:
-                    store.apply_adjustment_snapshot(variation.parameter_snapshot)
-                    with preview_quality_context("final"):
-                        frame = session.render(
-                            item_t,
-                            provenance_seed=variation.seed,
-                        )
-                    requested_thumbnail = output_directory / variation_thumbnail_name(
-                        index=index,
-                        variation_name=variation.name,
-                        seed=variation.seed,
-                        image_format=image_format,
+            item_t = render_t if variation.t is None else variation.t
+            try:
+                frame = session._render_variation(variation, item_t)
+                requested_thumbnail = output_directory / variation_thumbnail_name(
+                    index=index,
+                    variation_name=variation.name,
+                    seed=variation.seed,
+                    image_format=image_format,
+                )
+                captured = capture(
+                    frame,
+                    requested_thumbnail,
+                    overwrite=False,
+                    output_size=(
+                        image_size if image_format is ExportFormat.PNG else None
                     )
-                    captured = service.export(
-                        frame,
-                        requested_thumbnail,
-                        overwrite=False,
-                        output_size=(
-                            image_size if image_format is ExportFormat.PNG else None
-                        ),
-                    )
-                except Exception as exc:
-                    items.append(
-                        VariationRenderResult(
-                            variation_name=variation.name,
-                            seed=variation.seed,
-                            t=item_t,
-                            status="failed",
-                            error_type=type(exc).__name__,
-                            error_message=str(exc) or type(exc).__name__,
-                        )
-                    )
-                    continue
-
+                )
+            except Exception as exc:
                 items.append(
                     VariationRenderResult(
                         variation_name=variation.name,
                         seed=variation.seed,
                         t=item_t,
-                        status="success",
-                        thumbnail_path=captured.path,
-                        manifest_path=captured.manifest_path,
+                        status="failed",
+                        error_type=type(exc).__name__,
+                        error_message=str(exc) or type(exc).__name__,
                     )
                 )
+                continue
+
+            items.append(
+                VariationRenderResult(
+                    variation_name=variation.name,
+                    seed=variation.seed,
+                    t=item_t,
+                    status="success",
+                    thumbnail_path=captured.path,
+                    manifest_path=captured.manifest_path,
+                )
+            )
         return VariationBatchArtifacts(items=tuple(items))
 
     return export_variation_batch(
@@ -204,10 +233,9 @@ def _batch_name(value: object) -> str:
 
 
 def _variation_requests(
-    store: ParamStore,
+    variations: tuple[Variation, ...],
     names: tuple[str, ...] | None,
 ) -> tuple[tuple[str, Variation | None], ...]:
-    variations = list_variations(store)
     if names is None:
         return tuple((variation.name, variation) for variation in variations)
     if type(names) is not tuple:

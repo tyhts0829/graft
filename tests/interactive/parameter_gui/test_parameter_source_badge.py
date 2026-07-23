@@ -4,6 +4,7 @@ from grafix.core.parameters.merge_ops import merge_frame_params
 from grafix.core.parameters.ui_ops import update_state_from_ui
 from grafix.core.parameters.view import ParameterRow
 from grafix.interactive.parameter_gui.source_badge import source_badge_for_row
+from tests.param_store_test_support import mutate_runtime, runtime_state
 
 
 def _row(
@@ -77,7 +78,10 @@ def test_undo_badge_matches_restored_effective_source_before_the_next_draw() -> 
     ok, error = update_state_from_ui(store, key, 0.75, meta=meta, override=True)
     assert ok and error is None
     assert history.record_change(source="slider") is True
-    store._runtime_ref().last_source_by_key[key] = "ui"
+    mutate_runtime(
+        store,
+        lambda runtime: runtime.last_source_by_key.__setitem__(key, "ui"),
+    )
 
     assert history.undo() is True
     restored = store.get_state(key)
@@ -85,7 +89,7 @@ def test_undo_badge_matches_restored_effective_source_before_the_next_draw() -> 
     assert restored.override is False
     # runtime 観測値は削除しないが、復元済み row と矛盾する
     # 1-frame-old の source は badge 決定に使わない。
-    assert store._runtime_ref().last_source_by_key[key] == "ui"
+    assert runtime_state(store).last_source_by_key[key] == "ui"
     assert source_badge_for_row(_row(override=restored.override), "ui") == "CODE"
 
 
@@ -112,6 +116,6 @@ def test_merge_remembers_last_effective_source_without_persisting_it() -> None:
         ],
     )
 
-    runtime = store._runtime_ref()
+    runtime = runtime_state(store)
     assert runtime.last_effective_by_key[key] == 0.75
     assert runtime.last_source_by_key[key] == "midi_live"

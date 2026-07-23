@@ -95,15 +95,14 @@ def test_recovery_session_rejects_implicit_path_coercion() -> None:
         ParamStoreRecoverySession(
             ParamStore(),
             "params.json",  # type: ignore[arg-type]
-            _KNOWN_OPERATIONS,
         )
 
 
 def test_keep_promotes_recovered_state_and_removes_journal(tmp_path: Path) -> None:
     primary_path, recovery_path, store, key = _recovered_session(tmp_path)
-    session = ParamStoreRecoverySession(store, primary_path, _KNOWN_OPERATIONS)
+    session = ParamStoreRecoverySession(store, primary_path)
 
-    loaded = session.keep()
+    loaded = session.keep(known_operations=_KNOWN_OPERATIONS)
 
     assert not recovery_path.exists()
     assert loaded.store is not store
@@ -117,7 +116,7 @@ def test_keep_promotes_recovered_state_and_removes_journal(tmp_path: Path) -> No
 def test_discard_returns_detached_primary_and_removes_journal(tmp_path: Path) -> None:
     primary_path, recovery_path, store, key = _recovered_session(tmp_path)
     identity = id(store)
-    session = ParamStoreRecoverySession(store, primary_path, _KNOWN_OPERATIONS)
+    session = ParamStoreRecoverySession(store, primary_path)
 
     loaded = session.discard()
 
@@ -163,7 +162,6 @@ def test_discard_exactly_restores_primary_lock_and_favorite_state(
     decision = ParamStoreRecoverySession(
         store,
         primary_path,
-        _KNOWN_OPERATIONS,
     ).discard()
     store.replace_contents_from(decision.store)
 
@@ -211,8 +209,7 @@ def test_keep_write_failure_does_not_prune_live_or_recovery_generation(
         ParamStoreRecoverySession(
             live_store,
             primary_path,
-            _KNOWN_OPERATIONS,
-        ).keep()
+        ).keep(known_operations=_KNOWN_OPERATIONS)
 
     assert live_store.get_state(obsolete) is not None
     assert primary_path.read_bytes() == primary_before
@@ -240,7 +237,6 @@ def test_discard_unlink_failure_keeps_live_recovery_generation(
         ParamStoreRecoverySession(
             store,
             primary_path,
-            _KNOWN_OPERATIONS,
         ).discard()
 
     state = store.get_state(key)
@@ -252,7 +248,7 @@ def test_discard_unlink_failure_keeps_live_recovery_generation(
 
 def test_compare_returns_copyable_unified_diff(tmp_path: Path) -> None:
     primary_path, _recovery_path, store, _key = _recovered_session(tmp_path)
-    session = ParamStoreRecoverySession(store, primary_path, _KNOWN_OPERATIONS)
+    session = ParamStoreRecoverySession(store, primary_path)
 
     event = session.compare_diagnostic()
 

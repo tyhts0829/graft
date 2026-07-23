@@ -12,8 +12,8 @@ from grafix import (
     RenderOptions,
     RenderSession,
     cc,
-    export,
     render,
+    save,
 )
 from grafix.core.parameters import MidiFrameSnapshot
 from grafix.core.parameters.context import parameter_context_from_snapshot
@@ -49,7 +49,7 @@ def test_cc_rejects_out_of_range_keys(invalid: int) -> None:
 
 def test_root_exports_headless_render_and_export_contract(tmp_path: Path) -> None:
     frame = render(lambda _t: [], options=RenderOptions(canvas_size=(32, 24)))
-    result = export(frame, tmp_path / "frame.svg")
+    result = save(frame, tmp_path / "frame.svg")
 
     assert isinstance(frame, Frame)
     assert isinstance(result, ExportResult)

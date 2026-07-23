@@ -13,11 +13,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from grafix.core.authoring_definitions import AuthoringDefinitionsSnapshot
 from grafix.authoring_loader import authoring_definitions_for_draw
 from grafix.core.capture_provenance import (
     CaptureProvenance,
+    ConfigProvenance,
+    FrameProvenance,
+    GitProvenance,
+    ParameterSnapshotProvenance,
     SessionProvenance,
+    SourceProvenance,
 )
 from grafix.core.export_format import ExportFormat
 from grafix.core.export_result import ExportResult
@@ -28,10 +32,16 @@ from grafix.core.lifecycle import CleanupErrors
 from grafix.core.parameters.context import parameter_context
 from grafix.export.output_paths import default_param_store_path
 from grafix.export.capture_provenance import CaptureProvenanceBuilder
-from grafix.core.parameters.runtime import LoadProvenance, ParameterLoadState
+from grafix.core.parameters.runtime import (
+    LoadProvenance,
+    ParameterCaptureState,
+    ParameterLoadState,
+    ParamStoreLoadDiagnostic,
+)
 from grafix.core.parameters.source import ParameterLoadMode
 from grafix.core.parameters.store import ParamStore
 from grafix.core.parameters.style_resolver import FrameStyle, StyleResolver
+from grafix.core.parameters.variations import Variation, list_variations
 from grafix.core.pipeline import RealizedLayer, realize_scene
 from grafix.core.preview_quality import current_preview_quality, preview_quality_context
 from grafix.core.preset_catalog import bind_preset_catalog
@@ -231,10 +241,6 @@ class RenderSession:
         final render の operation/scene/cache/capture 上限。
     seed : int or None, optional
         manifest に固定する作品 seed。乱数 global state は変更しない。
-    definitions : AuthoringDefinitionsSnapshot or None, optional
-        呼び出し元で確定済みの operation/preset snapshot。省略時は draw に付与された
-        generation snapshot、または builtin/default/config authoring definitions を
-        セッション構築時に一度だけ解決する。
     """
 
     def __init__(
@@ -248,7 +254,6 @@ class RenderSession:
         run_id: str | None = None,
         runtime_limits: RuntimeLimits = DEFAULT_FINAL_RUNTIME_LIMITS,
         seed: int | None = None,
-        definitions: AuthoringDefinitionsSnapshot | None = None,
     ) -> None:
         if not callable(draw):
             raise TypeError("draw は callable である必要があります")
@@ -278,23 +283,19 @@ class RenderSession:
 
         if not isinstance(runtime_limits, RuntimeLimits):
             raise TypeError("runtime_limits は RuntimeLimits である必要があります")
-        if definitions is not None and type(definitions) is not AuthoringDefinitionsSnapshot:
-            raise TypeError(
-                "definitions は exact AuthoringDefinitionsSnapshot または None です"
-            )
-
         provenance_builder = CaptureProvenanceBuilder(
             draw,
             config=effective_config,
-            parameter_source=normalized_source,
+            parameter_state=ParameterCaptureState(
+                source=normalized_source,
+                load_provenance=parameter_load_state.provenance,
+            ),
             parameter_store_path=store_path,
-            parameter_load_provenance=parameter_load_state.provenance,
             seed=seed,
         )
         session_definitions = authoring_definitions_for_draw(
             draw,
             config=effective_config,
-            definitions=definitions,
         )
         evaluation_context = EvaluationContext(
             catalog=session_definitions.operations,
@@ -369,10 +370,6 @@ class RenderSession:
     @property
     def options(self) -> RenderOptions:
         return self._options
-
-    @property
-    def param_store(self) -> ParamStore:
-        return self._store
 
     @property
     def config(self) -> RuntimeConfig:
@@ -454,6 +451,22 @@ class RenderSession:
         self._frame_index += 1
         return frame
 
+    def _named_variations(self) -> tuple[Variation, ...]:
+        """batch composition に immutable variation 列だけを貸し出す。"""
+
+        if self._closed:
+            raise RuntimeError("close 済みの RenderSession は使用できません")
+        return list_variations(self._store)
+
+    def _render_variation(self, variation: Variation, t: float) -> Frame:
+        """一 variation を一時適用し、store を復元してから Frame を返す。"""
+
+        if type(variation) is not Variation:
+            raise TypeError("variation は exact Variation である必要があります")
+        with self._store.begin_transient_rollback():
+            self._store.apply_adjustment_snapshot(variation.parameter_snapshot)
+            return self.render(t, provenance_seed=variation.seed)
+
     def close(self) -> None:
         """realize cache を解放し、以後の評価を禁止する。"""
 
@@ -486,7 +499,6 @@ def render(
     run_id: str | None = None,
     runtime_limits: RuntimeLimits = DEFAULT_FINAL_RUNTIME_LIMITS,
     seed: int | None = None,
-    definitions: AuthoringDefinitionsSnapshot | None = None,
 ) -> Frame:
     """``draw(t)`` を final 品質で一度評価し、不変 ``Frame`` を返す。
 
@@ -513,10 +525,6 @@ def render(
         final render の統合上限。
     seed : int or None, optional
         manifest に固定する作品 seed。乱数 global state は変更しない。
-    definitions : AuthoringDefinitionsSnapshot or None, optional
-        呼び出し元で確定済みの operation/preset snapshot。省略時は
-        :class:`RenderSession` の通常規則で一度だけ解決する。
-
     Returns
     -------
     Frame
@@ -532,7 +540,6 @@ def render(
         run_id=run_id,
         runtime_limits=runtime_limits,
         seed=seed,
-        definitions=definitions,
     ) as session:
         return session.render(t)
 
@@ -540,14 +547,29 @@ def render(
 __all__ = [
     "Color",
     "ColorInput",
+    "CaptureProvenance",
+    "ConfigProvenance",
     "ExportFormat",
     "ExportResult",
     "Frame",
+    "FrameProvenance",
+    "FrameStyle",
+    "GitProvenance",
+    "LoadProvenance",
     "ParameterLoadMode",
+    "ParameterLoadState",
+    "ParameterSnapshotProvenance",
+    "ParamStoreLoadDiagnostic",
     "RGB01",
     "RGB8",
+    "RealizedLayer",
     "RenderOptions",
     "RenderSession",
     "RenderSessionMetadata",
+    "RuntimeConfig",
+    "RuntimeLimits",
+    "SceneItem",
+    "SessionProvenance",
+    "SourceProvenance",
     "render",
 ]

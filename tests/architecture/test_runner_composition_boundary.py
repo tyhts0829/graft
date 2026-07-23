@@ -1,4 +1,4 @@
-"""runner import が optional GUI capability を初期化しないことを検査する。
+"""runner import が private interactive composition を初期化しないことを検査する。
 
 application の正常終了・構築失敗・逆順 cleanup は公開 ``run()`` を通す
 ``tests/api/test_runner_authoring_composition.py`` が検査する。この module では class 名や
@@ -19,17 +19,15 @@ def test_importing_runner_does_not_initialize_optional_gui_runtime() -> None:
     probe = """
 import json
 import sys
-import pyglet
-
-pyglet.options["shadow_window"] = False
 import grafix.api.runner
 
-optional_gui_modules = (
-    "grafix.interactive.parameter_gui.catalog",
-    "grafix.interactive.parameter_gui.gui",
-    "grafix.interactive.runtime.parameter_gui_system",
+optional_modules = (
+    "pyglet",
+    "grafix.api._runner_application",
+    "grafix.runtime_config_loader",
+    "grafix.interactive",
 )
-print(json.dumps([name for name in optional_gui_modules if name in sys.modules]))
+print(json.dumps([name for name in optional_modules if name in sys.modules]))
 """
     env = {
         **os.environ,

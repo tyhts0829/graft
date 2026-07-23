@@ -7,17 +7,14 @@ from __future__ import annotations
 import json
 import logging
 import math
-import re
-import sys
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, NoReturn, Protocol, runtime_checkable
 
-from grafix.file_io import atomic_write_text
 from grafix.core.lifecycle import CleanupErrors
-from grafix.runtime_config_loader import output_root_dir
 from grafix.core.value_validation import exact_string, exact_string_choice
+from grafix.file_io import atomic_write_text
 from grafix.interactive.diagnostics import DiagnosticAction, DiagnosticEvent
 
 
@@ -152,33 +149,12 @@ def _restore_macos_mojibake(text: str) -> str:
     return text
 
 
-def _sanitize_filename_fragment(text: str) -> str:
-    """ファイル名に埋め込めるように text を正規化して返す。"""
+def _require_snapshot_path(value: object) -> Path:
+    """composition root で確定済みの snapshot path だけを受け取る。"""
 
-    normalized = re.sub(r"[^A-Za-z0-9._-]+", "_", text)
-    normalized = normalized.strip("._-")
-    return normalized or "unknown"
-
-
-def _default_profile_name() -> str:
-    """実行スクリプト名から profile 名を推定して返す。"""
-
-    argv0 = sys.argv[0] if sys.argv else ""
-    stem = Path(argv0).stem if argv0 else ""
-    return stem or "unknown"
-
-
-def default_cc_snapshot_path(*, profile_name: str, save_dir: Path | None) -> Path:
-    """CC スナップショットの既定保存パスを返す。"""
-
-    profile = exact_string(profile_name, name="profile_name")
-    if not profile:
-        raise ValueError("profile_name は空にできません")
-    if save_dir is not None and not isinstance(save_dir, Path):
-        raise TypeError("save_dir は Path または None である必要があります")
-    base = save_dir if save_dir is not None else output_root_dir() / "midi"
-    profile_fragment = _sanitize_filename_fragment(profile)
-    return base / f"{profile_fragment}.json"
+    if not isinstance(value, Path):
+        raise TypeError("snapshot_path は Path である必要があります")
+    return value
 
 
 def _snapshot_diagnostic(
@@ -259,11 +235,10 @@ def _json_object_without_duplicate_keys(
     return decoded
 
 
-def load_cc_snapshot(path: Path) -> CcSnapshotLoadResult:
+def load_cc_snapshot(snapshot_path: Path) -> CcSnapshotLoadResult:
     """CC snapshot を現行 schema だけから診断付きでロードする。"""
 
-    if not isinstance(path, Path):
-        raise TypeError("path は Path である必要があります")
+    path = _require_snapshot_path(snapshot_path)
     try:
         payload = path.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -350,11 +325,10 @@ def _snapshot_records(snapshot: dict[int, float]) -> list[dict[str, int | float]
     ]
 
 
-def save_cc_snapshot(snapshot: dict[int, float], path: Path) -> None:
+def save_cc_snapshot(snapshot: dict[int, float], snapshot_path: Path) -> None:
     """CC snapshot を現行 schema 一形で atomic 保存する。"""
 
-    if not isinstance(path, Path):
-        raise TypeError("path は Path である必要があります")
+    path = _require_snapshot_path(snapshot_path)
     payload = {
         "schema_version": MIDI_CC_SNAPSHOT_SCHEMA_VERSION,
         "values": _snapshot_records(snapshot),
@@ -372,27 +346,17 @@ def save_cc_snapshot(snapshot: dict[int, float], path: Path) -> None:
     )
 
 
-def load_frozen_cc_snapshot(
-    *, profile_name: str, save_dir: Path | None = None
-) -> CcSnapshotLoadResult:
-    """永続化済みの CC スナップショットをロードして返す。
+def load_frozen_cc_snapshot(*, snapshot_path: Path) -> CcSnapshotLoadResult:
+    """接続不能時に使う CC snapshot を確定済み path からロードする。"""
 
-    Notes
-    -----
-    - 「MIDI が未接続でも前回の CC 値を凍結して使う」用途を想定する。
-    - ファイル命名ルールは `default_cc_snapshot_path()` に従う（現行維持）。
-    """
-
-    path = default_cc_snapshot_path(profile_name=profile_name, save_dir=save_dir)
-    return load_cc_snapshot(path)
+    return load_cc_snapshot(_require_snapshot_path(snapshot_path))
 
 
 def maybe_load_frozen_cc_snapshot(
     *,
     port_name: str | None,
     controller: "MidiController | None",
-    profile_name: str,
-    save_dir: Path | None = None,
+    snapshot_path: Path,
 ) -> CcSnapshotLoadResult | None:
     """MIDI 接続に失敗した場合に限り、凍結 CC スナップショットを返す。
 
@@ -400,11 +364,12 @@ def maybe_load_frozen_cc_snapshot(
     - controller が存在するなら live snapshot が使えるので凍結しない。
     """
 
+    path = _require_snapshot_path(snapshot_path)
     if port_name is None:
         return None
     if controller is not None:
         return None
-    return load_frozen_cc_snapshot(profile_name=profile_name, save_dir=save_dir)
+    return load_frozen_cc_snapshot(snapshot_path=path)
 
 
 class InvalidPortError(Exception):
@@ -421,14 +386,10 @@ class MidiController:
     ----------
     port_name
         入力ポート名。
+    snapshot_path
+        composition root がこの session 用に一度だけ確定した永続化ファイルパス。
     mode
         `"7bit"` または `"14bit"`。
-    profile_name
-        永続化ファイル名（stem）に埋め込む profile 名。未指定時は実行スクリプト名から推定する。
-    save_dir
-        永続化ディレクトリ。未指定時は `{output_root}/midi/` を使う。
-    persistence_path
-        永続化ファイルパス。指定時は profile_name/save_dir より優先する。
     inport
         既存の入力ポート。指定時は mido を使ってポートを開かない。
     """
@@ -441,10 +402,8 @@ class MidiController:
         self,
         port_name: str,
         *,
+        snapshot_path: Path,
         mode: str = "7bit",
-        profile_name: str | None = None,
-        save_dir: Path | None = None,
-        persistence_path: Path | None = None,
         inport: MidiInputPort | None = None,
     ) -> None:
         port = exact_string(port_name, name="port_name")
@@ -455,32 +414,10 @@ class MidiController:
             name="mode",
             choices=("7bit", "14bit"),
         )
-        profile = (
-            _default_profile_name()
-            if profile_name is None
-            else exact_string(profile_name, name="profile_name")
-        )
-        if not profile:
-            raise ValueError("profile_name は空にできません")
-        if save_dir is not None and not isinstance(save_dir, Path):
-            raise TypeError("save_dir は Path または None である必要があります")
-        if persistence_path is not None and not isinstance(persistence_path, Path):
-            raise TypeError(
-                "persistence_path は Path または None である必要があります"
-            )
 
         self.port_name = port
         self.mode = mode_value
-        self.profile_name = profile
-        self._save_dir = save_dir
-        self._path = (
-            persistence_path
-            if persistence_path is not None
-            else default_cc_snapshot_path(
-                profile_name=self.profile_name,
-                save_dir=self._save_dir,
-            )
-        )
+        self._snapshot_path = _require_snapshot_path(snapshot_path)
 
         self._msb_by_cc: dict[int, int] = {}
         self.cc: dict[int, float] = {}
@@ -495,15 +432,15 @@ class MidiController:
         self._snapshot_load_result = CcSnapshotLoadResult(
             values=(),
             status="missing",
-            source=self._path,
+            source=self._snapshot_path,
         )
         self._load_snapshot()
 
     @property
-    def path(self) -> Path:
+    def snapshot_path(self) -> Path:
         """永続化ファイルのパスを返す。"""
 
-        return self._path
+        return self._snapshot_path
 
     @property
     def snapshot_load_result(self) -> CcSnapshotLoadResult:
@@ -514,7 +451,7 @@ class MidiController:
     def _load_snapshot(self) -> CcSnapshotLoadResult:
         """永続化ファイルを読み、現行 schema の値だけを反映する。"""
 
-        result = load_cc_snapshot(self._path)
+        result = load_cc_snapshot(self._snapshot_path)
         self.cc = result.as_dict()
         self._snapshot_load_result = result
         return result
@@ -525,23 +462,24 @@ class MidiController:
         if not self._snapshot_load_result.writable:
             raise CcSnapshotWriteBlockedError(
                 "reject した MIDI CC snapshot 原本は自動保存で上書きできません: "
-                f"status={self._snapshot_load_result.status}, path={self._path}"
+                f"status={self._snapshot_load_result.status}, "
+                f"path={self._snapshot_path}"
             )
-        save_cc_snapshot(self.cc, self._path)
+        save_cc_snapshot(self.cc, self._snapshot_path)
         self._snapshot_load_result = CcSnapshotLoadResult(
             values=_normalized_snapshot_values(self.cc),
             status="loaded",
-            source=self._path,
+            source=self._snapshot_path,
         )
 
     def discard_persisted_snapshot(self) -> None:
         """保存済み原本だけを空の現行 schema へ置き換える。"""
 
-        save_cc_snapshot({}, self._path)
+        save_cc_snapshot({}, self._snapshot_path)
         self._snapshot_load_result = CcSnapshotLoadResult(
             values=(),
             status="loaded",
-            source=self._path,
+            source=self._snapshot_path,
         )
 
     def snapshot(self) -> dict[int, float]:

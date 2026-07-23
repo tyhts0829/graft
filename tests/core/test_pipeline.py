@@ -28,6 +28,7 @@ from grafix.core.preset_catalog import (
 )
 from grafix.core.realize import RealizeCacheStore, RealizeSession
 from grafix.runtime_config_loader import runtime_config
+from tests.param_store_test_support import runtime_state
 
 
 _TEST_RUNTIME_CONFIG = replace(runtime_config(), font_dirs=())
@@ -219,7 +220,7 @@ def test_realize_scene_observes_and_applies_layer_style_overrides() -> None:
 
     assert realized_layers[0].thickness == 0.123
     assert realized_layers[0].color == (1.0, 0.0, 0.0)
-    runtime = store._runtime_ref()
+    runtime = runtime_state(store)
     assert runtime.last_effective_by_key[key_thickness] == 0.123
     assert runtime.last_source_by_key[key_thickness] == "ui"
     assert runtime.last_effective_by_key[key_color] == (255, 0, 0)

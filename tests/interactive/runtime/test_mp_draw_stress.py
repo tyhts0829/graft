@@ -9,12 +9,8 @@ from typing import Any
 import pytest
 
 from grafix.core.geometry import Geometry
-from grafix.interactive.runtime.mp_draw import (
-    DrawResult,
-    MpDraw,
-    _DrawTask,
-    _SnapshotUpdate,
-)
+from grafix.interactive.runtime._mp_draw_protocol import _DrawTask, _SnapshotUpdate
+from grafix.interactive.runtime.mp_draw import DrawResult, MpDraw
 from grafix.runtime_config_loader import runtime_config
 
 pytestmark = pytest.mark.integration
@@ -68,10 +64,10 @@ def test_600_stable_frames_broadcast_snapshot_only_once() -> None:
 
         result = _wait_for_result(mp_draw)
         assert result.error is None
-        assert mp_draw.completed_result_count >= 1
-        assert mp_draw.snapshot_broadcast_count == 1
-        assert set(mp_draw.worker_snapshot_revisions.values()) == {7}
-        assert mp_draw.snapshot_ack_count >= 2
+        assert mp_draw.stats.completed_result_count >= 1
+        assert mp_draw.stats.snapshot_broadcast_count == 1
+        assert set(dict(mp_draw.stats.worker_snapshot_revisions).values()) == {7}
+        assert mp_draw.stats.snapshot_ack_count >= 2
 
         for frame in range(600, 660):
             mp_draw.submit(
@@ -82,7 +78,7 @@ def test_600_stable_frames_broadcast_snapshot_only_once() -> None:
                 epoch=0,
                 quality="draft",
             )
-        assert mp_draw.snapshot_broadcast_count == 1
+        assert mp_draw.stats.snapshot_broadcast_count == 1
 
         mp_draw.submit(
             t=661.0,
@@ -95,13 +91,13 @@ def test_600_stable_frames_broadcast_snapshot_only_once() -> None:
 
         def revision_8_was_acked() -> bool:
             mp_draw.poll_latest()
-            return set(mp_draw.worker_snapshot_revisions.values()) == {8}
+            return set(dict(mp_draw.stats.worker_snapshot_revisions).values()) == {8}
 
         _wait_until(
             revision_8_was_acked,
             message="snapshot revision 8 ack timeout",
         )
-        assert mp_draw.snapshot_broadcast_count == 2
+        assert mp_draw.stats.snapshot_broadcast_count == 2
     finally:
         mp_draw.close()
 
@@ -122,9 +118,9 @@ def test_single_worker_uses_task_snapshot_without_duplicate_control_broadcast() 
         result = _wait_for_result(mp_draw)
         assert result.error is None
         assert result.snapshot_revision == 7
-        assert mp_draw.snapshot_broadcast_count == 0
-        assert mp_draw.snapshot_payload_copy_count == 1
-        assert set(mp_draw.worker_snapshot_revisions.values()) == {7}
+        assert mp_draw.stats.snapshot_broadcast_count == 0
+        assert mp_draw.stats.snapshot_payload_copy_count == 1
+        assert set(dict(mp_draw.stats.worker_snapshot_revisions).values()) == {7}
 
         mp_draw.submit(
             t=31.0,
@@ -144,8 +140,8 @@ def test_single_worker_uses_task_snapshot_without_duplicate_control_broadcast() 
             time.sleep(0.005)
         assert latest is not None
         assert latest.snapshot_revision == 8
-        assert mp_draw.snapshot_broadcast_count == 0
-        assert mp_draw.snapshot_payload_copy_count == 2
+        assert mp_draw.stats.snapshot_broadcast_count == 0
+        assert mp_draw.stats.snapshot_payload_copy_count == 2
     finally:
         mp_draw.close()
 
@@ -175,7 +171,7 @@ def test_mp_draw_emits_revision_and_frame_causal_events() -> None:
             epoch=0,
             quality="draft",
         )
-        submitted_frame_id = mp_draw.last_submitted_frame_id
+        submitted_frame_id = mp_draw.stats.last_submitted_frame_id
         result = _wait_for_result(mp_draw)
 
         assert result.frame_id == submitted_frame_id
@@ -211,9 +207,9 @@ def test_worker_rejects_unknown_and_stale_revision_and_acks_stale_update() -> No
             quality="draft",
         )
         _wait_for_result(mp_draw)
-        assert set(mp_draw.worker_snapshot_revisions.values()) == {5}
+        assert set(dict(mp_draw.stats.worker_snapshot_revisions).values()) == {5}
 
-        rejected_before = mp_draw.rejected_task_count
+        rejected_before = mp_draw.stats.rejected_task_count
         mp_draw._task_q.put(
             _DrawTask(
                 frame_id=10_001,
@@ -230,12 +226,12 @@ def test_worker_rejects_unknown_and_stale_revision_and_acks_stale_update() -> No
 
         def unknown_was_rejected() -> bool:
             mp_draw.poll_latest()
-            return mp_draw.rejected_task_count > rejected_before
+            return mp_draw.stats.rejected_task_count > rejected_before
 
         _wait_until(unknown_was_rejected, message="unknown revision rejection timeout")
-        assert mp_draw.last_rejection == (6, 5, "unknown")
+        assert mp_draw.stats.last_rejection == (6, 5, "unknown")
 
-        rejected_before = mp_draw.rejected_task_count
+        rejected_before = mp_draw.stats.rejected_task_count
         mp_draw._task_q.put(
             _DrawTask(
                 frame_id=10_002,
@@ -252,12 +248,12 @@ def test_worker_rejects_unknown_and_stale_revision_and_acks_stale_update() -> No
 
         def stale_was_rejected() -> bool:
             mp_draw.poll_latest()
-            return mp_draw.rejected_task_count > rejected_before
+            return mp_draw.stats.rejected_task_count > rejected_before
 
         _wait_until(stale_was_rejected, message="stale revision rejection timeout")
-        assert mp_draw.last_rejection == (4, 5, "stale")
+        assert mp_draw.stats.last_rejection == (4, 5, "stale")
 
-        ack_before = mp_draw.snapshot_ack_count
+        ack_before = mp_draw.stats.snapshot_ack_count
         mp_draw._control_qs[0].put(
             _SnapshotUpdate(
                 revision=4,
@@ -269,10 +265,10 @@ def test_worker_rejects_unknown_and_stale_revision_and_acks_stale_update() -> No
 
         def stale_was_acked() -> bool:
             mp_draw.poll_latest()
-            return mp_draw.snapshot_ack_count > ack_before
+            return mp_draw.stats.snapshot_ack_count > ack_before
 
         _wait_until(stale_was_acked, message="stale snapshot ack timeout")
-        assert mp_draw.last_snapshot_ack == (4, 5, "stale")
+        assert mp_draw.stats.last_snapshot_ack == (4, 5, "stale")
     finally:
         mp_draw.close()
 
@@ -289,21 +285,21 @@ def test_rapid_revision_changes_keep_snapshot_control_backlog_bounded() -> None:
                 epoch=0,
                 quality="draft",
             )
-            assert mp_draw.pending_snapshot_update_count <= 2
-            assert mp_draw.queued_snapshot_update_count <= 2
+            assert mp_draw.stats.pending_snapshot_update_count <= 2
+            assert mp_draw.stats.queued_snapshot_update_count <= 2
 
         def final_revision_was_acked() -> bool:
             mp_draw.poll_latest()
-            return set(mp_draw.worker_snapshot_revisions.values()) == {200}
+            return set(dict(mp_draw.stats.worker_snapshot_revisions).values()) == {200}
 
         _wait_until(
             final_revision_was_acked,
             message="latest snapshot revision ack timeout",
         )
-        assert mp_draw.snapshot_broadcast_count == 200
-        assert mp_draw.pending_snapshot_update_count == 0
-        assert mp_draw.queued_snapshot_update_count == 0
-        assert mp_draw.rejected_task_count == 0
+        assert mp_draw.stats.snapshot_broadcast_count == 200
+        assert mp_draw.stats.pending_snapshot_update_count == 0
+        assert mp_draw.stats.queued_snapshot_update_count == 0
+        assert mp_draw.stats.rejected_task_count == 0
     finally:
         mp_draw.close()
 
@@ -329,8 +325,8 @@ def test_revision_churn_keeps_results_moving_and_reaches_latest(
             result = mp_draw.poll_latest()
             if result is not None:
                 revisions_during_drag.append(int(result.snapshot_revision))
-            assert mp_draw.pending_snapshot_update_count <= n_worker
-            assert mp_draw.queued_snapshot_update_count <= n_worker
+            assert mp_draw.stats.pending_snapshot_update_count <= n_worker
+            assert mp_draw.stats.queued_snapshot_update_count <= n_worker
             time.sleep(0.005)
 
         # wall time そのものではなく、連続 edit 中にも評価が前進することを契約にする。
@@ -356,6 +352,6 @@ def test_revision_churn_keeps_results_moving_and_reaches_latest(
 
         assert final_result is not None
         assert final_result.error is None
-        assert mp_draw.rejected_task_count == 0
+        assert mp_draw.stats.rejected_task_count == 0
     finally:
         mp_draw.close()
