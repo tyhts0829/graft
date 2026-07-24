@@ -328,6 +328,7 @@ def test_core_does_not_implement_publish_or_path_allocation_policy() -> None:
     forbidden_names = {
         "VersionedPathAllocator",
         "atomic_write_text",
+        "_publish_capture_generation",
         "publish_capture_generation",
         "capture_manifest_path_for",
     }

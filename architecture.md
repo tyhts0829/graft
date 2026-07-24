@@ -477,11 +477,12 @@ GL/MIDI/GUI leaf が runtime concrete class に依存しない。
 
 variation thumbnail は GUI leaf に export service を持ち込まない。GUI は exact `path: Path` と
 `discard()` だけを持つ `VariationThumbnailArtifact` の capture contract と preview 表示だけを扱う。
-`interactive.runtime.variation_thumbnail_capture` が
-`CaptureService`、live frame provider、base path、canvas size を受け、要求のたびに current frame を
-取得して no-clobber PNG capture へ適合する。adapter は publish 層が返した private owned token を
-同一 object のまま GUI contract へ渡し、公開後に file identity を再取得しない。古い frame を
-closure に固定せず、portable filename policy は export の variation batch と共有する。
+composition root が `CaptureService` の private owned-export callable を束縛し、
+`interactive.runtime.variation_thumbnail_capture` はその callable、live frame provider、base path、
+canvas size を受ける。要求のたびに current frame を取得して no-clobber PNG capture へ適合し、
+publish 層が返した private owned token を同一 object のまま GUI contract へ渡す。公開後に file
+identity を再取得せず、古い frame を closure に固定しない。portable filename policy は export の
+variation batch と共有する。
 
 source reload は entry source と、静的な package-relative import で到達する local helper の bytes
 だけを candidate generation として隔離実行し、draw signature、declaration snapshot、worker startup
@@ -512,16 +513,20 @@ output path policy はすでに解決された `RuntimeConfig` を入力とす�
 から `runtime_config_loader` へ逆流せず、config discovery は runner/render/CLI の入口で一度だけ行う。
 
 `CaptureService` は完成した frame snapshot を形式別 encoder へ渡す。`CaptureStaging` が private
-sibling directory と work path を所有し、`publish_capture_generation()` が artifact、manifest、
+sibling directory と work path を所有し、package-private publish primitive が artifact、manifest、
 layer-split G-code family を一 generation として no-clobber publish する。allocation 後の late
-collision は完成済み staging を再 encode せず、別 version path で bounded retry する。失敗時は
-今回の inode だけを best-effort rollback する。
+collision は完成済み staging を再 encode せず、別 version path で bounded retry する。
 
-`publish_capture_generation()` は最初の target を公開する前に staged source の file identity を一度だけ
-取得し、artifact path、manifest path、identity、`discard()` を持つ package-private owned token を作る。
-明示的な `discard()` は全 member を試し、missing、非通常 file、identity mismatch となった外部差し替えを
-保持する。通常の public export は token を結果へ変換して generation を acceptし、Variation thumbnail
-だけが commit 完了まで exact token を保持する。runtime/controller は identity/stat/unlink を再実装しない。
+publish primitive は最初の target を公開する前に staged source の file identity を一度だけ取得し、
+artifact path、manifest path、identity、`discard()` を持つ package-private owned token を作る。
+publish failure の rollback と明示的な `discard()` は、cleanup 中に同名 path の namespace が安定
+していることを前提にした best-effort compare-then-delete である。各 member の identity 検査時点で
+missing、非通常 file、identity mismatch と観測した entry は削除しない。一致確認後の `unlink()` は
+検査と同一の atomic 操作ではないため、その間に同名 entry を交換する並行 writer からの保護は
+保証しない。platform lock、lease、recovery journal は持たない。
+
+通常の public export は token を結果へ変換して generation を acceptし、Variation thumbnail だけが
+commit 完了まで exact token を保持する。runtime/controller は identity/stat/unlink を再実装しない。
 
 variation batch は directory 全体を一 generation として扱う。thumbnail/manifest、contact sheet、
 structured summary を private workspace で完成させ、manifest 内 path を公開先へ relocation してから

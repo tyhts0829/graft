@@ -106,6 +106,7 @@ class _RunnerCompositionHarness:
         self.midi_close_count = 0
         self.midi_session_kwargs: list[dict[str, object]] = []
         self.output_path_calls: list[dict[str, object]] = []
+        self.thumbnail_export_wiring: list[object] = []
 
         harness = self
         real_schema_projection = runner_module.known_operation_schema_snapshot
@@ -204,6 +205,10 @@ class _RunnerCompositionHarness:
                 harness.midi_close_count += 1
                 harness.calls.append("close midi")
 
+        class CaptureService:
+            def _export_owned(self, *_args: object, **_kwargs: object) -> None:
+                pass
+
         class DrawWindowSystem:
             def __init__(self, _draw: Callable[..., object], **kwargs: object) -> None:
                 harness.draw_window_kwargs = dict(kwargs)
@@ -214,7 +219,7 @@ class _RunnerCompositionHarness:
                 self.window = object()
                 self.transport = object()
                 self.is_recording = False
-                self.capture_service = object()
+                self.capture_service = CaptureService()
                 self._midi_session = cast(Any, kwargs["midi_session"])
                 harness.draw_window = self
 
@@ -340,12 +345,18 @@ class _RunnerCompositionHarness:
             "ParameterGUIWindowSystem",
             ParameterGUIWindowSystem,
         )
+
+        def make_variation_thumbnail_capture(
+            export_owned: object,
+            **_kwargs: object,
+        ) -> Callable[..., None]:
+            harness.thumbnail_export_wiring.append(export_owned)
+            return lambda *_args, **_kwargs: None
+
         monkeypatch.setattr(
             thumbnail_capture_module,
             "make_variation_thumbnail_capture",
-            lambda *_args, **_kwargs: (
-                lambda *_callback_args, **_callback_kwargs: None
-            ),
+            make_variation_thumbnail_capture,
         )
         monkeypatch.setattr(runner_module.pyglet.clock, "schedule_once", lambda *_args: None)
         monkeypatch.setattr(runner_module.pyglet.clock, "unschedule", lambda *_args: None)
@@ -405,6 +416,10 @@ def test_runner_normal_lifetime_persists_then_closes_owned_resources(
     assert harness.midi_session_kwargs[0]["snapshot_path"] == tmp_path / "midi.json"
     assert "profile_name" not in harness.midi_session_kwargs[0]
     assert "save_dir" not in harness.midi_session_kwargs[0]
+    assert harness.draw_window is not None
+    assert harness.thumbnail_export_wiring == [
+        harness.draw_window.capture_service._export_owned
+    ]
 
 
 def test_runner_projects_one_config_snapshot_and_switches_gui_by_generation_identity(

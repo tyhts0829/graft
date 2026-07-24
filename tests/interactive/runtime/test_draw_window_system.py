@@ -1452,7 +1452,7 @@ def test_svg_late_collision_preserves_external_file_and_retries_next_version(
         path.write_bytes(b"new svg")
         return path
 
-    real_publish = capture_module.publish_capture_generation
+    real_publish = capture_module._publish_capture_generation
     collided_path: Path | None = None
     first_call = True
 
@@ -1470,7 +1470,7 @@ def test_svg_late_collision_preserves_external_file_and_retries_next_version(
     monkeypatch.setattr(capture_module, "export_svg", fake_export_svg)
     monkeypatch.setattr(
         capture_module,
-        "publish_capture_generation",
+        "_publish_capture_generation",
         publish_with_late_collision,
     )
     system = _make_initialized_system()

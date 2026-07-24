@@ -564,10 +564,10 @@ flowchart LR
     prepare["prepare_variation<br/>validate + immutable draft + revision"]
     runtime["runtime thumbnail adapter"]
     provider["live frame provider"]
-    capture["CaptureService"]
+    ownedexport["bound private owned-export callable<br/>from CaptureService"]
     publish["capture publish owner<br/>identity before first target"]
     policy["export filename policy"]
-    artifact["private owned token<br/>exact PNG/manifest identity + discard()"]
+    artifact["private owned token<br/>exact PNG/manifest identity<br/>best-effort discard()"]
     commit["commit_variation<br/>revision/duplicate recheck"]
     variation["Variation<br/>exact path or no thumbnail"]
     rollback["controller on commit failure<br/>discard this artifact family"]
@@ -575,9 +575,9 @@ flowchart LR
     gui --> prepare
     prepare -->|"validated name"| runtime
     runtime -->|"each request"| provider
-    provider --> capture
-    runtime --> policy --> capture
-    capture --> publish --> artifact
+    provider --> ownedexport
+    runtime --> policy --> ownedexport
+    ownedexport --> publish --> artifact
     artifact -->|"same object"| gui
     gui --> commit --> variation
     commit -->|"failure"| rollback
@@ -585,10 +585,12 @@ flowchart LR
     runtime -->|"capture failure: no artifact"| gui
 ```
 
-GL/MIDI/Parameter GUI leaf は `grafix.export` を importしない。adapter は古い frame を固定せず、
-publish 前に identity を固定した exact token を再構築せず GUI へ返す。domain validation failure
-では capture せず、capture failure では thumbnail なしで同じ draft を commitする。callback は同期中に
-store を変更しない contract で、revision が変われば commit は state を変更せず artifact を rollbackする。
+GL/MIDI/Parameter GUI leaf は `grafix.export` を importしない。adapter は concrete export service を
+知らず、composition root が渡した bound private owned-export callable だけを使う。古い frame を
+固定せず、publish 前に identity を固定した exact token を再構築せず GUI へ返す。domain validation
+failure では capture せず、capture failure では thumbnail なしで同じ draft を commitする。callback は
+同期中に store を変更しない contract で、revision が変われば commit は state を変更せず artifact を
+rollbackする。
 
 ## 7. Render と capture publish
 
@@ -602,9 +604,9 @@ flowchart LR
     service["CaptureService"]
     encoder["SVG / PNG / G-code encoder"]
     staging["CaptureStaging"]
-    publish["Atomic no-clobber publish"]
+    publish["Package-private<br/>no-clobber publish"]
     files["Artifact family + capture manifest"]
-    token["private owned token<br/>pre-publish identities + discard()"]
+    token["private owned token<br/>pre-publish identities<br/>best-effort discard()"]
 
     draw --> render --> frame
     load --> render
@@ -617,6 +619,9 @@ flowchart LR
 late collision では再 encode せず別 version を試す。失敗時は今回の generation だけを rollback する。
 通常 export は token を public result へ変換して generation を acceptし、Variation thumbnail だけが
 commit まで token を保持する。runtime は publish 後に identity を取り直さない。
+rollback と `discard()` は cleanup 中の stable namespace を前提にした best-effort
+compare-then-delete である。identity 検査時点で missing、非通常 file、identity mismatch と観測した
+entry は削除しないが、検査から `unlink()` までの並行交換は保証しない。
 `SceneItem` の再帰 container は list/tuple だけで、custom `Sequence`、set、generator、str/bytes は
 runtime/type contract の対象外である。
 

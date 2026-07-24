@@ -173,6 +173,10 @@ commit failure は今回の artifact family の discard に進む。capture call
 変更しない contract で、revision が変われば commit は state を変更せず失敗する。batch API は raw
 store を借りず、session 内に閉じた一時適用/render/rollback capability を使う。
 
+publish rollback と token の `discard()` は、cleanup 中に同名 path が安定していることを前提にした
+best-effort compare-then-delete である。identity 検査時点で missing、非通常 file、identity mismatch
+と観測した entry は削除しない。検査と `unlink()` は atomic ではなく、その間の並行交換は保証しない。
+
 API variation batch は variation 順、item ごとの transient rollback、render/capture callback、partial
 failure だけを持つ。private workspace、manifest relocation、contact sheet/summary encode、no-clobber
 retry、overwrite failure 時の旧 generation 復元は export transaction が一括所有する。API に
@@ -243,9 +247,10 @@ lexical scope に限定し、function/async function/class 内の deferred impor
 実行前に拒否する。filesystem capture と pickle 復元 recipe の両方が同じ全件 preflight を通る。
 
 Parameter GUI leaf は export type/service を importせず、variation thumbnail の capture/preview callable
-だけを受け取る。runtime adapter は要求ごとに live frame provider を呼び、`CaptureService` が返した
-実際の no-clobber path と publish 時 identity を持つ exact token を GUI へ返す。runtime で
-`stat()` し直したり rollback owner を作り直したりしない。
+だけを受け取る。composition root が `CaptureService` の private owned-export callable を runtime
+adapter へ渡す。adapter は要求ごとに live frame provider を呼び、実際の no-clobber path と publish
+時 identity を持つ exact token を GUI へ返す。runtime で `stat()` し直したり rollback owner を
+作り直したりしない。
 
 MIDI の低水準 composition は exact path を必ず渡す。
 

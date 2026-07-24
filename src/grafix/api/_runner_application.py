@@ -389,7 +389,7 @@ class _InteractiveApplication:
             config=self._config,
         )
         thumbnail_capture = make_variation_thumbnail_capture(
-            draw_window.capture_service,
+            draw_window.capture_service._export_owned,
             frame_provider=draw_window.final_capture_frame,
             base_path=thumbnail_base,
             canvas_size=self._options.canvas_size,

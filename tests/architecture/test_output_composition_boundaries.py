@@ -62,6 +62,7 @@ def test_variation_batch_api_has_no_publish_or_staging_capability() -> None:
         "fsync",
         "link",
         "mkdtemp",
+        "_publish_capture_generation",
         "publish_capture_generation",
         "rename",
         "replace",

@@ -30,9 +30,9 @@ class VersionedPathAllocator:
     -----
     この class は空の placeholder を作らない。したがって export 失敗時に偽の成果物を
     残さず、既存の atomic writer / recorder の確定処理も妨げない。allocation 自体は
-    別 process との排他境界ではないため、正式公開は必ず no-clobber transaction
-    （``publish_capture_generation`` 等）で行う。同一 session 内では同じ instance を
-    共有し、未公開の非同期予約同士の衝突を防ぐ。
+    別 process との排他境界ではないため、正式公開は必ず export 層の no-clobber
+    transaction で行う。同一 session 内では同じ instance を共有し、未公開の非同期予約同士の
+    衝突を防ぐ。
     """
 
     def __init__(self, *, minimum_digits: int = 3) -> None:

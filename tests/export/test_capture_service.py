@@ -193,7 +193,7 @@ def test_late_collision_retries_without_reencoding_or_overwriting(
 ) -> None:
     service = CaptureService()
     base = tmp_path / "drawing.svg"
-    real_publish = capture_module.publish_capture_generation
+    real_publish = capture_module._publish_capture_generation
     encode_calls = 0
     real_encode = service.encode
 
@@ -212,7 +212,7 @@ def test_late_collision_retries_without_reencoding_or_overwriting(
         return real_publish(**kwargs)
 
     monkeypatch.setattr(service, "encode", count_encode)
-    monkeypatch.setattr(capture_module, "publish_capture_generation", collide_once)
+    monkeypatch.setattr(capture_module, "_publish_capture_generation", collide_once)
 
     result = service.export(frame, base)
 

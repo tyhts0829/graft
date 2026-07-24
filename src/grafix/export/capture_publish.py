@@ -21,7 +21,7 @@ _FileIdentity = tuple[int, int]
 
 @dataclass(frozen=True, slots=True)
 class _OwnedCaptureGeneration:
-    """一括公開した成果物群と manifest の削除 capability。"""
+    """Stable namespace 上で一括公開した成果物群を識別して破棄する capability。"""
 
     artifact_paths: tuple[Path, ...]
     manifest_path: Path
@@ -34,7 +34,14 @@ class _OwnedCaptureGeneration:
         return self.artifact_paths[0]
 
     def discard(self) -> None:
-        """外部差し替えを保持し、今回公開した member だけを削除する。"""
+        """Identity 検査時点で所有を確認できた通常 file だけを削除する。
+
+        Notes
+        -----
+        member path は identity 検査中に安定していることを前提とする。検査時点で
+        missing、非通常 file、identity mismatch の member は保持する。identity 一致確認後から
+        ``unlink()`` までの並行 path 交換は保証しない。
+        """
 
         member_paths = (*self.artifact_paths, self.manifest_path)
         errors = CleanupErrors()
@@ -109,7 +116,10 @@ def _regular_file_identity(path: Path) -> _FileIdentity:
 
 
 def _unlink_if_identity(path: Path, expected: _FileIdentity) -> None:
-    """今回公開した inode のままなら unlink する。外部差し替えは保持する。"""
+    """検査時点で identity が一致する path を best-effort で unlink する。
+
+    Path は identity 検査中に安定していることを前提とし、検査後の並行交換は保証しない。
+    """
 
     try:
         stat_result = path.stat(follow_symlinks=False)
@@ -121,7 +131,12 @@ def _unlink_if_identity(path: Path, expected: _FileIdentity) -> None:
 
 
 def _unlink_owned_file(path: Path, expected: _FileIdentity) -> None:
-    """所有中の通常 file だけを unlink し、I/O error は呼び出し側へ返す。"""
+    """検査時点で所有中の通常 file だけを unlink する。
+
+    Path は identity 検査中に安定していることを前提とし、missing、非通常 file、
+    identity mismatch は保持する。検査後の並行交換は保証しない。I/O error は
+    呼び出し側へ返す。
+    """
 
     try:
         stat_result = path.stat(follow_symlinks=False)
@@ -156,7 +171,7 @@ def _publish_capture_generation_overwrite(
     targets: tuple[Path, ...],
     source_identities: tuple[_FileIdentity, ...],
 ) -> None:
-    """既存 generation を退避し、失敗時に元へ戻して置換する。"""
+    """既存 generation を退避し、stable namespace 上で失敗時の復旧を試みる。"""
 
     backups: list[tuple[Path, Path]] = []
     committed: list[tuple[Path, tuple[int, int]]] = []
@@ -224,7 +239,7 @@ def _fsync_directories(directories: tuple[Path, ...], *, best_effort: bool) -> N
                 os.close(fd)
 
 
-def publish_capture_generation(
+def _publish_capture_generation(
     *,
     staged_artifact_paths: tuple[Path, ...],
     artifact_paths: tuple[Path, ...],
@@ -235,13 +250,14 @@ def publish_capture_generation(
     """成果物と manifest を no-clobber generation として公開する。
 
     全ファイルは完成済み sibling staging から ``os.link`` で排他的に公開する。
-    途中で late collision や I/O error が起きた場合は、この呼び出しが公開した inode
-    だけを逆順で rollback する。したがって allocation 後に外部 process が作成・
-    差し替えたファイルを上書きも削除もしない。
+    途中で late collision や I/O error が起きた場合は、identity 検査時点でこの呼び出しが
+    公開した inode と確認できた path だけを逆順で rollback する。path は identity 検査中に
+    安定していることを前提とし、検査時点の missing、非通常 file、identity mismatch は
+    保持する。identity 一致確認後から ``unlink()`` までの並行 path 交換は保証しない。
 
     複数 path を filesystem として完全に同時に見せることはできないが、正常 return
-    では成果物と manifest が全て存在し、例外 return では今回分を残さない。
-    process crash の回復 journal は別機能として扱う。
+    では成果物と manifest が全て存在する。例外 return では今回分を可能な範囲で
+    rollback する。process crash の回復 journal は別機能として扱う。
     """
 
     overwrite = exact_bool(overwrite, name="overwrite")
@@ -311,34 +327,4 @@ def publish_capture_generation(
     return owned_generation
 
 
-def write_capture_manifest(path: str | Path, manifest: CaptureManifest) -> Path:
-    """manifest を上書きせず atomic に公開し、その path を返す。
-
-    既存 path（broken symlink を含む）がある場合は ``FileExistsError`` を送出し、
-    その内容には触れない。capture artifact と一括確定する場合は
-    :func:`publish_capture_generation` を使う。
-    """
-
-    target = Path(path)
-    staged = _stage_manifest(directory=target.parent, manifest=manifest)
-    identity = _regular_file_identity(staged)
-    committed = False
-    try:
-        os.link(staged, target, follow_symlinks=False)
-        committed = True
-        _fsync_directories((target.parent,), best_effort=False)
-    except BaseException:
-        if committed:
-            _unlink_if_identity(target, identity)
-            _fsync_directories((target.parent,), best_effort=True)
-        raise
-    finally:
-        staged.unlink(missing_ok=True)
-    return target
-
-
-__all__ = [
-    "capture_manifest_path_for",
-    "publish_capture_generation",
-    "write_capture_manifest",
-]
+__all__ = ["capture_manifest_path_for"]

@@ -41,11 +41,11 @@ Grafixが自動生成する `*.capture.json` はprovenance出力として許可�
    `PYTHONDONTWRITEBYTECODE=1 /opt/anaconda3/envs/gl5/bin/python .agents/skills/grafix-art-loop/scripts/make_contact_sheet.py --run-dir <run_dir>`
 6. **短く選ぶ。** 成功候補が0ならworkflow失敗とする。成功候補が2件以上ならfresh judgeがcontact sheet（必要なら候補画像）だけを画像レベルで比較し、winnerと1〜3文の理由だけを返す。成功候補が1件ならそれを選ぶ。結果を `run.json`へ保存する。
 7. **必要時だけwinnerを直す。** clipping、焦点不明、余白崩れ、線密度破綻のいずれかが画像上で明確な場合だけ、同じmakerへ短い具体指示を返し、winnerを最大1回patch・export・画像確認する。それ以外は変更しない。
-8. **確定する。** 採用した `sketch.py` と `out.png` を `final/` へコピーする。SVGは明示要求時だけexportする。通常runではskill改善reportを作らず、明示的audit要求時またはworkflow失敗時だけ、最大3項目を `run.json.audit` に残す。
+8. **確定する。** 採用した `sketch.py` と `out.png` を `final/` へコピーし、最終PNGを画像確認する。その後 `data/output/png/codex_generated/` を作成し、最終PNGを `<run_id>.png` として複製する。SVGは明示要求時だけexportする。通常runではskill改善reportを作らず、明示的audit要求時またはworkflow失敗時だけ、最大3項目を `run.json.audit` に残す。
 
 ## Hard rules
 
-1. 画像、コード、ログ、一時物を含む全出力を現在の `run_dir` 配下だけに置く。
+1. 画像、コード、ログ、一時物を含むrun成果物は現在の `run_dir` 配下だけに置く。唯一の例外として、確定した最終PNGを `data/output/png/codex_generated/<run_id>.png` にも複製する。
 2. Pythonは `/opt/anaconda3/envs/gl5/bin/python` だけを使う。
 3. exportへ `PYTHONDONTWRITEBYTECODE=1` と `--overwrite` を付け、exit code 0と `out.png` の存在を確認する。
 4. Layerの `thickness` を `0 < thickness <= 0.005` にする。
@@ -57,4 +57,5 @@ Grafixが自動生成する `*.capture.json` はprovenance出力として許可�
 
 - 成功候補のコード、PNG、stdout、stderrと、短いwinner理由が揃っている。
 - final PNGを画像確認済みで、finalコードから再exportできる。
+- `data/output/png/codex_generated/<run_id>.png` に最終PNGの複製がある。
 - 旧来の多段階層、長文critique、ledger、role別JSON、通常時skill reportを生成していない。

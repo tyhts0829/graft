@@ -2,10 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 import pytest
 
+from grafix.core.gcode_params import GCodeParams
+from grafix.export.capture import CaptureFrame
+from grafix.interactive.parameter_gui.variation_panel import (
+    VariationThumbnailArtifact,
+)
 from grafix.interactive.runtime.variation_thumbnail_capture import (
     make_variation_thumbnail_capture,
     variation_thumbnail_output_path,
@@ -22,7 +27,7 @@ class _OwnedToken:
         self.discarded = True
 
 
-class _CaptureService:
+class _OwnedExportSpy:
     def __init__(self, *, tokens: tuple[_OwnedToken, ...]) -> None:
         self.tokens = iter(tokens)
         self.calls: list[
@@ -36,16 +41,16 @@ class _CaptureService:
             ]
         ] = []
 
-    def _export_owned(
+    def __call__(
         self,
-        frame: object,
+        frame: CaptureFrame,
         path: str | Path,
         *,
         overwrite: bool,
         split_gcode_layers: bool,
         output_size: tuple[int, int] | None,
-        gcode_params: object,
-    ) -> _OwnedToken:
+        gcode_params: GCodeParams | None,
+    ) -> VariationThumbnailArtifact:
         self.calls.append(
             (
                 frame,
@@ -74,22 +79,22 @@ def test_thumbnail_path_and_size_share_export_filename_policy(tmp_path: Path) ->
 def test_thumbnail_capture_reads_live_frame_and_returns_exact_owned_token(
     tmp_path: Path,
 ) -> None:
-    first_frame = object()
-    second_frame = object()
+    first_frame = cast(CaptureFrame, object())
+    second_frame = cast(CaptureFrame, object())
     frames = iter((first_frame, second_frame))
     first = _OwnedToken(tmp_path / "piece_candidate_001.png")
     second = _OwnedToken(tmp_path / "piece_candidate_002.png")
-    service = _CaptureService(tokens=(first, second))
+    export_owned = _OwnedExportSpy(tokens=(first, second))
     capture = make_variation_thumbnail_capture(
-        cast(Any, service),
-        frame_provider=lambda: cast(Any, next(frames)),
+        export_owned,
+        frame_provider=lambda: next(frames),
         base_path=tmp_path / "piece.png",
         canvas_size=(300, 200),
     )
 
     assert capture("candidate") is first
     assert capture("candidate") is second
-    assert service.calls == [
+    assert export_owned.calls == [
         (
             first_frame,
             tmp_path / "piece_candidate.png",
@@ -110,9 +115,11 @@ def test_thumbnail_capture_reads_live_frame_and_returns_exact_owned_token(
 
 
 def test_thumbnail_capture_rejects_missing_live_frame(tmp_path: Path) -> None:
-    service = _CaptureService(tokens=(_OwnedToken(tmp_path / "unused.png"),))
+    export_owned = _OwnedExportSpy(
+        tokens=(_OwnedToken(tmp_path / "unused.png"),),
+    )
     capture = make_variation_thumbnail_capture(
-        cast(Any, service),
+        export_owned,
         frame_provider=lambda: None,
         base_path=tmp_path / "piece.png",
         canvas_size=(100, 100),
@@ -121,4 +128,4 @@ def test_thumbnail_capture_rejects_missing_live_frame(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError, match="No rendered frame"):
         capture("candidate")
 
-    assert service.calls == []
+    assert export_owned.calls == []

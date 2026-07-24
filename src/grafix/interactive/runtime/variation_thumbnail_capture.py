@@ -4,15 +4,32 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import Protocol
 
+from grafix.core.gcode_params import GCodeParams
 from grafix.core.value_validation import positive_integer_pair
-from grafix.export.capture import CaptureFrame, CaptureService
+from grafix.export.capture import CaptureFrame
 from grafix.export.variation_batch import portable_filename_component
 from grafix.interactive.parameter_gui.variation_panel import (
     VariationThumbnailArtifact,
 )
 
 _THUMBNAIL_LONG_EDGE = 320
+
+
+class _OwnedCaptureExport(Protocol):
+    """Rollback ownership 付き capture export の bound callable 契約。"""
+
+    def __call__(
+        self,
+        frame: CaptureFrame,
+        path: str | Path,
+        *,
+        overwrite: bool,
+        split_gcode_layers: bool,
+        output_size: tuple[int, int] | None,
+        gcode_params: GCodeParams | None,
+    ) -> VariationThumbnailArtifact: ...
 
 
 def variation_thumbnail_output_path(base_path: Path, name: str) -> Path:
@@ -38,7 +55,7 @@ def variation_thumbnail_size(canvas_size: tuple[int, int]) -> tuple[int, int]:
 
 
 def make_variation_thumbnail_capture(
-    capture_service: CaptureService,
+    export_owned: _OwnedCaptureExport,
     *,
     frame_provider: Callable[[], CaptureFrame | None],
     base_path: Path,
@@ -54,7 +71,7 @@ def make_variation_thumbnail_capture(
         frame = frame_provider()
         if frame is None:
             raise RuntimeError("No rendered frame is available for a thumbnail.")
-        return capture_service._export_owned(
+        return export_owned(
             frame,
             variation_thumbnail_output_path(base_path, name),
             overwrite=False,

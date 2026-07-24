@@ -11,8 +11,8 @@ from typing import Protocol
 from grafix.core.capture_manifest import CaptureManifest, RecordingManifest
 from grafix.export.capture_publish import (
     _OwnedCaptureGeneration,
+    _publish_capture_generation,
     capture_manifest_path_for,
-    publish_capture_generation,
 )
 from grafix.core.capture_provenance import CaptureProvenance
 from grafix.core.export_format import ExportFormat
@@ -312,7 +312,7 @@ class CaptureService:
             provenance=frame.provenance,
             output_size=dimensions,
         )
-        return publish_capture_generation(
+        return _publish_capture_generation(
             staged_artifact_paths=staged,
             artifact_paths=finals,
             manifest_path=capture_manifest_path_for(output_path),
@@ -348,7 +348,7 @@ class CaptureService:
             output_size=output_size,
             recording=recording,
         )
-        return publish_capture_generation(
+        return _publish_capture_generation(
             staged_artifact_paths=(staged_path,),
             artifact_paths=(output_path,),
             manifest_path=capture_manifest_path_for(output_path),
