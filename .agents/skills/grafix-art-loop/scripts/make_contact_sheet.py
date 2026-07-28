@@ -17,6 +17,8 @@ except ModuleNotFoundError as exc:
 
 
 DEFAULT_MAX_LONG_EDGE = 2048
+REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
+DEFAULT_OUTPUT_DIR = REPOSITORY_ROOT / "data" / "output" / "png" / "codex_generated"
 OUTER_PADDING = 40
 GRID_GAP = 24
 LABEL_HEIGHT = 44
@@ -50,8 +52,9 @@ def _parse_args() -> argparse.Namespace:
         "--out",
         type=Path,
         help=(
-            "Output PNG path. Relative paths are resolved from --run-dir. "
-            "Defaults to <run_dir>/contact_sheet.png."
+            "Output PNG path. Relative paths are resolved from "
+            "data/output/png/codex_generated. "
+            "Defaults to <run_id>_contact_sheet.png in that directory."
         ),
     )
     parser.add_argument(
@@ -175,18 +178,18 @@ def limit_long_edge(image: Image.Image, max_long_edge: int) -> Image.Image:
 
 
 def resolve_output_path(run_dir: Path, requested: Path | None) -> Path:
-    """出力先を run directory 配下に限定して返す。"""
+    """出力先を既定の codex_generated directory 配下に限定して返す。"""
 
+    output_dir = DEFAULT_OUTPUT_DIR.resolve()
     if requested is None:
-        output = run_dir / "contact_sheet.png"
-    elif requested.is_absolute():
-        output = requested
+        output = output_dir / f"{run_dir.name}_contact_sheet.png"
     else:
-        output = run_dir / requested
+        requested = requested.expanduser()
+        output = requested if requested.is_absolute() else output_dir / requested
 
-    output = output.expanduser().resolve()
-    if not output.is_relative_to(run_dir):
-        raise ValueError(f"output must be inside run directory: {output}")
+    output = output.resolve()
+    if not output.is_relative_to(output_dir):
+        raise ValueError(f"output must be inside output directory: {output_dir}")
     return output
 
 

@@ -163,6 +163,15 @@ Closing the Inspector hides it instead of stopping the artwork; `Cmd/Ctrl+I` sho
 again. Preview/Inspector placement, Inspector visibility, and UI scale are saved per
 sketch and clamped to the available screens on the next launch.
 
+`run()` defines `render_scale` as `float | None = None`. Passing a number makes the
+preview size code-managed: `canvas_size * render_scale` takes priority over any preview
+size saved in WorkspaceState (saved placement and Inspector state are still restored).
+Omitting it, or passing `None`, makes the preview size workspace-managed: the last manual
+resize is restored, or a 1x size is used when no WorkspaceState exists. In either mode, a
+preview that exceeds the available screen is reduced proportionally to fit. This setting
+only controls the interactive preview; PNG export resolution is controlled independently
+by `export.png.scale`.
+
 Use `RuntimeLimits` for headless rendering and `RuntimeLimitProfiles` for interactive
 preview/final limits:
 

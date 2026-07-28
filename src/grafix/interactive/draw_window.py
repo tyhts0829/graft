@@ -20,9 +20,11 @@ def create_draw_window(options: RenderOptions, *, render_scale: float) -> Window
     # 線描画を滑らかにするために MSAA を有効化
     config = Config(double_buffer=True, sample_buffers=1, samples=4)  # type: ignore[abstract]
     canvas_w, canvas_h = options.canvas_size
+    window_width = int(canvas_w * render_scale)
+    window_height = int(canvas_h * render_scale)
     window = pyglet.window.Window(  # type: ignore[abstract]
-        width=int(canvas_w * render_scale),
-        height=int(canvas_h * render_scale),
+        width=window_width,
+        height=window_height,
         # viewport は DrawWindowSystem が毎 frame framebuffer size へ同期する。
         # 小さな画面や作業配置に合わせて preview を調整できるようにする。
         resizable=True,
@@ -30,7 +32,10 @@ def create_draw_window(options: RenderOptions, *, render_scale: float) -> Window
         config=config,
     )
     try:
-        window.set_minimum_size(MINIMUM_DRAW_WINDOW_WIDTH, MINIMUM_DRAW_WINDOW_HEIGHT)
+        window.set_minimum_size(
+            min(MINIMUM_DRAW_WINDOW_WIDTH, window_width),
+            min(MINIMUM_DRAW_WINDOW_HEIGHT, window_height),
+        )
     except BaseException:
         try:
             close_pyglet_window(window)

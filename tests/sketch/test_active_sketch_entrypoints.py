@@ -19,8 +19,7 @@ _SKETCH_ROOT = _PROJECT_ROOT / "sketch"
 def _has_main_guard_with_draw(path: Path) -> bool:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     has_draw = any(
-        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.name == "draw"
+        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "draw"
         for node in tree.body
     )
     has_main_guard = any(
@@ -39,11 +38,7 @@ def _active_entrypoints() -> tuple[Path, ...]:
         for path in _SKETCH_ROOT.rglob("*.py")
         if "agent_loop" not in path.relative_to(_SKETCH_ROOT).parts
     )
-    return tuple(
-        path
-        for path in sorted(paths)
-        if _has_main_guard_with_draw(path)
-    )
+    return tuple(path for path in sorted(paths) if _has_main_guard_with_draw(path))
 
 
 _ENTRYPOINTS = _active_entrypoints()
@@ -83,12 +78,14 @@ def smoke_run(draw, *args, **kwargs):
         choices=("7bit", "14bit"),
     )
     exact_integer(kwargs.get("n_worker", 1), name="n_worker", minimum=0)
-    finite_real(
-        kwargs.get("render_scale", 1.0),
-        name="render_scale",
-        minimum=0.0,
-        minimum_inclusive=False,
-    )
+    render_scale = kwargs.get("render_scale")
+    if render_scale is not None:
+        finite_real(
+            render_scale,
+            name="render_scale",
+            minimum=0.0,
+            minimum_inclusive=False,
+        )
     timeout = kwargs.get("evaluation_timeout", 5.0)
     if timeout is not None:
         finite_real(

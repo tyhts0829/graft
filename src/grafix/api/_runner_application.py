@@ -104,6 +104,7 @@ class _InteractiveApplication:
         config_fallback: RuntimeConfigFallback | None,
         options: RenderOptions,
         preview_scale: float,
+        restore_preview_size: bool,
         gui_enabled: bool,
         persistence_enabled: bool,
         midi_port_name: str | None,
@@ -120,6 +121,7 @@ class _InteractiveApplication:
         self._config_fallback = config_fallback
         self._options = options
         self._preview_scale = preview_scale
+        self._restore_preview_size = restore_preview_size
         self._gui_enabled = gui_enabled
         self._persistence_enabled = persistence_enabled
         self._midi_port_name = midi_port_name
@@ -207,14 +209,13 @@ class _InteractiveApplication:
             path=workspace_path,
             preview_size=(preview_width, preview_height),
             inspector_size=self._config.parameter_gui_window_size,
+            restore_preview_size=self._restore_preview_size,
             preferred_preview_position=self._config.window_pos_draw,
             preferred_inspector_position=self._config.window_pos_parameter_gui,
         )
         self._workspace = workspace
 
-        param_store_path = (
-            default_store_path if self._persistence_enabled else None
-        )
+        param_store_path = default_store_path if self._persistence_enabled else None
         parameter_session = ParameterSession(
             primary_path=param_store_path,
             gui_enabled=self._gui_enabled,
@@ -242,11 +243,7 @@ class _InteractiveApplication:
             mode=self._midi_mode,
             snapshot_path=midi_path,
             priority_inputs=self._config.midi_inputs,
-            diagnostics=(
-                None
-                if self._monitor is None
-                else self._monitor.diagnostic_center
-            ),
+            diagnostics=(None if self._monitor is None else self._monitor.diagnostic_center),
         )
         self._midi_session = midi_session
         # DrawWindowSystem constructor が成功するまでは application が所有する。
@@ -288,7 +285,7 @@ class _InteractiveApplication:
         ]
         if self._gui_enabled:
             self._compose_gui(tasks)
-        elif workspace.restored:
+        else:
             workspace.apply_layout()
 
         pyglet.clock.schedule_once(self._activation_callback, 0.0)
@@ -296,9 +293,7 @@ class _InteractiveApplication:
         self._loop = MultiWindowLoop(
             tuple(tasks),
             fps=self._frame_rate,
-            on_frame_start=(
-                None if self._monitor is None else self._monitor.tick_frame
-            ),
+            on_frame_start=(None if self._monitor is None else self._monitor.tick_frame),
             on_frame_finished=draw_window.record_full_loop,
             on_scheduler_jitter=draw_window.record_scheduler_jitter,
         )
@@ -417,9 +412,7 @@ class _InteractiveApplication:
             ui_scale=workspace.ui_scale,
             catalog=gui_catalog,
             catalog_provider=self._current_parameter_gui_catalog,
-            on_parameter_revision_created=(
-                draw_window.record_parameter_revision_created
-            ),
+            on_parameter_revision_created=(draw_window.record_parameter_revision_created),
         )
         self._gui = gui
         workspace.attach_inspector(gui.window)
@@ -564,7 +557,7 @@ def _run_interactive_application(
     background_color: tuple[float, float, float] = (1.0, 1.0, 1.0),
     line_thickness: float = 0.001,
     line_color: tuple[float, float, float] = (0.0, 0.0, 0.0),
-    render_scale: float = 1.0,
+    render_scale: float | None = None,
     canvas_size: tuple[int, int] = (800, 800),
     parameter_gui: bool = True,
     parameter_persistence: bool = True,
@@ -598,8 +591,11 @@ def _run_interactive_application(
         ``0.001`` は短辺の 0.1% に相当する。
     line_color : tuple[float, float, float]
         線色 RGB。既定は黒。
-    render_scale : float
-        キャンバス寸法に掛けるピクセル倍率。高精細プレビュー用。
+    render_scale : float or None
+        キャンバス寸法に掛ける preview のピクセル倍率。数値は
+        WorkspaceState の保存サイズより優先し、画面超過時のみアスペクト比を
+        保って縮小する。``None`` は保存サイズを復元し、未保存なら
+        実効倍率 1.0 を使う。
     canvas_size : tuple[int, int]
         キャンバス寸法（任意単位）。投影行列生成とウィンドウサイズ決定に使用。
     parameter_gui : bool
@@ -665,17 +661,20 @@ def _run_interactive_application(
         )
     )
     frame_rate = finite_real(fps, name="fps")
-    preview_scale = finite_real(
-        render_scale,
-        name="render_scale",
-        minimum=0.0,
-        minimum_inclusive=False,
+    restore_preview_size = render_scale is None
+    preview_scale = (
+        1.0
+        if restore_preview_size
+        else finite_real(
+            render_scale,
+            name="render_scale",
+            minimum=0.0,
+            minimum_inclusive=False,
+        )
     )
     capture_seed = None if seed is None else exact_integer(seed, name="seed")
     if type(runtime_limit_profiles) is not RuntimeLimitProfiles:
-        raise TypeError(
-            "runtime_limit_profiles は RuntimeLimitProfiles である必要があります"
-        )
+        raise TypeError("runtime_limit_profiles は RuntimeLimitProfiles である必要があります")
 
     if config is not None and not isinstance(config, RuntimeConfig):
         raise TypeError("config は RuntimeConfig または None である必要があります")
@@ -683,9 +682,7 @@ def _run_interactive_application(
         config_fallback,
         RuntimeConfigFallback,
     ):
-        raise TypeError(
-            "config_fallback は RuntimeConfigFallback または None である必要があります"
-        )
+        raise TypeError("config_fallback は RuntimeConfigFallback または None である必要があります")
     if config is not None and config_path is not None:
         raise ValueError("config と config_path は同時に指定できません")
     if config is None and config_fallback is not None:
@@ -708,6 +705,7 @@ def _run_interactive_application(
         config_fallback=effective_fallback,
         options=options,
         preview_scale=preview_scale,
+        restore_preview_size=restore_preview_size,
         gui_enabled=gui_enabled,
         persistence_enabled=persistence_enabled,
         midi_port_name=midi_port_name,

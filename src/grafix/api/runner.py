@@ -22,7 +22,7 @@ def run(
     background_color: tuple[float, float, float] = (1.0, 1.0, 1.0),
     line_thickness: float = 0.001,
     line_color: tuple[float, float, float] = (0.0, 0.0, 0.0),
-    render_scale: float = 1.0,
+    render_scale: float | None = None,
     canvas_size: tuple[int, int] = (800, 800),
     parameter_gui: bool = True,
     parameter_persistence: bool = True,
@@ -52,8 +52,12 @@ def run(
         Layer で未指定の場合の線幅。
     line_color : tuple[float, float, float], optional
         Layer で未指定の場合の線色 RGB。
-    render_scale : float, optional
-        preview のピクセル倍率。
+    render_scale : float or None, optional
+        preview のピクセル倍率。数値を指定した場合は、保存済みの
+        WorkspaceState よりも現在の倍率によるサイズを優先する。画面を
+        超える場合のみ、アスペクト比を保って縮小する。``None`` では
+        保存済み preview サイズを復元し、保存状態がなければ 1.0 倍を
+        使用する。
     canvas_size : tuple[int, int], optional
         論理キャンバス寸法。
     parameter_gui : bool, optional

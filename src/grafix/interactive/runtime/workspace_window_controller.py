@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import logging
+from math import isfinite
 from pathlib import Path
+from sys import platform as _PLATFORM
 from typing import Any
 
 import pyglet
 from pyglet.window import key
 
+from grafix.interactive.draw_window import (
+    MINIMUM_DRAW_WINDOW_HEIGHT,
+    MINIMUM_DRAW_WINDOW_WIDTH,
+)
 from grafix.interactive.diagnostics import DiagnosticEvent
 from grafix.interactive.runtime.window_layout import (
     DEFAULT_SCREEN_MARGIN,
@@ -17,6 +23,7 @@ from grafix.interactive.runtime.window_layout import (
 )
 from grafix.interactive.runtime.workspace_state import (
     WorkspaceState,
+    clamp_window_rect,
     clamp_workspace_state,
     load_workspace_state,
     save_workspace_state,
@@ -28,15 +35,29 @@ _logger = logging.getLogger(__name__)
 def _window_content_size(window: Any) -> tuple[int, int] | None:
     """window から現在の logical content size を得る。"""
 
-    # pyglet dpi_scaling="platform" では width/get_size() が framebuffer
-    # pixel（Retina なら2倍）なのに対し、set_size() は logical request 単位を
-    # 受け取る。layout と setter の単位を揃えるため requested size を優先する。
+    # pyglet の requested size は set_size() でしか更新されず、ユーザーの
+    # drag resize を反映しない。現在の framebuffer を取得し、set_size() が
+    # logical 単位を使う backend だけ backing scale で割って同じ単位へ戻す。
     try:
-        requested_width, requested_height = window.get_requested_size()
-        width = int(requested_width)
-        height = int(requested_height)
-    except (TypeError, ValueError, OverflowError):
-        return None
+        framebuffer_width, framebuffer_height = window.get_framebuffer_size()
+        dpi_scaling = pyglet.options["dpi_scaling"]
+        uses_scaled_size = (_PLATFORM == "darwin" and dpi_scaling != "real") or (
+            _PLATFORM == "win32" and dpi_scaling in ("scaled", "stretch")
+        )
+        scale = float(window.scale) if uses_scaled_size else 1.0
+        if not isfinite(scale) or scale <= 0.0:
+            raise ValueError("window scale must be positive and finite")
+        width = int(round(float(framebuffer_width) / scale))
+        height = int(round(float(framebuffer_height) / scale))
+    except (AttributeError, TypeError, ValueError, OverflowError, ZeroDivisionError):
+        # test double や未完成の platform backend では現在値を取得できない場合がある。
+        # その場合だけ requested size へ退避する。
+        try:
+            requested_width, requested_height = window.get_requested_size()
+            width = int(requested_width)
+            height = int(requested_height)
+        except (AttributeError, TypeError, ValueError, OverflowError):
+            return None
     if width <= 0 or height <= 0:
         return None
     return width, height
@@ -101,12 +122,7 @@ def _macos_visible_screen_bounds(screen: Any, full: WindowRect) -> WindowRect | 
     scale_y = float(full.height) / frame_h
     candidate = WindowRect(
         x=int(round(float(full.x) + (visible_x - frame_x) * scale_x)),
-        y=int(
-            round(
-                float(full.y)
-                + (frame_y + frame_h - (visible_y + visible_h)) * scale_y
-            )
-        ),
+        y=int(round(float(full.y) + (frame_y + frame_h - (visible_y + visible_h)) * scale_y)),
         width=int(round(visible_w * scale_x)),
         height=int(round(visible_h * scale_y)),
     )
@@ -163,12 +179,7 @@ def _rect_is_inside(rect: WindowRect, bounds: WindowRect) -> bool:
 
 
 def _rects_overlap(a: WindowRect, b: WindowRect) -> bool:
-    return not (
-        a.right <= b.x
-        or b.right <= a.x
-        or a.bottom <= b.y
-        or b.bottom <= a.y
-    )
+    return not (a.right <= b.x or b.right <= a.x or a.bottom <= b.y or b.bottom <= a.y)
 
 
 def _safe_explicit_layout_bounds(bounds: WindowRect) -> WindowRect | None:
@@ -209,33 +220,127 @@ def _apply_window_rect(window: Any, rect: WindowRect) -> None:
     window.set_location(int(rect.x), int(rect.y))
 
 
+def _apply_preview_rect(window: Any, rect: WindowRect) -> None:
+    """画面内へ収めた preview size と native minimum を整合させる。"""
+
+    try:
+        window.set_minimum_size(
+            min(MINIMUM_DRAW_WINDOW_WIDTH, int(rect.width)),
+            min(MINIMUM_DRAW_WINDOW_HEIGHT, int(rect.height)),
+        )
+    except AttributeError:
+        # layout の unit test double は minimum-size API を持たない。
+        pass
+    _apply_window_rect(window, rect)
+
+
+def _clamp_rect_preserving_aspect(
+    rect: WindowRect,
+    *,
+    screen_bounds: tuple[WindowRect, ...],
+) -> WindowRect:
+    """rect を最適な screen へ、aspect ratio を保って収める。"""
+
+    independently_clamped = clamp_window_rect(rect, screen_bounds)
+    target = next(
+        (bounds for bounds in screen_bounds if _rect_is_inside(independently_clamped, bounds)),
+        screen_bounds[0],
+    )
+    scale = min(
+        1.0,
+        float(target.width) / float(rect.width),
+        float(target.height) / float(rect.height),
+    )
+    width = max(1, min(target.width, int(round(float(rect.width) * scale))))
+    height = max(1, min(target.height, int(round(float(rect.height) * scale))))
+    return clamp_window_rect(
+        WindowRect(rect.x, rect.y, width, height),
+        (target,),
+    )
+
+
 def _apply_workspace_layout(
     *,
     preview_window: Any,
     inspector_window: Any | None,
     state: WorkspaceState,
+    restore_preview_size: bool = True,
 ) -> bool:
-    """保存 layout を現在 screen へ clamp して window へ適用する。"""
+    """保存 layout を現在 screen へ clamp して window へ適用する。
+
+    ``restore_preview_size=False`` では保存済みの位置だけを使い、
+    preview window が保持している現在の natural size を優先する。
+    """
 
     bounds = _available_screen_bounds(preview_window)
     if not bounds:
         return False
-    clamped = clamp_workspace_state(state, screen_bounds=bounds)
-
-    if _window_content_size(preview_window) is None:
+    preview_size = _window_content_size(preview_window)
+    if preview_size is None:
         return False
     if inspector_window is not None:
-        inspector_rect = clamped.inspector_rect
-        if inspector_rect is None:
+        if state.inspector_rect is None:
             return False
         if _window_content_size(inspector_window) is None:
             return False
 
-    _apply_window_rect(preview_window, clamped.preview_rect)
+    effective_state = state
+    if not restore_preview_size:
+        effective_state = WorkspaceState(
+            preview_rect=WindowRect(
+                state.preview_rect.x,
+                state.preview_rect.y,
+                preview_size[0],
+                preview_size[1],
+            ),
+            inspector_rect=state.inspector_rect,
+            inspector_visible=state.inspector_visible,
+            ui_scale=state.ui_scale,
+        )
+    clamped = clamp_workspace_state(effective_state, screen_bounds=bounds)
+    if not restore_preview_size:
+        clamped = WorkspaceState(
+            preview_rect=_clamp_rect_preserving_aspect(
+                effective_state.preview_rect,
+                screen_bounds=bounds,
+            ),
+            inspector_rect=clamped.inspector_rect,
+            inspector_visible=clamped.inspector_visible,
+            ui_scale=clamped.ui_scale,
+        )
+
+    _apply_preview_rect(preview_window, clamped.preview_rect)
     if inspector_window is not None:
         assert clamped.inspector_rect is not None
         _apply_window_rect(inspector_window, clamped.inspector_rect)
         inspector_window.set_visible(bool(clamped.inspector_visible))
+    return True
+
+
+def _apply_initial_preview_layout(
+    *,
+    preview_window: Any,
+    preferred_preview_position: tuple[int, int],
+) -> bool:
+    """single preview の natural size を保ち、必要時だけ縮小する。"""
+
+    preview_size = _window_content_size(preview_window)
+    if preview_size is None:
+        return False
+    usable = _usable_screen_bounds(preview_window, preferred_preview_position)
+    if usable is None:
+        return False
+    safe = _safe_explicit_layout_bounds(usable) or usable
+    target = _clamp_rect_preserving_aspect(
+        WindowRect(
+            int(preferred_preview_position[0]),
+            int(preferred_preview_position[1]),
+            preview_size[0],
+            preview_size[1],
+        ),
+        screen_bounds=(safe,),
+    )
+    _apply_preview_rect(preview_window, target)
     return True
 
 
@@ -325,9 +430,7 @@ def _apply_initial_window_layout(
     )
     preview_safe_bounds = _safe_explicit_layout_bounds(usable_bounds)
     gui_safe_bounds = (
-        None
-        if gui_usable_bounds is None
-        else _safe_explicit_layout_bounds(gui_usable_bounds)
+        None if gui_usable_bounds is None else _safe_explicit_layout_bounds(gui_usable_bounds)
     )
 
     # 明示 config が既に安全なら、single / dual monitor を問わずユーザーの配置と
@@ -356,14 +459,11 @@ def _apply_initial_window_layout(
         _logger.debug("Initial window layout could not be calculated", exc_info=True)
         return False
 
-    preview_target_size = (layout.preview.width, layout.preview.height)
     gui_target_size = (layout.parameter_gui.width, layout.parameter_gui.height)
 
-    if preview_target_size != preview_size:
-        preview_window.set_size(*preview_target_size)
+    _apply_preview_rect(preview_window, layout.preview)
     if gui_target_size != gui_size:
         parameter_gui_window.set_size(*gui_target_size)
-    preview_window.set_location(layout.preview.x, layout.preview.y)
     parameter_gui_window.set_location(
         layout.parameter_gui.x,
         layout.parameter_gui.y,
@@ -434,6 +534,7 @@ def _install_inspector_visibility_shortcut(
     preview_window.push_handlers(on_key_press=toggle_inspector)
     inspector_window.push_handlers(on_key_press=toggle_inspector)
 
+
 class WorkspaceWindowController:
     """一 session の preview/Inspector window state と配置 policy を所有する。"""
 
@@ -443,12 +544,16 @@ class WorkspaceWindowController:
         path: Path,
         state: WorkspaceState,
         restored: bool,
+        restore_preview_size: bool,
         preferred_preview_position: tuple[int, int],
         preferred_inspector_position: tuple[int, int],
     ) -> None:
         self._path = path
         self._state = state
         self._restored = bool(restored)
+        if not isinstance(restore_preview_size, bool):
+            raise TypeError("restore_preview_size は bool である必要があります")
+        self._restore_preview_size = restore_preview_size
         self._preferred_preview_position = preferred_preview_position
         self._preferred_inspector_position = preferred_inspector_position
         self._preview_window: Any | None = None
@@ -462,6 +567,7 @@ class WorkspaceWindowController:
         path: Path,
         preview_size: tuple[int, int],
         inspector_size: tuple[int, int],
+        restore_preview_size: bool,
         preferred_preview_position: tuple[int, int],
         preferred_inspector_position: tuple[int, int],
     ) -> WorkspaceWindowController:
@@ -488,6 +594,7 @@ class WorkspaceWindowController:
             path=path,
             state=result.state,
             restored=result.restored,
+            restore_preview_size=restore_preview_size,
             preferred_preview_position=preferred_preview_position,
             preferred_inspector_position=preferred_inspector_position,
         )
@@ -536,16 +643,23 @@ class WorkspaceWindowController:
                 preview_window=preview,
                 inspector_window=inspector,
                 state=self._state,
+                restore_preview_size=self._restore_preview_size,
             )
-        if inspector is not None and not applied:
-            applied = _apply_initial_window_layout(
-                preview_window=preview,
-                parameter_gui_window=inspector,
-                preferred_preview_position=self._preferred_preview_position,
-                preferred_parameter_gui_position=self._preferred_inspector_position,
-            )
-            if not applied:
-                inspector.set_location(*self._preferred_inspector_position)
+        if not applied:
+            if inspector is None:
+                applied = _apply_initial_preview_layout(
+                    preview_window=preview,
+                    preferred_preview_position=self._preferred_preview_position,
+                )
+            else:
+                applied = _apply_initial_window_layout(
+                    preview_window=preview,
+                    parameter_gui_window=inspector,
+                    preferred_preview_position=self._preferred_preview_position,
+                    preferred_parameter_gui_position=self._preferred_inspector_position,
+                )
+                if not applied:
+                    inspector.set_location(*self._preferred_inspector_position)
         return applied
 
     def set_inspector_visible(self, visible: bool) -> None:

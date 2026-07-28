@@ -94,9 +94,7 @@ class _RunnerCompositionHarness:
         self.schema_projections: list[
             tuple[OperationCatalog, PresetCatalog, KnownOperationSchemaSnapshot]
         ] = []
-        self.gui_projections: list[
-            tuple[OperationCatalog, PresetCatalog, ParameterGuiCatalog]
-        ] = []
+        self.gui_projections: list[tuple[OperationCatalog, PresetCatalog, ParameterGuiCatalog]] = []
         self.draw_window_kwargs: dict[str, object] | None = None
         self.gui_kwargs: dict[str, object] | None = None
         self.draw_window: Any | None = None
@@ -107,6 +105,7 @@ class _RunnerCompositionHarness:
         self.midi_session_kwargs: list[dict[str, object]] = []
         self.output_path_calls: list[dict[str, object]] = []
         self.thumbnail_export_wiring: list[object] = []
+        self.workspace_load_kwargs: dict[str, object] | None = None
 
         harness = self
         real_schema_projection = runner_module.known_operation_schema_snapshot
@@ -154,9 +153,7 @@ class _RunnerCompositionHarness:
                 self.initial_known_operations = known_operations
                 self.known_operations = known_operations
                 self.replacements: list[KnownOperationSchemaSnapshot] = []
-                self.persisted: list[
-                    tuple[KnownOperationSchemaSnapshot, bool, object | None]
-                ] = []
+                self.persisted: list[tuple[KnownOperationSchemaSnapshot, bool, object | None]] = []
                 harness.parameter_session = self
 
             def capture_state(self) -> ParameterCaptureState:
@@ -277,7 +274,8 @@ class _RunnerCompositionHarness:
 
         class WorkspaceWindowController:
             @staticmethod
-            def load(**_kwargs: object) -> _Workspace:
+            def load(**kwargs: object) -> _Workspace:
+                harness.workspace_load_kwargs = dict(kwargs)
                 return workspace
 
         class MultiWindowLoop:
@@ -311,6 +309,7 @@ class _RunnerCompositionHarness:
             "WorkspaceWindowController",
             WorkspaceWindowController,
         )
+
         def create_midi_session(**kwargs: object) -> MidiSession:
             harness.midi_session_kwargs.append(dict(kwargs))
             return MidiSession()
@@ -325,15 +324,13 @@ class _RunnerCompositionHarness:
             "default_param_store_path",
             lambda *_args, **_kwargs: tmp_path / "parameters.json",
         )
+
         def output_path_for_draw(
             *_args: object,
             **kwargs: object,
         ) -> Path:
             harness.output_path_calls.append(dict(kwargs))
-            return (
-                tmp_path
-                / f"{kwargs.get('kind', 'output')}.{kwargs.get('ext', 'dat')}"
-            )
+            return tmp_path / f"{kwargs.get('kind', 'output')}.{kwargs.get('ext', 'dat')}"
 
         monkeypatch.setattr(
             runner_module,
@@ -361,10 +358,18 @@ class _RunnerCompositionHarness:
         monkeypatch.setattr(runner_module.pyglet.clock, "schedule_once", lambda *_args: None)
         monkeypatch.setattr(runner_module.pyglet.clock, "unschedule", lambda *_args: None)
 
-    def run(self, draw: Callable[[float], object]) -> None:
+    def run(
+        self,
+        draw: Callable[[float], object],
+        *,
+        render_scale: float | None = None,
+        canvas_size: tuple[int, int] = (800, 800),
+    ) -> None:
         runner_module._run_interactive_application(
             cast(Callable[[float], SceneItem], draw),
             config=self.config,
+            render_scale=render_scale,
+            canvas_size=canvas_size,
             parameter_gui=self.gui_enabled,
             parameter_persistence=False,
             midi_port_name=None,
@@ -408,18 +413,14 @@ def test_runner_normal_lifetime_persists_then_closes_owned_resources(
         "close midi",
     ]
     assert harness.midi_close_count == 1
-    midi_path_calls = [
-        call for call in harness.output_path_calls if call.get("kind") == "midi"
-    ]
+    midi_path_calls = [call for call in harness.output_path_calls if call.get("kind") == "midi"]
     assert len(midi_path_calls) == 1
     assert len(harness.midi_session_kwargs) == 1
     assert harness.midi_session_kwargs[0]["snapshot_path"] == tmp_path / "midi.json"
     assert "profile_name" not in harness.midi_session_kwargs[0]
     assert "save_dir" not in harness.midi_session_kwargs[0]
     assert harness.draw_window is not None
-    assert harness.thumbnail_export_wiring == [
-        harness.draw_window.capture_service._export_owned
-    ]
+    assert harness.thumbnail_export_wiring == [harness.draw_window.capture_service._export_owned]
 
 
 def test_runner_projects_one_config_snapshot_and_switches_gui_by_generation_identity(
@@ -526,6 +527,40 @@ def test_runner_without_gui_adopts_last_draw_generation_before_persist(
     assert session.replacements == [reloaded_schema]
     assert session.persisted[0][0] is reloaded_schema
     assert session.persisted[0][1] is True
+
+
+@pytest.mark.parametrize(
+    ("render_scale", "preview_size", "restore_preview_size"),
+    [
+        (8.0, (1184, 1680), False),
+        (1.0, (148, 210), False),
+        (None, (148, 210), True),
+    ],
+)
+def test_runner_composes_preview_size_ownership_policy(
+    render_scale: float | None,
+    preview_size: tuple[int, int],
+    restore_preview_size: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = _RunnerCompositionHarness(
+        monkeypatch=monkeypatch,
+        tmp_path=tmp_path,
+        definitions=_definitions(),
+        gui_enabled=False,
+    )
+
+    harness.run(
+        lambda _t: None,
+        render_scale=render_scale,
+        canvas_size=(148, 210),
+    )
+
+    assert harness.workspace_load_kwargs is not None
+    assert harness.workspace_load_kwargs["preview_size"] == preview_size
+    assert harness.workspace_load_kwargs["restore_preview_size"] is restore_preview_size
+    assert "apply layout" in harness.calls
 
 
 @pytest.mark.parametrize("failure_stage", ["draw", "gui"])

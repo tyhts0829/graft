@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any
+from typing import Any, get_type_hints
 
 import pytest
 import pyglet
@@ -161,6 +161,32 @@ def test_run_rejects_invalid_render_scale_before_side_effect(
         error_type=error_type,
         match="render_scale",
     )
+
+
+def test_public_run_defaults_render_scale_to_workspace_managed() -> None:
+    parameter = inspect.signature(runner_module.run).parameters["render_scale"]
+
+    assert parameter.default is None
+    assert get_type_hints(runner_module.run)["render_scale"] == float | None
+
+
+def test_run_accepts_workspace_managed_render_scale_before_side_effect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class ConfigPathReached(RuntimeError):
+        pass
+
+    def stop_after_validation(_path: object) -> None:
+        raise ConfigPathReached
+
+    monkeypatch.setattr(
+        application_module,
+        "runtime_config_with_fallback",
+        stop_after_validation,
+    )
+
+    with pytest.raises(ConfigPathReached):
+        runner_module.run(_draw, render_scale=None)
 
 
 @pytest.mark.parametrize("seed", [True, 1.0, "1"])

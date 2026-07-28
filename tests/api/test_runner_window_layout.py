@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pyglet
+import pytest
 
 pyglet.options["shadow_window"] = False
 
@@ -143,6 +144,42 @@ def test_apply_initial_layout_uses_requested_size_in_platform_dpi_mode() -> None
     assert gui_x - preview_x == 900 + 16
 
 
+def test_window_content_size_uses_current_hidpi_framebuffer_after_manual_resize(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class ManuallyResizedWindow:
+        scale = 2.0
+
+        def get_framebuffer_size(self) -> tuple[int, int]:
+            return 1480, 2100
+
+        def get_requested_size(self) -> tuple[int, int]:
+            return 592, 840
+
+    monkeypatch.setattr(workspace_module, "_PLATFORM", "darwin")
+    monkeypatch.setitem(pyglet.options, "dpi_scaling", "platform")
+
+    assert workspace_module._window_content_size(ManuallyResizedWindow()) == (740, 1050)
+
+
+def test_window_content_size_keeps_platform_pixels_on_windows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class ManuallyResizedWindow:
+        scale = 1.5
+
+        def get_framebuffer_size(self) -> tuple[int, int]:
+            return 800, 600
+
+        def get_requested_size(self) -> tuple[int, int]:
+            return 640, 480
+
+    monkeypatch.setattr(workspace_module, "_PLATFORM", "win32")
+    monkeypatch.setitem(pyglet.options, "dpi_scaling", "platform")
+
+    assert workspace_module._window_content_size(ManuallyResizedWindow()) == (800, 600)
+
+
 def test_apply_initial_layout_does_not_call_set_size_when_natural_sizes_fit() -> None:
     screen = SimpleNamespace(x=0, y=0, width=2400, height=1400)
     preview = _Window(900, 900, screen)
@@ -160,6 +197,36 @@ def test_apply_initial_layout_does_not_call_set_size_when_natural_sizes_fit() ->
     assert gui.size_calls == []
     assert preview.location_calls
     assert gui.location_calls
+
+
+def test_initial_pair_layout_relaxes_preview_minimum_on_a_small_screen() -> None:
+    screen = SimpleNamespace(x=0, y=0, width=500, height=500)
+
+    class MinimumAwareWindow(_Window):
+        def __init__(self, width: int, height: int, screen: Any) -> None:
+            super().__init__(width, height, screen)
+            self.minimum_size = (min(320, width), min(320, height))
+
+        def set_minimum_size(self, width: int, height: int) -> None:
+            self.minimum_size = (int(width), int(height))
+
+        def set_size(self, width: int, height: int) -> None:
+            assert width >= self.minimum_size[0]
+            assert height >= self.minimum_size[1]
+            super().set_size(width, height)
+
+    preview = MinimumAwareWindow(100, 1000, screen)
+    gui = _Window(100, 100, screen)
+
+    assert workspace_module._apply_initial_window_layout(
+        preview_window=preview,
+        parameter_gui_window=gui,
+        preferred_preview_position=(100, 100),
+        preferred_parameter_gui_position=(300, 100),
+    )
+    assert (preview.width, preview.height) == (44, 436)
+    assert preview.location_calls[-1] == (100, 32)
+    assert preview.minimum_size == (44, 320)
 
 
 def test_apply_initial_layout_preserves_safe_dual_monitor_config() -> None:
@@ -400,6 +467,47 @@ def test_workspace_snapshot_keeps_loaded_ui_scale_and_hidden_inspector() -> None
     )
 
 
+def test_workspace_snapshot_persists_current_manual_resize_in_logical_units(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    screen = SimpleNamespace(x=0, y=0, width=2560, height=1600)
+
+    class ManuallyResizedWindow(_WorkspaceWindow):
+        scale = 2.0
+
+        def get_framebuffer_size(self) -> tuple[int, int]:
+            return 1480, 2100
+
+        def get_requested_size(self) -> tuple[int, int]:
+            return 592, 840
+
+    preview = ManuallyResizedWindow(
+        rect=WindowRect(40, 50, 592, 840),
+        screen=screen,
+    )
+    previous = WorkspaceState(
+        preview_rect=WindowRect(0, 0, 592, 840),
+        inspector_rect=None,
+        inspector_visible=False,
+        ui_scale=1.25,
+    )
+    monkeypatch.setattr(workspace_module, "_PLATFORM", "darwin")
+    monkeypatch.setitem(pyglet.options, "dpi_scaling", "platform")
+
+    state = workspace_module._workspace_state_from_windows(
+        preview_window=preview,
+        inspector_window=None,
+        previous=previous,
+    )
+
+    assert state == WorkspaceState(
+        preview_rect=WindowRect(40, 50, 740, 1050),
+        inspector_rect=None,
+        inspector_visible=False,
+        ui_scale=1.25,
+    )
+
+
 def test_shutdown_persists_current_workspace(tmp_path: Path) -> None:
     screen = SimpleNamespace(x=0, y=0, width=1440, height=900)
     preview = _WorkspaceWindow(rect=WindowRect(40, 50, 700, 700), screen=screen)
@@ -447,6 +555,7 @@ def test_workspace_controller_owns_restore_and_persist_lifecycle(
         path=path,
         state=saved,
         restored=True,
+        restore_preview_size=True,
         preferred_preview_position=(200, 100),
         preferred_inspector_position=(980, 100),
     )
@@ -466,6 +575,163 @@ def test_workspace_controller_owns_restore_and_persist_lifecycle(
     assert result.state.ui_scale == 1.5
 
 
+@pytest.mark.parametrize(
+    "requested_preview_size",
+    [(1184, 1680), (148, 210)],
+    ids=["explicit-scale-8", "explicit-scale-1"],
+)
+def test_workspace_controller_explicit_preview_size_overrides_saved_size(
+    tmp_path: Path,
+    requested_preview_size: tuple[int, int],
+) -> None:
+    screen = SimpleNamespace(x=0, y=0, width=3200, height=2200)
+    preview = _WorkspaceWindow(
+        rect=WindowRect(0, 0, *requested_preview_size),
+        screen=screen,
+    )
+    inspector = _WorkspaceWindow(
+        rect=WindowRect(0, 0, 760, 900),
+        screen=screen,
+    )
+    saved = WorkspaceState(
+        preview_rect=WindowRect(240, 180, 592, 840),
+        inspector_rect=WindowRect(1700, 180, 760, 900),
+        inspector_visible=False,
+        ui_scale=1.5,
+    )
+    controller = workspace_module.WorkspaceWindowController(
+        path=tmp_path / "workspace.json",
+        state=saved,
+        restored=True,
+        restore_preview_size=False,
+        preferred_preview_position=(100, 100),
+        preferred_inspector_position=(1000, 100),
+    )
+
+    controller.attach_preview(preview)
+    controller.attach_inspector(inspector)
+
+    assert controller.apply_layout()
+    assert workspace_module._window_rect(preview) == WindowRect(
+        240,
+        180,
+        *requested_preview_size,
+    )
+    assert workspace_module._window_rect(inspector) == saved.inspector_rect
+    assert inspector.visible is False
+    assert controller.ui_scale == 1.5
+
+
+def test_workspace_controller_restores_saved_preview_size_when_workspace_managed(
+    tmp_path: Path,
+) -> None:
+    screen = SimpleNamespace(x=0, y=0, width=3200, height=2200)
+    preview = _WorkspaceWindow(
+        rect=WindowRect(0, 0, 1184, 1680),
+        screen=screen,
+    )
+    inspector = _WorkspaceWindow(
+        rect=WindowRect(0, 0, 760, 900),
+        screen=screen,
+    )
+    saved = WorkspaceState(
+        preview_rect=WindowRect(240, 180, 592, 840),
+        inspector_rect=WindowRect(1700, 180, 760, 900),
+        inspector_visible=False,
+        ui_scale=1.5,
+    )
+    controller = workspace_module.WorkspaceWindowController(
+        path=tmp_path / "workspace.json",
+        state=saved,
+        restored=True,
+        restore_preview_size=True,
+        preferred_preview_position=(100, 100),
+        preferred_inspector_position=(1000, 100),
+    )
+
+    controller.attach_preview(preview)
+    controller.attach_inspector(inspector)
+
+    assert controller.apply_layout()
+    assert workspace_module._window_rect(preview) == saved.preview_rect
+    assert workspace_module._window_rect(inspector) == saved.inspector_rect
+    assert inspector.visible is False
+    assert controller.ui_scale == 1.5
+
+
+def test_explicit_preview_size_is_aspect_fitted_without_inspector(
+    tmp_path: Path,
+) -> None:
+    screen = SimpleNamespace(x=0, y=0, width=1440, height=900)
+    preview = _WorkspaceWindow(
+        rect=WindowRect(0, 0, 1184, 1680),
+        screen=screen,
+    )
+    saved = WorkspaceState(
+        preview_rect=WindowRect(240, 180, 592, 840),
+        inspector_rect=None,
+        inspector_visible=False,
+        ui_scale=1.0,
+    )
+    controller = workspace_module.WorkspaceWindowController(
+        path=tmp_path / "workspace.json",
+        state=saved,
+        restored=True,
+        restore_preview_size=False,
+        preferred_preview_position=(100, 100),
+        preferred_inspector_position=(1000, 100),
+    )
+
+    controller.attach_preview(preview)
+
+    assert controller.apply_layout()
+    rect = workspace_module._window_rect(preview)
+    assert rect == WindowRect(240, 32, 589, 836)
+    assert rect.width / rect.height == pytest.approx(1184 / 1680, rel=0.002)
+
+
+def test_aspect_fit_relaxes_native_minimum_on_a_small_screen(tmp_path: Path) -> None:
+    screen = SimpleNamespace(x=0, y=0, width=500, height=500)
+
+    class MinimumAwareWindow(_WorkspaceWindow):
+        def __init__(self, *, rect: WindowRect, screen: Any) -> None:
+            super().__init__(rect=rect, screen=screen)
+            self.minimum_size = (320, 320)
+
+        def set_minimum_size(self, width: int, height: int) -> None:
+            self.minimum_size = (int(width), int(height))
+
+        def set_size(self, width: int, height: int) -> None:
+            assert width >= self.minimum_size[0]
+            assert height >= self.minimum_size[1]
+            super().set_size(width, height)
+
+    preview = MinimumAwareWindow(
+        rect=WindowRect(0, 0, 100, 1000),
+        screen=screen,
+    )
+    controller = workspace_module.WorkspaceWindowController(
+        path=tmp_path / "missing.json",
+        state=WorkspaceState(
+            preview_rect=WindowRect(100, 100, 100, 1000),
+            inspector_rect=None,
+            inspector_visible=False,
+        ),
+        restored=False,
+        restore_preview_size=False,
+        preferred_preview_position=(100, 100),
+        preferred_inspector_position=(400, 100),
+    )
+
+    controller.attach_preview(preview)
+
+    assert controller.apply_layout()
+    rect = workspace_module._window_rect(preview)
+    assert rect == WindowRect(100, 32, 44, 436)
+    assert preview.minimum_size == (44, 320)
+    assert rect.width / rect.height == pytest.approx(0.1, rel=0.01)
+
+
 def test_workspace_controller_loads_missing_state_as_config_fallback(
     tmp_path: Path,
 ) -> None:
@@ -473,6 +739,7 @@ def test_workspace_controller_loads_missing_state_as_config_fallback(
         path=tmp_path / "missing.json",
         preview_size=(640, 480),
         inspector_size=(760, 900),
+        restore_preview_size=True,
         preferred_preview_position=(40, 50),
         preferred_inspector_position=(700, 50),
     )

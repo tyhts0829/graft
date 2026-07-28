@@ -311,6 +311,48 @@ def test_draw_window_is_resizable(monkeypatch: pytest.MonkeyPatch) -> None:
     assert captured["minimum_size"] == (320, 320)
 
 
+def test_draw_window_minimum_does_not_exceed_initial_natural_size(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pyglet.options["shadow_window"] = False
+    from grafix.interactive import draw_window as draw_window_module
+
+    captured: dict[str, object] = {}
+
+    class CreatedWindow:
+        def set_minimum_size(self, width: int, height: int) -> None:
+            captured["minimum_size"] = (int(width), int(height))
+
+    sentinel = CreatedWindow()
+    config = object()
+
+    def window(**kwargs: object) -> CreatedWindow:
+        captured["window"] = dict(kwargs)
+        return sentinel
+
+    monkeypatch.setattr(draw_window_module, "Config", lambda **_kwargs: config)
+    monkeypatch.setattr(
+        draw_window_module,
+        "pyglet",
+        SimpleNamespace(window=SimpleNamespace(Window=window)),
+    )
+
+    result = draw_window_module.create_draw_window(
+        RenderOptions(canvas_size=(100, 1000)),
+        render_scale=1.0,
+    )
+
+    assert result is sentinel
+    assert captured["window"] == {
+        "width": 100,
+        "height": 1000,
+        "resizable": True,
+        "caption": "Grafix",
+        "config": config,
+    }
+    assert captured["minimum_size"] == (100, 320)
+
+
 def test_draw_window_factory_closes_window_when_minimum_size_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

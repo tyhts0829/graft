@@ -231,6 +231,15 @@ png_path = default_png_output_path(
 - resource/profiler表示: `src/grafix/interactive/runtime/perf.py` / `parameter_gui/profiler_panel.py`
 - window状態復元: `src/grafix/interactive/runtime/workspace_state.py`
 
+`run()` の `render_scale: float | None = None` は preview size の所有者を切り替える。
+数値指定は code-managed で、`canvas_size * render_scale` を保存済み preview size より
+優先する。`None` または省略は workspace-managed で、WorkspaceState の preview size
+を復元し、保存状態がなければ 1x を使う。画面超過時はどちらもアスペクト比を
+保って縮小する。この切り替えは WorkspaceState schema を変更せず、保存済み
+preview の width / height を採用するかどうかだけを
+`api._runner_application` / `workspace_window_controller` の composition で決める。
+`render_scale` は interactive preview 専用で、PNG 出力の `export.png.scale` とは独立している。
+
 reload candidate は source bytes と local relative-import helper を隔離し、scoped
 `RegistrationTarget` から immutable authoring snapshot を構築する。draw signature、catalog、worker
 startup を検証してから同じ frame 境界で generation を交換する。失敗時に default authoring
