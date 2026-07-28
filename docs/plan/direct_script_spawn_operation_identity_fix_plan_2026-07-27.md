@@ -1,13 +1,16 @@
 # direct script の spawn operation identity 恒久修正計画（2026-07-27）
 
-- 状態: **実装承認待ち**
+- 状態: **完了（2026-07-28）**
 - 対象: direct 実行した単一ファイル sketch と spawn worker 間の operation identity
 - 計画作成時 HEAD: `eed82b4`
 - 計画作成時 branch: `main`
+- 実装開始時 HEAD: `e547e30`
+- 実装開始時 branch: `main`
+- 実装開始時 working tree: clean
 - 発端となった例:
   `sketch/agent_loop/runs/run_20260727_120003_n3/final/sketch.py`
-- 現在の局所回避:
-  同 sketch の `run(..., n_worker=0)`
+- 実装前の局所回避:
+  同 sketch の `run(..., n_worker=0)`（修正後に撤去済み）
 
 本計画は、`python sketch.py` で直接起動した sketch に同一ファイル定義の
 custom primitive/effect がある場合でも、既定の spawn マルチプロセス描画を安全に使えるようにする。
@@ -125,24 +128,24 @@ custom operation を helper module へ移せば、その sketch 単体の `__mai
 
 ### production
 
-- [ ] `src/grafix/core/python_module_identity.py`（新規 private helper。名前は実装時確定）
-- [ ] `src/grafix/core/definition_fingerprint.py`
-- [ ] `src/grafix/core/operation_authoring.py`
-- [ ] `src/grafix/core/parameters/key.py`
+- [x] `src/grafix/core/python_module_identity.py`（新規 private helper。名前は実装時確定）
+- [x] `src/grafix/core/definition_fingerprint.py`
+- [x] `src/grafix/core/operation_authoring.py`
+- [x] `src/grafix/core/parameters/key.py`
 
 ### tests
 
-- [ ] `tests/core/test_definition_fingerprint.py`
-- [ ] `tests/core/test_operation_declaration.py`（既存配置を確認し、最も近い宣言 test へ追加）
-- [ ] `tests/core/parameters/test_site_id.py`（既存の parameter identity test 配置へ追加）
-- [ ] `tests/interactive/runtime/test_direct_entrypoint_mp_draw.py`（新規 integration test）
-- [ ] 必要な既存 fixture/support file の最小変更
+- [x] `tests/core/test_definition_fingerprint.py`
+- [x] `tests/core/test_operation_declaration.py`（既存配置を確認し、最も近い宣言 test へ追加）
+- [x] `tests/core/parameters/test_site_id.py`（既存の parameter identity test 配置へ追加）
+- [x] `tests/interactive/runtime/test_direct_entrypoint_mp_draw.py`（新規 integration test）
+- [x] 追加の fixture/support file は不要と判断した。
 
 ### docs / acceptance sketch
 
-- [ ] `README.md`
-- [ ] `docs/developer_guide.md`
-- [ ] `sketch/agent_loop/runs/run_20260727_120003_n3/final/sketch.py`
+- [x] `README.md`
+- [x] `docs/developer_guide.md`
+- [x] `sketch/agent_loop/runs/run_20260727_120003_n3/final/sketch.py`
   - framework 検証後に一時的な `n_worker=0` を除き、既定の spawn 描画へ戻す。
 
 private core utility のため root/API export と stub は追加しない。新規 dependency も追加しない。
@@ -155,10 +158,27 @@ private core utility のため root/API export と stub は追加しない。新
 - [x] 親 `__main__` / worker `__mp_main__` の alias 分岐を特定した。
 - [x] dataclass-only、`lru_cache`-only、併用の direct spawn で現象を再現した。
 - [x] 全 built-in sketch / 全 multiprocessing 描画の障害ではないことを確認した。
-- [ ] 実装開始時に HEAD、branch、`git status --porcelain` を本書へ追記する。
-- [ ] 対象 production/test file に並行差分がないことを再確認する。
-- [ ] 修正前の親 `__main__` fixture の fingerprint、GeometryId、parameter site ID を記録する。
-- [ ] focused tests の baseline を実行し、既存 failure と新規再現 failure を区別する。
+- [x] 実装開始時に HEAD、branch、`git status --porcelain` を本書へ追記する。
+- [x] 対象 production/test file に並行差分がないことを再確認する。
+- [x] 修正前の親 `__main__` fixture の fingerprint、GeometryId、parameter site ID を記録する。
+- [x] focused tests の baseline を実行し、既存 failure と新規再現 failure を区別する。
+
+実装開始時 baseline:
+
+```text
+definition fingerprint / operation declaration / parameter site: 30 passed
+mp draw / source reload / authoring loader: 93 passed
+```
+
+親 `__main__` identity の修正前後比較:
+
+```text
+evaluation fingerprint: 6a2877ebe4392323c2f822a9d10e8be5650d01668eecc818d4087e64c92b874f
+GeometryId:             bac7e92a748acda337829b426ed3acc3
+parameter site ID:      grafix_direct_spawn_parent_identity.py:1:350
+```
+
+同じ direct-entrypoint fixture を baseline source と修正後 source へ実行し、三値が完全一致した。
 
 Phase 0 完了条件:
 
@@ -168,11 +188,11 @@ Phase 0 完了条件:
 
 ### Phase 1 — process-main alias の単一定義
 
-- [ ] private core module に exact `__mp_main__ -> __main__` helper を追加する。
-- [ ] exact `str` を受けて `str` を返す pure function とし、I/O、global mutation、runtime lookup を持たせない。
-- [ ] `__main__`、通常 module、Grafix canonical namespace をそのまま返す unit test を追加する。
-- [ ] helper を root package や public `__all__` へ export しない。
-- [ ] compatibility alias、feature flag、第二の正規化 helper を追加しない。
+- [x] private core module に exact `__mp_main__ -> __main__` helper を追加する。
+- [x] exact `str` を受けて `str` を返す pure function とし、I/O、global mutation、runtime lookup を持たせない。
+- [x] `__main__`、通常 module、Grafix canonical namespace をそのまま返す unit test を追加する。
+- [x] helper を root package や public `__all__` へ export しない。
+- [x] compatibility alias、feature flag、第二の正規化 helper を追加しない。
 
 Phase 1 完了条件:
 
@@ -181,16 +201,17 @@ Phase 1 完了条件:
 
 ### Phase 2 — evaluation fingerprint への適用
 
-- [ ] `_fingerprint_module_name()` の explicit marker / parent marker 判定後の fallback に適用する。
-- [ ] Enum の type module identity に適用する。
-- [ ] dataclass instance の type module identity に適用する。
-- [ ] diagnostic 用 `_symbol_name()` や callable の raw `__module__` は変更しない。
-- [ ] `evaluation-spec-fingerprint-v1` の payload tag は変更しない。
-- [ ] synthetic `__main__` / `__mp_main__` module pair の unit test を追加する。
-- [ ] dataclass-only、`lru_cache`-only、併用の三ケースが同一 fingerprint になることを確認する。
-- [ ] 通常 module 名 `entry_a` / `entry_b` は同一視されない負例を追加する。
-- [ ] alias が同じでも、追跡対象 helper の code/意味を変えれば fingerprint が変わる負例を追加する。
-- [ ] explicit `__grafix_fingerprint_name__` と module content fingerprint の優先順位を固定する。
+- [x] `_fingerprint_module_name()` の explicit marker / parent marker 判定後の fallback に適用する。
+- [x] Enum の type module identity に適用する。
+- [x] dataclass instance の type module identity に適用する。
+- [x] diagnostic 用 `_symbol_name()` や callable の raw `__module__` は変更しない。
+- [x] `evaluation-spec-fingerprint-v1` の payload tag は変更しない。
+- [x] synthetic `__main__` / `__mp_main__` module pair の unit test を追加する。
+- [x] dataclass-only、`lru_cache`-only、dataclass/Enum/`lru_cache` 併用の三ケースが
+  同一 fingerprint になることを確認する。
+- [x] 通常 module 名 `entry_a` / `entry_b` は同一視されない負例を追加する。
+- [x] alias が同じでも、追跡対象 helper の code/意味を変えれば fingerprint が変わる負例を追加する。
+- [x] explicit `__grafix_fingerprint_name__` と module content fingerprint の優先順位を固定する。
 
 Phase 2 完了条件:
 
@@ -200,13 +221,13 @@ Phase 2 完了条件:
 
 ### Phase 3 — dynamic operation owner と parameter identity への適用
 
-- [ ] `_source_owner()` で explicit `__grafix_source_owner__` を最優先し、fallback だけ正規化する。
-- [ ] `cache_policy="content"` の primitive/effect declaration が親/workerで一致する test を追加する。
-- [ ] `cache_policy="none", version=...` の primitive/effect declaration も一致する test を追加する。
-- [ ] provenance / raw module locator は親と worker の実値を保持する test を追加する。
-- [ ] parameter key は explicit source owner がない direct-module fallback だけ正規化する。
-- [ ] cwd 内・cwd 外の file path、および automatic / explicit key の site ID を検証する。
-- [ ] 親 `__main__` の既存 site ID が変わらないことを固定する。
+- [x] `_source_owner()` で explicit `__grafix_source_owner__` を最優先し、fallback だけ正規化する。
+- [x] `cache_policy="content"` の primitive/effect declaration が親/workerで一致する test を追加する。
+- [x] `cache_policy="none", version=...` の primitive/effect declaration も一致する test を追加する。
+- [x] provenance / raw module locator は親と worker の実値を保持する test を追加する。
+- [x] parameter key は explicit source owner がない direct-module fallback だけ正規化する。
+- [x] cwd 内・cwd 外の file path、および automatic / explicit key の site ID を検証する。
+- [x] 親 `__main__` の既存 site ID が変わらないことを固定する。
 
 Phase 3 完了条件:
 
@@ -220,14 +241,14 @@ Phase 3 完了条件:
 `sketch.py` を `sys.executable <path>` で直接起動する。これにより親 `__main__` と spawn child
 `__mp_main__` の production 条件そのものを作る。
 
-- [ ] temporary sketch に module-local dataclass、`lru_cache` helper、custom primitive、`draw()`、
+- [x] temporary sketch に module-local dataclass、`lru_cache` helper、custom primitive、`draw()`、
   `if __name__ == "__main__": main()` を定義する。
-- [ ] GUI/OpenGL を起動せず `SceneRunner(..., n_worker=1)` と production の spawn path を使う。
-- [ ] worker が返した Geometry を親 catalog が strict resolve / realize できるまで確認する。
-- [ ] realized coordinates または同等の deterministic output を assertion する。
-- [ ] worker error がなく、operation ref / GeometryId が親の期待 identity と一致することを確認する。
-- [ ] test は deadline、`try/finally`、normal `close()` を持ち、process/semaphore を残さない。
-- [ ] macOS 限定 skip を置かず、明示 `spawn` を使う supported environment 共通の contract とする。
+- [x] GUI/OpenGL を起動せず `SceneRunner(..., n_worker=1)` と production の spawn path を使う。
+- [x] worker が返した Geometry を親 catalog が strict resolve / realize できるまで確認する。
+- [x] realized coordinates または同等の deterministic output を assertion する。
+- [x] worker error がなく、operation ref / GeometryId が親の期待 identity と一致することを確認する。
+- [x] test は deadline、`try/finally`、normal `close()` を持ち、process/semaphore を残さない。
+- [x] macOS 限定 skip を置かず、明示 `spawn` を使う supported environment 共通の contract とする。
 
 Phase 4 完了条件:
 
@@ -237,14 +258,14 @@ Phase 4 完了条件:
 
 ### Phase 5 — 文書化と実作品の workaround 撤去
 
-- [ ] `README.md` の spawn 説明へ、direct single-file custom primitive/effect が
+- [x] `README.md` の spawn 説明へ、direct single-file custom primitive/effect が
   `n_worker=1` で動作する contract を追記する。
-- [ ] `docs/developer_guide.md` の operation/cache identity 節へ、exact alias rule、
+- [x] `docs/developer_guide.md` の operation/cache identity 節へ、exact alias rule、
   explicit marker precedence、direct execution は source snapshot ではないことを記載する。
-- [ ] public API/stub/migration guide の更新が不要であることを再確認する。
-- [ ] Fault Garden から一時的な `n_worker=0` を削除する。
-- [ ] ユーザーが実行した元のコマンドで起動し、GUI を操作してから通常終了する。
-- [ ] fingerprint mismatch traceback がなく、parameter GUI と background drawing が応答することを確認する。
+- [x] public API/stub/migration guide の更新が不要であることを再確認する。
+- [x] Fault Garden から一時的な `n_worker=0` を削除する。
+- [x] ユーザーが実行した元のコマンドで起動し、GUI を操作してから通常終了する。
+- [x] fingerprint mismatch traceback がなく、parameter GUI と background drawing が応答することを確認する。
 
 Phase 5 完了条件:
 
@@ -253,13 +274,13 @@ Phase 5 完了条件:
 
 ### Phase 6 — 最終検証
 
-- [ ] focused unit / integration tests を実行する。
-- [ ] source reload、config authoring、既存 mp draw の回帰 tests を実行する。
-- [ ] 対象 production/tests へ `ruff` と `mypy` を実行する。
-- [ ] `git diff --check` を実行する。
-- [ ] `git diff --stat` と対象 file の diff を読み直す。
-- [ ] 計画書の完了項目と検証結果を更新する。
-- [ ] 依頼外差分が変更されていないことを最終確認する。
+- [x] focused unit / integration tests を実行する。
+- [x] source reload、config authoring、既存 mp draw の回帰 tests を実行する。
+- [x] 対象 production/tests へ `ruff` と `mypy` を実行する。
+- [x] `git diff --check` を実行する。
+- [x] `git diff --stat` と対象 file の diff を読み直す。
+- [x] 計画書の完了項目と検証結果を更新する。
+- [x] 依頼外差分が変更されていないことを最終確認する。
 
 ## 7. 検証コマンド
 
@@ -310,6 +331,20 @@ git diff --check
 
 長時間 soak、full pytest、dependency 更新、snapshot 更新、commit、push は本計画に含めない。
 必要になった場合は別途確認する。
+
+最終検証結果:
+
+```text
+focused unit / mp / source reload / authoring / architecture: 168 passed
+ruff: All checks passed
+mypy: Success: no issues found in 4 source files
+git diff --check: success
+parent identity comparison: fingerprint / GeometryId / parameter site ID unchanged
+Fault Garden GUI smoke: default n_worker=1, drawing and Parameter GUI visible, exit code 0
+```
+
+actual-spawn integration test は修正前 source で本件と同じ `CatalogMismatchError` を再現し、
+修正後 source では親 catalog の strict resolve / realization まで成功した。
 
 ## 8. 非対象
 
@@ -375,10 +410,12 @@ git diff --check
 ?? docs/plan/grafix_art_loop_contact_sheet_output_plan_2026-07-25.md
 ```
 
-本計画ファイル自身だけが、この依頼で新たに追加される差分である。
+計画作成時点では、本計画ファイル自身だけをこの依頼の差分として追加した。
+実装開始時の `e547e30` では working tree が clean になっており、上記差分は本実装の外で
+すでに解消されていた。本実装からこれらの file は変更していない。
 
-## 12. 承認境界
+## 12. 承認と実施境界
 
-- 本計画への明示承認前には、production code、test、既存 docs、対象 sketch を変更しない。
-- 承認後は Phase 0 から順に進め、停止条件に当たれば作業を止めて報告する。
+- 2026-07-28 に明示承認を受け、Phase 0 から順に実施した。
+- 停止条件には該当しなかった。
 - dependency 追加、破壊的操作、full test、commit、push は別途依頼または承認なしに行わない。

@@ -6,7 +6,7 @@ import sys
 import types
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 
@@ -20,12 +20,71 @@ from grafix.core.definition_fingerprint import (
 )
 from grafix.core.operation_schema import ParameterOpSchema
 from grafix.core.parameters.meta import ParamMeta
+from grafix.core.python_module_identity import canonical_authoring_module_name
 
 
 def _compiled_function(source: str, *, filename: str) -> Callable[..., object]:
     namespace: dict[str, Any] = {"__name__": "fingerprint_fixture"}
     exec(compile(source, filename, "exec"), namespace)
     return namespace["evaluate"]
+
+
+def _authored_module(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    module_name: str,
+    dependencies: Literal["dataclass", "lru_cache", "combined"] = "combined",
+    helper_delta: int = 1,
+    fingerprint_name: str | None = None,
+) -> types.ModuleType:
+    """main alias と tracked dependency を持つ synthetic authoring module を作る。"""
+
+    dataclass_source = (
+        "from dataclasses import dataclass\n\n"
+        "@dataclass(frozen=True)\n"
+        "class Settings:\n"
+        "    offset: int\n\n"
+        "SETTINGS = Settings(3)\n\n"
+        "def evaluate(value):\n"
+        "    return value + SETTINGS.offset\n"
+    )
+    lru_cache_source = (
+        "from functools import lru_cache\n\n"
+        "@lru_cache(maxsize=4)\n"
+        "def cached_step(value):\n"
+        f"    return value + {helper_delta}\n\n"
+        "def evaluate(value):\n"
+        "    return cached_step(value)\n"
+    )
+    combined_source = (
+        "from dataclasses import dataclass\n"
+        "from enum import Enum\n"
+        "from functools import lru_cache\n\n"
+        "@dataclass(frozen=True)\n"
+        "class Settings:\n"
+        "    offset: int\n\n"
+        "class Mode(Enum):\n"
+        "    ACTIVE = 1\n\n"
+        "SETTINGS = Settings(3)\n"
+        "MODE = Mode.ACTIVE\n\n"
+        "@lru_cache(maxsize=4)\n"
+        "def cached_step(value):\n"
+        f"    return value + {helper_delta}\n\n"
+        "def evaluate(value):\n"
+        "    return cached_step(value) + SETTINGS.offset + MODE.value\n"
+    )
+    source = {
+        "dataclass": dataclass_source,
+        "lru_cache": lru_cache_source,
+        "combined": combined_source,
+    }[dependencies]
+    module = types.ModuleType(module_name)
+    if fingerprint_name is not None:
+        module.__grafix_fingerprint_name__ = fingerprint_name  # type: ignore[attr-defined]
+    attach_module_content_fingerprint(module, source.encode("utf-8"))
+    monkeypatch.setitem(sys.modules, module_name, module)
+    exec(compile(source, f"<{module_name}>", "exec"), module.__dict__)
+    return module
 
 
 def _schema(
@@ -84,6 +143,79 @@ def test_closed_over_reloaded_callable_does_not_depend_on_temporary_module_name(
     second = wrap(second_namespace["evaluate"])
 
     assert fingerprint_evaluation_spec(first) == fingerprint_evaluation_spec(second)
+
+
+def test_spawn_main_alias_only_normalizes_to_parent_main_name() -> None:
+    assert canonical_authoring_module_name("__main__") == "__main__"
+    assert canonical_authoring_module_name("__mp_main__") == "__main__"
+    assert canonical_authoring_module_name("project.__mp_main__") == "project.__mp_main__"
+    assert canonical_authoring_module_name("project.sketch") == "project.sketch"
+
+
+@pytest.mark.parametrize("dependencies", ["dataclass", "lru_cache", "combined"])
+def test_spawn_main_alias_keeps_dataclass_enum_and_lru_cache_fingerprint(
+    monkeypatch: pytest.MonkeyPatch,
+    dependencies: Literal["dataclass", "lru_cache", "combined"],
+) -> None:
+    parent = _authored_module(
+        monkeypatch,
+        module_name="__main__",
+        dependencies=dependencies,
+    )
+    worker = _authored_module(
+        monkeypatch,
+        module_name="__mp_main__",
+        dependencies=dependencies,
+    )
+
+    assert fingerprint_evaluation_spec(parent.evaluate) == fingerprint_evaluation_spec(
+        worker.evaluate
+    )
+
+
+def test_regular_external_module_names_remain_distinct(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = _authored_module(monkeypatch, module_name="regular_authoring_first")
+    second = _authored_module(monkeypatch, module_name="regular_authoring_second")
+
+    assert fingerprint_evaluation_spec(first.evaluate) != fingerprint_evaluation_spec(
+        second.evaluate
+    )
+
+
+def test_spawn_main_alias_keeps_referenced_semantic_changes_visible(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = _authored_module(
+        monkeypatch,
+        module_name="__main__",
+        helper_delta=1,
+    )
+    worker = _authored_module(
+        monkeypatch,
+        module_name="__mp_main__",
+        helper_delta=2,
+    )
+
+    assert fingerprint_evaluation_spec(parent.evaluate) != fingerprint_evaluation_spec(
+        worker.evaluate
+    )
+
+
+def test_explicit_module_fingerprint_name_wins_over_spawn_main_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = _authored_module(monkeypatch, module_name="__main__")
+    explicitly_named_worker = _authored_module(
+        monkeypatch,
+        module_name="__mp_main__",
+        fingerprint_name="project.explicit_entry",
+    )
+
+    assert fingerprint_evaluation_spec(
+        parent.evaluate
+    ) != fingerprint_evaluation_spec(explicitly_named_worker.evaluate)
 
 
 def test_referenced_global_insertion_order_does_not_change_fingerprint() -> None:

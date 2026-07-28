@@ -1,10 +1,41 @@
 from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from grafix.core.parameters import key as key_module
 from grafix.core.parameters.key import caller_site_id, make_site_id
+
+
+def _compiled_site_resolvers(
+    filename: Path,
+    *,
+    source_owner: str | None = None,
+) -> tuple[Callable[[str | None], str], Callable[[str | None], str]]:
+    # 同じ test process 内の別 filename が CodeType cache key として衝突しないよう、
+    # fixture 固有値も code constants に含める。
+    code = compile(
+        (
+            f"def resolve(key):\n    {str(filename)!r}\n"
+            "    return make_site_id(key=key)\n"
+        ),
+        str(filename),
+        "exec",
+    )
+    resolvers: list[Callable[[str | None], str]] = []
+    for module_name in ("__main__", "__mp_main__"):
+        namespace: dict[str, object] = {
+            "__name__": module_name,
+            "make_site_id": make_site_id,
+        }
+        if source_owner is not None:
+            namespace["__grafix_source_owner__"] = source_owner
+        exec(code, namespace)
+        resolvers.append(
+            cast(Callable[[str | None], str], namespace["resolve"])
+        )
+    return (resolvers[0], resolvers[1])
 
 
 def test_site_id_stable_same_expression():
@@ -38,6 +69,58 @@ def test_explicit_key_discards_instruction_location() -> None:
 
     assert first == second
     assert first.endswith("|str:6:stable")
+
+
+@pytest.mark.parametrize("key", [None, "stable"], ids=("automatic", "explicit"))
+@pytest.mark.parametrize("location", ["inside", "outside"])
+def test_direct_main_aliases_share_site_id_without_changing_parent_identity(
+    tmp_path: Path,
+    key: str | None,
+    location: str,
+) -> None:
+    if location == "inside":
+        filename = Path.cwd() / "tests/core/parameters/direct_main_site_fixture.py"
+        expected_file_id = "tests/core/parameters/direct_main_site_fixture.py"
+    else:
+        filename = tmp_path / "direct_main_site_fixture.py"
+        expected_file_id = filename.name
+    parent, worker = _compiled_site_resolvers(filename)
+
+    parent_site_id = parent(key)
+    worker_site_id = worker(key)
+
+    assert worker_site_id == parent_site_id
+    assert parent_site_id.startswith(expected_file_id)
+    if key is None:
+        assert parent_site_id.startswith(f"{expected_file_id}:")
+    else:
+        assert parent_site_id == f"{expected_file_id}|str:6:stable"
+
+
+def test_main_alias_is_canonicalized_before_automatic_site_cache(
+    tmp_path: Path,
+) -> None:
+    key_module._automatic_site_id.cache_clear()
+    parent, worker = _compiled_site_resolvers(tmp_path / "cached_site.py")
+
+    assert parent(None) == worker(None)
+
+    info = key_module._automatic_site_id.cache_info()
+    assert info.misses == 1
+    assert info.hits == 1
+
+
+def test_explicit_source_owner_is_not_canonicalized_for_site_id(
+    tmp_path: Path,
+) -> None:
+    _parent, worker = _compiled_site_resolvers(
+        tmp_path / "explicit_owner_site.py",
+        source_owner="__mp_main__",
+    )
+
+    site_id = worker("stable")
+
+    assert site_id == "__mp_main__|str:6:stable"
 
 
 def test_explicit_key_rejects_unsupported_types() -> None:

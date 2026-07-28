@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Final, NoReturn, cast
 
 from grafix.core.operation_schema import ParameterOpSchema
+from grafix.core.python_module_identity import canonical_authoring_module_name
 
 _DIGEST_LENGTH: Final = 64
 _LOCATION_GLOBALS: Final = frozenset({"__file__", "__cached__", "__loader__"})
@@ -193,7 +194,7 @@ class _CanonicalEncoder:
             enum_type = type(value)
             return _frame(
                 b"enum",
-                enum_type.__module__.encode("utf-8"),
+                canonical_authoring_module_name(enum_type.__module__).encode("utf-8"),
                 enum_type.__qualname__.encode("utf-8"),
                 value.name.encode("utf-8"),
             )
@@ -335,7 +336,7 @@ class _CanonicalEncoder:
         try:
             value_type = type(value)
             parts = [
-                value_type.__module__.encode("utf-8"),
+                canonical_authoring_module_name(value_type.__module__).encode("utf-8"),
                 value_type.__qualname__.encode("utf-8"),
             ]
             for field in dataclasses.fields(cast(Any, value)):
@@ -562,7 +563,7 @@ class _CanonicalEncoder:
                 )
             suffix = ".".join(parts[count:])
             return f"{parent_fingerprint_name}.{suffix}"
-        return actual_name
+        return canonical_authoring_module_name(actual_name)
 
     def _encode_module(self, value: types.ModuleType, *, path: str) -> bytes:
         name = self._fingerprint_module_name(value)

@@ -21,6 +21,7 @@ from grafix.core.parameters.identity import identity_string
 from grafix.core.parameters.meta import ParamMeta
 from grafix.core.parameters.meta_spec import meta_dict_from_user
 from grafix.core.parameters.validation import validate_parameter_value
+from grafix.core.python_module_identity import canonical_authoring_module_name
 from grafix.core.realized_geometry import (
     GeomTuple,
     RealizedGeometry,
@@ -218,8 +219,19 @@ def _source_owner(func: Callable[..., object], *, kind: OpKind) -> str:
 
     module = identity_string(func.__module__, name=f"{kind} module")
     module_object = sys.modules.get(module)
+    missing = object()
+    explicit_owner = getattr(
+        module_object,
+        "__grafix_source_owner__",
+        missing,
+    )
+    owner = (
+        canonical_authoring_module_name(module)
+        if explicit_owner is missing
+        else explicit_owner
+    )
     return identity_string(
-        getattr(module_object, "__grafix_source_owner__", module),
+        owner,
         name=f"{kind} source owner",
     )
 

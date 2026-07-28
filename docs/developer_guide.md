@@ -289,12 +289,24 @@ snapshot/effect-order pair を評価する。
 ### Architecture / cache identity を触りたい
 
 - declaration fingerprint: `src/grafix/core/definition_fingerprint.py`
+- direct-entrypoint module identity: `src/grafix/core/python_module_identity.py`
 - typed cache key: `src/grafix/core/realize.py:GeometryCacheKey`
 - parent/child ownership: `src/grafix/api/render.py` / `interactive/runtime/scene_runner.py`
 - font external dependency: `src/grafix/core/font_resources.py` / `src/grafix/core/primitives/text.py`
 
 全 catalog revision や object identity を新しい cache key に入れない。Geometry が実際に参照した
 operation ref、quality/`EvaluationConfig`、lookup 時点の external dependency だけを使う。
+
+direct `python sketch.py` では entrypoint module が親で `__main__`、spawn worker で
+`__mp_main__` になる。両者は operation fingerprint、dynamic operation の source owner、
+parameter site identity に限って同じ authoring module として扱う。正規化は exact
+`__mp_main__ -> __main__` のみで、通常 module 名、provenance、pickle/import locator は変更しない。
+`__grafix_fingerprint_name__`、`__grafix_source_owner__`、captured module content fingerprint など、
+source reload/config authoring が明示した identity はこの fallback より優先する。
+
+この alias は direct execution を source snapshot や hot reload に変換するものではない。
+起動後の source 差し替えを扱う場合は source watch の captured-source transaction を使い、
+catalog の fingerprint 完全一致を緩めない。
 
 `RenderSession` / `SceneRunner` は `EvaluationResources` と `RealizeCacheStore` を所有して明示注入し、
 子 `RealizeSession` は借用する。低水準で `RealizeSession` の `resources` / `cache_store` を省略した場合は、

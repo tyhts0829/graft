@@ -10,6 +10,8 @@ from functools import lru_cache
 from pathlib import Path
 from types import CodeType, FrameType
 
+from grafix.core.python_module_identity import canonical_authoring_module_name
+
 from .identity import identity_string
 
 
@@ -94,7 +96,9 @@ def make_site_id(
     module_name = (
         source_owner
         if type(source_owner) is str and source_owner
-        else str(frame.f_globals.get("__name__", ""))
+        else canonical_authoring_module_name(
+            str(frame.f_globals.get("__name__", ""))
+        )
     )
     if key is not None:
         semantic_site_id = (

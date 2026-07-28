@@ -144,7 +144,10 @@ on a normal startup, while recovery data can intentionally preserve an override.
 window stays responsive. Use `n_worker=0` only when synchronous evaluation is required,
 or increase the worker count for CPU-heavy `draw(t)` functions. Background evaluation
 uses multiprocessing `spawn`, so keep `draw` at module scope and call `run()` behind an
-`if __name__ == "__main__":` guard. A background evaluation that exceeds
+`if __name__ == "__main__":` guard. Custom primitives and effects may be defined in that
+same entrypoint file: for declaration and cache identity, Grafix treats the spawn-only
+`__mp_main__` module name as the semantic alias of the parent's `__main__`. A background
+evaluation that exceeds
 `evaluation_timeout=5.0` seconds is cancelled by restarting its worker while the last
 successful frame stays visible; pass `evaluation_timeout=None` to disable this deadline.
 Temporary user-code/effect errors keep the last successful frame visible and appear in
