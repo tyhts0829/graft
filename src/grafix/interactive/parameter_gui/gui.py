@@ -965,19 +965,9 @@ class ParameterGUI:
         return bool(changed)
 
     def _render_midi_mapping_menu(self) -> bool:
-        """主操作行の右端に MIDI assignment menu を描画する。"""
+        """MIDI assignment menu を描画する。"""
 
         imgui = self._imgui
-        imgui.same_line()
-        available_width = content_region_available_width(imgui)
-        coordinate_scale = _window_ui_coordinate_scale(
-            self._window,
-            ui_scale=float(self._ui_scale),
-        )
-        imgui.set_cursor_pos_x(
-            float(imgui.get_cursor_pos_x()) + max(0.0, available_width - 56.0 * coordinate_scale)
-        )
-
         if imgui.button("MIDI##midi_menu"):
             imgui.open_popup("MIDI mappings##midi_menu_popup")
 
@@ -1056,7 +1046,7 @@ class ParameterGUI:
             bool(self._session.show_inactive_parameters),
         )
 
-        # 詳細 filter は popup にまとめ、検索欄と MIDI command の幅を確保する。
+        # 詳細 filter は popup にまとめ、主操作行をコンパクトに保つ。
         imgui.same_line()
         enabled_filter_count = sum(
             (
@@ -1130,7 +1120,8 @@ class ParameterGUI:
                             state = replace(state, favorite_only=not selected)
 
         self._session.filter_state = state
-        # MIDI は status へ混ぜず、主操作行の右端へ assignment menu として置く。
+        # MIDI は status へ混ぜず、Filters と同じ主操作群へ置く。
+        imgui.same_line()
         changed = self._render_midi_mapping_menu()
 
         view = parameter_table_view_for_store(

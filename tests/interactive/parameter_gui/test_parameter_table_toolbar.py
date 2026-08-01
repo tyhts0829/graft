@@ -48,6 +48,7 @@ class _Imgui:
         self.opened_popups: list[str] = []
         self.disabled_text: list[str] = []
         self.button_labels: list[str] = []
+        self.layout_events: list[str] = []
 
     def text_disabled(self, text: str) -> None:
         self.disabled_text.append(str(text))
@@ -59,7 +60,7 @@ class _Imgui:
         pass
 
     def same_line(self, position: float = 0.0, spacing: float = -1.0) -> None:
-        pass
+        self.layout_events.append(f"same_line:{float(position)}:{float(spacing)}")
 
     def input_text_with_hint(
         self,
@@ -79,6 +80,7 @@ class _Imgui:
     def button(self, label: str, width: float = 0.0, height: float = 0.0) -> bool:
         self.button_labels.append(str(label))
         widget_id = label.rpartition("##")[2]
+        self.layout_events.append(f"button:{widget_id}")
         if widget_id == "midi_menu":
             return True
         if widget_id == "parameter_filter_menu":
@@ -108,15 +110,6 @@ class _Imgui:
         return widget_id in self.clicked_filter_ids and bool(enabled), bool(selected)
 
     def separator(self) -> None:
-        pass
-
-    def get_content_region_available_width(self) -> float:
-        return 640.0
-
-    def get_cursor_pos_x(self) -> float:
-        return 0.0
-
-    def set_cursor_pos_x(self, _position: float) -> None:
         pass
 
     def push_style_color(self, *_args: object) -> None:
@@ -189,6 +182,24 @@ def test_table_toolbar_names_filter_and_moves_clear_into_midi_menu(
     )
     state = store.get_state(key)
     assert state is not None and state.cc_key is None
+
+
+def test_midi_menu_follows_filters_without_manual_right_alignment(
+    initialized_parameter_gui: ParameterGUI,
+) -> None:
+    gui, _store, _key = _setup_with_mapping(initialized_parameter_gui)
+    imgui = _Imgui(click_clear=False)
+    gui._imgui = imgui
+
+    assert gui._render_parameter_table_toolbar() is False
+
+    filter_event = imgui.layout_events.index("button:parameter_filter_menu")
+    midi_event = imgui.layout_events.index("button:midi_menu")
+    assert imgui.layout_events[filter_event : midi_event + 1] == [
+        "button:parameter_filter_menu",
+        "same_line:0.0:-1.0",
+        "button:midi_menu",
+    ]
 
 
 def test_table_toolbar_updates_search_filter_and_displays_filtered_count(

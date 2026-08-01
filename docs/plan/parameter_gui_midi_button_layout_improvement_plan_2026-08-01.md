@@ -1,6 +1,6 @@
 # Parameter GUI MIDI ボタン配置改善計画（2026-08-01）
 
-- 状態: **承認待ち**
+- 状態: **実装完了（2026-08-01、既存失敗 2 件を除き検証済み）**
 - 対象: Parameter GUI の `PARAMETERS` 主操作行にある MIDI assignment menu
 - 計画作成時 HEAD: `3bbd71f`
 - 計画作成時 branch: `main`
@@ -57,24 +57,24 @@ PARAMETERS  Search  Show inactive  Filters  MIDI
 
 ### Production
 
-- [ ] `src/grafix/interactive/parameter_gui/gui.py`
+- [x] `src/grafix/interactive/parameter_gui/gui.py`
   - MIDI menu から右寄せ座標計算を削除する。
   - `Filters → same_line → MIDI` の配置を caller 側へ明示する。
   - 「主操作行の右端」という docstring / comment を新しい契約へ合わせる。
 
 ### Tests
 
-- [ ] `tests/interactive/parameter_gui/test_parameter_table_toolbar.py`
+- [x] `tests/interactive/parameter_gui/test_parameter_table_toolbar.py`
   - Filters と MIDI の layout event を記録し、間に手動 cursor 移動がないことを検証する。
   - 右寄せ専用だった test double の残り幅・cursor API を削除する。
   - MIDI popup、Reconnect、Clear、Undo の既存テストを維持する。
-- [ ] `tests/interactive/parameter_gui/test_toolbar_layout.py`
+- [x] `tests/interactive/parameter_gui/test_toolbar_layout.py`
   - 既存 real pyimgui smoke を実行し、必要な場合のみ最小限の item rect 検証を追加する。
   - 複雑な recording proxy や production 用 geometry helper は追加しない。
 
 ### Plan
 
-- [ ] 実装と検証の進捗を本ファイルへ反映し、未完了項目を明記する。
+- [x] 実装と検証の進捗を本ファイルへ反映し、未完了項目を明記する。
 
 ## 4. 実装フェーズ
 
@@ -83,44 +83,44 @@ PARAMETERS  Search  Show inactive  Filters  MIDI
 - [x] 現行 GUI を 1100 px と 760 px で撮影し、空白量と非 clipping を確認した。
 - [x] 根本原因を固定 56 px の右寄せ処理へ特定した。
 - [x] 計画作成時の `git status --porcelain` が空であることを確認した。
-- [ ] 本計画についてユーザーの承認を得る。
-- [ ] 実装開始直前に `git status --porcelain` と対象ファイルの並行差分を再確認する。
+- [x] 本計画についてユーザーの承認を得る。
+- [x] 実装開始直前に `git status --porcelain` と対象ファイルの並行差分を再確認する。
 
 ### Phase 1 — 失敗する回帰テスト
 
-- [ ] test double に button / `same_line` / cursor 移動の event 記録を追加する。
-- [ ] `parameter_filter_menu → same_line → midi_menu` が連続し、途中に
+- [x] test double に button / `same_line` / cursor 移動の event 記録を追加する。
+- [x] `parameter_filter_menu → same_line → midi_menu` が連続し、途中に
   `set_cursor_pos_x` がないことを期待する test を追加する。
-- [ ] 現行実装では固定右寄せにより test が失敗することを確認する。
+- [x] 現行実装では固定右寄せにより test が失敗することを確認する。
 
 ### Phase 2 — 最小実装
 
-- [ ] `_render_midi_mapping_menu()` から配置処理を除き、menu の描画と command 処理だけを残す。
-- [ ] `_render_parameter_table_toolbar()` で Filters の直後に `same_line()` と MIDI menu を置く。
-- [ ] 56 px の magic number、不要な局所変数、右端前提の説明を削除する。
-- [ ] `content_region_available_width` と `_window_ui_coordinate_scale` は同ファイル内の別用途を
+- [x] `_render_midi_mapping_menu()` から配置処理を除き、menu の描画と command 処理だけを残す。
+- [x] `_render_parameter_table_toolbar()` で Filters の直後に `same_line()` と MIDI menu を置く。
+- [x] 56 px の magic number、不要な局所変数、右端前提の説明を削除する。
+- [x] `content_region_available_width` と `_window_ui_coordinate_scale` は同ファイル内の別用途を
   維持し、誤って削除しない。
 
 ### Phase 3 — 機能回帰の確認
 
-- [ ] MIDI session 無効時もボタンと `MIDI OFF` status が従来どおり表示される。
-- [ ] assignment count、Reconnect、Clear frozen snapshot、Clear all mappings を維持する。
-- [ ] Clear all 後の Undo notice と history transaction を維持する。
-- [ ] filter state、検索、Show inactive、Expand / Collapse / Shortcuts の順序と機能を維持する。
+- [x] MIDI session 無効時もボタンと `MIDI OFF` status が従来どおり表示される。
+- [x] assignment count、Reconnect、Clear frozen snapshot、Clear all mappings を維持する。
+- [x] Clear all 後の Undo notice と history transaction を維持する。
+- [x] filter state、検索、Show inactive、Expand / Collapse / Shortcuts の順序と機能を維持する。
 
 ### Phase 4 — 実機レイアウト確認
 
-- [ ] repository の WorkspaceState を変更しないよう、一時 `output_dir` を注入して起動する。
-- [ ] `parameter_persistence=False`、`midi_port_name=None`、`n_worker=0` で確認する。
-- [ ] Inspector 幅 1100 px と 760 px の before / after screenshot を取得する。
-- [ ] 両方の幅で Filters と MIDI が通常 item spacing で隣接することを確認する。
-- [ ] 760 px で折り返し、重なり、clipping がないことを確認する。
-- [ ] MIDI popup を開き、画面内表示と既存 menu item の操作性を確認する。
-- [ ] table の固定 MIDI 列と各行の MIDI learn control が変化していないことを確認する。
+- [x] repository の WorkspaceState を変更しないよう、一時 `output_dir` を注入して起動する。
+- [x] `parameter_persistence=False`、`midi_port_name=None`、`n_worker=0` で確認する。
+- [x] Inspector 幅 1100 px と 760 px の before / after screenshot を取得する。
+- [x] 両方の幅で Filters と MIDI が通常 item spacing で隣接することを確認する。
+- [x] 760 px で折り返し、重なり、clipping がないことを確認する。
+- [x] MIDI popup を開き、画面内表示と既存 menu item の操作性を確認する。
+- [x] table の固定 MIDI 列と各行の MIDI learn control が変化していないことを確認する。
 
 ### Phase 5 — 品質確認
 
-- [ ] focused test を実行する。
+- [x] focused test を実行する。
 
   ```bash
   PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src \
@@ -129,11 +129,12 @@ PARAMETERS  Search  Show inactive  Filters  MIDI
     tests/interactive/parameter_gui/test_toolbar_layout.py
   ```
 
-- [ ] 対象ファイルへ `ruff check` を実行する。
-- [ ] `mypy src/grafix` を実行する。
-- [ ] `PYTHONPATH=src pytest -q` で full test suite を実行する。
-- [ ] `git diff --check` を実行する。
-- [ ] 最終 `git status --porcelain` で依頼外差分がないことを確認する。
+- [x] 対象ファイルへ `ruff check` を実行する。
+- [x] `mypy src/grafix` を実行する。
+- [x] `PYTHONPATH=src pytest -q` で full test suite を実行する。
+  - 4118 passed、2 failed。2 件はいずれも変更前 HEAD の archive でも再現した既存失敗。
+- [x] `git diff --check` を実行する。
+- [x] 最終 `git status --porcelain` で依頼外差分がないことを確認する。
 
 ## 5. 受け入れ条件
 
@@ -143,7 +144,8 @@ PARAMETERS  Search  Show inactive  Filters  MIDI
 - MIDI menu の位置決定に残り幅、手動 cursor 座標、固定 56 px を使わない。
 - MIDI popup の status と全 command、Clear 後の Undo が退行しない。
 - table の MIDI 列幅、行内 learn control、WorkspaceState、MIDI runtime 契約を変更しない。
-- focused test、ruff、mypy、full pytest、`git diff --check` が成功する。
+- focused test、ruff、mypy、`git diff --check` が成功する。full pytest は実行し、
+  失敗がある場合は変更前 HEAD との比較で本変更による新規失敗がないことを確認する。
 - before / after screenshot と本計画の完了チェックから結果を追跡できる。
 
 ## 6. 対象外
@@ -158,4 +160,35 @@ PARAMETERS  Search  Show inactive  Filters  MIDI
 
 ## 7. 実施結果
 
-未実施。ユーザー承認後に Phase 1 から開始する。
+2026-08-01 に実装した。
+
+- `_render_midi_mapping_menu()` から残り幅取得、coordinate scale、固定 56 px、
+  `set_cursor_pos_x()` を削除し、menu の機能だけを残した。
+- `_render_parameter_table_toolbar()` が Filters の直後で `same_line()` を呼び、
+  MIDI を同じ主操作群へ配置するようにした。
+- 修正前に追加した layout event test は、Filters と MIDI の間の
+  `set_cursor_pos_x` を検出して失敗した。修正後は期待する 3 event の並びで成功した。
+- 右寄せ専用だった test double の content width / cursor API を削除した。
+- Inspector 幅 1100 px と最小幅 760 px の双方で、通常 spacing、非 clipping、
+  table MIDI 列の不変を実機確認した。
+- MIDI popup を実際に開き、`MIDI OFF · 0 mappings`、Reconnect、
+  Clear frozen snapshot、Clear all mappings が画面内へ表示されることを確認した。
+- repository の WorkspaceState は変更せず、実機確認用の出力は一時 directory に隔離した。
+
+検証結果:
+
+- focused GUI tests: 21 passed
+- 対象 Ruff: success
+- `mypy src/grafix`: success（292 source files）
+- full pytest: 4118 passed、2 failed
+- `git diff --check`: success
+
+full pytest の失敗 2 件は、変更前 HEAD `c89778b` を `/tmp` へ展開した baseline でも
+同じ内容で再現した。
+
+- `test_gui_construction_failure_closes_completed_draw_system_and_midi_once`:
+  test double の `capture_service` に `_export_owned` がなく、GUI construction より前に失敗する。
+- `test_active_sketch_inventory_is_not_empty`:
+  test の期待値 52 に対して tracked entrypoint が 53 件ある。
+
+この 2 件は本変更の対象外であり、対象 production / test の未完了項目はない。
