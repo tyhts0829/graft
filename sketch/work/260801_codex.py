@@ -28,11 +28,9 @@ MONO_FONT = "/System/Library/Fonts/Menlo.ttc"
 
 PAPER = (0.831, 0.831, 0.788)
 INK = (0.047, 0.061, 0.050)
-GRAPHITE = (0.355, 0.365, 0.333)
-PALE_GRAPHITE = (0.585, 0.590, 0.548)
 OIL_GREEN = (0.112, 0.216, 0.220)
 VERMILION = (0.815, 0.345, 0.260)
-GREEN_GUIDE = (0.455, 0.500, 0.475)
+PLOT_THICKNESS = 0.001
 
 
 @dataclass(frozen=True)
@@ -184,13 +182,17 @@ def _strata_lines(
     phase: float,
     step_kink: bool = False,
 ) -> list[list[tuple[float, float]]]:
+    if spacing <= 0.0:
+        raise ValueError("strata spacing must be positive")
     region = _inset(rect, 0.75)
     lines: list[list[tuple[float, float]]] = []
     y = region.y0 + 0.25
     row = 0
     while y <= region.y1 - 0.2:
         if step_kink:
-            kink = region.x0 + region.width * (0.43 + 0.06 * math.sin(row * 0.37 + phase))
+            kink = region.x0 + region.width * (
+                0.43 + 0.06 * math.sin(row * 0.37 + phase)
+            )
             shift = amplitude * (0.18 + 0.82 / (1.0 + math.exp(-(row - 18) * 0.28)))
             lines.append(
                 [
@@ -203,8 +205,12 @@ def _strata_lines(
         else:
             points: list[tuple[float, float]] = []
             for x in np.linspace(region.x0, region.x1, 40):
-                envelope = math.sin(math.pi * (float(x) - region.x0) / max(1e-6, region.width))
-                yy = y + amplitude * envelope * math.sin(float(x) * 0.17 + row * 0.13 + phase)
+                envelope = math.sin(
+                    math.pi * (float(x) - region.x0) / max(1e-6, region.width)
+                )
+                yy = y + amplitude * envelope * math.sin(
+                    float(x) * 0.17 + row * 0.13 + phase
+                )
                 yy += 0.34 * amplitude * math.sin(float(x) * 0.043 - row * 0.21)
                 points.append((float(x), min(region.y1, max(region.y0, yy))))
             lines.append(points)
@@ -213,20 +219,40 @@ def _strata_lines(
     return lines
 
 
-def _vertical_hatch(rect: Rect, spacing: float, phase: float) -> list[list[tuple[float, float]]]:
+def _vertical_hatch(
+    rect: Rect,
+    spacing: float,
+    phase: float,
+    amplitude: float,
+    frequency: float,
+) -> list[list[tuple[float, float]]]:
+    if spacing <= 0.0:
+        raise ValueError("vertical line spacing must be positive")
     region = _inset(rect, 0.75)
     lines: list[list[tuple[float, float]]] = []
     x = region.x0 + 0.3
     column = 0
     while x <= region.x1 - 0.2:
-        drift = 0.24 * math.sin(column * 0.55 + phase)
+        drift = amplitude * math.sin(column * frequency + phase)
         lines.append([(x, region.y0), (x + drift, region.y1)])
         x += spacing
         column += 1
     return lines
 
 
-def _stipple(rect: Rect, *, seed: int, spacing: float = 1.72) -> list[list[tuple[float, float]]]:
+def _stipple(
+    rect: Rect,
+    *,
+    seed: int,
+    spacing: float = 1.72,
+    length_scale: float = 1.0,
+    angle_spread: float = 0.28,
+    jitter_scale: float = 1.0,
+) -> list[list[tuple[float, float]]]:
+    if spacing <= 0.0:
+        raise ValueError("short-line spacing must be positive")
+    if angle_spread < 0.0:
+        raise ValueError("short-line angle spread must be non-negative")
     region = _inset(rect, 1.0)
     rng = np.random.default_rng(seed)
     lines: list[list[tuple[float, float]]] = []
@@ -235,10 +261,10 @@ def _stipple(rect: Rect, *, seed: int, spacing: float = 1.72) -> list[list[tuple
     while y < region.y1 - 0.7:
         x = region.x0 + 1.0 + (row % 2) * spacing * 0.43
         while x < region.x1 - 0.7:
-            angle = float(rng.uniform(-0.28, 0.28))
-            length = float(rng.uniform(0.42, 0.92))
-            jx = float(rng.uniform(-0.20, 0.20))
-            jy = float(rng.uniform(-0.18, 0.18))
+            angle = float(rng.uniform(-angle_spread, angle_spread))
+            length = float(rng.uniform(0.42, 0.92)) * length_scale
+            jx = float(rng.uniform(-0.20, 0.20)) * jitter_scale
+            jy = float(rng.uniform(-0.18, 0.18)) * jitter_scale
             dx = math.sin(angle) * length * 0.5
             dy = math.cos(angle) * length * 0.5
             lines.append([(x + jx - dx, y + jy - dy), (x + jx + dx, y + jy + dy)])
@@ -248,9 +274,51 @@ def _stipple(rect: Rect, *, seed: int, spacing: float = 1.72) -> list[list[tuple
     return lines
 
 
-def _contours(rect: Rect, *, phase: float) -> list[list[tuple[float, float]]]:
+_CONTOUR_LEVEL_TEMPLATE = (
+    0.065,
+    0.095,
+    0.135,
+    0.185,
+    0.250,
+    0.330,
+    0.425,
+    0.535,
+    0.660,
+    0.800,
+    0.940,
+    1.080,
+    1.220,
+)
+
+
+def _contour_levels(count: int) -> tuple[float, ...]:
+    if count < 3:
+        raise ValueError("contour level count must be at least 3")
+    if count == len(_CONTOUR_LEVEL_TEMPLATE):
+        return _CONTOUR_LEVEL_TEMPLATE
+    positions = np.linspace(0.0, len(_CONTOUR_LEVEL_TEMPLATE) - 1, count)
+    sampled = np.interp(
+        positions,
+        np.arange(len(_CONTOUR_LEVEL_TEMPLATE)),
+        _CONTOUR_LEVEL_TEMPLATE,
+    )
+    return tuple(float(value) for value in sampled)
+
+
+def _contours(
+    rect: Rect,
+    *,
+    phase: float,
+    level_count: int,
+    focus_spread: float,
+    field_warp: float,
+) -> list[list[tuple[float, float]]]:
     """Extract an irregular, multi-focus topographic field with marching squares."""
 
+    if focus_spread <= 0.0:
+        raise ValueError("contour focus spread must be positive")
+    if field_warp < 0.0:
+        raise ValueError("contour field warp must be non-negative")
     region = _inset(rect, 0.85)
     xs = np.linspace(region.x0, region.x1, 78)
     ys = np.linspace(region.y0, region.y1, 92)
@@ -266,26 +334,20 @@ def _contours(rect: Rect, *, phase: float) -> list[list[tuple[float, float]]]:
         (119.5, 52.0, 0.34, 2.7, 2.8),
     )
     for cx, cy, strength, sx, sy in foci:
-        field += strength * np.exp(-0.5 * (((xx - cx) / sx) ** 2 + ((yy - cy) / sy) ** 2))
-    field += 0.026 * np.sin(xx * 0.58 + phase) * np.cos(yy * 0.41 - phase)
-    field += 0.018 * np.sin(xx * 0.23 + yy * 0.31)
+        field += strength * np.exp(
+            -0.5
+            * (
+                ((xx - cx) / (sx * focus_spread)) ** 2
+                + ((yy - cy) / (sy * focus_spread)) ** 2
+            )
+        )
+    field += (0.026 * field_warp) * np.sin(xx * 0.58 + phase) * np.cos(
+        yy * 0.41 - phase
+    )
+    field += (0.018 * field_warp) * np.sin(xx * 0.23 + yy * 0.31)
 
     lines: list[list[tuple[float, float]]] = []
-    levels = (
-        0.065,
-        0.095,
-        0.135,
-        0.185,
-        0.250,
-        0.330,
-        0.425,
-        0.535,
-        0.660,
-        0.800,
-        0.940,
-        1.080,
-        1.220,
-    )
+    levels = _contour_levels(int(level_count))
 
     def crossing(
         p0: tuple[float, float],
@@ -336,33 +398,54 @@ def _contours(rect: Rect, *, phase: float) -> list[list[tuple[float, float]]]:
     return lines
 
 
-def _dense_mass(rect: Rect, spacing: float, phase: float) -> list[list[tuple[float, float]]]:
+def _dense_mass(
+    rect: Rect, spacing: float, phase: float, wobble: float
+) -> list[list[tuple[float, float]]]:
+    if spacing <= 0.0:
+        raise ValueError("dense mass spacing must be positive")
     region = _inset(rect, 0.55)
     lines: list[list[tuple[float, float]]] = []
     y = region.y0
     row = 0
     while y <= region.y1:
-        wobble = 0.10 * math.sin(row * 0.31 + phase)
-        lines.append([(region.x0, y), (region.x1, min(region.y1, y + wobble))])
+        offset = wobble * math.sin(row * 0.31 + phase)
+        lines.append([(region.x0, y), (region.x1, min(region.y1, y + offset))])
         y += spacing
         row += 1
     return lines
 
 
-def _sparse_ticks(rect: Rect, seed: int) -> list[list[tuple[float, float]]]:
+def _sparse_ticks(
+    rect: Rect,
+    seed: int,
+    *,
+    density: float,
+    length_scale: float,
+    rotation: float,
+) -> list[list[tuple[float, float]]]:
+    if density < 0.0:
+        raise ValueError("short-line density must be non-negative")
     region = _inset(rect, 1.15)
     rng = np.random.default_rng(seed)
     lines: list[list[tuple[float, float]]] = []
-    for _ in range(max(28, int(region.width * region.height / 23.0))):
+    base_count = max(28, int(region.width * region.height / 23.0))
+    count = max(1, int(round(base_count * density)))
+    for _ in range(count):
         x = float(rng.uniform(region.x0, region.x1))
         y = float(rng.uniform(region.y0, region.y1))
-        length = float(rng.uniform(0.45, 1.15))
-        angle = float(rng.choice((-0.45, 0.18, 0.72)))
-        lines.append([(x, y), (x + length * math.cos(angle), y + length * math.sin(angle))])
+        length = float(rng.uniform(0.45, 1.15)) * length_scale
+        angle = float(rng.choice((-0.45, 0.18, 0.72))) + rotation
+        lines.append(
+            [(x, y), (x + length * math.cos(angle), y + length * math.sin(angle))]
+        )
     return lines
 
 
-def _horizontal_guides(rect: Rect, spacing: float = 3.2) -> list[list[tuple[float, float]]]:
+def _horizontal_guides(
+    rect: Rect, spacing: float = 3.2
+) -> list[list[tuple[float, float]]]:
+    if spacing <= 0.0:
+        raise ValueError("horizontal guide spacing must be positive")
     region = _inset(rect, 0.55)
     y = region.y0 + 1.4
     lines: list[list[tuple[float, float]]] = []
@@ -372,9 +455,7 @@ def _horizontal_guides(rect: Rect, spacing: float = 3.2) -> list[list[tuple[floa
     return lines
 
 
-def _branch_parts(
-    seed: int, variant: int
-) -> tuple[
+def _branch_parts(seed: int, variant: int) -> tuple[
     list[list[tuple[float, float]]],
     list[list[tuple[float, float]]],
     list[list[tuple[float, float]]],
@@ -653,7 +734,9 @@ def _branch_parts(
         ],
     ]
 
-    secondary = top_branches + central_branches + red_branches + lower_branches + wave_branches
+    secondary = (
+        top_branches + central_branches + red_branches + lower_branches + wave_branches
+    )
 
     def dashed(
         start: tuple[float, float], end: tuple[float, float]
@@ -667,7 +750,9 @@ def _branch_parts(
         cursor = 0.0
         while cursor < length:
             stop = min(length, cursor + 0.42)
-            lines.append([(x0 + ux * cursor, y0 + uy * cursor), (x0 + ux * stop, y0 + uy * stop)])
+            lines.append(
+                [(x0 + ux * cursor, y0 + uy * cursor), (x0 + ux * stop, y0 + uy * stop)]
+            )
             cursor += 0.80
         return lines
 
@@ -771,7 +856,9 @@ def _registration() -> list[list[tuple[float, float]]]:
     # Orientation fan uses the same five allowed growth headings as the tree.
     origin = FAN_ORIGIN
     arc: list[tuple[float, float]] = []
-    for degree in np.linspace(180.0 + FAN_ANGLE_VALUES[0], 180.0 + FAN_ANGLE_VALUES[-1], 61):
+    for degree in np.linspace(
+        180.0 + FAN_ANGLE_VALUES[0], 180.0 + FAN_ANGLE_VALUES[-1], 61
+    ):
         angle = math.radians(float(degree))
         arc.append(
             (
@@ -796,6 +883,645 @@ def _registration() -> list[list[tuple[float, float]]]:
     return lines
 
 
+@primitive(
+    meta={
+        "spacing": {
+            "kind": "float",
+            "ui_min": 0.10,
+            "ui_max": 1.20,
+            "display_name": "Line Spacing",
+            "description": "Distance between plotter lines; smaller values make the red field denser.",
+            "unit": "mm",
+            "step": 0.01,
+            "format": "%.2f",
+            "category": "Field Pattern",
+            "recommended_range": (0.16, 0.50),
+        },
+        "wobble": {
+            "kind": "float",
+            "ui_min": 0.0,
+            "ui_max": 0.80,
+            "display_name": "Line Wobble",
+            "description": "Vertical displacement of each red fill line.",
+            "unit": "mm",
+            "step": 0.01,
+            "format": "%.2f",
+            "category": "Field Pattern",
+            "recommended_range": (0.01, 0.30),
+        },
+        "phase_offset": {
+            "kind": "float",
+            "ui_min": -3.14,
+            "ui_max": 3.14,
+            "display_name": "Phase",
+            "description": "Phase offset applied to the red line wobble.",
+            "unit": "rad",
+            "step": 0.05,
+            "format": "%.2f",
+            "category": "Field Pattern",
+            "advanced": True,
+        },
+    }
+)
+def fault_garden_red_area(
+    *,
+    seed: int = SEED,
+    variant: int = VARIANT,
+    spacing: float = 0.22,
+    wobble: float = 0.10,
+    phase_offset: float = 0.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """赤色領域を構成する高密度な水平線群を生成する。
+
+    Parameters
+    ----------
+    seed : int, optional
+        模様の基準位相に使用するシード。
+    variant : int, optional
+        模様の基準位相に加えるバリエーション番号。
+    spacing : float, optional
+        隣接する線の間隔。小さいほど領域が濃くなる。
+    wobble : float, optional
+        各水平線へ加える垂直方向の揺れ幅。
+    phase_offset : float, optional
+        基準位相へ加えるオフセット。
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray]
+        Grafix形式の座標配列とオフセット配列。
+    """
+
+    cells = _layout(int(seed), int(variant)).leaf_map()
+    phase = float(seed) * 0.017 + float(variant) * 0.43 + float(phase_offset)
+    return _pack(
+        _dense_mass(
+            cells["TBRR"],
+            spacing=float(spacing),
+            phase=phase,
+            wobble=float(wobble),
+        )
+    )
+
+
+@primitive(
+    meta={
+        "spacing": {
+            "kind": "float",
+            "ui_min": 0.10,
+            "ui_max": 1.20,
+            "display_name": "Line Spacing",
+            "description": "Distance between plotter lines; smaller values make the green field denser.",
+            "unit": "mm",
+            "step": 0.01,
+            "format": "%.2f",
+            "category": "Field Pattern",
+            "recommended_range": (0.16, 0.50),
+        },
+        "wobble": {
+            "kind": "float",
+            "ui_min": 0.0,
+            "ui_max": 0.80,
+            "display_name": "Line Wobble",
+            "description": "Vertical displacement of each green fill line.",
+            "unit": "mm",
+            "step": 0.01,
+            "format": "%.2f",
+            "category": "Field Pattern",
+            "recommended_range": (0.01, 0.30),
+        },
+        "guide_spacing": {
+            "kind": "float",
+            "ui_min": 1.0,
+            "ui_max": 12.0,
+            "display_name": "Guide Spacing",
+            "description": "Distance between the wider horizontal guide lines.",
+            "unit": "mm",
+            "step": 0.10,
+            "format": "%.2f",
+            "category": "Field Pattern",
+            "recommended_range": (2.0, 6.0),
+        },
+        "phase_offset": {
+            "kind": "float",
+            "ui_min": -3.14,
+            "ui_max": 3.14,
+            "display_name": "Phase",
+            "description": "Phase offset applied to the green line wobble.",
+            "unit": "rad",
+            "step": 0.05,
+            "format": "%.2f",
+            "category": "Field Pattern",
+            "advanced": True,
+        },
+    }
+)
+def fault_garden_green_area(
+    *,
+    seed: int = SEED,
+    variant: int = VARIANT,
+    spacing: float = 0.19,
+    wobble: float = 0.10,
+    guide_spacing: float = 3.2,
+    phase_offset: float = 0.4,
+) -> tuple[np.ndarray, np.ndarray]:
+    """緑色領域の高密度線と計測ガイド線を生成する。
+
+    Parameters
+    ----------
+    seed : int, optional
+        模様の基準位相に使用するシード。
+    variant : int, optional
+        模様の基準位相に加えるバリエーション番号。
+    spacing : float, optional
+        隣接する高密度線の間隔。小さいほど領域が濃くなる。
+    wobble : float, optional
+        各水平線へ加える垂直方向の揺れ幅。
+    guide_spacing : float, optional
+        太い間隔で配置する計測ガイド線同士の距離。
+    phase_offset : float, optional
+        基準位相へ加えるオフセット。
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray]
+        Grafix形式の座標配列とオフセット配列。
+    """
+
+    cells = _layout(int(seed), int(variant)).leaf_map()
+    phase = float(seed) * 0.017 + float(variant) * 0.43 + float(phase_offset)
+    lines = _dense_mass(
+        cells["BBL"],
+        spacing=float(spacing),
+        phase=phase,
+        wobble=float(wobble),
+    )
+    lines += _horizontal_guides(cells["BBL"], spacing=float(guide_spacing))
+    return _pack(lines)
+
+
+@primitive(
+    meta={
+        "spacing": {
+            "kind": "float",
+            "ui_min": 0.25,
+            "ui_max": 3.0,
+            "display_name": "Wave Spacing",
+            "description": "Distance between adjacent strata lines; smaller values increase density.",
+            "unit": "mm",
+            "step": 0.01,
+            "format": "%.2f",
+            "category": "Field Pattern",
+            "recommended_range": (0.50, 1.50),
+        },
+        "amplitude": {
+            "kind": "float",
+            "ui_min": 0.0,
+            "ui_max": 3.0,
+            "display_name": "Wave Amplitude",
+            "description": "Vertical height of the strata deformation.",
+            "unit": "mm",
+            "step": 0.05,
+            "format": "%.2f",
+            "category": "Field Pattern",
+            "recommended_range": (0.40, 1.60),
+        },
+        "phase_offset": {
+            "kind": "float",
+            "ui_min": -3.14,
+            "ui_max": 3.14,
+            "display_name": "Phase",
+            "description": "Horizontal phase offset of the strata pattern.",
+            "unit": "rad",
+            "step": 0.05,
+            "format": "%.2f",
+            "category": "Field Pattern",
+            "advanced": True,
+        },
+        "step_kink": {
+            "kind": "bool",
+            "display_name": "Stepped Profile",
+            "description": "Use a stepped geological displacement instead of smooth waves.",
+            "category": "Field Pattern",
+        },
+    }
+)
+def fault_garden_wave_pattern(
+    *,
+    cell_path: str = "BTL",
+    seed: int = SEED,
+    variant: int = VARIANT,
+    spacing: float = 0.76,
+    amplitude: float = 1.22,
+    phase_offset: float = 0.0,
+    step_kink: bool = False,
+) -> tuple[np.ndarray, np.ndarray]:
+    """GUIから独立調整できる一つの地層波形を生成する。
+
+    Parameters
+    ----------
+    cell_path : str, optional
+        BSPレイアウト内で波形を配置するセルの識別子。
+    seed : int, optional
+        模様の基準位相に使用するシード。
+    variant : int, optional
+        模様の基準位相に加えるバリエーション番号。
+    spacing : float, optional
+        隣接する波形線の間隔。
+    amplitude : float, optional
+        波形または段差の垂直方向の高さ。
+    phase_offset : float, optional
+        基準位相へ加えるオフセット。
+    step_kink : bool, optional
+        Trueの場合は滑らかな波形ではなく段差形状を生成する。
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray]
+        Grafix形式の座標配列とオフセット配列。
+    """
+
+    cells = _layout(int(seed), int(variant)).leaf_map()
+    phase = float(seed) * 0.017 + float(variant) * 0.43 + float(phase_offset)
+    return _pack(
+        _strata_lines(
+            cells[cell_path],
+            spacing=float(spacing),
+            amplitude=float(amplitude),
+            phase=phase,
+            step_kink=bool(step_kink),
+        )
+    )
+
+
+@primitive(
+    meta={
+        "spacing": {
+            "kind": "float",
+            "ui_min": 0.20,
+            "ui_max": 2.0,
+            "display_name": "Line Spacing",
+            "description": "Distance between adjacent vertical plotter lines.",
+            "unit": "mm",
+            "step": 0.01,
+            "format": "%.2f",
+            "category": "Field Pattern",
+            "recommended_range": (0.40, 1.20),
+        },
+        "amplitude": {
+            "kind": "float",
+            "ui_min": 0.0,
+            "ui_max": 1.50,
+            "display_name": "Wave Drift",
+            "description": "Horizontal displacement at the bottom of each vertical line.",
+            "unit": "mm",
+            "step": 0.01,
+            "format": "%.2f",
+            "category": "Field Pattern",
+            "recommended_range": (0.05, 0.60),
+        },
+        "frequency": {
+            "kind": "float",
+            "ui_min": 0.05,
+            "ui_max": 2.0,
+            "display_name": "Wave Frequency",
+            "description": "Rate at which the line drift oscillates across the field.",
+            "unit": "rad/line",
+            "step": 0.01,
+            "format": "%.2f",
+            "category": "Field Pattern",
+            "recommended_range": (0.25, 0.90),
+        },
+        "phase_offset": {
+            "kind": "float",
+            "ui_min": -3.14,
+            "ui_max": 3.14,
+            "display_name": "Phase",
+            "description": "Phase offset of the vertical-line wave.",
+            "unit": "rad",
+            "step": 0.05,
+            "format": "%.2f",
+            "category": "Field Pattern",
+            "advanced": True,
+        },
+    }
+)
+def fault_garden_vertical_line_wave(
+    *,
+    seed: int = SEED,
+    variant: int = VARIANT,
+    spacing: float = 0.67,
+    amplitude: float = 0.24,
+    frequency: float = 0.55,
+    phase_offset: float = 0.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """縦線で構成する波形フィールドを生成する。
+
+    Parameters
+    ----------
+    seed : int, optional
+        模様の基準位相に使用するシード。
+    variant : int, optional
+        模様の基準位相に加えるバリエーション番号。
+    spacing : float, optional
+        隣接する縦線の間隔。
+    amplitude : float, optional
+        各縦線の終端へ加える水平方向の変位幅。
+    frequency : float, optional
+        列方向に変位を反復する周波数。
+    phase_offset : float, optional
+        基準位相へ加えるオフセット。
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray]
+        Grafix形式の座標配列とオフセット配列。
+    """
+
+    cells = _layout(int(seed), int(variant)).leaf_map()
+    phase = float(seed) * 0.017 + float(variant) * 0.43 + float(phase_offset)
+    return _pack(
+        _vertical_hatch(
+            cells["BTR"],
+            spacing=float(spacing),
+            phase=phase,
+            amplitude=float(amplitude),
+            frequency=float(frequency),
+        )
+    )
+
+
+@primitive(
+    meta={
+        "level_count": {
+            "kind": "int",
+            "ui_min": 3,
+            "ui_max": 30,
+            "display_name": "Contour Levels",
+            "description": "Number of sampled field levels; higher values add more contour bands.",
+            "step": 1.0,
+            "category": "Field Pattern",
+            "recommended_range": (8, 18),
+        },
+        "focus_spread": {
+            "kind": "float",
+            "ui_min": 0.35,
+            "ui_max": 2.50,
+            "display_name": "Focus Spread",
+            "description": "Scale of the six Gaussian topographic foci.",
+            "step": 0.05,
+            "format": "%.2f",
+            "category": "Field Pattern",
+            "recommended_range": (0.65, 1.55),
+        },
+        "field_warp": {
+            "kind": "float",
+            "ui_min": 0.0,
+            "ui_max": 3.0,
+            "display_name": "Field Warp",
+            "description": "Strength of the fine sinusoidal irregularity in the contour field.",
+            "step": 0.05,
+            "format": "%.2f",
+            "category": "Field Pattern",
+            "recommended_range": (0.25, 1.75),
+        },
+        "phase_offset": {
+            "kind": "float",
+            "ui_min": -3.14,
+            "ui_max": 3.14,
+            "display_name": "Warp Phase",
+            "description": "Phase offset of the contour-field irregularity.",
+            "unit": "rad",
+            "step": 0.05,
+            "format": "%.2f",
+            "category": "Field Pattern",
+            "advanced": True,
+        },
+    }
+)
+def fault_garden_contours(
+    *,
+    seed: int = SEED,
+    variant: int = VARIANT,
+    level_count: int = 13,
+    focus_spread: float = 1.0,
+    field_warp: float = 1.0,
+    phase_offset: float = 0.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """複数焦点からなる等高線フィールドを生成する。
+
+    Parameters
+    ----------
+    seed : int, optional
+        微細な歪みの基準位相に使用するシード。
+    variant : int, optional
+        微細な歪みの基準位相に加えるバリエーション番号。
+    level_count : int, optional
+        抽出する等高線レベルの数。
+    focus_spread : float, optional
+        六つの地形焦点の広がり倍率。
+    field_warp : float, optional
+        等高線へ加える微細な歪みの強さ。
+    phase_offset : float, optional
+        歪みの基準位相へ加えるオフセット。
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray]
+        Grafix形式の座標配列とオフセット配列。
+    """
+
+    cells = _layout(int(seed), int(variant)).leaf_map()
+    phase = float(seed) * 0.017 + float(variant) * 0.43 + float(phase_offset)
+    return _pack(
+        _contours(
+            cells["TTRR"],
+            phase=phase,
+            level_count=int(level_count),
+            focus_spread=float(focus_spread),
+            field_warp=float(field_warp),
+        )
+    )
+
+
+@primitive(
+    meta={
+        "spacing": {
+            "kind": "float",
+            "ui_min": 0.60,
+            "ui_max": 5.0,
+            "display_name": "Mark Spacing",
+            "description": "Distance between the regularly scattered short lines.",
+            "unit": "mm",
+            "step": 0.01,
+            "format": "%.2f",
+            "category": "Field Pattern",
+            "recommended_range": (1.20, 2.80),
+        },
+        "length_scale": {
+            "kind": "float",
+            "ui_min": 0.25,
+            "ui_max": 2.50,
+            "display_name": "Mark Length",
+            "description": "Scale applied to the length of every short line.",
+            "unit": "×",
+            "step": 0.01,
+            "format": "%.2f",
+            "category": "Field Pattern",
+            "recommended_range": (0.60, 1.50),
+        },
+        "angle_spread": {
+            "kind": "float",
+            "ui_min": 0.0,
+            "ui_max": 1.20,
+            "display_name": "Angle Spread",
+            "description": "Maximum angular deviation of each short line.",
+            "unit": "rad",
+            "step": 0.01,
+            "format": "%.2f",
+            "category": "Field Pattern",
+            "recommended_range": (0.05, 0.60),
+        },
+        "jitter_scale": {
+            "kind": "float",
+            "ui_min": 0.0,
+            "ui_max": 2.50,
+            "display_name": "Position Jitter",
+            "description": "Scale applied to the random displacement of each mark.",
+            "unit": "×",
+            "step": 0.01,
+            "format": "%.2f",
+            "category": "Field Pattern",
+            "recommended_range": (0.50, 1.50),
+            "advanced": True,
+        },
+    }
+)
+def fault_garden_central_dash_scatter(
+    *,
+    seed: int = SEED,
+    variant: int = VARIANT,
+    spacing: float = 1.72,
+    length_scale: float = 1.0,
+    angle_spread: float = 0.28,
+    jitter_scale: float = 1.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """中央領域へ格子状に短線を散布する。
+
+    Parameters
+    ----------
+    seed : int, optional
+        短線の向き、長さ、位置の乱数シード。
+    variant : int, optional
+        BSPレイアウトを選択するバリエーション番号。
+    spacing : float, optional
+        短線を配置する格子の間隔。
+    length_scale : float, optional
+        短線の長さへ掛ける倍率。
+    angle_spread : float, optional
+        短線の角度を散らす最大幅。
+    jitter_scale : float, optional
+        格子位置へ加えるランダム変位の倍率。
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray]
+        Grafix形式の座標配列とオフセット配列。
+    """
+
+    cells = _layout(int(seed), int(variant)).leaf_map()
+    return _pack(
+        _stipple(
+            cells["TBRL"],
+            seed=int(seed) + 31,
+            spacing=float(spacing),
+            length_scale=float(length_scale),
+            angle_spread=float(angle_spread),
+            jitter_scale=float(jitter_scale),
+        )
+    )
+
+
+@primitive(
+    meta={
+        "density": {
+            "kind": "float",
+            "ui_min": 0.10,
+            "ui_max": 3.0,
+            "display_name": "Mark Density",
+            "description": "Multiplier applied to the number of lower-right short lines.",
+            "unit": "×",
+            "step": 0.01,
+            "format": "%.2f",
+            "category": "Field Pattern",
+            "recommended_range": (0.50, 1.75),
+        },
+        "length_scale": {
+            "kind": "float",
+            "ui_min": 0.25,
+            "ui_max": 2.50,
+            "display_name": "Mark Length",
+            "description": "Scale applied to the length of every short line.",
+            "unit": "×",
+            "step": 0.01,
+            "format": "%.2f",
+            "category": "Field Pattern",
+            "recommended_range": (0.60, 1.50),
+        },
+        "rotation": {
+            "kind": "float",
+            "ui_min": -3.14,
+            "ui_max": 3.14,
+            "display_name": "Rotation",
+            "description": "Rotation added to the three allowed mark headings.",
+            "unit": "rad",
+            "step": 0.05,
+            "format": "%.2f",
+            "category": "Field Pattern",
+        },
+    }
+)
+def fault_garden_lower_right_dash_scatter(
+    *,
+    seed: int = SEED,
+    variant: int = VARIANT,
+    density: float = 1.0,
+    length_scale: float = 1.0,
+    rotation: float = 0.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """右下領域へランダムな短線を散布する。
+
+    Parameters
+    ----------
+    seed : int, optional
+        短線の位置、長さ、向きの乱数シード。
+    variant : int, optional
+        BSPレイアウトを選択するバリエーション番号。
+    density : float, optional
+        基準本数へ掛ける短線密度の倍率。
+    length_scale : float, optional
+        短線の長さへ掛ける倍率。
+    rotation : float, optional
+        三つの基準角度へ加える回転量。
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray]
+        Grafix形式の座標配列とオフセット配列。
+    """
+
+    cells = _layout(int(seed), int(variant)).leaf_map()
+    return _pack(
+        _sparse_ticks(
+            cells["BBR"],
+            seed=int(seed) + 79,
+            density=float(density),
+            length_scale=float(length_scale),
+            rotation=float(rotation),
+        )
+    )
+
+
 @primitive
 def fault_garden_geometry(
     *, part: int = 0, seed: int = SEED, variant: int = VARIANT
@@ -803,29 +1529,10 @@ def fault_garden_geometry(
     """Return one semantic line family of the recursive atlas."""
 
     layout = _layout(int(seed), int(variant))
-    cells = layout.leaf_map()
-    phase = float(seed) * 0.017 + float(variant) * 0.43
     lines: list[list[tuple[float, float]]]
 
     if part == 0:
         lines = _guide_lines(layout)
-    elif part == 1:
-        lines = _strata_lines(
-            cells["TTRL"], spacing=0.74, amplitude=1.18, phase=phase, step_kink=True
-        )
-        lines += _strata_lines(cells["BTL"], spacing=0.76, amplitude=1.22, phase=phase + 0.9)
-        lines += _vertical_hatch(cells["BTR"], spacing=0.67, phase=phase)
-    elif part == 2:
-        lines = _contours(cells["TTRR"], phase=phase)
-    elif part == 3:
-        lines = _stipple(cells["TBRL"], seed=int(seed) + 31)
-        lines += _sparse_ticks(cells["BBR"], seed=int(seed) + 79)
-    elif part == 4:
-        lines = _dense_mass(cells["TBRR"], spacing=0.22, phase=phase)
-    elif part == 5:
-        lines = _strata_lines(cells["TBRR"], spacing=0.78, amplitude=0.74, phase=phase + 1.7)
-    elif part == 6:
-        lines = _dense_mass(cells["BBL"], spacing=0.19, phase=phase + 0.4)
     elif part == 7:
         major, _secondary, _tertiary, _markers = _branch_parts(int(seed), int(variant))
         lines = [major[0]]
@@ -848,8 +1555,6 @@ def fault_garden_geometry(
         lines = [[(6.3, 168.2), (11.1, 168.2)]]
     elif part == 15:
         lines = [[(6.3, 171.3), (11.1, 171.3)]]
-    elif part == 16:
-        lines = _horizontal_guides(cells["BBL"], spacing=3.2)
     elif part == 17:
         major, _secondary, _tertiary, _markers = _branch_parts(int(seed), int(variant))
         lines = [major[1]]
@@ -896,17 +1601,20 @@ def _labels():
         font_index=10,
         spacing=0.72,
     )
-    title = E.fill(
-        angle_sets=2,
+    title = E(name="Title Fill").fill(
+        # activate=False,
+        angle_sets=1,
         angle=0.0,
-        density=70.0,
+        density=0,
         spacing_gradient=0.0,
         remove_boundary=False,
+        key="title_fill",
     )(title_outline)
-    title = E.rotate(
+    title = E(name="Title Rotation").rotate(
         auto_center=False,
         pivot=(5.3, 90.2, 0.0),
         rotation=(0.0, 0.0, -90.0),
+        key="title_rotation",
     )(title)
 
     plate_outline = _text(
@@ -918,12 +1626,13 @@ def _labels():
         font_index=7,
         spacing=0.10,
     )
-    plate = E.fill(
+    plate = E(name="Plate Label Fill").fill(
         angle_sets=2,
         angle=0.0,
-        density=55.0,
+        density=0,
         spacing_gradient=0.0,
         remove_boundary=False,
+        key="plate_label_fill",
     )(plate_outline)
     cut = _text(
         f"CUT 03\nSEED {SEED:03d}\nSCALE 1:5",
@@ -1044,40 +1753,45 @@ def _labels():
             strict=True,
         )
     ]
-    cut_fill = E.fill(
+    cut_fill = E(name="Cut Block Fill").fill(
         angle_sets=1,
         angle=0.0,
-        density=65.0,
+        density=0,
         spacing_gradient=0.0,
         remove_boundary=False,
+        key="cut_block_fill",
     )
-    metadata_fill = E.fill(
+    metadata_fill = E(name="Metadata Fill").fill(
         angle_sets=1,
         angle=0.0,
-        density=70.0,
+        density=0,
         spacing_gradient=0.0,
         remove_boundary=False,
+        key="metadata_fill",
     )
-    rule_heading_fill = E.fill(
+    rule_heading_fill = E(name="Rule Heading Fill").fill(
         angle_sets=1,
         angle=0.0,
-        density=45.0,
+        density=0,
         spacing_gradient=0.0,
         remove_boundary=False,
+        key="rule_heading_fill",
     )
-    rule_columns_fill = E.fill(
+    rule_columns_fill = E(name="Rule Columns Fill").fill(
         angle_sets=1,
         angle=0.0,
-        density=70.0,
+        density=0,
         spacing_gradient=0.0,
         remove_boundary=False,
+        key="rule_columns_fill",
     )
-    scale_label_fill = E.fill(
+    scale_label_fill = E(name="Scale and Angle Labels Fill").fill(
         angle_sets=1,
         angle=0.0,
-        density=25.0,
+        density=0,
         spacing_gradient=0.0,
         remove_boundary=False,
+        key="scale_and_angle_labels_fill",
     )
     return (
         title,
@@ -1100,39 +1814,154 @@ def draw(t: float):
             part=part, seed=SEED, variant=VARIANT, key=f"fault-garden-{part}"
         )
 
-    root_growth = E.bold(count=7, radius=0.22, seed=SEED)(geometry(7))
-    trunk_growth = E.bold(count=5, radius=0.15, seed=SEED + 3)(geometry(17))
-    canopy_growth = E.bold(count=3, radius=0.10, seed=SEED + 4)(geometry(18))
-    secondary = E.bold(count=3, radius=0.11, seed=SEED + 1)(geometry(8))
-    markers = E.bold(count=3, radius=0.07, seed=SEED + 2)(geometry(10))
+    red_area = G(name="Red Area Fill").fault_garden_red_area(
+        seed=SEED,
+        variant=VARIANT,
+        spacing=0.22,
+        wobble=0.10,
+        phase_offset=0.0,
+        key="red_area_fill",
+    )
+    green_area = G(name="Green Area Fill and Guides").fault_garden_green_area(
+        seed=SEED,
+        variant=VARIANT,
+        spacing=0.19,
+        wobble=0.10,
+        guide_spacing=3.2,
+        phase_offset=0.4,
+        key="green_area_fill_and_guides",
+    )
+    upper_waves = G(name="Upper Stepped Waves").fault_garden_wave_pattern(
+        cell_path="TTRL",
+        seed=SEED,
+        variant=VARIANT,
+        spacing=0.74,
+        amplitude=1.18,
+        phase_offset=0.0,
+        step_kink=True,
+        key="upper_stepped_waves",
+    )
+    lower_waves = G(name="Lower Smooth Waves").fault_garden_wave_pattern(
+        cell_path="BTL",
+        seed=SEED,
+        variant=VARIANT,
+        spacing=0.76,
+        amplitude=1.22,
+        phase_offset=0.9,
+        step_kink=False,
+        key="lower_smooth_waves",
+    )
+    vertical_line_wave = G(name="Vertical Line Wave").fault_garden_vertical_line_wave(
+        seed=SEED,
+        variant=VARIANT,
+        spacing=0.67,
+        amplitude=0.24,
+        frequency=0.55,
+        phase_offset=0.0,
+        key="vertical_line_wave",
+    )
+    contours = G(name="Topographic Contours").fault_garden_contours(
+        seed=SEED,
+        variant=VARIANT,
+        level_count=13,
+        focus_spread=1.0,
+        field_warp=1.0,
+        phase_offset=0.0,
+        key="topographic_contours",
+    )
+    central_scatter = G(
+        name="Central Short-Line Scatter"
+    ).fault_garden_central_dash_scatter(
+        seed=SEED,
+        variant=VARIANT,
+        spacing=1.72,
+        length_scale=1.0,
+        angle_spread=0.28,
+        jitter_scale=1.0,
+        key="central_short_line_scatter",
+    )
+    lower_right_scatter = G(
+        name="Lower-Right Short-Line Scatter"
+    ).fault_garden_lower_right_dash_scatter(
+        seed=SEED,
+        variant=VARIANT,
+        density=1.0,
+        length_scale=1.0,
+        rotation=0.0,
+        key="lower_right_short_line_scatter",
+    )
+
+    root_growth = E(name="Root Growth Emphasis").bold(
+        count=7,
+        radius=0.22,
+        seed=SEED,
+        key="root_growth_emphasis",
+    )(geometry(7))
+    trunk_growth = E(name="Trunk Growth Emphasis").bold(
+        count=5,
+        radius=0.15,
+        seed=SEED + 3,
+        key="trunk_growth_emphasis",
+    )(geometry(17))
+    canopy_growth = E(name="Canopy Growth Emphasis").bold(
+        count=3,
+        radius=0.10,
+        seed=SEED + 4,
+        key="canopy_growth_emphasis",
+    )(geometry(18))
+    secondary = E(name="Secondary Growth Emphasis").bold(
+        count=3,
+        radius=0.11,
+        seed=SEED + 1,
+        key="secondary_growth_emphasis",
+    )(geometry(8))
+    markers = E(name="Sample Node Emphasis").bold(
+        count=3,
+        radius=0.07,
+        seed=SEED + 2,
+        key="sample_node_emphasis",
+    )(geometry(10))
+
+    # Keep the plotter workflow to one layer per pen colour.  The geometry
+    # hierarchy remains in the marks themselves (for example E.bold emits
+    # several fine strokes), while every physical pen stroke uses Grafix's
+    # default 0.001 line thickness.
+    ink = (
+        upper_waves,
+        lower_waves,
+        vertical_line_wave,
+        contours,
+        central_scatter,
+        lower_right_scatter,
+        geometry(0),
+        root_growth,
+        trunk_growth,
+        canopy_growth,
+        secondary,
+        geometry(9),
+        markers,
+        geometry(11),
+        geometry(12),
+        geometry(13),
+        geometry(14),
+        geometry(15),
+        title,
+        plate,
+        cut,
+        metadata,
+        *rule,
+        *right_scale,
+        *bottom_scale,
+        *angles,
+    )
     return (
-        L("oil-green mass").layer(geometry(6), color=OIL_GREEN, thickness=0.00480),
-        L("oil-green measured lines").layer(geometry(16), color=GREEN_GUIDE, thickness=0.00062),
-        L("vermilion exception mass").layer(geometry(4), color=VERMILION, thickness=0.00480),
-        L("strata and section hatch").layer(geometry(1), color=GRAPHITE, thickness=0.00066),
-        L("contour field").layer(geometry(2), color=GRAPHITE, thickness=0.00072),
-        L("sediment marks").layer(geometry(3), color=PALE_GRAPHITE, thickness=0.00062),
-        L("exception strata").layer(geometry(5), color=INK, thickness=0.00076),
-        L("cell boundary").layer(geometry(0), color=INK, thickness=0.00310),
-        L("root growth").layer(root_growth, color=INK, thickness=0.00485),
-        L("trunk growth").layer(trunk_growth, color=INK, thickness=0.00465),
-        L("canopy growth").layer(canopy_growth, color=INK, thickness=0.00420),
-        L("secondary growth").layer(secondary, color=INK, thickness=0.00345),
-        L("tertiary growth").layer(geometry(9), color=INK, thickness=0.00195),
-        L("sample nodes").layer(markers, color=INK, thickness=0.00220),
-        L("registration").layer(geometry(11), color=GRAPHITE, thickness=0.00078),
-        L("legend primary").layer(geometry(12), color=INK, thickness=0.00420),
-        L("legend secondary").layer(geometry(13), color=INK, thickness=0.00270),
-        L("legend tertiary").layer(geometry(14), color=INK, thickness=0.00155),
-        L("legend boundary").layer(geometry(15), color=INK, thickness=0.00082),
-        L("vertical title").layer(title, color=INK, thickness=0.00092),
-        L("plate label").layer(plate, color=INK, thickness=0.00084),
-        L("cut block").layer(cut, color=INK, thickness=0.00062),
-        L("metadata").layer(metadata, color=INK, thickness=0.00048),
-        L("rule legend").layer(rule, color=INK, thickness=0.00048),
-        L("right scale labels").layer(right_scale, color=INK, thickness=0.00045),
-        L("bottom scale labels").layer(bottom_scale, color=INK, thickness=0.00044),
-        L("angle labels").layer(angles, color=INK, thickness=0.00042),
+        L("oil-green").layer(
+            green_area, color=OIL_GREEN, thickness=PLOT_THICKNESS
+        ),
+        L("vermilion").layer(
+            red_area, color=VERMILION, thickness=PLOT_THICKNESS
+        ),
+        L("ink").layer(ink, color=INK, thickness=PLOT_THICKNESS),
     )
 
 
