@@ -915,7 +915,7 @@ def test_gui_construction_failure_closes_completed_draw_system_and_midi_once(
         window = Window()
         transport = object()
         is_recording = False
-        capture_service = object()
+        capture_service = SimpleNamespace(_export_owned=lambda *_args, **_kwargs: None)
 
         def __init__(self, *_args: object, **kwargs: object) -> None:
             calls.append("create draw")

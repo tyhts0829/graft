@@ -1698,6 +1698,244 @@ class _P(Protocol):
         """ラベル付き preset 名前空間を返す。"""
         ...
 
+    def axes(self, *, activate: bool = ..., center: Vec3 = ..., axis_length: float = ..., axis_visible_ratio: float = ..., axis_visible_anchor: Literal['left', 'center', 'right'] = ..., tick_count_x: int = ..., tick_length: float = ..., tick_offset: float = ..., tick_log: bool = ...) -> SceneItem:
+        """
+        引数:
+            activate: このプリセットによるシーン要素の生成を有効にする。, bool
+            center: 軸全体の基準位置を指定する。, vec3, range [0.0, 300.0]
+            axis_length: 目盛りを配置する X 軸全体の長さを指定する。, float, range [0.0, 300.0]
+            axis_visible_ratio: 軸線として描画する区間を全長に対する比率で指定する。, float, range [0.0, 1.0]
+            axis_visible_anchor: 短くした軸線を全長の左端・中央・右端のどこへ揃えるかを選ぶ。, choice, choices { 'left', 'center', 'right' }
+            tick_count_x: X 軸上へ配置する目盛り線の本数を指定する。, int, range [2, 301]
+            tick_length: 各目盛り線の長さを指定する。, float, range [0.0, 20.0]
+            tick_offset: 目盛り線を軸線から Y 方向へずらす距離を指定する。, float, range [-20.0, 20.0]
+            tick_log: 目盛り位置を等間隔ではなく対数間隔で配置する。, bool
+        """
+        ...
+    def dot_matrix(self, *, activate: bool = ..., center: Vec3 = ..., matrix_size: Vec3 = ..., dot_size: float = ..., fill_density_coef: float = ..., repeat_count_x: int = ..., repeat_count_y: int = ...) -> SceneItem:
+        """
+        引数:
+            activate: このプリセットによるシーン要素の生成を有効にする。, bool
+            center: 行列の基準となる最初のドットの中心位置を指定する。, vec3, range [0.0, 100.0]
+            matrix_size: 隣接するドット間隔を X・Y 軸ごとに拡大縮小する。, vec3, range [0.0, 5.0]
+            dot_size: 各ドットを構成する円形ポリゴンの大きさを指定する。, float, range [0.1, 20.0]
+            fill_density_coef: 各ドット内部のハッチング密度を基準値に対する比率で指定する。, float, range [0.0, 1.0]
+            repeat_count_x: X 方向へ並べるドットの個数を指定する。, int, range [1, 50]
+            repeat_count_y: Y 方向へ並べるドットの個数を指定する。, int, range [1, 50]
+        """
+        ...
+    def flow(self, *, activate: bool = ..., center: Vec3 = ..., scale: Vec3 = ..., fill_density_coef: float = ..., fill_angle: float = ..., subdivide_levels: int = ..., displace_amplitude: Vec3 = ..., displace_frequency: Vec3 = ...) -> SceneItem:
+        """
+        引数:
+            activate: このプリセットによるシーン要素の生成を有効にする。, bool
+            center: 完成した流線パターン全体を移動する量を指定する。, vec3, range [0.0, 100.0]
+            scale: 完成した流線パターン全体を軸ごとに拡大縮小する。, vec3, range [0.0, 5.0]
+            fill_density_coef: 変形前に生成する平行線の密度を基準値に対する比率で指定する。, float, range [0.0, 1.0]
+            fill_angle: 流線の元になる平行線の角度を度で指定する。, float, range [0.0, 360.0]
+            subdivide_levels: 変位前に各線分を細分化する反復回数を指定する。, int, range [0, 10]
+            displace_amplitude: ノイズ変位の最大振幅を軸ごとに指定する。, vec3, range [0.0, 5.0]
+            displace_frequency: ノイズ場の空間周波数を軸ごとに指定する。, vec3, range [0.0, 0.5]
+        """
+        ...
+    def grn_a5_frame(self, *, activate: bool = ..., show_layout: bool = ..., layout_color_rgb255: tuple[int, int, int] = ..., number_text: str = ..., explanation_text: str = ..., explanation_density: float = ..., template_color_rgb255: tuple[int, int, int] = ...) -> SceneItem:
+        """
+        引数:
+            activate: このプリセットによるシーン要素の生成を有効にする。, bool
+            show_layout: A5 テンプレートのカラム・行グリッドを表示する。, bool
+            layout_color_rgb255: レイアウトグリッドの線色を RGB で指定する。, rgb, range [0, 255]
+            number_text: ヘッダーへ配置する作品番号の文字列を指定する。, str
+            explanation_text: ヘッダー右側へ配置するコード説明文を指定する。, str
+            explanation_density: コード説明文を塗るハッチング線の密度を指定する。, float, range [0.0, 1000.0]
+            template_color_rgb255: ヘッダー内の罫線・文字・バーの線色を RGB で指定する。, rgb, range [0, 255]
+        """
+        ...
+    def layout_bounds(self, *, activate: bool = ..., canvas_w: float = ..., canvas_h: float = ..., axes: Literal['both', 'vertical', 'horizontal'] = ..., margin_l: float = ..., margin_r: float = ..., margin_t: float = ..., margin_b: float = ..., show_center: bool = ..., border: bool = ..., show_margin: bool = ..., trim: float = ..., show_trim: bool = ..., offset: Vec3 = ...) -> SceneItem:
+        """
+        外枠（canvas / safe / trim）を描く。
+
+        引数:
+            activate: このプリセットによるシーン要素の生成を有効にする。, bool
+            canvas_w: ガイドを構成するキャンバス矩形の横幅を指定する。, float, range [10.0, 1000.0]
+            canvas_h: ガイドを構成するキャンバス矩形の高さを指定する。, float, range [10.0, 1000.0]
+            axes: 縦線と横線の両方、またはいずれか一方向だけを描く。, choice, choices { 'both', 'vertical', 'horizontal' }
+            margin_l: ガイド対象矩形をキャンバス左端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            margin_r: ガイド対象矩形をキャンバス右端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            margin_t: ガイド対象矩形をキャンバス上端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            margin_b: ガイド対象矩形をキャンバス下端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            show_center: ガイド対象矩形の中心を通る縦横線を追加する。, bool
+            border: キャンバス外周を示す境界線を描く。, bool
+            show_margin: 各 margin を差し引いた安全領域の外周線を描く。, bool
+            trim: キャンバス外周からトリム線までの均等な内側距離を指定する。, float, range [0.0, 100.0]
+            show_trim: 指定した trim 距離にトリム外周線を描く。, bool
+            offset: ガイド全体をキャンバス原点から移動する量を指定する。, vec3, range [-50.0, 50.0]
+        """
+        ...
+    def layout_diagonals(self, *, activate: bool = ..., canvas_w: float = ..., canvas_h: float = ..., axes: Literal['both', 'vertical', 'horizontal'] = ..., margin_l: float = ..., margin_r: float = ..., margin_t: float = ..., margin_b: float = ..., show_center: bool = ..., offset: Vec3 = ...) -> SceneItem:
+        """
+        対角線ガイドを描く。
+
+        引数:
+            activate: このプリセットによるシーン要素の生成を有効にする。, bool
+            canvas_w: ガイドを構成するキャンバス矩形の横幅を指定する。, float, range [10.0, 1000.0]
+            canvas_h: ガイドを構成するキャンバス矩形の高さを指定する。, float, range [10.0, 1000.0]
+            axes: 縦線と横線の両方、またはいずれか一方向だけを描く。, choice, choices { 'both', 'vertical', 'horizontal' }
+            margin_l: ガイド対象矩形をキャンバス左端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            margin_r: ガイド対象矩形をキャンバス右端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            margin_t: ガイド対象矩形をキャンバス上端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            margin_b: ガイド対象矩形をキャンバス下端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            show_center: ガイド対象矩形の中心を通る縦横線を追加する。, bool
+            offset: ガイド全体をキャンバス原点から移動する量を指定する。, vec3, range [-50.0, 50.0]
+        """
+        ...
+    def layout_golden_ratio(self, *, activate: bool = ..., canvas_w: float = ..., canvas_h: float = ..., axes: Literal['both', 'vertical', 'horizontal'] = ..., margin_l: float = ..., margin_r: float = ..., margin_t: float = ..., margin_b: float = ..., show_center: bool = ..., levels: int = ..., offset: Vec3 = ...) -> SceneItem:
+        """
+        黄金比ガイド線を描く。
+
+        引数:
+            activate: このプリセットによるシーン要素の生成を有効にする。, bool
+            canvas_w: ガイドを構成するキャンバス矩形の横幅を指定する。, float, range [10.0, 1000.0]
+            canvas_h: ガイドを構成するキャンバス矩形の高さを指定する。, float, range [10.0, 1000.0]
+            axes: 縦線と横線の両方、またはいずれか一方向だけを描く。, choice, choices { 'both', 'vertical', 'horizontal' }
+            margin_l: ガイド対象矩形をキャンバス左端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            margin_r: ガイド対象矩形をキャンバス右端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            margin_t: ガイド対象矩形をキャンバス上端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            margin_b: ガイド対象矩形をキャンバス下端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            show_center: ガイド対象矩形の中心を通る縦横線を追加する。, bool
+            levels: 黄金比分割を新しい区間へ再帰的に適用する深さを指定する。, int, range [1, 3]
+            offset: ガイド全体をキャンバス原点から移動する量を指定する。, vec3, range [-50.0, 50.0]
+        """
+        ...
+    def layout_grid_system(self, *, activate: bool = ..., canvas_w: float = ..., canvas_h: float = ..., axes: Literal['both', 'vertical', 'horizontal'] = ..., margin_l: float = ..., margin_r: float = ..., margin_t: float = ..., margin_b: float = ..., show_center: bool = ..., cols: int = ..., rows: int = ..., gutter_x: float = ..., gutter_y: float = ..., show_column_centers: bool = ..., show_baseline: bool = ..., baseline_step: float = ..., baseline_offset: float = ..., offset: Vec3 = ...) -> SceneItem:
+        """
+        grid system（columns / modular / baseline）を描く。
+
+        引数:
+            activate: このプリセットによるシーン要素の生成を有効にする。, bool
+            canvas_w: ガイドを構成するキャンバス矩形の横幅を指定する。, float, range [10.0, 1000.0]
+            canvas_h: ガイドを構成するキャンバス矩形の高さを指定する。, float, range [10.0, 1000.0]
+            axes: 縦線と横線の両方、またはいずれか一方向だけを描く。, choice, choices { 'both', 'vertical', 'horizontal' }
+            margin_l: ガイド対象矩形をキャンバス左端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            margin_r: ガイド対象矩形をキャンバス右端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            margin_t: ガイド対象矩形をキャンバス上端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            margin_b: ガイド対象矩形をキャンバス下端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            show_center: ガイド対象矩形の中心を通る縦横線を追加する。, bool
+            cols: 対象矩形を分割するカラム数を指定する。, int, range [1, 24]
+            rows: 対象矩形を分割する行数を指定する。, int, range [1, 24]
+            gutter_x: 隣接するカラム間に確保する横方向の空きを指定する。, float, range [0.0, 50.0]
+            gutter_y: 隣接する行間に確保する縦方向の空きを指定する。, float, range [0.0, 50.0]
+            show_column_centers: 各カラムの中央を通る補助線を追加する。, bool
+            show_baseline: タイポグラフィ用の水平ベースライングリッドを重ねる。, bool
+            baseline_step: 隣接するベースライン間の距離を指定する。, float, range [0.1, 50.0]
+            baseline_offset: ベースライン列の開始位置を Y 方向へずらす。, float, range [-50.0, 50.0]
+            offset: ガイド全体をキャンバス原点から移動する量を指定する。, vec3, range [-50.0, 50.0]
+        """
+        ...
+    def layout_intersections(self, *, activate: bool = ..., canvas_w: float = ..., canvas_h: float = ..., axes: Literal['both', 'vertical', 'horizontal'] = ..., margin_l: float = ..., margin_r: float = ..., margin_t: float = ..., margin_b: float = ..., show_center: bool = ..., show_thirds: bool = ..., show_golden: bool = ..., mark_size: float = ..., offset: Vec3 = ...) -> SceneItem:
+        """
+        指定した構図ガイドの交点へ十字マーカーを描く。
+
+        引数:
+            activate: このプリセットによるシーン要素の生成を有効にする。, bool
+            canvas_w: ガイドを構成するキャンバス矩形の横幅を指定する。, float, range [10.0, 1000.0]
+            canvas_h: ガイドを構成するキャンバス矩形の高さを指定する。, float, range [10.0, 1000.0]
+            axes: 縦線と横線の両方、またはいずれか一方向だけを描く。, choice, choices { 'both', 'vertical', 'horizontal' }
+            margin_l: ガイド対象矩形をキャンバス左端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            margin_r: ガイド対象矩形をキャンバス右端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            margin_t: ガイド対象矩形をキャンバス上端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            margin_b: ガイド対象矩形をキャンバス下端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            show_center: ガイド対象矩形の中心を通る縦横線を追加する。, bool
+            show_thirds: 三分割線の交点をマーカー対象に含める。, bool
+            show_golden: 黄金比分割線の交点をマーカー対象に含める。, bool
+            mark_size: 各交点に描く十字マーカーの幅と高さを指定する。, float, range [0.0, 20.0]
+            offset: ガイド全体をキャンバス原点から移動する量を指定する。, vec3, range [-50.0, 50.0]
+        """
+        ...
+    def layout_metallic_rectangles(self, *, activate: bool = ..., canvas_w: float = ..., canvas_h: float = ..., axes: Literal['both', 'vertical', 'horizontal'] = ..., margin_l: float = ..., margin_r: float = ..., margin_t: float = ..., margin_b: float = ..., show_center: bool = ..., metallic_n: int = ..., levels: int = ..., corner: Literal['tl', 'tr', 'br', 'bl'] = ..., clockwise: bool = ..., offset: Vec3 = ...) -> SceneItem:
+        """
+        貴金属比の矩形分割を描く。
+
+        引数:
+            activate: このプリセットによるシーン要素の生成を有効にする。, bool
+            canvas_w: ガイドを構成するキャンバス矩形の横幅を指定する。, float, range [10.0, 1000.0]
+            canvas_h: ガイドを構成するキャンバス矩形の高さを指定する。, float, range [10.0, 1000.0]
+            axes: 縦線と横線の両方、またはいずれか一方向だけを描く。, choice, choices { 'both', 'vertical', 'horizontal' }
+            margin_l: ガイド対象矩形をキャンバス左端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            margin_r: ガイド対象矩形をキャンバス右端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            margin_t: ガイド対象矩形をキャンバス上端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            margin_b: ガイド対象矩形をキャンバス下端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            show_center: ガイド対象矩形の中心を通る縦横線を追加する。, bool
+            metallic_n: 矩形分割に用いる第 n 貴金属比を指定する。, int, range [1, 12]
+            levels: 正方形を切り出して残りの矩形を分割する反復回数を指定する。, int, range [1, 8]
+            corner: 最初の正方形を切り出し始める矩形の角を選ぶ。, choice, choices { 'tl', 'tr', 'br', 'bl' }
+            clockwise: 切り出す辺を反復ごとに時計回りへ進める。, bool
+            offset: ガイド全体をキャンバス原点から移動する量を指定する。, vec3, range [-50.0, 50.0]
+        """
+        ...
+    def layout_ratio_lines(self, *, activate: bool = ..., canvas_w: float = ..., canvas_h: float = ..., axes: Literal['both', 'vertical', 'horizontal'] = ..., margin_l: float = ..., margin_r: float = ..., margin_t: float = ..., margin_b: float = ..., show_center: bool = ..., ratio: float = ..., levels: int = ..., min_spacing: float = ..., max_lines: int = ..., offset: Vec3 = ...) -> SceneItem:
+        """
+        比率分割線を描く。
+
+        引数:
+            activate: このプリセットによるシーン要素の生成を有効にする。, bool
+            canvas_w: ガイドを構成するキャンバス矩形の横幅を指定する。, float, range [10.0, 1000.0]
+            canvas_h: ガイドを構成するキャンバス矩形の高さを指定する。, float, range [10.0, 1000.0]
+            axes: 縦線と横線の両方、またはいずれか一方向だけを描く。, choice, choices { 'both', 'vertical', 'horizontal' }
+            margin_l: ガイド対象矩形をキャンバス左端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            margin_r: ガイド対象矩形をキャンバス右端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            margin_t: ガイド対象矩形をキャンバス上端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            margin_b: ガイド対象矩形をキャンバス下端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            show_center: ガイド対象矩形の中心を通る縦横線を追加する。, bool
+            ratio: 各区間を二分するときの長辺と短辺の比率を指定する。, float, range [1.01, 10.0]
+            levels: 生成した区間へ比率分割を再帰的に適用する深さを指定する。, int, range [1, 8]
+            min_spacing: 近接する分割線を統合するための最小間隔を指定する。, float, range [0.0, 20.0]
+            max_lines: 生成する分割線数の上限を指定し、0 なら上限を設けない。, int, range [0, 20000]
+            offset: ガイド全体をキャンバス原点から移動する量を指定する。, vec3, range [-50.0, 50.0]
+        """
+        ...
+    def layout_square_grid(self, *, activate: bool = ..., canvas_w: float = ..., canvas_h: float = ..., axes: Literal['both', 'vertical', 'horizontal'] = ..., margin_l: float = ..., margin_r: float = ..., margin_t: float = ..., margin_b: float = ..., show_center: bool = ..., cell_size: float = ..., offset: Vec3 = ...) -> SceneItem:
+        """
+        正方形グリッドを描く。
+
+        引数:
+            activate: このプリセットによるシーン要素の生成を有効にする。, bool
+            canvas_w: ガイドを構成するキャンバス矩形の横幅を指定する。, float, range [10.0, 1000.0]
+            canvas_h: ガイドを構成するキャンバス矩形の高さを指定する。, float, range [10.0, 1000.0]
+            axes: 縦線と横線の両方、またはいずれか一方向だけを描く。, choice, choices { 'both', 'vertical', 'horizontal' }
+            margin_l: ガイド対象矩形をキャンバス左端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            margin_r: ガイド対象矩形をキャンバス右端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            margin_t: ガイド対象矩形をキャンバス上端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            margin_b: ガイド対象矩形をキャンバス下端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            show_center: ガイド対象矩形の中心を通る縦横線を追加する。, bool
+            cell_size: 正方形グリッドの一辺と隣接線間隔を指定する。, float, range [1.0, 50.0]
+            offset: ガイド全体をキャンバス原点から移動する量を指定する。, vec3, range [-50.0, 50.0]
+        """
+        ...
+    def layout_thirds(self, *, activate: bool = ..., canvas_w: float = ..., canvas_h: float = ..., axes: Literal['both', 'vertical', 'horizontal'] = ..., margin_l: float = ..., margin_r: float = ..., margin_t: float = ..., margin_b: float = ..., show_center: bool = ..., offset: Vec3 = ...) -> SceneItem:
+        """
+        三分割ガイド線を描く。
+
+        引数:
+            activate: このプリセットによるシーン要素の生成を有効にする。, bool
+            canvas_w: ガイドを構成するキャンバス矩形の横幅を指定する。, float, range [10.0, 1000.0]
+            canvas_h: ガイドを構成するキャンバス矩形の高さを指定する。, float, range [10.0, 1000.0]
+            axes: 縦線と横線の両方、またはいずれか一方向だけを描く。, choice, choices { 'both', 'vertical', 'horizontal' }
+            margin_l: ガイド対象矩形をキャンバス左端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            margin_r: ガイド対象矩形をキャンバス右端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            margin_t: ガイド対象矩形をキャンバス上端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            margin_b: ガイド対象矩形をキャンバス下端から内側へずらす距離を指定する。, float, range [0.0, 100.0]
+            show_center: ガイド対象矩形の中心を通る縦横線を追加する。, bool
+            offset: ガイド全体をキャンバス原点から移動する量を指定する。, vec3, range [-50.0, 50.0]
+        """
+        ...
+    def logo(self, *, activate: bool = ..., center: Vec3 = ..., scale: float = ..., fill_density_coef: float = ...) -> SceneItem:
+        """
+        引数:
+            activate: このプリセットによるシーン要素の生成を有効にする。, bool
+            center: ロゴ全体を基準位置から移動する量を指定する。, vec3, range [0.0, 100.0]
+            scale: ロゴ全体を縦横同率で拡大縮小する。, float, range [0.0, 4.0]
+            fill_density_coef: ロゴ内の各ハッチング密度を基準値に対する比率で指定する。, float, range [0.0, 1.0]
+        """
+        ...
 G: _G
 E: _E
 L: _L

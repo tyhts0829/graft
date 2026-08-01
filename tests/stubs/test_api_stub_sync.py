@@ -11,6 +11,7 @@ from pathlib import Path
 def test_api_stub_sync(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[2]
     generated_path = tmp_path / "grafix-api.pyi"
+    packaged_config_path = repo_root / "src/grafix/resource/default_config.yaml"
     env = dict(os.environ)
     existing_pythonpath = env.get("PYTHONPATH")
     source_paths = [str(repo_root / "src"), str(repo_root)]
@@ -28,6 +29,8 @@ def test_api_stub_sync(tmp_path: Path) -> None:
             "grafix",
             "stub",
             "--no-default-import",
+            "--config",
+            str(packaged_config_path),
             "--output",
             str(generated_path),
         ),

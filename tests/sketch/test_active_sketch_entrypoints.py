@@ -160,4 +160,4 @@ def test_active_sketch_entrypoint_renders_headlessly(
 
 
 def test_active_sketch_inventory_is_not_empty() -> None:
-    assert len(_ENTRYPOINTS) == 52
+    assert len(_ENTRYPOINTS) == 53
