@@ -374,6 +374,28 @@ class _G(Protocol):
             shared: True なら反復呼び出しで同じ semantic parameter group を意図的に共有する。instance_key とは同時指定できない。
         """
         ...
+    def topographic_contours(self, *, activate: bool = ..., width: float = ..., height: float = ..., seed: int = ..., focus_count: int = ..., focus_spread: float = ..., level_count: int = ..., field_warp: float = ..., warp_frequency: float = ..., phase: float = ..., grid_pitch: float = ..., center: Vec3 = ..., key: str | int | None = ..., instance_key: str | int | None = ..., shared: bool = ...) -> Geometry:
+        """
+        複数焦点のscalar fieldから地形等高線を生成する。
+
+        引数:
+            activate: このプリミティブによる形状生成を有効にする。, bool
+            width: 等高線fieldを生成する矩形領域の幅を指定します。, display 'Width', float, range [1.0, 300.0], unit mm, step 1.0, category 'Layout'
+            height: 等高線fieldを生成する矩形領域の高さを指定します。, display 'Height', float, range [1.0, 300.0], unit mm, step 1.0, category 'Layout'
+            seed: 焦点の位置、強度、広がりのvariationを決めるseedです。, display 'Terrain Seed', int, range [0, 1000000], step 1.0, category 'Terrain Structure'
+            focus_count: 地形fieldを構成するGaussian焦点の数を指定します。, display 'Focus Count', int, range [1, 24], recommended [3.0, 12.0], step 1.0, category 'Terrain Structure'
+            focus_spread: すべてのGaussian焦点の広がりへ掛ける倍率です。, display 'Focus Spread', float, range [0.25, 2.5], recommended [0.65, 1.55], step 0.05, format '%.2f', category 'Terrain Structure'
+            level_count: scalar fieldから抽出する等高線levelの数を指定します。, display 'Contour Levels', int, range [1, 40], recommended [8.0, 18.0], step 1.0, category 'Terrain Structure'
+            field_warp: 等高線fieldへ加える周期的な細部の強さを指定します。, display 'Field Warp', float, range [0.0, 3.0], recommended [0.25, 1.75], step 0.05, format '%.2f', category 'Terrain Detail'
+            warp_frequency: 等高線fieldへ加える周期的な細部の周波数倍率です。, display 'Warp Frequency', float, range [0.0, 3.0], recommended [0.5, 1.75], step 0.05, format '%.2f', category 'Terrain Detail'
+            phase: 周期的なfield warpの位相をdegree単位で指定します。, display 'Warp Phase', float, range [-360.0, 360.0], unit deg, step 1.0, format '%.1f', category 'Terrain Detail'
+            grid_pitch: 等高線抽出に使うsampling gridの目標間隔を指定します。, display 'Grid Pitch', float, range [0.1, 10.0], recommended [0.35, 2.0], unit mm, step 0.05, format '%.2f', category 'Sampling', advanced
+            center: 等高線fieldの中心となるXYZ座標を指定します。, display 'Center', vec3, range [-300.0, 300.0], unit mm, category 'Layout'
+            key: コード移動後も同じパラメータグループとして扱うための semantic identity。
+            instance_key: loop/comprehension の反復ごとにパラメータグループを分ける identity。
+            shared: True なら反復呼び出しで同じ semantic parameter group を意図的に共有する。instance_key とは同時指定できない。
+        """
+        ...
     def torus(self, *, activate: bool = ..., major_radius: float = ..., minor_radius: float = ..., major_segments: int = ..., minor_segments: int = ..., center: Vec3 = ..., scale: float = ..., key: str | int | None = ..., instance_key: str | int | None = ..., shared: bool = ...) -> Geometry:
         """
         トーラスのワイヤーフレーム（子午線+緯線）を生成する。

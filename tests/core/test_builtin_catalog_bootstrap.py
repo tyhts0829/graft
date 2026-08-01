@@ -54,7 +54,7 @@ def test_builtin_manifest_has_one_unique_locator_per_operation() -> None:
     keys = tuple((item.kind, item.name) for item in manifest)
     locators = tuple((item.module, item.attribute) for item in manifest)
 
-    assert len(manifest) == 57
+    assert len(manifest) == 58
     assert len(set(keys)) == len(keys)
     assert len(set(locators)) == len(locators)
     assert all(item.evaluator_abi for item in manifest)

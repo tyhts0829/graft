@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import math
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -121,7 +122,7 @@ class PrimitiveBenchmarkState:
 
 
 def primitive_benchmark_cases() -> tuple[PrimitiveBenchmarkCase, ...]:
-    """全20組み込み primitive の actual-work case を返す。"""
+    """全21組み込み primitive の actual-work case を返す。"""
 
     center = [7.0, -11.0, 3.0]
     primary = (
@@ -509,6 +510,25 @@ def primitive_benchmark_cases() -> tuple[PrimitiveBenchmarkCase, ...]:
                 "angle": -23.0,
                 "center": center,
             },
+        ),
+        PrimitiveBenchmarkCase(
+            "primitive.topographic_contours.grid_81x101_levels_13",
+            "topographic contours / 81 x 101 grid / 13 levels",
+            "topographic_contours",
+            "grid_81x101_levels_13",
+            {
+                "width": 80.0,
+                "height": 100.0,
+                "focus_count": 6,
+                "focus_spread": 1.0,
+                "level_count": 13,
+                "field_warp": 1.0,
+                "warp_frequency": 1.0,
+                "phase": 37.0,
+                "grid_pitch": 1.0,
+                "center": center,
+            },
+            run_seed_argument="seed",
         ),
     )
     cold_controls = (
@@ -1050,6 +1070,16 @@ def _specific_metrics(
         counter("work.points.mapped", (n_u + n_v) * samples + boundary)
         counter("work.points.kept", int(geometry.coords.shape[0]))
         counter("work.split_lines", int(geometry.offsets.size - 1))
+    elif primitive == "topographic_contours":
+        width = float(args["width"])
+        height = float(args["height"])
+        grid_pitch = float(args["grid_pitch"])
+        n_x = math.ceil(width / grid_pitch) + 1
+        n_y = math.ceil(height / grid_pitch) + 1
+        counter("work.grid_points", n_x * n_y)
+        counter("work.focus_count", int(args["focus_count"]))
+        counter("work.level_count", int(args["level_count"]))
+        counter("work.output_paths", int(geometry.offsets.size - 1))
     elif primitive in {"text", "asemic"}:
         text = str(args["text"])
         visible = [char for char in text if not char.isspace()]

@@ -1,11 +1,11 @@
-"""組み込みprimitiveを名前付きの4列×5行で一覧表示するスケッチ。"""
+"""組み込みprimitiveを名前付きの4列×6行で一覧表示するスケッチ。"""
 
 from __future__ import annotations
 
 from grafix import E, G, run
 
 CANVAS_WIDTH = 360
-CANVAS_HEIGHT = 450
+CANVAS_HEIGHT = 530
 
 _COLUMNS = 4
 _CELL_WIDTH = CANVAS_WIDTH / _COLUMNS
@@ -35,6 +35,7 @@ PRIMITIVE_NAMES = (
     "text",
     "torus",
     "wave",
+    "topographic_contours",
 )
 
 
@@ -231,6 +232,19 @@ def _primitive_samples():
         angle=0.0,
         center=centers[19],
     )
+    topographic_contours = G.topographic_contours(
+        width=54.0,
+        height=46.0,
+        seed=271,
+        focus_count=5,
+        focus_spread=1.0,
+        level_count=9,
+        field_warp=1.0,
+        warp_frequency=1.0,
+        phase=0.0,
+        grid_pitch=2.0,
+        center=centers[20],
+    )
 
     return (
         ("arc", arc),
@@ -253,6 +267,7 @@ def _primitive_samples():
         ("text", text),
         ("torus", torus),
         ("wave", wave),
+        ("topographic_contours", topographic_contours),
     )
 
 

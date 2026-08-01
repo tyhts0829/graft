@@ -4,7 +4,10 @@ import numpy as np
 import pytest
 
 from grafix.core.geometry_kernels.grid import plan_grid_from_bbox
-from grafix.core.geometry_kernels.marching import marching_squares_loops
+from grafix.core.geometry_kernels.marching import (
+    marching_squares_loops,
+    marching_squares_paths,
+)
 from grafix.core.geometry_kernels.packed import (
     empty_packed_geometry,
     pack_polylines,
@@ -818,3 +821,91 @@ def test_planar_grid_marching_squares_level_matches_zero_level_parity() -> None:
     assert len(level_loops) == len(zero_loops) == 1
     np.testing.assert_array_equal(level_loops[0], zero_loops[0])
     np.testing.assert_array_equal(level_loops[0][0], level_loops[0][-1])
+
+
+def test_planar_grid_marching_squares_paths_stitches_open_rectangular_grid() -> None:
+    field = np.tile(np.asarray([0.0, 1.0]), (3, 1))
+
+    paths = marching_squares_paths(
+        field,
+        origin_x=10.0,
+        origin_y=-5.0,
+        pitch_x=4.0,
+        pitch_y=3.0,
+        level=0.5,
+    )
+
+    assert len(paths) == 1
+    np.testing.assert_array_equal(
+        paths[0],
+        np.asarray([[12.0, -5.0], [12.0, -2.0], [12.0, 1.0]]),
+    )
+    assert not np.array_equal(paths[0][0], paths[0][-1])
+
+
+def test_planar_grid_marching_squares_paths_emits_open_before_closed() -> None:
+    field = -np.ones((7, 9), dtype=np.float64)
+    field[0, :] = 1.0
+    field[4, 2] = 1.0
+
+    first = marching_squares_paths(
+        field,
+        origin_x=0.0,
+        origin_y=0.0,
+        pitch_x=1.0,
+    )
+    second = marching_squares_paths(
+        field.copy(),
+        origin_x=0.0,
+        origin_y=0.0,
+        pitch_x=1.0,
+    )
+
+    assert len(first) == len(second) == 2
+    assert not np.array_equal(first[0][0], first[0][-1])
+    np.testing.assert_array_equal(first[1][0], first[1][-1])
+    for actual, repeated in zip(first, second, strict=True):
+        np.testing.assert_array_equal(actual, repeated)
+
+
+def test_planar_grid_marching_squares_paths_preserves_saddle_pairing() -> None:
+    field = np.asarray([[1.0, -1.0], [-1.0, 1.0]])
+
+    paths = marching_squares_paths(
+        field,
+        origin_x=0.0,
+        origin_y=0.0,
+        pitch_x=1.0,
+    )
+
+    assert len(paths) == 2
+    np.testing.assert_array_equal(paths[0], [[0.5, 0.0], [1.0, 0.5]])
+    np.testing.assert_array_equal(paths[1], [[0.5, 1.0], [0.0, 0.5]])
+
+
+def test_planar_grid_marching_squares_paths_preserves_mask_and_sample_range() -> None:
+    field = np.tile(np.asarray([-1.0, 1.0]), (4, 1))
+    mask = np.ones(field.shape, dtype=np.uint8)
+    mask[0, 0] = 0
+    sample_field = np.tile(np.arange(4.0)[:, None], (1, 2))
+    expected = np.asarray([[0.5, 1.0], [0.5, 2.0], [0.5, 3.0]])
+
+    masked = marching_squares_paths(
+        field,
+        origin_x=0.0,
+        origin_y=0.0,
+        pitch_x=1.0,
+        mask=mask,
+    )
+    sampled = marching_squares_paths(
+        field,
+        origin_x=0.0,
+        origin_y=0.0,
+        pitch_x=1.0,
+        sample_field=sample_field,
+        sample_range=(1.0, 3.0),
+    )
+
+    assert len(masked) == len(sampled) == 1
+    np.testing.assert_array_equal(masked[0], expected)
+    np.testing.assert_array_equal(sampled[0], expected)

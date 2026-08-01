@@ -38,6 +38,7 @@ _BUILTIN_PRIMITIVES = {
     "spiral",
     "spline",
     "text",
+    "topographic_contours",
     "torus",
     "wave",
 }
@@ -68,7 +69,7 @@ def test_primitive_suite_covers_every_builtin_with_direct_actual_work() -> None:
     assert {definition.parameters["primitive"] for definition in definitions} == (
         _BUILTIN_PRIMITIVES
     )
-    assert len(definitions) == 25
+    assert len(definitions) == 26
     for definition in definitions:
         assert definition.category == "primitive"
         assert definition.suite == "primitives"
@@ -134,6 +135,34 @@ def test_each_primitive_direct_case_emits_common_metrics_and_hard_contracts(
 def _text_benchmark_state() -> PrimitiveBenchmarkState:
     case = next(case for case in primitive_benchmark_cases() if case.primitive == "text")
     return setup_primitive_benchmark(case.parameters(), 20260719)
+
+
+def test_topographic_contours_case_reports_field_work_metrics() -> None:
+    definition = next(
+        definition
+        for definition in select_case_definitions(suites=("primitives",))
+        if definition.parameters["primitive"] == "topographic_contours"
+    )
+    state = definition.setup(definition.materialize_parameters(), 20260719)
+
+    with primitive_measurement_context(state):
+        raw_output = definition.workload(state)
+        assert definition.postprocess is not None
+        output = definition.postprocess(state, raw_output)
+    metrics = {metric.name: metric for metric in output.metrics}
+
+    work_metric_names = {
+        "work.grid_points",
+        "work.focus_count",
+        "work.level_count",
+        "work.output_paths",
+    }
+    assert all(metrics[name].kind == "counter" for name in work_metric_names)
+    assert all(metrics[name].unit == "count" for name in work_metric_names)
+    assert metrics["work.grid_points"].value == 81 * 101
+    assert metrics["work.focus_count"].value == 6
+    assert metrics["work.level_count"].value == 13
+    assert metrics["work.output_paths"].value == metrics["n_lines"].value
 
 
 def test_text_measurement_context_binds_lease_and_closes_owner() -> None:

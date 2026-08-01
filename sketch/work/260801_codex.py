@@ -274,130 +274,6 @@ def _stipple(
     return lines
 
 
-_CONTOUR_LEVEL_TEMPLATE = (
-    0.065,
-    0.095,
-    0.135,
-    0.185,
-    0.250,
-    0.330,
-    0.425,
-    0.535,
-    0.660,
-    0.800,
-    0.940,
-    1.080,
-    1.220,
-)
-
-
-def _contour_levels(count: int) -> tuple[float, ...]:
-    if count < 3:
-        raise ValueError("contour level count must be at least 3")
-    if count == len(_CONTOUR_LEVEL_TEMPLATE):
-        return _CONTOUR_LEVEL_TEMPLATE
-    positions = np.linspace(0.0, len(_CONTOUR_LEVEL_TEMPLATE) - 1, count)
-    sampled = np.interp(
-        positions,
-        np.arange(len(_CONTOUR_LEVEL_TEMPLATE)),
-        _CONTOUR_LEVEL_TEMPLATE,
-    )
-    return tuple(float(value) for value in sampled)
-
-
-def _contours(
-    rect: Rect,
-    *,
-    phase: float,
-    level_count: int,
-    focus_spread: float,
-    field_warp: float,
-) -> list[list[tuple[float, float]]]:
-    """Extract an irregular, multi-focus topographic field with marching squares."""
-
-    if focus_spread <= 0.0:
-        raise ValueError("contour focus spread must be positive")
-    if field_warp < 0.0:
-        raise ValueError("contour field warp must be non-negative")
-    region = _inset(rect, 0.85)
-    xs = np.linspace(region.x0, region.x1, 78)
-    ys = np.linspace(region.y0, region.y1, 92)
-    xx, yy = np.meshgrid(xs, ys)
-
-    field = np.zeros_like(xx)
-    foci = (
-        (104.0, 22.0, 1.00, 8.5, 12.5),
-        (124.2, 34.0, 0.96, 4.3, 7.6),
-        (128.2, 14.8, 0.56, 2.3, 3.2),
-        (97.5, 12.0, 0.48, 2.3, 3.2),
-        (128.4, 50.0, 0.43, 2.9, 3.7),
-        (119.5, 52.0, 0.34, 2.7, 2.8),
-    )
-    for cx, cy, strength, sx, sy in foci:
-        field += strength * np.exp(
-            -0.5
-            * (
-                ((xx - cx) / (sx * focus_spread)) ** 2
-                + ((yy - cy) / (sy * focus_spread)) ** 2
-            )
-        )
-    field += (0.026 * field_warp) * np.sin(xx * 0.58 + phase) * np.cos(
-        yy * 0.41 - phase
-    )
-    field += (0.018 * field_warp) * np.sin(xx * 0.23 + yy * 0.31)
-
-    lines: list[list[tuple[float, float]]] = []
-    levels = _contour_levels(int(level_count))
-
-    def crossing(
-        p0: tuple[float, float],
-        value0: float,
-        p1: tuple[float, float],
-        value1: float,
-        level: float,
-    ) -> tuple[float, float] | None:
-        if (value0 < level) == (value1 < level):
-            return None
-        ratio = (level - value0) / (value1 - value0)
-        return (
-            p0[0] + (p1[0] - p0[0]) * ratio,
-            p0[1] + (p1[1] - p0[1]) * ratio,
-        )
-
-    for level in levels:
-        for row in range(len(ys) - 1):
-            for column in range(len(xs) - 1):
-                corners = (
-                    ((float(xs[column]), float(ys[row])), float(field[row, column])),
-                    (
-                        (float(xs[column + 1]), float(ys[row])),
-                        float(field[row, column + 1]),
-                    ),
-                    (
-                        (float(xs[column + 1]), float(ys[row + 1])),
-                        float(field[row + 1, column + 1]),
-                    ),
-                    (
-                        (float(xs[column]), float(ys[row + 1])),
-                        float(field[row + 1, column]),
-                    ),
-                )
-                hits: list[tuple[float, float]] = []
-                for edge in range(4):
-                    p0, value0 = corners[edge]
-                    p1, value1 = corners[(edge + 1) % 4]
-                    point = crossing(p0, value0, p1, value1, level)
-                    if point is not None:
-                        hits.append(point)
-                if len(hits) == 2:
-                    lines.append(hits)
-                elif len(hits) == 4:
-                    center = sum(value for _point, value in corners) * 0.25
-                    pairing = ((0, 1), (2, 3)) if center >= level else ((0, 3), (1, 2))
-                    lines.extend([[hits[a], hits[b]] for a, b in pairing])
-    return lines
-
-
 def _dense_mass(
     rect: Rect, spacing: float, phase: float, wobble: float
 ) -> list[list[tuple[float, float]]]:
@@ -1253,99 +1129,6 @@ def fault_garden_vertical_line_wave(
 
 @primitive(
     meta={
-        "level_count": {
-            "kind": "int",
-            "ui_min": 3,
-            "ui_max": 30,
-            "display_name": "Contour Levels",
-            "description": "Number of sampled field levels; higher values add more contour bands.",
-            "step": 1.0,
-            "category": "Field Pattern",
-            "recommended_range": (8, 18),
-        },
-        "focus_spread": {
-            "kind": "float",
-            "ui_min": 0.35,
-            "ui_max": 2.50,
-            "display_name": "Focus Spread",
-            "description": "Scale of the six Gaussian topographic foci.",
-            "step": 0.05,
-            "format": "%.2f",
-            "category": "Field Pattern",
-            "recommended_range": (0.65, 1.55),
-        },
-        "field_warp": {
-            "kind": "float",
-            "ui_min": 0.0,
-            "ui_max": 3.0,
-            "display_name": "Field Warp",
-            "description": "Strength of the fine sinusoidal irregularity in the contour field.",
-            "step": 0.05,
-            "format": "%.2f",
-            "category": "Field Pattern",
-            "recommended_range": (0.25, 1.75),
-        },
-        "phase_offset": {
-            "kind": "float",
-            "ui_min": -3.14,
-            "ui_max": 3.14,
-            "display_name": "Warp Phase",
-            "description": "Phase offset of the contour-field irregularity.",
-            "unit": "rad",
-            "step": 0.05,
-            "format": "%.2f",
-            "category": "Field Pattern",
-            "advanced": True,
-        },
-    }
-)
-def fault_garden_contours(
-    *,
-    seed: int = SEED,
-    variant: int = VARIANT,
-    level_count: int = 13,
-    focus_spread: float = 1.0,
-    field_warp: float = 1.0,
-    phase_offset: float = 0.0,
-) -> tuple[np.ndarray, np.ndarray]:
-    """複数焦点からなる等高線フィールドを生成する。
-
-    Parameters
-    ----------
-    seed : int, optional
-        微細な歪みの基準位相に使用するシード。
-    variant : int, optional
-        微細な歪みの基準位相に加えるバリエーション番号。
-    level_count : int, optional
-        抽出する等高線レベルの数。
-    focus_spread : float, optional
-        六つの地形焦点の広がり倍率。
-    field_warp : float, optional
-        等高線へ加える微細な歪みの強さ。
-    phase_offset : float, optional
-        歪みの基準位相へ加えるオフセット。
-
-    Returns
-    -------
-    tuple[np.ndarray, np.ndarray]
-        Grafix形式の座標配列とオフセット配列。
-    """
-
-    cells = _layout(int(seed), int(variant)).leaf_map()
-    phase = float(seed) * 0.017 + float(variant) * 0.43 + float(phase_offset)
-    return _pack(
-        _contours(
-            cells["TTRR"],
-            phase=phase,
-            level_count=int(level_count),
-            focus_spread=float(focus_spread),
-            field_warp=float(field_warp),
-        )
-    )
-
-
-@primitive(
-    meta={
         "spacing": {
             "kind": "float",
             "ui_min": 0.60,
@@ -1860,13 +1643,26 @@ def draw(t: float):
         phase_offset=0.0,
         key="vertical_line_wave",
     )
-    contours = G(name="Topographic Contours").fault_garden_contours(
+    contour_region = _inset(
+        _layout(SEED, VARIANT).leaf_map()["TTRR"],
+        0.85,
+    )
+    contours = G(name="Topographic Contours").topographic_contours(
+        width=contour_region.width,
+        height=contour_region.height,
         seed=SEED,
-        variant=VARIANT,
+        focus_count=6,
         level_count=13,
         focus_spread=1.0,
         field_warp=1.0,
-        phase_offset=0.0,
+        warp_frequency=1.0,
+        phase=165.0,
+        grid_pitch=0.55,
+        center=(
+            0.5 * (contour_region.x0 + contour_region.x1),
+            0.5 * (contour_region.y0 + contour_region.y1),
+            0.0,
+        ),
         key="topographic_contours",
     )
     central_scatter = G(

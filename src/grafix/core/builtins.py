@@ -82,6 +82,7 @@ _PRIMITIVE_NAMES = (
     "text",
     "torus",
     "wave",
+    "topographic_contours",
 )
 
 _EFFECT_NAMES = (
