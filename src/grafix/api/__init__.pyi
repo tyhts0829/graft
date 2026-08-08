@@ -117,6 +117,23 @@ class _G(Protocol):
             shared: True なら反復呼び出しで同じ semantic parameter group を意図的に共有する。instance_key とは同時指定できない。
         """
         ...
+    def delaunay(self, *, activate: bool = ..., width: float = ..., height: float = ..., site_count: int = ..., seed: int = ..., candidates: int = ..., center: Vec3 = ..., key: str | int | None = ..., instance_key: str | int | None = ..., shared: bool = ...) -> Geometry:
+        """
+        仮想site群から独立した閉Delaunay三角形領域を生成する。
+
+        引数:
+            activate: このプリミティブによる形状生成を有効にする。, bool
+            width: 仮想siteを散布する矩形領域の幅を指定します。, display 'Width', float, range [1.0, 300.0], unit mm, step 1.0, category 'Layout'
+            height: 仮想siteを散布する矩形領域の高さを指定します。, display 'Height', float, range [1.0, 300.0], unit mm, step 1.0, category 'Layout'
+            site_count: Delaunay三角形分割の基準として散布する仮想siteの数を指定します。, display 'Site Count', int, range [3, 500], step 1.0, category 'Sites'
+            seed: 仮想siteの配置を決める再現可能な非負のseedです。, display 'Site Seed', int, range [0, 1000000], step 1.0, category 'Sites'
+            candidates: site追加時に比較する候補数を指定し、点間隔の均一さを調整します。, display 'Candidates', int, range [1, 32], step 1.0, category 'Sites'
+            center: 仮想siteの散布矩形と出力面の中心となるXYZ座標を指定します。, display 'Center', vec3, range [-300.0, 300.0], unit mm, category 'Layout'
+            key: コード移動後も同じパラメータグループとして扱うための semantic identity。
+            instance_key: loop/comprehension の反復ごとにパラメータグループを分ける identity。
+            shared: True なら反復呼び出しで同じ semantic parameter group を意図的に共有する。instance_key とは同時指定できない。
+        """
+        ...
     def ellipse(self, *, activate: bool = ..., radius_x: float = ..., radius_y: float = ..., angle: float = ..., segments: int = ..., center: Vec3 = ..., key: str | int | None = ..., instance_key: str | int | None = ..., shared: bool = ...) -> Geometry:
         """
         楕円を閉じたpolylineとして生成する。

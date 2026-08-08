@@ -36,6 +36,7 @@ PRIMITIVE_NAMES = (
     "torus",
     "wave",
     "topographic_contours",
+    "delaunay",
 )
 
 
@@ -245,6 +246,14 @@ def _primitive_samples():
         grid_pitch=2.0,
         center=centers[20],
     )
+    delaunay = G.delaunay(
+        width=54.0,
+        height=46.0,
+        site_count=18,
+        seed=43,
+        candidates=8,
+        center=centers[21],
+    )
 
     return (
         ("arc", arc),
@@ -268,6 +277,7 @@ def _primitive_samples():
         ("torus", torus),
         ("wave", wave),
         ("topographic_contours", topographic_contours),
+        ("delaunay", delaunay),
     )
 
 

@@ -122,7 +122,7 @@ class PrimitiveBenchmarkState:
 
 
 def primitive_benchmark_cases() -> tuple[PrimitiveBenchmarkCase, ...]:
-    """全21組み込み primitive の actual-work case を返す。"""
+    """全22組み込み primitive の actual-work case を返す。"""
 
     center = [7.0, -11.0, 3.0]
     primary = (
@@ -526,6 +526,20 @@ def primitive_benchmark_cases() -> tuple[PrimitiveBenchmarkCase, ...]:
                 "warp_frequency": 1.0,
                 "phase": 37.0,
                 "grid_pitch": 1.0,
+                "center": center,
+            },
+            run_seed_argument="seed",
+        ),
+        PrimitiveBenchmarkCase(
+            "primitive.delaunay.sites_500_candidates_8",
+            "delaunay / 500 sites / 8 candidates",
+            "delaunay",
+            "sites_500_candidates_8",
+            {
+                "width": 240.0,
+                "height": 180.0,
+                "site_count": 500,
+                "candidates": 8,
                 "center": center,
             },
             run_seed_argument="seed",
@@ -1080,6 +1094,18 @@ def _specific_metrics(
         counter("work.focus_count", int(args["focus_count"]))
         counter("work.level_count", int(args["level_count"]))
         counter("work.output_paths", int(geometry.offsets.size - 1))
+    elif primitive == "delaunay":
+        site_count = int(args["site_count"])
+        candidates = int(args["candidates"])
+        candidate_checks = (
+            candidates * site_count * (site_count - 1) // 2
+            if candidates > 1
+            else 0
+        )
+        counter("work.site_count", site_count)
+        counter("work.candidates", candidates)
+        counter("work.candidate_checks", candidate_checks)
+        counter("work.triangle_count", int(geometry.offsets.size - 1))
     elif primitive in {"text", "asemic"}:
         text = str(args["text"])
         visible = [char for char in text if not char.isspace()]

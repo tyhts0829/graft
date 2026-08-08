@@ -83,6 +83,7 @@ _PRIMITIVE_NAMES = (
     "torus",
     "wave",
     "topographic_contours",
+    "delaunay",
 )
 
 _EFFECT_NAMES = (

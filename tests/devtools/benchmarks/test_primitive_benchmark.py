@@ -24,6 +24,7 @@ _BUILTIN_PRIMITIVES = {
     "asemic",
     "bezier",
     "circle",
+    "delaunay",
     "ellipse",
     "grid",
     "laplace_field_grid",
@@ -69,7 +70,7 @@ def test_primitive_suite_covers_every_builtin_with_direct_actual_work() -> None:
     assert {definition.parameters["primitive"] for definition in definitions} == (
         _BUILTIN_PRIMITIVES
     )
-    assert len(definitions) == 26
+    assert len(definitions) == 27
     for definition in definitions:
         assert definition.category == "primitive"
         assert definition.suite == "primitives"
@@ -163,6 +164,36 @@ def test_topographic_contours_case_reports_field_work_metrics() -> None:
     assert metrics["work.focus_count"].value == 6
     assert metrics["work.level_count"].value == 13
     assert metrics["work.output_paths"].value == metrics["n_lines"].value
+
+
+def test_delaunay_case_reports_sampling_and_closed_face_metrics() -> None:
+    definition = next(
+        definition
+        for definition in select_case_definitions(suites=("primitives",))
+        if definition.parameters["primitive"] == "delaunay"
+    )
+    state = definition.setup(definition.materialize_parameters(), 20260719)
+
+    with primitive_measurement_context(state):
+        raw_output = definition.workload(state)
+        assert definition.postprocess is not None
+        output = definition.postprocess(state, raw_output)
+    metrics = {metric.name: metric for metric in output.metrics}
+
+    work_metric_names = {
+        "work.site_count",
+        "work.candidates",
+        "work.candidate_checks",
+        "work.triangle_count",
+    }
+    assert all(metrics[name].kind == "counter" for name in work_metric_names)
+    assert all(metrics[name].unit == "count" for name in work_metric_names)
+    assert metrics["work.site_count"].value == 500
+    assert metrics["work.candidates"].value == 8
+    assert metrics["work.candidate_checks"].value == 8 * 500 * 499 // 2
+    assert metrics["work.triangle_count"].value == metrics["n_lines"].value
+    assert metrics["closed_lines"].value == metrics["n_lines"].value
+    assert metrics["n_vertices"].value == 4 * metrics["n_lines"].value
 
 
 def test_text_measurement_context_binds_lease_and_closes_owner() -> None:
