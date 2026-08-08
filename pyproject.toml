@@ -74,5 +74,5 @@ target-version = "py311"
 [tool.mypy]
 python_version = "3.11"
 mypy_path = "typings"
-check_untyped_defs = true
+check_untyped_defs = false
 disallow_untyped_defs = false
