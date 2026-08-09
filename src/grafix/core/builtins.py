@@ -126,6 +126,7 @@ _EFFECT_NAMES = (
     "offset_curve",
 )
 
+_PRIMITIVE_EVALUATOR_ABI_OVERRIDES = MappingProxyType({"delaunay": "2"})
 _EFFECT_EVALUATOR_ABI_OVERRIDES = MappingProxyType({"fill": "2"})
 
 _BUILTIN_OPERATION_MANIFEST = tuple(
@@ -134,7 +135,7 @@ _BUILTIN_OPERATION_MANIFEST = tuple(
         name=name,
         module=f"grafix.core.primitives.{name}",
         attribute=name,
-        evaluator_abi="1",
+        evaluator_abi=_PRIMITIVE_EVALUATOR_ABI_OVERRIDES.get(name, "1"),
     )
     for name in _PRIMITIVE_NAMES
 ) + tuple(

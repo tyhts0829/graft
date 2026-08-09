@@ -531,15 +531,16 @@ def primitive_benchmark_cases() -> tuple[PrimitiveBenchmarkCase, ...]:
             run_seed_argument="seed",
         ),
         PrimitiveBenchmarkCase(
-            "primitive.delaunay.sites_500_candidates_8",
-            "delaunay / 500 sites / 8 candidates",
+            "primitive.delaunay.guard_2_sites_500_candidates_8",
+            "delaunay / guard 2 / 500 nominal sites / 8 candidates",
             "delaunay",
-            "sites_500_candidates_8",
+            "guard_2_sites_500_candidates_8",
             {
                 "width": 240.0,
                 "height": 180.0,
                 "site_count": 500,
                 "candidates": 8,
+                "guard_band": 2.0,
                 "center": center,
             },
             run_seed_argument="seed",
@@ -1095,15 +1096,34 @@ def _specific_metrics(
         counter("work.level_count", int(args["level_count"]))
         counter("work.output_paths", int(geometry.offsets.size - 1))
     elif primitive == "delaunay":
+        width = float(args["width"])
+        height = float(args["height"])
         site_count = int(args["site_count"])
         candidates = int(args["candidates"])
+        guard_band = float(args["guard_band"])
+        nominal_area = width * height
+        nominal_pitch = math.sqrt(nominal_area / site_count)
+        guard_margin = guard_band * nominal_pitch
+        expanded_width = width + 2.0 * guard_margin
+        expanded_height = height + 2.0 * guard_margin
+        expanded_site_count = (
+            site_count
+            if guard_band == 0.0
+            else math.ceil(
+                site_count * expanded_width * expanded_height / nominal_area
+            )
+        )
         candidate_checks = (
-            candidates * site_count * (site_count - 1) // 2
+            candidates * expanded_site_count * (expanded_site_count - 1) // 2
             if candidates > 1
             else 0
         )
         counter("work.site_count", site_count)
         counter("work.candidates", candidates)
+        gauge("work.guard_band", guard_band, unit="pitch")
+        gauge("work.nominal_pitch", nominal_pitch, unit="geometry_units")
+        gauge("work.guard_margin", guard_margin, unit="geometry_units")
+        counter("work.expanded_site_count", expanded_site_count)
         counter("work.candidate_checks", candidate_checks)
         counter("work.triangle_count", int(geometry.offsets.size - 1))
     elif primitive in {"text", "asemic"}:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 
 import numpy as np
 from shapely import MultiPoint, delaunay_triangles  # type: ignore[import-untyped]
@@ -27,7 +28,7 @@ delaunay_meta = {
         ui_min=1.0,
         ui_max=300.0,
         display_name="Width",
-        description="仮想siteを散布する矩形領域の幅を指定します。",
+        description="出力faceを残すnominal矩形領域の幅を指定します。",
         unit="mm",
         step=1.0,
         category="Layout",
@@ -37,17 +38,17 @@ delaunay_meta = {
         ui_min=1.0,
         ui_max=300.0,
         display_name="Height",
-        description="仮想siteを散布する矩形領域の高さを指定します。",
+        description="出力faceを残すnominal矩形領域の高さを指定します。",
         unit="mm",
         step=1.0,
         category="Layout",
     ),
     "site_count": ParamMeta(
         kind="int",
-        ui_min=3,
+        ui_min=8,
         ui_max=500,
         display_name="Site Count",
-        description="Delaunay三角形分割の基準として散布する仮想siteの数を指定します。",
+        description="元矩形内の目標site数を指定し、仮想siteの面密度を調整します。",
         step=1.0,
         category="Sites",
     ),
@@ -69,12 +70,21 @@ delaunay_meta = {
         step=1.0,
         category="Sites",
     ),
+    "guard_band": ParamMeta(
+        kind="float",
+        ui_min=0.0,
+        ui_max=4.0,
+        display_name="Guard Band",
+        description="元矩形の各辺へ追加する余白をnominal site pitchの倍数で指定します。",
+        step=0.25,
+        category="Sites",
+    ),
     "center": ParamMeta(
         kind="vec3",
         ui_min=-300.0,
         ui_max=300.0,
         display_name="Center",
-        description="仮想siteの散布矩形と出力面の中心となるXYZ座標を指定します。",
+        description="nominal矩形と出力面の中心となるXYZ座標を指定します。",
         unit="mm",
         category="Layout",
     ),
@@ -90,6 +100,12 @@ def _positive_finite(value: object, *, name: str) -> float:
         minimum=0.0,
         minimum_inclusive=False,
     )
+
+
+def _nonnegative_finite(value: object, *, name: str) -> float:
+    """0以上の有限な実数を検証して返す。"""
+
+    return finite_real(value, name=f"delaunay: {name}", minimum=0.0)
 
 
 def _integer_at_least(value: object, *, name: str, minimum: int) -> int:
@@ -159,6 +175,64 @@ def _sampling_scratch_bytes(*, site_count: int, candidates: int) -> int:
         + minima_bytes
     )
     return max(sampling_peak, quantization_peak)
+
+
+def _face_filter_scratch_bytes(*, face_count: int) -> int:
+    """bounds内faceの選別に使うboolean配列のpeak byte数を返す。"""
+
+    # vertex比較 (T, 3)、axis集約 (T,)、累積mask (T,) を同時に保持する。
+    return face_count * 5
+
+
+@dataclass(frozen=True, slots=True)
+class _SamplingPlan:
+    """guard bandを含むsite散布計画。"""
+
+    nominal_pitch: float
+    guard_margin: float
+    expanded_width: float
+    expanded_height: float
+    expanded_site_count: int
+
+
+def _sampling_plan(
+    *,
+    width: float,
+    height: float,
+    site_count: int,
+    guard_band: float,
+) -> _SamplingPlan:
+    """nominal密度を保ったguard band付きsite散布計画を返す。"""
+
+    nominal_area = width * height
+    nominal_pitch = math.sqrt(nominal_area / site_count)
+    guard_margin = guard_band * nominal_pitch
+    expanded_width = width + 2.0 * guard_margin
+    expanded_height = height + 2.0 * guard_margin
+    values = (nominal_pitch, guard_margin, expanded_width, expanded_height)
+    if any(not math.isfinite(value) for value in values):
+        raise ValueError(
+            "delaunay: guard_bandによる拡張領域は有限である必要があります"
+        )
+
+    if guard_band == 0.0:
+        expanded_site_count = site_count
+    else:
+        expanded_area = expanded_width * expanded_height
+        estimated_count = site_count * expanded_area / nominal_area
+        if not math.isfinite(estimated_count):
+            raise ResourceLimitError(
+                "delaunay: expanded_site_countが有限範囲を超えています"
+            )
+        expanded_site_count = math.ceil(estimated_count)
+
+    return _SamplingPlan(
+        nominal_pitch=nominal_pitch,
+        guard_margin=guard_margin,
+        expanded_width=expanded_width,
+        expanded_height=expanded_height,
+        expanded_site_count=expanded_site_count,
+    )
 
 
 def _best_candidate_sites(
@@ -324,6 +398,39 @@ def _float32_sites(
     return np.ascontiguousarray(translated, dtype=np.float32)
 
 
+def _faces_inside_bounds(
+    faces: np.ndarray,
+    *,
+    width: float,
+    height: float,
+    center: tuple[float, float, float],
+) -> np.ndarray:
+    """三頂点すべてがnominal矩形内にあるfaceだけを返す。"""
+
+    face_array = np.asarray(faces)
+    if face_array.ndim != 3 or face_array.shape[1:] != (3, 2):
+        raise ValueError("delaunay: faces はshape (T, 3, 2)である必要があります")
+    if face_array.shape[0] == 0:
+        return face_array.copy()
+
+    cx, cy, _ = center
+    bounds = np.asarray(
+        (
+            cx - 0.5 * width,
+            cx + 0.5 * width,
+            cy - 0.5 * height,
+            cy + 0.5 * height,
+        ),
+        dtype=np.float32,
+    )
+    inside = np.ones((face_array.shape[0],), dtype=np.bool_)
+    inside &= np.all(face_array[:, :, 0] >= bounds[0], axis=1)
+    inside &= np.all(face_array[:, :, 0] <= bounds[1], axis=1)
+    inside &= np.all(face_array[:, :, 1] >= bounds[2], axis=1)
+    inside &= np.all(face_array[:, :, 1] <= bounds[3], axis=1)
+    return np.ascontiguousarray(face_array[inside])
+
+
 @primitive(meta=delaunay_meta)
 def delaunay(
     *,
@@ -332,6 +439,7 @@ def delaunay(
     site_count: int = 48,
     seed: int = 0,
     candidates: int = 8,
+    guard_band: float = 2.0,
     center: tuple[float, float, float] = (0.0, 0.0, 0.0),
 ) -> GeomTuple:
     """仮想site群から独立した閉Delaunay三角形領域を生成する。
@@ -339,16 +447,18 @@ def delaunay(
     Parameters
     ----------
     width, height : float, optional
-        仮想siteを散布する矩形領域の幅と高さ。
+        出力faceを残すnominal矩形領域の幅と高さ。
     site_count : int, optional
-        散布する仮想siteの数。3以上を指定する。
+        元矩形内に対する目標site数。3以上を指定する。
     seed : int, optional
         site配置を再現する非負整数。
     candidates : int, optional
         二つ目以降のsiteごとに比較する候補数。1では一様乱数散布となり、
         大きいほどsite間隔が均一になる。
+    guard_band : float, optional
+        元矩形の各辺へ追加するguard幅。nominal site pitchの倍数で指定する。
     center : tuple[float, float, float], optional
-        散布矩形と出力面の中心となる ``(x, y, z)`` 座標。
+        nominal矩形と出力面の中心となる ``(x, y, z)`` 座標。
 
     Returns
     -------
@@ -357,11 +467,14 @@ def delaunay(
 
     Notes
     -----
+    拡張矩形へ元矩形と同じ目標密度でsiteを散布し、三頂点すべてが元矩形内に
+    あるfaceだけを残す。出力輪郭は矩形より内側へ後退してよく、矩形全域の被覆は
+    保証しない。低い ``site_count`` でfaceが残らない場合は空Geometryを返す。
     siteは出力Geometryと同じfloat32精度へ量子化してから三角形分割するため、
     大きな ``center`` でも丸め後の座標上でface同士が面積を持って重ならない。
     隣接faceの共有辺は、それぞれの閉polylineへ一度ずつ含まれる。境界線を除いて
     各領域をハッチングする場合は ``E.fill(remove_boundary=True)`` と合成する。
-    矩形四隅はsiteへ自動追加しないため、出力外周は散布siteの凸包となる。
+    矩形四隅はsiteへ自動追加しない。
     """
 
     width_f = _positive_finite(width, name="width")
@@ -374,38 +487,69 @@ def delaunay(
         )
     seed_i = _integer_at_least(seed, name="seed", minimum=0)
     candidates_i = _integer_at_least(candidates, name="candidates", minimum=1)
+    guard_band_f = _nonnegative_finite(guard_band, name="guard_band")
     center_f = _center_value(center)
     _validate_float32_domain(width=width_f, height=height_f, center=center_f)
 
-    candidate_work = candidates_i * site_count_i * (site_count_i - 1) // 2
+    sampling_plan = _sampling_plan(
+        width=width_f,
+        height=height_f,
+        site_count=site_count_i,
+        guard_band=guard_band_f,
+    )
+    _validate_float32_domain(
+        width=sampling_plan.expanded_width,
+        height=sampling_plan.expanded_height,
+        center=center_f,
+    )
+    expanded_site_count = sampling_plan.expanded_site_count
+    if expanded_site_count > _MAX_SITE_COUNT:
+        raise ResourceLimitError(
+            "delaunay: expanded_site_countが処理上限を超えています: "
+            f"{expanded_site_count:,} > {_MAX_SITE_COUNT:,}; "
+            "site_countまたはguard_bandを減らしてください"
+        )
+
+    candidate_work = (
+        0
+        if candidates_i == 1
+        else candidates_i * expanded_site_count * (expanded_site_count - 1) // 2
+    )
     if candidates_i > 1 and candidate_work > _MAX_CANDIDATE_DISTANCE_EVALUATIONS:
         raise ResourceLimitError(
             "delaunay: candidate距離評価量が処理上限を超えています: "
             f"{candidate_work:,} > {_MAX_CANDIDATE_DISTANCE_EVALUATIONS:,}; "
-            "site_countまたはcandidatesを減らしてください"
+            "site_count、candidates、guard_bandのいずれかを減らしてください"
         )
 
-    maximum_face_count = 2 * site_count_i - 5
+    maximum_face_count = 2 * expanded_site_count - 5
     ensure_geometry_output(
         "delaunay",
         vertices=4 * maximum_face_count,
         lines=maximum_face_count,
         scratch_bytes=_sampling_scratch_bytes(
-            site_count=site_count_i,
+            site_count=expanded_site_count,
             candidates=candidates_i,
-        ),
-        hint="site_countまたはcandidatesを減らしてください",
+        )
+        + _face_filter_scratch_bytes(face_count=maximum_face_count),
+        hint="site_count、candidates、guard_bandのいずれかを減らしてください",
     )
 
     sites = _best_candidate_sites(
-        width=width_f,
-        height=height_f,
-        site_count=site_count_i,
+        width=sampling_plan.expanded_width,
+        height=sampling_plan.expanded_height,
+        site_count=expanded_site_count,
         seed=seed_i,
         candidates=candidates_i,
     )
     output_sites = _float32_sites(sites, center=center_f)
     faces = _canonical_delaunay_faces(output_sites)
+    faces = _faces_inside_bounds(
+        faces,
+        width=width_f,
+        height=height_f,
+        center=center_f,
+    )
     faces32 = np.ascontiguousarray(faces, dtype=np.float32)
     face_count = int(faces32.shape[0])
     if face_count == 0:

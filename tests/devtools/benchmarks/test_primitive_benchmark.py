@@ -183,14 +183,35 @@ def test_delaunay_case_reports_sampling_and_closed_face_metrics() -> None:
     work_metric_names = {
         "work.site_count",
         "work.candidates",
+        "work.guard_band",
+        "work.nominal_pitch",
+        "work.guard_margin",
+        "work.expanded_site_count",
         "work.candidate_checks",
         "work.triangle_count",
     }
-    assert all(metrics[name].kind == "counter" for name in work_metric_names)
-    assert all(metrics[name].unit == "count" for name in work_metric_names)
+    counter_metric_names = {
+        "work.site_count",
+        "work.candidates",
+        "work.expanded_site_count",
+        "work.candidate_checks",
+        "work.triangle_count",
+    }
+    gauge_metric_names = work_metric_names - counter_metric_names
+    assert all(metrics[name].kind == "counter" for name in counter_metric_names)
+    assert all(metrics[name].unit == "count" for name in counter_metric_names)
+    assert all(metrics[name].kind == "gauge" for name in gauge_metric_names)
     assert metrics["work.site_count"].value == 500
     assert metrics["work.candidates"].value == 8
-    assert metrics["work.candidate_checks"].value == 8 * 500 * 499 // 2
+    assert metrics["work.guard_band"].value == 2.0
+    nominal_pitch = (240.0 * 180.0 / 500) ** 0.5
+    guard_margin = 2.0 * nominal_pitch
+    assert metrics["work.nominal_pitch"].value == pytest.approx(nominal_pitch)
+    assert metrics["work.nominal_pitch"].unit == "geometry_units"
+    assert metrics["work.guard_margin"].value == pytest.approx(guard_margin)
+    assert metrics["work.guard_margin"].unit == "geometry_units"
+    assert metrics["work.expanded_site_count"].value == 697
+    assert metrics["work.candidate_checks"].value == 8 * 697 * 696 // 2
     assert metrics["work.triangle_count"].value == metrics["n_lines"].value
     assert metrics["closed_lines"].value == metrics["n_lines"].value
     assert metrics["n_vertices"].value == 4 * metrics["n_lines"].value

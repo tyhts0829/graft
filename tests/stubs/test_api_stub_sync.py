@@ -9,29 +9,49 @@ import sys
 from pathlib import Path
 
 
-def _fill_keyword_names(stub_source: str, *, class_name: str) -> tuple[str, ...]:
+def _operation_keyword_names(
+    stub_source: str,
+    *,
+    class_name: str,
+    operation_name: str,
+) -> tuple[str, ...]:
     tree = ast.parse(stub_source)
     class_node = next(
         node
         for node in tree.body
         if isinstance(node, ast.ClassDef) and node.name == class_name
     )
-    fill_node = next(
+    operation_node = next(
         node
         for node in class_node.body
-        if isinstance(node, ast.FunctionDef) and node.name == "fill"
+        if isinstance(node, ast.FunctionDef) and node.name == operation_name
     )
-    return tuple(argument.arg for argument in fill_node.args.kwonlyargs)
+    return tuple(argument.arg for argument in operation_node.args.kwonlyargs)
 
 
 def _assert_fill_min_spacing(stub_source: str) -> None:
     for class_name in ("_EffectBuilder", "_E"):
-        keyword_names = _fill_keyword_names(stub_source, class_name=class_name)
+        keyword_names = _operation_keyword_names(
+            stub_source,
+            class_name=class_name,
+            operation_name="fill",
+        )
         assert "min_spacing" in keyword_names
         assert keyword_names.index("min_spacing") == keyword_names.index("density") + 1
         assert keyword_names.index("spacing_gradient") == (
             keyword_names.index("min_spacing") + 1
         )
+
+
+def _assert_delaunay_guard_band(stub_source: str) -> None:
+    keyword_names = _operation_keyword_names(
+        stub_source,
+        class_name="_G",
+        operation_name="delaunay",
+    )
+    assert "guard_band" in keyword_names
+    assert keyword_names.index("guard_band") == keyword_names.index("candidates") + 1
+    assert keyword_names.index("center") == keyword_names.index("guard_band") + 1
 
 
 def test_api_stub_sync(tmp_path: Path) -> None:
@@ -73,6 +93,7 @@ def test_api_stub_sync(tmp_path: Path) -> None:
     assert actual == expected
     assert "        gcode_optimize: bool = ...,\n" in actual
     _assert_fill_min_spacing(actual)
+    _assert_delaunay_guard_band(actual)
     project_stub = repo_root / "typings" / "grafix" / "api" / "__init__.pyi"
     project_stub_source = project_stub.read_text(encoding="utf-8")
     assert "        gcode_optimize: bool = ...,\n" in project_stub_source

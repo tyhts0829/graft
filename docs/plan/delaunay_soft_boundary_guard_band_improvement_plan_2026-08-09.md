@@ -1,8 +1,9 @@
 # `G.delaunay` Soft Boundary / Guard Band改善計画（2026-08-09）
 
-- 状態: **承認待ち（production未変更）**
+- 状態: **実装完了（Delaunay対象検証成功、既存test / full mypy課題あり）**
 - 計画作成時branch: `main`
 - 計画作成時HEAD: `f970243`
+- 実装承認: 2026-08-10
 - 関連計画:
   `docs/plan/delaunay_primitive_closed_faces_implementation_plan_2026-08-09.md`
 
@@ -216,15 +217,15 @@ site散布やGEOS呼び出し前に`ResourceLimitError`を送出する。
 
 ### 8.1 Production
 
-- [ ] `src/grafix/core/primitives/delaunay.py`
+- [x] `src/grafix/core/primitives/delaunay.py`
   - `guard_band` ParamMeta / validationを追加
   - sampling plan helperを追加
   - expanded site数基準のresource preflightへ更新
   - 元bounds内faceだけを選別
   - docstringと`site_count`説明をsoft boundary仕様へ更新
-- [ ] `src/grafix/core/builtins.py`
+- [x] `src/grafix/core/builtins.py`
   - primitive ABI overrideを追加し、`delaunay`だけABI `2`へ更新
-- [ ] `src/grafix/api/__init__.pyi`
+- [x] `src/grafix/api/__init__.pyi`
   - fresh process / `--no-default-import`で正規generatorから再生成
 
 `typings/grafix/api/__init__.pyi`はproject固有operationを含む生成artifactで、
@@ -233,15 +234,15 @@ site散布やGEOS呼び出し前に`ResourceLimitError`を送出する。
 
 ### 8.2 Tests
 
-- [ ] `tests/core/primitives/test_delaunay.py`
+- [x] `tests/core/primitives/test_delaunay.py`
   - sampling plan、guard selection、quality、低site、validation、resource、fillを追加・更新
   - 従来の厳密bounds testを維持
   - `site_count=3`の一face契約は`guard_band=0.0`で検証
-- [ ] `tests/core/test_builtin_catalog_bootstrap.py`
+- [x] `tests/core/test_builtin_catalog_bootstrap.py`
   - Delaunay primitive ABI `2`と他primitive ABI `1`を検証
-- [ ] `tests/devtools/benchmarks/test_primitive_benchmark.py`
+- [x] `tests/devtools/benchmarks/test_primitive_benchmark.py`
   - generated site数と実candidate work metricsを検証
-- [ ] `tests/stubs/test_api_stub_sync.py`
+- [x] `tests/stubs/test_api_stub_sync.py`
   - canonical stub同期と`guard_band`の引数位置を検証
 
 動的契約確認として次を実行するが、原則編集しない。
@@ -254,10 +255,10 @@ site散布やGEOS呼び出し前に`ResourceLimitError`を送出する。
 
 ### 8.3 Showcase / benchmark
 
-- [ ] `sketch/showcase/primitives.py`
+- [x] `sketch/showcase/primitives.py`
   - Delaunay sampleで`guard_band=2.0`を明示
   - seed / site_countはquality改善とcell内収まりを画像で確認して決定
-- [ ] `src/grafix/devtools/benchmarks/primitive_benchmark.py`
+- [x] `src/grafix/devtools/benchmarks/primitive_benchmark.py`
   - Delaunay caseをguard 2のactual-workへ更新
   - `work.site_count`（nominal）
   - `work.guard_band`
@@ -272,99 +273,99 @@ manifest件数59、Primitive件数22、showcase件数22、benchmark case件数27
 
 ### 8.4 Docs
 
-- [ ] 本計画のcheckbox、検証command、実測結果、未完了事項を更新
+- [x] 本計画のcheckbox、検証command、実測結果、未完了事項を更新
 - READMEは全Primitive signatureを列挙していないため変更しない
 
 ## 9. Test項目
 
 ### 9.1 Sampling plan
 
-- [ ] `guard_band=0.0`でexpanded寸法とsite数がnominal値と一致する
-- [ ] guard 2でpitch、margin、expanded寸法、expanded site数が式どおりになる
-- [ ] 同引数からsampling planとGeometryがbyte deterministic
-- [ ] `guard_band`変更が出力へ反映される
-- [ ] global NumPy RNG状態を変更しない
+- [x] `guard_band=0.0`でexpanded寸法とsite数がnominal値と一致する
+- [x] guard 2でpitch、margin、expanded寸法、expanded site数が式どおりになる
+- [x] 同引数からsampling planとGeometryがbyte deterministic
+- [x] `guard_band`変更が出力へ反映される
+- [x] global NumPy RNG状態を変更しない
 
 ### 9.2 Soft boundary / quality
 
-- [ ] 全出力faceの三頂点が元矩形inclusive bounds内
-- [ ] bounds外siteを含むfaceが一つも残らない
-- [ ] guard 2の固定fixtureでboundary min `q >= 0.30`
-- [ ] seed 110 / seed 150でguard 0より品質が改善する
-- [ ] candidates 1 fixtureでもguard 0よりboundary qualityが改善する
-- [ ] 出力edge multiplicityが1または2
-- [ ] face重複、退化、面積を持つface重なりがない
-- [ ] closed / CCW / canonical順 / dtype / layout契約を維持する
+- [x] 全出力faceの三頂点が元矩形inclusive bounds内
+- [x] bounds外siteを含むfaceが一つも残らない
+- [x] guard 2の固定fixtureでboundary min `q >= 0.30`
+- [x] seed 110 / seed 150でguard 0より品質が改善する
+- [x] candidates 1 fixtureでもguard 0よりboundary qualityが改善する
+- [x] 出力edge multiplicityが1または2
+- [x] face重複、退化、面積を持つface重なりがない
+- [x] closed / CCW / canonical順 / dtype / layout契約を維持する
 
 ### 9.3 低site / validation / resource
 
-- [ ] `site_count=3, guard_band=0.0`で一つの閉三角形を返す
-- [ ] guard後に有効faceがない場合は標準空Geometryを返す
-- [ ] 負値、NaN、Infの`guard_band`を拒否する
-- [ ] 拡張float32 bounds不成立をsampling前に拒否する
-- [ ] expanded site hard capをsampling前に拒否する
-- [ ] expanded count基準candidate work上限をsampling前に拒否する
-- [ ] active `ResourceBudget`がexpanded arrays / filter maskを含む
-- [ ] `activate=False`でsamplingを実行しない
+- [x] `site_count=3, guard_band=0.0`で一つの閉三角形を返す
+- [x] guard後に有効faceがない場合は標準空Geometryを返す
+- [x] 負値、NaN、Infの`guard_band`を拒否する
+- [x] 拡張float32 bounds不成立をsampling前に拒否する
+- [x] expanded site hard capをsampling前に拒否する
+- [x] expanded count基準candidate work上限をsampling前に拒否する
+- [x] active `ResourceBudget`がexpanded arrays / filter maskを含む
+- [x] `activate=False`でsamplingを実行しない
 
 ### 9.4 Fill / catalog / stub / benchmark
 
-- [ ] `E.fill(remove_boundary=True)`が全retained faceへ非空hatchを生成する
-- [ ] hatchは2頂点lineだけで、中点がretained face union内にある
-- [ ] `remove_boundary=False`で元の全閉faceを保持する
-- [ ] `G.describe("delaunay")`が新default / meta / helpを返す
-- [ ] 全parameter descriptionがmetadata testを通る
-- [ ] Delaunay builtin evaluator ABIが`2`
-- [ ] canonical stubがfresh generator出力と一致する
-- [ ] showcase / benchmark / builtin集合と件数が同期する
-- [ ] benchmark candidate checksがexpanded site数を使う
+- [x] `E.fill(remove_boundary=True)`が全retained faceへ非空hatchを生成する
+- [x] hatchは2頂点lineだけで、中点がretained face union内にある
+- [x] `remove_boundary=False`で元の全閉faceを保持する
+- [x] `G.describe("delaunay")`が新default / meta / helpを返す
+- [x] 全parameter descriptionがmetadata testを通る
+- [x] Delaunay builtin evaluator ABIが`2`
+- [x] canonical stubがfresh generator出力と一致する
+- [x] showcase / benchmark / builtin集合と件数が同期する
+- [x] benchmark candidate checksがexpanded site数を使う
 
 ## 10. 視覚確認
 
-- [ ] 同一seedの`guard_band=0.0`と`2.0`を左右比較するsketchを一時作成
-- [ ] `G.text`で`HULL / GUARD 0`と`SOFT BOUNDARY / GUARD 2`を明記
-- [ ] 境界sliver、輪郭後退、密度、空白、clipを目視確認
-- [ ] fill比較も含め、全triangleが独立閉領域として描かれることを確認
-- [ ] 確定PNGを
-  `data/output/png/codex_generated/delaunay_guard_band_comparison_20260809_<run-id>.png`
+- [x] 同一seedの`guard_band=0.0`と`2.0`を左右比較するsketchを一時作成
+- [x] `G.text`で`HULL / GUARD 0`と`SOFT BOUNDARY / GUARD 2`を明記
+- [x] 境界sliver、輪郭後退、密度、空白、clipを目視確認
+- [x] fill比較も含め、全triangleが独立閉領域として描かれることを確認
+- [x] 確定PNGを
+  `data/output/png/codex_generated/delaunay_guard_band_comparison_20260810.png`
   へ保存
-- [ ] primitive showcaseを再renderし、Delaunay cellがshowcase枠内へ収まることを確認
+- [x] primitive showcaseを再renderし、Delaunay cellがshowcase枠内へ収まることを確認
 
 ## 11. 実装フェーズ
 
 ### Phase 0 — 承認後の差分確認
 
-- [ ] `git status --porcelain`を再確認する
-- [ ] 本計画以外の並行差分へ触れないことを確認する
-- [ ] current Delaunay対象testをbaseline実行する
+- [x] `git status --porcelain`を再確認する
+- [x] 本計画以外の並行差分へ触れないことを確認する
+- [x] current Delaunay対象testをbaseline実行する（53 passed）
 
 ### Phase 1 — 失敗testとsampling plan
 
-- [ ] guard parameter / sampling plan / quality回帰の失敗testを追加
-- [ ] expanded planとvalidation / resource preflightを実装
-- [ ] guard 0が現行挙動を維持することを確認
+- [x] guard parameter / sampling plan / quality回帰の失敗testを追加
+- [x] expanded planとvalidation / resource preflightを実装
+- [x] guard 0が現行挙動を維持することを確認
 
 ### Phase 2 — Face選別とfill
 
-- [ ] nominal bounds内face選別を実装
-- [ ] closed / canonical / quality / bounds testを通す
-- [ ] fill / transform / activate=False testを通す
+- [x] nominal bounds内face選別を実装
+- [x] closed / canonical / quality / bounds testを通す
+- [x] fill / transform / activate=False testを通す
 
 ### Phase 3 — 公式同期面
 
-- [ ] evaluator ABIを2へ更新
-- [ ] canonical stubを再生成
-- [ ] showcaseとbenchmarkを更新
-- [ ] catalog / metadata / stub / showcase / benchmark testを通す
+- [x] evaluator ABIを2へ更新
+- [x] canonical stubを再生成
+- [x] showcaseとbenchmarkを更新
+- [x] catalog / metadata / stub / showcase / benchmark testを通す
 
 ### Phase 4 — 画像確認と最終検証
 
-- [ ] guard 0 / 2比較PNGとshowcase PNGをrender・目視確認
-- [ ] 対象pytestを通す
-- [ ] 変更対象へRuffを実行
-- [ ] `mypy src/grafix`を実行
-- [ ] `git diff --check`と新規file whitespace checkを通す
-- [ ] 本計画を実測結果で更新
+- [x] guard 0 / 2比較PNGとshowcase PNGをrender・目視確認
+- [ ] 対象pytestを通す（指定全件は既存fill test 1件のみ失敗。該当testをdeselectしたDelaunay対象は192 passed）
+- [x] 変更対象へRuffを実行
+- [ ] `mypy src/grafix`を実行（実行済みだが依頼外3ファイルの既存6 error。変更対象3ファイルは成功）
+- [x] `git diff --check`と新規file whitespace checkを通す
+- [x] 本計画を実測結果で更新
 
 full test suite、長時間benchmark、CI実行はAsk-first対象とし、別途承認がない限り実行しない。
 
@@ -418,3 +419,75 @@ git diff --check
 - 比較PNGで境界sliverが消え、輪郭の後退が許容範囲であることを確認する。
 - Voronoiやquality peelなど依頼外機能を混ぜない。
 - 対象test、Ruff、mypy、diff checkが成功し、未実行項目を本計画へ明記する。
+
+## 14. 実装結果（2026-08-10）
+
+### 14.1 完了内容
+
+- `guard_band=2.0`を公開parameterとして追加した。
+- nominal pitchと拡張面積からgenerated site数を決定する`_SamplingPlan`を追加した。
+- Delaunay分割後、三頂点すべてがnominal bounds内のfaceだけを保持するよう変更した。
+- generated site数基準のhard cap、candidate work、output / scratch preflightへ更新した。
+- 低siteでfaceが残らない場合は標準空Geometry、`guard_band=0.0`では従来hullを返す。
+- Delaunay primitive ABIを`2`へ更新し、canonical stubをfresh processで再生成した。
+- showcase、actual-work benchmark、catalog / stub / benchmark testを同期した。
+
+### 14.2 Quality / Geometry実測
+
+`width=80`, `height=100`, `site_count=48`, `seed=110`, `candidates=8`:
+
+| 指標 | Guard 0 | Guard 2 |
+|---|---:|---:|
+| generated sites | 48 | 120 |
+| retained faces | 84 | 58 |
+| vertices | 336 | 232 |
+| boundary minimum quality | 0.0000065 | 0.524638 |
+| exact closed faces | 84 | 58 |
+| boundary / shared edges | 10 / 121 | 22 / 76 |
+
+Guard 2では全出力頂点がnominal bounds内、全faceがCCW / closedであることを確認した。
+既定zero-argument出力は120 generated sites、56 faces、224 verticesとなった。
+fill-only確認は231本、462 vertices、全line長2であった。
+
+異なる`PYTHONHASHSEED`のfresh processでも既定出力のSHA-256は一致した。
+
+`6021688675b092c595727f91a3630dca650f0f99fc49650a272cf0819a220b27`
+
+### 14.3 画像確認
+
+- Guard 0 / Guard 2 / Guard 2 + fill比較:
+  `data/output/png/codex_generated/delaunay_guard_band_comparison_20260810.png`
+- primitive showcase:
+  `data/output/png/codex_generated/delaunay_guard_band_showcase_20260810.png`
+
+比較画像ではGuard 0の外周sliverがGuard 2で消え、輪郭が少し内側へ後退する代わりに
+境界triangleが均質化した。fillも各閉faceへ入り、画像clipは確認されなかった。
+showcaseのDelaunay sampleもcell内へ収まっている。
+
+### 14.4 検証結果
+
+- 実装前baseline: `53 passed`
+- Delaunay単体: `69 passed in 3.71s`
+- 指定対象suite: `192 passed, 1 failed`
+  - 失敗は既存
+    `test_fill_evaluator_abi_is_the_only_effect_abi_bumped`
+  - HEAD時点からfill実defaultは`0.05`、test期待は`0.0`で不一致
+  - Delaunay変更はfill production / 期待値へ触れていない
+- 上記既存testをdeselectした対象suite: `192 passed, 1 deselected in 22.53s`
+- Ruff（変更対象）: 成功
+- `git diff --check`: 成功
+- CLI `grafix describe primitive delaunay`: 成功
+- targeted mypy:
+  `mypy --follow-imports=silent`で変更production 3ファイルに問題なし
+- full `mypy src/grafix`: 既存 / 依頼外の6 errorで失敗
+  - `report_charts.py`: `altair`, `vl_convert` import 2件
+  - `font_resources.py`: `TTFont` attribute 1件
+  - `boolean.py`: `PyPolyNode` name 3件
+
+### 14.5 未完了事項
+
+- 既存fill default test不一致は依頼外のため修正していない。
+- full mypyの既存6 errorは依頼外のため修正していない。
+- full pytest、長時間benchmark、CIは追加承認がないため未実行。
+- project固有operationを含む`typings/grafix/api/__init__.pyi`は、
+  `sketch/main.py`由来の依頼外内容を混ぜないため再生成していない。

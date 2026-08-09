@@ -88,6 +88,31 @@ def test_fill_evaluator_abi_is_the_only_effect_abi_bumped() -> None:
     assert "scene 座標単位" in min_spacing_meta.description
 
 
+def test_delaunay_evaluator_abi_is_the_only_primitive_abi_bumped() -> None:
+    items = builtin_operation_manifest()
+    manifest = {(item.kind, item.name): item for item in items}
+
+    assert manifest[("primitive", "delaunay")].evaluator_abi == "2"
+    assert all(
+        item.evaluator_abi == "1"
+        for item in items
+        if item.kind == "primitive" and item.name != "delaunay"
+    )
+
+    delaunay = builtin_operation_catalog().resolve("primitive", "delaunay")
+    assert delaunay.declaration.evaluator_abi == "grafix-builtin-primitive-2"
+    assert delaunay.schema.defaults["guard_band"] == 2.0
+    assert delaunay.schema.param_order.index("guard_band") == (
+        delaunay.schema.param_order.index("candidates") + 1
+    )
+    guard_band_meta = delaunay.schema.meta["guard_band"]
+    assert guard_band_meta.kind == "float"
+    assert guard_band_meta.ui_min == 0.0
+    assert guard_band_meta.ui_max == 4.0
+    assert guard_band_meta.description is not None
+    assert "pitch" in guard_band_meta.description
+
+
 def test_direct_import_and_bootstrap_order_produce_the_same_catalog() -> None:
     direct = _catalog_payload("direct")
     bootstrap = _catalog_payload("bootstrap")

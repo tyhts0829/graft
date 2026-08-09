@@ -250,8 +250,9 @@ def _primitive_samples():
         width=54.0,
         height=46.0,
         site_count=18,
-        seed=43,
+        seed=150,
         candidates=8,
+        guard_band=2.0,
         center=centers[21],
     )
 
