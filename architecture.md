@@ -23,8 +23,9 @@ Grafix は、線の生成と変形を **不変な Geometry DAG** として記述
 6. filesystem 探索、Python import transaction、config discovery などの capability は top-level
    infrastructure に置き、`core` には immutable plan/value と domain operation だけを残す。
 
-描画 style は Geometry から分離し、`Layer` が Geometry と色・線幅を束ねる。同じ Geometry を
-異なる style で描いても CPU の geometry cache を共有できる。
+描画 style は Geometry から分離し、`Layer` が Geometry、色・線幅、G-code 最適化の
+`gcode_optimize` マスタースイッチを束ねる。同じ Geometry を異なる style または G-code policy で
+描いても CPU の geometry cache を共有できる。`gcode_optimize` は SVG、PNG、GL 描画へ影響しない。
 
 ## 2. レイヤと依存方向
 
@@ -540,15 +541,24 @@ interactive の PNG/G-code は `ExportJobSystem` の長寿命 spawn worker を�
 
 ### G-code の stroke-order contract
 
-G-code encoder は clipping 前の input polyline 順を semantic boundary として保持する。
+G-code encoder は一つの `RealizedLayer` を、並べ替え、逆向き描画、短距離 bridge の
+semantic boundary とする。各 input polyline を紙の安全領域へクリップした後、同一レイヤ内の
+全 stroke を一つの列として扱う。source polyline の tag は診断と決定的な tie-break のために保持するが、
+最適化や bridge の境界にはしない。
 
-- 頂点数、閉曲線らしさ、producer 順から face/group を推測しない。
-- `optimize_travel` は一つの input polyline から clipping で生じた fragment の順序・向きだけを
-  最適化する。
-- `bridge_draw_distance` は異なる input polyline 間に pen-down bridge を追加しない。
+- 頂点数、閉曲線らしさ、producer 順から face、glyph、group を推測しない。
+- `Layer.gcode_optimize=False` は、そのレイヤの並べ替え、逆向き描画、短距離 bridge をすべて停止する。
+  clip 後 stroke の入力順と向きを維持し、stroke 間では必ずペンアップする。
+- `Layer.gcode_optimize=True` の場合だけ、global `GCodeParams` の 3 設定を適用する。
+  `optimize_travel` はレイヤ内の全 stroke を並べ替え、`allow_reverse` はその並べ替え時の反転候補を
+  許可する。`optimize_travel=False` では入力順と向きを維持する。
+- `bridge_draw_distance=d` は、最終的に確定した隣接 stroke 間の距離が `d` mm 未満なら、
+  その gap を描いて繋いでよいという利用者の明示許可である。`null` では connector を追加しない。
+  bridge は `optimize_travel=False` でも入力順の隣接 stroke 間へ適用する。
+- レイヤ境界は常に維持し、並べ替え、逆向き候補探索、bridge のいずれも別レイヤへ跨がせない。
 
-cross-polyline optimization が必要なら、意味を持つ export-side grouping artifact を別途設計する。
-core Geometry へ推測 metadata を追加して補わない。
+`gcode_optimize` は G-code exporter だけが解釈するレイヤ属性であり、Geometry DAG、
+`RealizedGeometry`、geometry cache identity へ含めない。
 
 ## 10. Geometry kernel
 

@@ -29,6 +29,28 @@ def test_resolve_layer_style_fills_missing_values() -> None:
     assert resolved.thickness == defaults.thickness
 
 
+def test_layer_gcode_optimize_defaults_true_and_preserves_false() -> None:
+    default_layer = Layer(geometry=_geometry(), site_id="layer:default")
+    disabled_layer = Layer(
+        geometry=_geometry(),
+        site_id="layer:disabled",
+        gcode_optimize=False,
+    )
+
+    assert default_layer.gcode_optimize is True
+    assert disabled_layer.gcode_optimize is False
+
+
+@pytest.mark.parametrize("value", [None, 0, 1, "false", object()])
+def test_layer_gcode_optimize_requires_exact_bool(value: object) -> None:
+    with pytest.raises(TypeError, match="gcode_optimize"):
+        Layer(
+            geometry=_geometry(),
+            site_id="layer:1",
+            gcode_optimize=value,  # type: ignore[arg-type]
+        )
+
+
 def test_resolve_layer_style_rejects_non_positive_thickness() -> None:
     with pytest.raises(ValueError):
         Layer(

@@ -879,6 +879,7 @@ def _render_l_protocol() -> str:
         "        shared: bool = ...,\n"
         "        color: Vec3 | None = ...,\n"
         "        thickness: float | None = ...,\n"
+        "        gcode_optimize: bool = ...,\n"
         "    ) -> Layer:\n"
     )
     lines.append('        """単体/複数の Geometry を単一 Layer にする。"""\n')

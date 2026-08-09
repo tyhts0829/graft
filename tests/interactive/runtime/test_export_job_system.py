@@ -113,6 +113,57 @@ def _sized_snapshot(byte_size: int) -> CaptureExportSnapshot:
     )
 
 
+def _gcode_optimization_disabled_snapshot() -> CaptureExportSnapshot:
+    geometry = Geometry.create("export-job-gcode-optimization-test")
+    realized = RealizedGeometry(
+        coords=np.asarray(
+            (
+                (0.0, 0.0, 0.0),
+                (0.0, 1.0, 0.0),
+                (100.0, 0.0, 0.0),
+                (100.0, 1.0, 0.0),
+                (1.0, 1.0, 0.0),
+                (1.0, 2.0, 0.0),
+            ),
+            dtype=np.float32,
+        ),
+        offsets=np.asarray((0, 2, 4, 6), dtype=np.int32),
+    )
+    layer = RealizedLayer(
+        layer=Layer(
+            geometry=geometry,
+            site_id="gcode-optimization-disabled-layer",
+            gcode_optimize=False,
+        ),
+        realized=realized,
+        cache_key=GeometryCacheKey(
+            geometry_id=geometry.id,
+            evaluation=EvaluationFingerprint("0" * 64),
+            external_dependencies=EMPTY_EXTERNAL_DEPENDENCIES_FINGERPRINT,
+        ),
+        color=(0.0, 0.0, 0.0),
+        thickness=0.01,
+    )
+    gcode_params = replace(
+        runtime_config().gcode,
+        origin=(0.0, 0.0),
+        y_down=False,
+        paper_margin_mm=0.0,
+        decimals=3,
+        optimize_travel=True,
+        allow_reverse=True,
+        bridge_draw_distance=1e6,
+    )
+    return CaptureExportSnapshot(
+        layers=(layer,),
+        canvas_size=(200, 200),
+        background_color_rgb01=(1.0, 1.0, 1.0),
+        t=0.0,
+        provenance=_provenance(),
+        gcode_params=gcode_params,
+    )
+
+
 def test_snapshot_retained_bytes_deduplicates_shared_realized_arrays() -> None:
     snapshot = _sized_snapshot(80)
     first = snapshot.layers[0]
@@ -1121,6 +1172,37 @@ def test_default_worker_exports_gcode(tmp_path: Path) -> None:
         assert result.manifest_path == capture_manifest_path_for(output_path)
         assert output_path.is_file()
         assert result.manifest_path.is_file()
+    finally:
+        system.close()
+
+
+def test_default_worker_preserves_layer_gcode_optimization_master(
+    tmp_path: Path,
+) -> None:
+    snapshot = _gcode_optimization_disabled_snapshot()
+    system = ExportJobSystem()
+    try:
+        output_path = tmp_path / "layer-master.gcode"
+        job = system.submit(
+            format=ExportFormat.GCODE,
+            snapshot=snapshot,
+            output_path=output_path,
+        )
+
+        result = _wait_for_job(system, job.job_id)
+
+        assert result.status is ExportJobStatus.SUCCESS
+        text = output_path.read_text(encoding="utf-8")
+        assert [
+            int(line.split()[3])
+            for line in text.splitlines()
+            if line.startswith("; stroke polyline ")
+        ] == [0, 1, 2]
+        assert " reversed" not in text
+        params = snapshot.gcode_params
+        assert params is not None
+        z_up_line = f"G1 Z{params.z_up:.{params.decimals}f}"
+        assert text.splitlines().count(z_up_line) == 3
     finally:
         system.close()
 

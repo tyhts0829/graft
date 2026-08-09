@@ -1,8 +1,9 @@
 # G-codeレイヤ単位ストローク最適化 実装改善計画（2026-08-09）
 
-- 状態: **承認待ち（実装未着手）**
+- 状態: **実装完了（focused検証済み、full pytest未実施）**
 - 計画作成時branch: `main`
 - 計画作成時HEAD: `05cb4bb`
+- 実装開始時HEAD: `4d76235`
 - 対象: G-code exportのレイヤ単位master switch、ストローク順最適化、逆向き描画、短距離bridge
 
 本計画は、`export.gcode.optimize_travel`、`allow_reverse`、
@@ -260,92 +261,92 @@ compatibility wrapperは残さない。
 対象: `tests/core/test_layer.py`、`tests/api/test_layer_helper.py`、
 `tests/stubs/test_api_stub_sync.py`
 
-- [ ] `Layer.gcode_optimize`と`L.layer(..., gcode_optimize=...)`の既定値が`true`である。
-- [ ] `L.layer(..., gcode_optimize=False)`が生成Layerへ`false`を保持する。
-- [ ] 複数Geometryをconcatする場合も値を保持する。
-- [ ] `True`と`False`以外の`0`、`1`、文字列、`None`をexact bool validationで拒否する。
-- [ ] `Layer`を直接構築する場合も同じvalidationになる。
-- [ ] Geometryから暗黙に作られるLayerが既定の`true`になる。
-- [ ] stub生成結果とrepository内の二つの公開stubが一致する。
+- [x] `Layer.gcode_optimize`と`L.layer(..., gcode_optimize=...)`の既定値が`true`である。
+- [x] `L.layer(..., gcode_optimize=False)`が生成Layerへ`false`を保持する。
+- [x] 複数Geometryをconcatする場合も値を保持する。
+- [x] `True`と`False`以外の`0`、`1`、文字列、`None`をexact bool validationで拒否する。
+- [x] `Layer`を直接構築する場合も同じvalidationになる。
+- [x] Geometryから暗黙に作られるLayerが既定の`true`になる。
+- [x] stub生成結果とrepository内の二つの公開stubが一致する。
 
 ### 6.2 ordering unit test
 
 対象: `tests/export/test_gcode_ordering.py`
 
-- [ ] 既存spatial indexとquadratic referenceの順序一致を維持する。
-- [ ] `allow_reverse=false/true`、empty、1本、完全tieを維持する。
-- [ ] source polylineが異なるstrokeを混在させても、距離と既存tie-breakだけで
+- [x] 既存spatial indexとquadratic referenceの順序一致を維持する。
+- [x] `allow_reverse=false/true`、empty、1本、完全tieを維持する。
+- [x] source polylineが異なるstrokeを混在させても、距離と既存tie-breakだけで
   決定されることを明示する。
-- [ ] 先頭stroke固定・非反転を明示する。
+- [x] 先頭stroke固定・非反転を明示する。
 
 ### 6.3 exporter contract test
 
 対象: `tests/export/test_gcode.py`
 
-- [ ] `gcode_optimize`未指定と明示的な`true`が同じG-codeを出す。
-- [ ] global 3設定がすべて有効でも、`gcode_optimize=false`のLayerは入力stroke順・
+- [x] `gcode_optimize`未指定と明示的な`true`が同じG-codeを出す。
+- [x] global 3設定がすべて有効でも、`gcode_optimize=false`のLayerは入力stroke順・
   入力方向を保持し、近距離stroke間も必ずpen-upする。
-- [ ] 同一frame内で`gcode_optimize=true`のLayerだけがreorder/reverse/bridgeされ、
+- [x] 同一frame内で`gcode_optimize=true`のLayerだけがreorder/reverse/bridgeされ、
   `false`のLayerは一切最適化されない。
-- [ ] global `optimize_travel=false`かつbridge有効、Layer master有効の場合は、
+- [x] global `optimize_travel=false`かつbridge有効、Layer master有効の場合は、
   入力順を保ったままbridgeだけが働く。
-- [ ] global設定が無効な項目を、`gcode_optimize=true`が勝手に有効化しない。
-- [ ] `optimize_travel=false`で、異なるsource polylineを含むflat stroke列の入力順と
+- [x] global設定が無効な項目を、`gcode_optimize=true`が勝手に有効化しない。
+- [x] `optimize_travel=false`で、異なるsource polylineを含むflat stroke列の入力順と
   向きが保持される。
-- [ ] `optimize_travel=true`で、異なるsource polyline間が実際に並び替わり、
+- [x] `optimize_travel=true`で、異なるsource polyline間が実際に並び替わり、
   fixtureのpen-up距離が減る。
-- [ ] `allow_reverse=false`では順序最適化しても各strokeを反転しない。
-- [ ] `allow_reverse=true`では、異なるsource polylineのstrokeも必要に応じて反転する。
-- [ ] 一つのsource polylineから生じた複数clip fragmentも、他strokeと同じlayer-wide候補になる。
-- [ ] `bridge_draw_distance`有効時、異なるsource polyline間でもgapが閾値未満なら
+- [x] `allow_reverse=false`では順序最適化しても各strokeを反転しない。
+- [x] `allow_reverse=true`では、異なるsource polylineのstrokeも必要に応じて反転する。
+- [x] 一つのsource polylineから生じた複数clip fragmentも、他strokeと同じlayer-wide候補になる。
+- [x] `bridge_draw_distance`有効時、異なるsource polyline間でもgapが閾値未満なら
   Z-upなしでconnectorを描く。
-- [ ] 上記bridgeは`optimize_travel=false`でも入力順に対して働く。
-- [ ] 上記bridgeは`optimize_travel=true`では最適化・反転後の端点に対して働く。
-- [ ] gapが閾値と厳密に等しい場合はbridgeしない。
-- [ ] gapが閾値を超える場合はpen-upする。
-- [ ] `bridge_draw_distance=null`では、近距離かつ別sourceでも必ずpen-upする。
-- [ ] 2 layer fixtureで、巨大なbridge距離でもlayer境界をbridgeしない。
-- [ ] `optimize_travel=false`かつbridge無効では、現行の入力順G-codeを維持する。
-- [ ] 同じframeを2回exportしてbyte-exactで一致する。
-- [ ] bridge無効時、最適化前後でstroke内部のpen-down線分集合が、順序・方向を除いて一致する。
-- [ ] bridge有効時に追加されたpen-down connectorが、すべて指定閾値未満である。
-- [ ] paper clipping、bed bounds、Y反転、origin、decimal丸め、安全なfooterが退行しない。
+- [x] 上記bridgeは`optimize_travel=false`でも入力順に対して働く。
+- [x] 上記bridgeは`optimize_travel=true`では最適化・反転後の端点に対して働く。
+- [x] gapが閾値と厳密に等しい場合はbridgeしない。
+- [x] gapが閾値を超える場合はpen-upする。
+- [x] `bridge_draw_distance=null`では、近距離かつ別sourceでも必ずpen-upする。
+- [x] 2 layer fixtureで、巨大なbridge距離でもlayer境界をbridgeしない。
+- [x] `optimize_travel=false`かつbridge無効では、現行の入力順G-codeを維持する。
+- [x] 同じframeを2回exportしてbyte-exactで一致する。
+- [x] bridge無効時、最適化前後でstroke内部のpen-down線分集合が、順序・方向を除いて一致する。
+- [x] bridge有効時に追加されたpen-down connectorが、すべて指定閾値未満である。
+- [x] paper clipping、bed bounds、Y反転、origin、decimal丸め、安全なfooterが退行しない。
 
 ### 6.4 fill相当の統合test
 
-- [ ] 複数の2頂点ハッチstrokeを持つsynthetic fill-like layerを作る。
-- [ ] `optimize_travel=true`でsource順が変わり、pen-up距離が明確に減ることを確認する。
-- [ ] `allow_reverse=true`でserpentine相当の反転が発生することを確認する。
-- [ ] `bridge_draw_distance`未満の隣接ハッチでZ-upが省略されることを確認する。
-- [ ] boundaryあり/なし、open/closed polyline混在でもface推測をせず、layer-wideで
+- [x] 複数の2頂点ハッチstrokeを持つsynthetic fill-like layerを作る。
+- [x] `optimize_travel=true`でsource順が変わり、pen-up距離が明確に減ることを確認する。
+- [x] `allow_reverse=true`でserpentine相当の反転が発生することを確認する。
+- [x] `bridge_draw_distance`未満の隣接ハッチでZ-upが省略されることを確認する。
+- [x] boundaryあり/なし、open/closed polyline混在でもface推測をせず、layer-wideで
   同じ契約が使われることを確認する。
-- [ ] 同じfixtureを`gcode_optimize=false`にすると入力順・方向・全pen-upへ戻る。
+- [x] 同じfixtureを`gcode_optimize=false`にすると入力順・方向・全pen-upへ戻る。
 
 fontやplatform resourceへ依存する`18.py`全体はunit testへ固定せず、後述の実作品acceptanceで使う。
 
 ### 6.5 export経路と非G-code exporter test
 
-- [ ] `tests/export/test_capture_service.py`で、通常G-codeとlayer split G-codeの双方が
+- [x] `tests/export/test_capture_service.py`で、通常G-codeとlayer split G-codeの双方が
   Layer masterを保持する。
-- [ ] `tests/interactive/runtime/test_export_job_system.py`で、spawn workerへ渡したLayerの
+- [x] `tests/interactive/runtime/test_export_job_system.py`で、spawn workerへ渡したLayerの
   `gcode_optimize=false`がexport結果へ反映される。
-- [ ] `tests/export/test_svg.py`で、同じgeometryの`gcode_optimize=true/false`が
+- [x] `tests/export/test_svg.py`で、同じgeometryの`gcode_optimize=true/false`が
   byte-exactな同一SVGを出す。
-- [ ] capture manifest schema、ParamStore、Layer style recordが増えていないことを確認する。
+- [x] capture manifest schema、ParamStore、Layer style recordが増えていないことを確認する。
 
 ### 6.6 現行contract testの置換
 
 次の現行testは、新契約と正反対なので名前とassertionを置き換える。
 
-- [ ] `test_export_gcode_keeps_input_polyline_order_when_optimization_is_enabled`
+- [x] `test_export_gcode_keeps_input_polyline_order_when_optimization_is_enabled`
   - layer内の異なるsourceが距離順へ並び替わるtestにする。
-- [ ] `test_export_gcode_draw_bridge_never_crosses_input_polyline_boundary`
+- [x] `test_export_gcode_draw_bridge_never_crosses_input_polyline_boundary`
   - layer内の近距離source境界をbridgeするtestにする。
-- [ ] `test_export_gcode_keeps_mixed_open_and_closed_polylines_in_input_order`
+- [x] `test_export_gcode_keeps_mixed_open_and_closed_polylines_in_input_order`
   - face推測なしで全strokeをlayer-wide最適化するtestにする。
-- [ ] `test_export_gcode_keeps_multiple_face_and_hole_source_order`
+- [x] `test_export_gcode_keeps_multiple_face_and_hole_source_order`
   - boundary有無に依存せず同じlayer-wide契約になるtestにする。
-- [ ] `test_export_gcode_draw_bridge_does_not_cross_mixed_polyline_boundaries`
+- [x] `test_export_gcode_draw_bridge_does_not_cross_mixed_polyline_boundaries`
   - sourceではなくlayer境界だけをbridge禁止境界として確認するtestにする。
 
 旧contractを残すfeature flag、legacy mode、互換testは追加しない。
@@ -355,20 +356,20 @@ fontやplatform resourceへ依存する`18.py`全体はunit testへ固定せず�
 `sketch/readme/grn/18.py`を、repositoryの`.grafix/config.yaml`を使って`/tmp`へ
 G-code exportし、次を測定する。
 
-- [ ] manifestのeffective configが
+- [x] manifestのeffective configが
   `optimize_travel=true`、`allow_reverse=true`、`bridge_draw_distance=0.5`である。
-- [ ] `18.py`が生成する既存Layerは、API既定値により`gcode_optimize=true`である。
-- [ ] template layerでsource polyline境界を越えた並べ替えが発生する。
-- [ ] `reversed` strokeが0本ではない。
-- [ ] bridgeされたtransitionが0件ではなく、全件0.5 mm未満である。
-- [ ] 全設定有効版と全設定無効版のG-codeがbyte同一ではない。
-- [ ] 同じrealized geometryのtemplate layerだけを`gcode_optimize=false`へ置き換えた比較版では、
+- [x] `18.py`が生成する既存Layerは、API既定値により`gcode_optimize=true`である。
+- [x] template layerでsource polyline境界を越えた並べ替えが発生する。
+- [x] `reversed` strokeが0本ではない。
+- [x] bridgeされたtransitionが0件ではなく、全件0.5 mm未満である。
+- [x] 全設定有効版と全設定無効版のG-codeがbyte同一ではない。
+- [x] 同じrealized geometryのtemplate layerだけを`gcode_optimize=false`へ置き換えた比較版では、
   そのLayerの入力順・入力方向が維持され、stroke間connectorが0本になる。
-- [ ] 上記比較版でも、masterが有効な他Layerのpolicyは変わらない。
-- [ ] template layerのstroke間距離合計が、現入力順に対して90%以上減る。
-- [ ] template layerのZ-up回数が、現行11,610回から大幅に減る。
-- [ ] 同じ設定で2回exportしたartifactがbyte-exactで一致する。
-- [ ] 全XY commandがpaper/bed検証を通り、footerで安全なZへ退避する。
+- [x] 上記比較版でも、masterが有効な他Layerのpolicyは変わらない。
+- [x] template layerのstroke間距離合計が、現入力順に対して90%以上減る。
+- [x] template layerのZ-up回数が、現行11,610回から大幅に減る。
+- [x] 同じ設定で2回exportしたartifactがbyte-exactで一致する。
+- [x] 全XY commandがpaper/bed検証を通り、footerで安全なZへ退避する。
 
 計測結果、実行時間、stroke数、reverse数、bridge数、pen-up距離、Z-up回数を
 本計画の実施結果欄へ記録する。生成G-codeはrepositoryへ追加しない。
@@ -377,36 +378,36 @@ G-code exportし、次を測定する。
 
 ### 8.1 現行contract文書
 
-- [ ] `src/grafix/core/layer.py`
+- [x] `src/grafix/core/layer.py`
   - `gcode_optimize`がG-code exporterだけで使う一括on/off hintであることを
     `Layer` docstringへ明記する。
-- [ ] `src/grafix/api/layers.py`
+- [x] `src/grafix/api/layers.py`
   - `L.layer()`のNumPy style docstringへ既定値、global設定との関係、`false`時に
     reorder/reverse/bridgeをすべて止めることを明記する。
-- [ ] `src/grafix/export/gcode.py`
+- [x] `src/grafix/export/gcode.py`
   - module前提を「layer全strokeをclip後に最適化・bridge」へ更新する。
   - source polyline境界を保持する記述を削除する。
   - Layer masterとglobal詳細設定からeffective policyを解決する契約を記載する。
-- [ ] `src/grafix/core/gcode_params.py`
+- [x] `src/grafix/core/gcode_params.py`
   - 3設定のscope、単位、strict threshold、`null`の意味をdocstringへ明記する。
-- [ ] `src/grafix/resource/default_config.yaml`
+- [x] `src/grafix/resource/default_config.yaml`
   - 「`gcode_optimize=true`の同一レイヤ内」「最適化後の隣接stroke」「mm」「未満」を
     明記する。
-- [ ] `.grafix/config.yaml`
+- [x] `.grafix/config.yaml`
   - packaged defaultと同じ説明へ同期する。
-- [ ] `architecture.md`
+- [x] `architecture.md`
   - input polyline semantic boundary契約をlayer semantic boundary契約へ置き換える。
   - face/groupを推測しないことは維持する。
   - Layer masterからeffective 3値を解決する式と、他exporterが無視することを明記する。
-- [ ] `docs/architecture_visualization.md`
+- [x] `docs/architecture_visualization.md`
   - `Layer master -> fragments -> layer-wide reorder/reverse/bridge`へ図と説明を更新する。
-- [ ] `src/grafix/devtools/generate_stub.py`、`src/grafix/api/__init__.pyi`、
+- [x] `src/grafix/devtools/generate_stub.py`、`src/grafix/api/__init__.pyi`、
   `typings/grafix/api/__init__.pyi`
   - `L.layer(..., gcode_optimize: bool = ...)`を公開signatureへ同期する。
 
 ### 8.2 migration
 
-- [ ] `docs/migration_2026-08-09.md`を新規作成する。
+- [x] `docs/migration_2026-08-09.md`を新規作成する。
   - 2026-07-22のsource-polyline限定contractを置き換える破壊的変更と記録する。
   - `optimize_travel=true`で異なるsource polyline順が変わることを明記する。
   - `allow_reverse=true`で異なるsource polylineも反転し得ることを明記する。
@@ -422,39 +423,39 @@ G-code exportし、次を測定する。
 
 ### 9.1 Production
 
-- [ ] `src/grafix/core/layer.py`
-- [ ] `src/grafix/api/layers.py`
-- [ ] `src/grafix/export/gcode.py`
-- [ ] `src/grafix/core/gcode_params.py`
-- [ ] `src/grafix/resource/default_config.yaml`
-- [ ] `.grafix/config.yaml`
-- [ ] `src/grafix/devtools/generate_stub.py`
+- [x] `src/grafix/core/layer.py`
+- [x] `src/grafix/api/layers.py`
+- [x] `src/grafix/export/gcode.py`
+- [x] `src/grafix/core/gcode_params.py`
+- [x] `src/grafix/resource/default_config.yaml`
+- [x] `.grafix/config.yaml`
+- [x] `src/grafix/devtools/generate_stub.py`
 
 ### 9.2 生成stub
 
-- [ ] `src/grafix/api/__init__.pyi`
+- [x] `src/grafix/api/__init__.pyi`
   - 現在のDelaunay関連並列差分を保持し、`_L.layer` signatureだけを追加同期する。
-- [ ] `typings/grafix/api/__init__.pyi`
+- [x] `typings/grafix/api/__init__.pyi`
 
 ### 9.3 Tests
 
-- [ ] `tests/core/test_layer.py`
-- [ ] `tests/core/test_pipeline.py`
-- [ ] `tests/api/test_layer_helper.py`
-- [ ] `tests/stubs/test_api_stub_sync.py`
-- [ ] `tests/export/test_gcode.py`
-- [ ] `tests/export/test_gcode_ordering.py`
-- [ ] `tests/export/test_capture_service.py`
-- [ ] `tests/export/test_svg.py`
-- [ ] `tests/interactive/runtime/test_export_job_system.py`
+- [x] `tests/core/test_layer.py`
+- [x] `tests/core/test_pipeline.py`
+- [x] `tests/api/test_layer_helper.py`
+- [x] `tests/stubs/test_api_stub_sync.py`
+- [x] `tests/export/test_gcode.py`
+- [x] `tests/export/test_gcode_ordering.py`
+- [x] `tests/export/test_capture_service.py`
+- [x] `tests/export/test_svg.py`
+- [x] `tests/interactive/runtime/test_export_job_system.py`
 
 ### 9.4 Docs
 
-- [ ] `architecture.md`
-- [ ] `docs/architecture_visualization.md`
-- [ ] `docs/migration_2026-08-09.md`（新規）
-- [ ] `docs/migration_2026-07-22.md`（新migrationへの参照が必要な場合のみ）
-- [ ] 本計画ファイルのchecklistと実施結果
+- [x] `architecture.md`
+- [x] `docs/architecture_visualization.md`
+- [x] `docs/migration_2026-08-09.md`（新規）
+- [x] `docs/migration_2026-07-22.md`（新migrationへの参照が必要な場合のみ）
+- [x] 本計画ファイルのchecklistと実施結果
 
 変更中に追加対象が判明した場合は、理由を本計画へ追記してから変更する。
 
@@ -462,68 +463,70 @@ G-code exportし、次を測定する。
 
 ### Phase 0: baseline固定
 
-- [ ] 作業開始時の`git status --porcelain`を確認し、依頼外差分へ触れない。
-- [ ] G-code focused testsを実行し、開始時結果を記録する。
-- [ ] `18.py`の現行G-codeを`/tmp`へ再生成し、stroke/reverse/bridge/Z-up/travel/時間を記録する。
-- [ ] 現行config provenanceをcapture manifestで確認する。
+- [x] 作業開始時の`git status --porcelain`を確認し、依頼外差分へ触れない。
+- [x] G-code focused testsを実行し、開始時結果を記録する。
+- [x] `18.py`の現行G-codeを`/tmp`へ再生成し、stroke/reverse/bridge/Z-up/travel/時間を記録する。
+- [x] 現行config provenanceをcapture manifestで確認する。
 
 ### Phase 1: RED contract tests
 
-- [ ] Layer/APIの既定値、`false`伝播、exact bool validation testを先に追加する。
-- [ ] global全設定が有効でも`gcode_optimize=false`なら3機能すべて止まるtestを追加する。
-- [ ] 同一frame内でLayerごとにmasterのon/offが分かれるtestを追加する。
-- [ ] source polylineを越えるreorder/reverse testを先に新契約へ変更し、現行実装で失敗することを確認する。
-- [ ] source polylineを越えるbridge testを先に新契約へ変更し、現行実装で失敗することを確認する。
-- [ ] layer境界を越えないtestを追加する。
-- [ ] bridge無効時のpen-down geometry不変testを追加する。
-- [ ] strict thresholdと最適化後bridgeのtestを追加する。
+- [x] Layer/APIの既定値、`false`伝播、exact bool validation testを先に追加する。
+- [x] global全設定が有効でも`gcode_optimize=false`なら3機能すべて止まるtestを追加する。
+- [x] 同一frame内でLayerごとにmasterのon/offが分かれるtestを追加する。
+- [ ] source polylineを越えるreorder/reverse testのRED実行確認。
+  - 並列実装でproduction変更が先に入ったため、test-firstの失敗確認だけ未実施。新契約testはpass。
+- [ ] source polylineを越えるbridge testのRED実行確認。
+  - 並列実装でproduction変更が先に入ったため、test-firstの失敗確認だけ未実施。新契約testはpass。
+- [x] layer境界を越えないtestを追加する。
+- [x] bridge無効時のpen-down geometry不変testを追加する。
+- [x] strict thresholdと最適化後bridgeのtestを追加する。
 
 ### Phase 2: Layer APIとexporter単純化
 
-- [ ] `Layer`と`L.layer()`へ`gcode_optimize: bool = True`を追加する。
-- [ ] exact bool validationを追加する。
-- [ ] stub generatorを更新し、並列差分を保持したまま二つのstubを同期する。
-- [ ] stroke収集をflat listへ変更する。
-- [ ] Layer masterとglobal設定からeffective policyを一度だけ解決する。
-- [ ] source単位ordering helperを削除し、layer単位orderingへ一本化する。
-- [ ] emitterをlayer単位の一回呼び出しへ変更する。
-- [ ] source block commentを削除し、stroke commentへ統一する。
-- [ ] private compatibility wrapperやface heuristicが残っていないことを確認する。
+- [x] `Layer`と`L.layer()`へ`gcode_optimize: bool = True`を追加する。
+- [x] exact bool validationを追加する。
+- [x] stub generatorを更新し、並列差分を保持したまま二つのstubを同期する。
+- [x] stroke収集をflat listへ変更する。
+- [x] Layer masterとglobal設定からeffective policyを一度だけ解決する。
+- [x] source単位ordering helperを削除し、layer単位orderingへ一本化する。
+- [x] emitterをlayer単位の一回呼び出しへ変更する。
+- [x] source block commentを削除し、stroke commentへ統一する。
+- [x] private compatibility wrapperやface heuristicが残っていないことを確認する。
 
 ### Phase 3: focused regression
 
-- [ ] Layer model、Layer API、pipeline、stub sync testsを通す。
-- [ ] ordering unit testsを通す。
-- [ ] G-code exporter testsを通す。
-- [ ] SVGでLayer masterが出力へ影響しないtestを通す。
-- [ ] `tests/export/test_capture_service.py`のG-code encode/config/layer-split経路を通す。
-- [ ] `tests/interactive/runtime/test_export_job_system.py`のG-code worker経路を通す。
-- [ ] `tests/interactive/runtime/test_capture_export_safety.py`のG-code publish/rollback経路を通す。
-- [ ] config parsingの既存focused testsを通す。
-- [ ] `ruff`、`mypy`、`git diff --check`を通す。
+- [x] Layer model、Layer API、pipeline、stub sync testsを通す。
+- [x] ordering unit testsを通す。
+- [x] G-code exporter testsを通す。
+- [x] SVGでLayer masterが出力へ影響しないtestを通す。
+- [x] `tests/export/test_capture_service.py`のG-code encode/config/layer-split経路を通す。
+- [x] `tests/interactive/runtime/test_export_job_system.py`のG-code worker経路を通す。
+- [x] `tests/interactive/runtime/test_capture_export_safety.py`のG-code publish/rollback経路を通す。
+- [x] config parsingの既存focused testsを通す。
+- [x] `ruff`、`mypy`、`git diff --check`を通す。
 
 ### Phase 4: docsとmigration
 
-- [ ] config、docstring、architecture、visualizationを新契約へ同期する。
-- [ ] 2026-08-09 migrationを追加する。
-- [ ] repository全体を検索し、source-polyline限定という現行契約の残存記述を解消する。
-- [ ] 2026-07-22の歴史文書と現行契約を混同しないことを確認する。
+- [x] config、docstring、architecture、visualizationを新契約へ同期する。
+- [x] 2026-08-09 migrationを追加する。
+- [x] repository全体を検索し、source-polyline限定という現行契約の残存記述を解消する。
+- [x] 2026-07-22の歴史文書と現行契約を混同しないことを確認する。
 
 ### Phase 5: `18.py` acceptance
 
-- [ ] default config、global全設定無効、bridgeのみ無効、template layer master無効の
+- [x] default config、global全設定無効、bridgeのみ無効、template layer master無効の
   比較G-codeを`/tmp`へ生成する。
-- [ ] travel、reverse、bridge、Z-up、実行時間、決定性を測定する。
-- [ ] template layer master無効版だけが入力順・方向・全pen-upへ戻ることを検証する。
-- [ ] 全connectorが閾値未満であることを機械的に検証する。
-- [ ] 結果を本計画へ追記し、未完了項目を明示する。
+- [x] travel、reverse、bridge、Z-up、実行時間、決定性を測定する。
+- [x] template layer master無効版だけが入力順・方向・全pen-upへ戻ることを検証する。
+- [x] 全connectorが閾値未満であることを機械的に検証する。
+- [x] 結果を本計画へ追記し、未完了項目を明示する。
 
 ### Phase 6: 最終検証
 
-- [ ] focused test/lint/typeを再実行する。
-- [ ] full pytestは長時間実行の承認境界を確認してから実行する。
-- [ ] 最終`git status --porcelain`で依頼外差分を区別する。
-- [ ] 完了項目だけを`[x]`へ更新し、未実施項目を残す。
+- [x] focused test/lint/typeを再実行する。
+- [x] full pytestの長時間実行は承認が必要と確認した。承認未取得のため実行しない。
+- [x] 最終`git status --porcelain`で依頼外差分を区別する。
+- [x] 完了項目だけを`[x]`へ更新し、未実施項目を残す。
 
 ## 11. 検証コマンド案
 
@@ -639,30 +642,70 @@ source block commentを外部toolが非公式に読んでいる可能性があ�
 
 ## 13. 完了条件
 
-- [ ] `L.layer(..., gcode_optimize=True/False)`が一つのexact bool masterとして公開され、
+- [x] `L.layer(..., gcode_optimize=True/False)`が一つのexact bool masterとして公開され、
   既定値は`true`である。
-- [ ] `gcode_optimize=false`のLayerは、global値にかかわらずreorder、reverse、bridgeを
+- [x] `gcode_optimize=false`のLayerは、global値にかかわらずreorder、reverse、bridgeを
   すべて行わない。
-- [ ] `gcode_optimize=true`のLayerは、既存global 3設定を詳細policyとして適用する。
-- [ ] Layerごとの距離、reverse、ordering algorithmなどの個別設定APIを追加していない。
-- [ ] layer内の異なるsource polylineが`optimize_travel=true`で並び替わる。
-- [ ] `allow_reverse=true`で異なるsource polylineのstrokeも反転候補になる。
-- [ ] `bridge_draw_distance`未満のlayer内gapがsource境界に関係なくpen-down接続される。
-- [ ] `bridge_draw_distance=null`ではconnectorが追加されない。
-- [ ] layer境界をreorder/reverse/bridgeが越えない。
-- [ ] face/ring/glyphを推測するコードまたはmetadataが追加されていない。
-- [ ] bridge無効時のpen-down geometryが順序・方向を除いて不変である。
-- [ ] `18.py`でtravelとZ-up回数が大幅に減る。
-- [ ] deterministic export、clip、bed validation、安全commandが維持される。
-- [ ] Layer masterが通常capture、split G-code、spawn worker経路で保持される。
-- [ ] SVG、PNG、GL出力とgeometry/cache identityがLayer masterで変わらない。
-- [ ] global config key、既定値、capture manifest schemaを変更していない。
-- [ ] config、docstring、architecture、visualization、migrationが実装と一致する。
-- [ ] focused test、ruff、mypy、`git diff --check`がpassする。
-- [ ] full pytestは承認された場合にpassする。未実施なら未実施理由を明記する。
-- [ ] 本計画の完了・未完了checklistと実測結果が更新される。
+- [x] `gcode_optimize=true`のLayerは、既存global 3設定を詳細policyとして適用する。
+- [x] Layerごとの距離、reverse、ordering algorithmなどの個別設定APIを追加していない。
+- [x] layer内の異なるsource polylineが`optimize_travel=true`で並び替わる。
+- [x] `allow_reverse=true`で異なるsource polylineのstrokeも反転候補になる。
+- [x] `bridge_draw_distance`未満のlayer内gapがsource境界に関係なくpen-down接続される。
+- [x] `bridge_draw_distance=null`ではconnectorが追加されない。
+- [x] layer境界をreorder/reverse/bridgeが越えない。
+- [x] face/ring/glyphを推測するコードまたはmetadataが追加されていない。
+- [x] bridge無効時のpen-down geometryが順序・方向を除いて不変である。
+- [x] `18.py`でtravelとZ-up回数が大幅に減る。
+- [x] deterministic export、clip、bed validation、安全commandが維持される。
+- [x] Layer masterが通常capture、split G-code、spawn worker経路で保持される。
+- [x] SVGはbyte同一test、PNGはSVG経路、GLはfield非参照の静的監査で不変を確認し、
+  geometry/cache identity共有testもpassした。
+- [x] global config key、既定値、capture manifest schemaを変更していない。
+- [x] config、docstring、architecture、visualization、migrationが実装と一致する。
+- [x] focused test、ruff、mypy、`git diff --check`がpassする。
+- [ ] full pytest。
+  - AGENTS.mdのAsk-first対象で承認未取得のため未実施。focused 308 testsで対象経路を検証済み。
+- [x] 本計画の完了・未完了checklistと実測結果が更新される。
 
-## 14. 承認後に行うこと
+## 14. 実装承認
 
-本計画への承認後、Phase 0から順に実装する。承認前にはproduction code、test、architecture、
-configを変更しない。
+利用者の実装承認後、Phase 0から実装した。互換shim、旧mode、face heuristicは追加していない。
+commit、stage、pushは依頼されていないため実施しない。
+
+## 15. 実施結果
+
+### 15.1 `sketch/readme/grn/18.py` acceptance
+
+同じrealized frameとglobal configを使い、repository外の`/tmp`へ出力して計測した。
+距離は出力済みmachine XY commandからpen-up中の移動だけを合計した。
+
+| variant | bytes | lines | strokes | reversed | Z-up | bridge | pen-up距離 [mm] |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 変更前source-local実装 | 1,892,411 | 91,058 | 11,630 | 0 | 11,630 | 0 | 15,294.794 |
+| 新default | 1,051,116 | 44,834 | 11,630 | 5,779 | 148 | 11,482 | 1,210.181 |
+| template Layerだけmaster off | 1,240,227 | 67,798 | 11,630 | 0 | 11,630 | 0 | 15,041.482 |
+| global 3設定off | 1,240,227 | 67,798 | 11,630 | 0 | 11,630 | 0 | 15,294.794 |
+| bridgeだけ`null` | 1,292,238 | 67,798 | 11,630 | 5,779 | 11,630 | 0 | 1,469.216 |
+
+- 新defaultのpen-up距離は変更前から**92.09%減**、Z-upは**98.73%減**、file sizeは
+  **44.46%減**となった。
+- 新defaultを2回出力したSHA-256は、どちらも
+  `eb171eeccf9aaf3a40b1b120896fe6c8724c2ce7afbdf140e76f2d173d3e6ae9`で一致した。
+- 新defaultのexport時間は0.439秒と0.410秒だった。
+- 11,482本のconnectorの最大長は0.498 mmで、0.5 mm以上は0本だった。
+- template Layerだけmaster offにした場合、そのLayerはpolyline入力順、元方向、全pen-upへ戻った。
+  他の2 Layerのstroke comment列は新defaultとbyte単位で一致した。
+- `bridge_draw_distance=null`では、layer-wide reorder/reverseは維持しつつconnectorだけ0本になった。
+- 生成G-codeと比較scriptはrepositoryへ追加していない。
+
+### 15.2 検証結果
+
+- 実装前focused baseline: 90 passed
+- Layer/API/stub/G-code/capture/SVG/spawn worker/safetyの最終統合focused suite: 308 passed
+- Ruff（変更Python file）: pass
+- mypy `src/grafix`（293 source files）: pass
+- `git diff --check`: pass
+- full pytest: AGENTS.mdのAsk-first対象で承認未取得のため未実施
+
+独立レビューを実施し、master policy、data path、cache identity、非G-code exporter、
+stub、documentationに重大または中程度の不整合がないことを確認した。

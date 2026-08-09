@@ -93,3 +93,38 @@ def test_spatial_stroke_order_preserves_input_order_for_complete_ties(
 
     assert [id(stroke) for stroke, _ in actual] == [id(stroke) for stroke in strokes]
     assert [reverse for _, reverse in actual] == [False] * len(strokes)
+
+
+def test_stroke_order_uses_one_layer_wide_candidate_set_across_source_polylines() -> None:
+    strokes = [
+        _Stroke(
+            poly_idx=7,
+            seg_idx=0,
+            points_canvas=[(0.0, 0.0), (0.0, 1.0)],
+            start_q=(0, 0),
+            end_q=(0, 1),
+        ),
+        _Stroke(
+            poly_idx=9,
+            seg_idx=0,
+            points_canvas=[(100.0, 0.0), (100.0, 1.0)],
+            start_q=(100, 0),
+            end_q=(100, 1),
+        ),
+        _Stroke(
+            poly_idx=8,
+            seg_idx=0,
+            points_canvas=[(1.0, 1.0), (1.0, 2.0)],
+            start_q=(1, 1),
+            end_q=(1, 2),
+        ),
+    ]
+
+    ordered = _order_strokes_in_layer(strokes, allow_reverse=True)
+
+    assert [(stroke.poly_idx, reverse) for stroke, reverse in ordered] == [
+        (7, False),
+        (8, False),
+        (9, True),
+    ]
+    assert ordered[0][0] is strokes[0]

@@ -27,9 +27,14 @@ def _realized_layer(
     offsets: list[int],
     color: tuple[float, float, float] = (0.0, 0.0, 0.0),
     thickness: float = 0.001,
+    gcode_optimize: bool = True,
 ) -> RealizedLayer:
     geometry = Geometry.create("svg-test-geometry")
-    layer = Layer(geometry=geometry, site_id="layer:1")
+    layer = Layer(
+        geometry=geometry,
+        site_id="layer:1",
+        gcode_optimize=gcode_optimize,
+    )
     realized = RealizedGeometry(
         coords=np.asarray(coords, dtype=np.float32),
         offsets=np.asarray(offsets, dtype=np.int32),
@@ -104,6 +109,30 @@ def test_export_svg_outputs_multiple_paths_for_multiple_polylines(tmp_path) -> N
     assert len(paths) == 2
     assert paths[0].attrib["d"] == "M 0.000 0.000 L 1.000 0.000"
     assert paths[1].attrib["d"] == "M 0.000 1.000 L 1.000 1.000"
+
+
+def test_export_svg_ignores_gcode_optimization_master(tmp_path) -> None:
+    common = {
+        "coords": [[0.0, 0.0, 0.0], [10.0, 20.0, 0.0]],
+        "offsets": [0, 2],
+        "color": (0.25, 0.5, 0.75),
+        "thickness": 0.2,
+    }
+    enabled_path = tmp_path / "enabled.svg"
+    disabled_path = tmp_path / "disabled.svg"
+
+    export_svg(
+        [_realized_layer(**common, gcode_optimize=True)],
+        enabled_path,
+        canvas_size=(100, 200),
+    )
+    export_svg(
+        [_realized_layer(**common, gcode_optimize=False)],
+        disabled_path,
+        canvas_size=(100, 200),
+    )
+
+    assert enabled_path.read_bytes() == disabled_path.read_bytes()
 
 
 def test_export_svg_skips_polylines_with_less_than_two_points(tmp_path) -> None:

@@ -10,6 +10,7 @@ import pytest
 
 from grafix import (
     G,
+    L,
     ExportFormat,
     ExportResult,
     Frame,
@@ -573,6 +574,59 @@ def test_per_layer_option_keeps_existing_layer_naming(
     )
 
     assert staged == (tmp_path / "drawing_layer001.gcode",)
+
+
+@pytest.mark.parametrize("split_gcode_layers", [False, True])
+def test_gcode_capture_preserves_layer_optimization_master(
+    tmp_path: Path,
+    *,
+    split_gcode_layers: bool,
+) -> None:
+    def draw(_t: float):
+        return L.layer(
+            [
+                G.polyline(points=((0.0, 0.0), (0.0, 1.0))),
+                G.polyline(points=((100.0, 0.0), (100.0, 1.0))),
+                G.polyline(points=((1.0, 1.0), (1.0, 2.0))),
+            ],
+            gcode_optimize=False,
+        )
+
+    frame = render(draw, options=RenderOptions(canvas_size=(200, 200)))
+    params = replace(
+        frame.metadata.effective_config.gcode,
+        origin=(0.0, 0.0),
+        y_down=False,
+        paper_margin_mm=0.0,
+        decimals=3,
+        optimize_travel=True,
+        allow_reverse=True,
+        bridge_draw_distance=1e6,
+    )
+
+    staged = CaptureService().encode(
+        frame,
+        tmp_path / "drawing.gcode",
+        format=ExportFormat.GCODE,
+        split_gcode_layers=split_gcode_layers,
+        gcode_params=params,
+    )
+
+    expected_path = (
+        tmp_path / "drawing_layer001.gcode"
+        if split_gcode_layers
+        else tmp_path / "drawing.gcode"
+    )
+    assert staged == (expected_path,)
+    text = staged[0].read_text(encoding="utf-8")
+    assert [
+        int(line.split()[3])
+        for line in text.splitlines()
+        if line.startswith("; stroke polyline ")
+    ] == [0, 1, 2]
+    assert " reversed" not in text
+    z_up_line = f"G1 Z{params.z_up:.{params.decimals}f}"
+    assert text.splitlines().count(z_up_line) == 3
 
 
 def test_per_layer_publish_rejects_empty_scene(frame: Frame, tmp_path: Path) -> None:

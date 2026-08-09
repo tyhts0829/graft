@@ -375,6 +375,9 @@ budget 語彙は実際に確保する点数へ合わせ、`DEFAULT_MAX_GRID_CELL
 
 ## 11. G-code stroke order
 
+> **後続変更:** この節の source-polyline 限定 contract は、
+> [`migration_2026-08-09.md`](migration_2026-08-09.md) のレイヤ単位 contract に置き換えられた。
+
 異なる input polyline 間を `optimize_travel=True` で並べ替えたり反転したりする旧挙動を削除した。
 `bridge_draw_distance` も polyline 境界を越えない。
 

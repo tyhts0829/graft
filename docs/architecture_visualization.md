@@ -646,17 +646,23 @@ batch directory 全体を一 generation として公開する。
 
 ```mermaid
 flowchart LR
-    source["Input polyline in original order"]
-    clip["Clipping"]
-    fragments["Fragments tagged by source polyline"]
-    local["Reorder / reverse / bridge within one source only"]
+    layer["RealizedLayer<br/>gcode_optimize master"]
+    clip["Clip every input polyline"]
+    strokes["All clipped strokes in the layer<br/>source tags retained for diagnostics"]
+    master{"gcode_optimize?"}
+    preserve["False<br/>preserve order and direction<br/>pen-up between every stroke"]
+    configured["True<br/>apply global optimize_travel / allow_reverse<br/>and bridge_draw_distance"]
     emit["Deterministic G-code"]
 
-    source --> clip --> fragments --> local --> emit
+    layer --> clip --> strokes --> master
+    master -->|"False"| preserve --> emit
+    master -->|"True"| configured --> emit
 ```
 
-異なる input polyline 間は並べ替え、向き反転、pen-down bridge の対象にしない。頂点数や閉曲線
-らしさから face/group を推測しない。
+同一レイヤ内では source polyline 境界を越えて並べ替え、向き反転、pen-down bridge を行える。
+`bridge_draw_distance` は、最終ストローク列の隣接 gap が指定値 [mm] 未満なら描画で繋いでよいという
+明示許可である。レイヤ境界は常に越えず、頂点数、閉曲線らしさ、producer 順から face、glyph、group を
+推測しない。`gcode_optimize=False` のレイヤでは 3 処理をすべて停止する。
 
 ## 9. Grid diagnostic と validation owner
 

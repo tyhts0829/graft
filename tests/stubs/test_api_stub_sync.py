@@ -45,3 +45,8 @@ def test_api_stub_sync(tmp_path: Path) -> None:
     stub_path = repo_root / "src" / "grafix" / "api" / "__init__.pyi"
     actual = stub_path.read_text(encoding="utf-8")
     assert actual == expected
+    assert "        gcode_optimize: bool = ...,\n" in actual
+    project_stub = repo_root / "typings" / "grafix" / "api" / "__init__.pyi"
+    assert "        gcode_optimize: bool = ...,\n" in project_stub.read_text(
+        encoding="utf-8"
+    )

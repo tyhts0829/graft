@@ -41,6 +41,7 @@ class LayerNamespace:
         shared: bool = False,
         color: tuple[float, float, float] | None = None,
         thickness: float | None = None,
+        gcode_optimize: bool = True,
     ) -> Layer:
         """単体/複数の Geometry から Layer を生成する。
 
@@ -59,6 +60,9 @@ class LayerNamespace:
             RGB 色。None の場合は既定値に委譲。
         thickness : float or None, optional
             線幅。None の場合は既定値に委譲。0 以下は拒否。
+        gcode_optimize : bool, optional
+            True なら global な G-code 最適化設定群をこの Layer へ適用する。
+            False なら並べ替え、反転、bridge をこの Layer では無効にする。
 
         Returns
         -------
@@ -68,7 +72,7 @@ class LayerNamespace:
         Raises
         ------
         TypeError
-            Geometry 以外が渡された場合。
+            Geometry 以外、または``gcode_optimize``へbool以外が渡された場合。
         ValueError
             thickness が 0 以下の場合、または空リストの場合。
         """
@@ -121,6 +125,7 @@ class LayerNamespace:
             color=color,
             thickness=thickness,
             name=resolved_name,
+            gcode_optimize=gcode_optimize,
         )
 
     _pending_name: str | None = None

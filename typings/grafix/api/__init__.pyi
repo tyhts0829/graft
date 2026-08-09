@@ -1682,6 +1682,7 @@ class _L(Protocol):
         shared: bool = ...,
         color: Vec3 | None = ...,
         thickness: float | None = ...,
+        gcode_optimize: bool = ...,
     ) -> Layer:
         """単体/複数の Geometry を単一 Layer にする。"""
         ...

@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from grafix.core.geometry import Geometry
-from grafix.core.value_validation import exact_string, finite_real, rgb01_tuple
+from grafix.core.value_validation import exact_bool, exact_string, finite_real, rgb01_tuple
 
 ColorRGB = tuple[float, float, float]
 
@@ -22,13 +22,18 @@ def _color_rgb01(value: object, *, field: str) -> ColorRGB:
 
 @dataclass(frozen=True, slots=True)
 class Layer:
-    """Geometry と RGB 色・線幅を束ねるシーン要素。"""
+    """Geometry、描画style、G-code最適化の一括指定を束ねるシーン要素。
+
+    ``gcode_optimize`` はG-code exporterだけが解釈する。Falseの場合、そのLayerでは
+    strokeの並べ替え、反転、短距離bridgeをすべて無効にする。
+    """
 
     geometry: Geometry
     site_id: str
     color: ColorRGB | None = None
     thickness: float | None = None
     name: str | None = None
+    gcode_optimize: bool = True
 
     def __post_init__(self) -> None:
         if not isinstance(self.geometry, Geometry):
@@ -55,6 +60,11 @@ class Layer:
             )
         if self.name is not None:
             exact_string(self.name, name="Layer.name")
+        object.__setattr__(
+            self,
+            "gcode_optimize",
+            exact_bool(self.gcode_optimize, name="Layer.gcode_optimize"),
+        )
 
 
 @dataclass(frozen=True, slots=True)

@@ -83,13 +83,16 @@ export:
     bed_x_range: null
     bed_y_range: null
 
-    # ストローク間の移動距離がこの値より小さければ、ペンアップを省略して描画で繋ぐ。
-    # null の場合は無効。
+    # 同一レイヤ内で、最終ストローク列の隣接ストローク間がこの距離 [mm] 未満なら、
+    # ペンアップを省略し、その隙間を描画して繋ぐ。null の場合は無効。
+    # `L.layer(..., gcode_optimize=False)` のレイヤでは適用しない。
     bridge_draw_distance: 0.5
 
-    # True の場合、レイヤ内でストローク順を並び替えてペンアップ移動距離を小さくする。
+    # True の場合、同一レイヤ内の全クリップ後ストロークを並び替え、
+    # ペンアップ移動距離を小さくする。False の場合は入力順を維持する。
+    # `L.layer(..., gcode_optimize=False)` のレイヤでは適用しない。
     optimize_travel: true
-    # `optimize_travel=true` の場合、ストロークの逆向き描画を許可する。
+    # `optimize_travel=true` の並べ替え時に、ストロークの逆向き描画を許可する。
     allow_reverse: true
 
     # `y_down=true` 時の厳密反転に使うキャンバス高さ [mm]（未指定なら export_gcode(canvas_size=...) の高さ）。

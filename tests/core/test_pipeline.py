@@ -39,7 +39,16 @@ def test_realize_scene_normalizes_and_realizes_layers() -> None:
     g2 = G.polygon(n_sides=6)
 
     def draw(t: float):
-        return [Layer(g1, site_id="layer:1", color=None, thickness=None), g2]
+        return [
+            Layer(
+                g1,
+                site_id="layer:1",
+                color=None,
+                thickness=None,
+                gcode_optimize=False,
+            ),
+            g2,
+        ]
 
     defaults = LayerStyleDefaults(color=(0.1, 0.2, 0.3), thickness=0.05)
     realized_layers = realize_scene(draw, t=0.0, defaults=defaults, config=_TEST_RUNTIME_CONFIG)
@@ -52,6 +61,7 @@ def test_realize_scene_normalizes_and_realizes_layers() -> None:
     assert all(isinstance(item.realized.coords, np.ndarray) for item in realized_layers)
     assert [item.cache_key.geometry_id for item in realized_layers] == [g1.id, g2.id]
     assert realized_layers[0].cache_key.evaluation == realized_layers[1].cache_key.evaluation
+    assert [item.layer.gcode_optimize for item in realized_layers] == [False, True]
 
 
 def test_realize_scene_reuses_explicit_session_between_frames() -> None:
@@ -71,6 +81,26 @@ def test_realize_scene_reuses_explicit_session_between_frames() -> None:
 
     assert second[0].realized is first[0].realized
     assert second[0].cache_key == first[0].cache_key
+
+
+def test_layer_gcode_optimization_master_does_not_change_geometry_cache_identity() -> None:
+    geometry = G.polygon(n_sides=5)
+
+    def draw(_t: float):
+        return (
+            Layer(geometry, site_id="layer:enabled", gcode_optimize=True),
+            Layer(geometry, site_id="layer:disabled", gcode_optimize=False),
+        )
+
+    realized_layers = realize_scene(
+        draw,
+        t=0.0,
+        defaults=LayerStyleDefaults(color=(0.1, 0.2, 0.3), thickness=0.05),
+        config=_TEST_RUNTIME_CONFIG,
+    )
+
+    assert realized_layers[0].cache_key == realized_layers[1].cache_key
+    assert realized_layers[0].realized is realized_layers[1].realized
 
 
 def test_realize_scene_standalone_preserves_body_error_while_closing_owned_dependencies(

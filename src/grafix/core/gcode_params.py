@@ -60,13 +60,24 @@ class GCodeParams:
     bed_y_range : tuple[float, float] or None
         ベッド Y 範囲 [mm]。有限かつ昇順のペア。None で無効。
     bridge_draw_distance : float or None
-        ペンアップを省略する最大距離。0 以上の有限実数。None で無効。
+        同一レイヤの最終ストローク列で、隣接ストローク間の距離がこの値 [mm]
+        未満なら、ペンアップを省略して隙間を描画で繋ぐ。0 以上の有限実数。
+        None で無効。``Layer.gcode_optimize=False`` のレイヤでは適用しない。
     optimize_travel : bool
-        True の場合、ストローク順を最適化する。
+        True の場合、同一レイヤ内の全クリップ後ストロークを並べ替え、
+        ペンアップ移動距離を小さくする。False の場合は入力順を維持する。
+        ``Layer.gcode_optimize=False`` のレイヤでは適用しない。
     allow_reverse : bool
-        最適化時にストロークの逆向き描画を許可する。
+        ``optimize_travel=True`` での並べ替え時に、ストロークの逆向き描画を
+        許可する。``Layer.gcode_optimize=False`` のレイヤでは適用しない。
     canvas_height_mm : float or None
         Y 反転に使うキャンバス高さ。正の有限実数。None は描画キャンバス高を使う。
+
+    Notes
+    -----
+    ``L.layer(..., gcode_optimize=False)`` はレイヤ単位の粗いマスタースイッチであり、
+    そのレイヤでは並べ替え、逆向き描画、短距離 bridge をすべて停止する。
+    ``gcode_optimize=True`` のレイヤだけが本クラスの上記 3 設定に従う。
     """
 
     travel_feed: float = 3000.0
