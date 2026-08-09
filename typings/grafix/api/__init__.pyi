@@ -117,6 +117,53 @@ class _G(Protocol):
             shared: True なら反復呼び出しで同じ semantic parameter group を意図的に共有する。instance_key とは同時指定できない。
         """
         ...
+    def datum_axes_and_ticks(self, *, key: str | int | None = ..., instance_key: str | int | None = ..., shared: bool = ..., **params: Any) -> Geometry:
+        """
+        全高の基準軸、補助軸、円周の短い目盛をまとめる。
+
+        引数:
+            key: コード移動後も同じパラメータグループとして扱うための semantic identity。
+            instance_key: loop/comprehension の反復ごとにパラメータグループを分ける identity。
+            shared: True なら反復呼び出しで同じ semantic parameter group を意図的に共有する。instance_key とは同時指定できない。
+        """
+        ...
+    def delaunay(self, *, activate: bool = ..., width: float = ..., height: float = ..., site_count: int = ..., seed: int = ..., candidates: int = ..., center: Vec3 = ..., key: str | int | None = ..., instance_key: str | int | None = ..., shared: bool = ...) -> Geometry:
+        """
+        仮想site群から独立した閉Delaunay三角形領域を生成する。
+
+        引数:
+            activate: このプリミティブによる形状生成を有効にする。, bool
+            width: 仮想siteを散布する矩形領域の幅を指定します。, display 'Width', float, range [1.0, 300.0], unit mm, step 1.0, category 'Layout'
+            height: 仮想siteを散布する矩形領域の高さを指定します。, display 'Height', float, range [1.0, 300.0], unit mm, step 1.0, category 'Layout'
+            site_count: Delaunay三角形分割の基準として散布する仮想siteの数を指定します。, display 'Site Count', int, range [3, 500], step 1.0, category 'Sites'
+            seed: 仮想siteの配置を決める再現可能な非負のseedです。, display 'Site Seed', int, range [0, 1000000], step 1.0, category 'Sites'
+            candidates: site追加時に比較する候補数を指定し、点間隔の均一さを調整します。, display 'Candidates', int, range [1, 32], step 1.0, category 'Sites'
+            center: 仮想siteの散布矩形と出力面の中心となるXYZ座標を指定します。, display 'Center', vec3, range [-300.0, 300.0], unit mm, category 'Layout'
+            key: コード移動後も同じパラメータグループとして扱うための semantic identity。
+            instance_key: loop/comprehension の反復ごとにパラメータグループを分ける identity。
+            shared: True なら反復呼び出しで同じ semantic parameter group を意図的に共有する。instance_key とは同時指定できない。
+        """
+        ...
+    def descending_black_blocks(self, *, key: str | int | None = ..., instance_key: str | int | None = ..., shared: bool = ..., **params: Any) -> Geometry:
+        """
+        縦の測点列へ小さな黒い方形を落とす。
+
+        引数:
+            key: コード移動後も同じパラメータグループとして扱うための semantic identity。
+            instance_key: loop/comprehension の反復ごとにパラメータグループを分ける identity。
+            shared: True なら反復呼び出しで同じ semantic parameter group を意図的に共有する。instance_key とは同時指定できない。
+        """
+        ...
+    def diagonal_survey_bundles(self, *, key: str | int | None = ..., instance_key: str | int | None = ..., shared: bool = ..., **params: Any) -> Geometry:
+        """
+        指定された二本の測量方向に平行な髪線束を生成する。
+
+        引数:
+            key: コード移動後も同じパラメータグループとして扱うための semantic identity。
+            instance_key: loop/comprehension の反復ごとにパラメータグループを分ける identity。
+            shared: True なら反復呼び出しで同じ semantic parameter group を意図的に共有する。instance_key とは同時指定できない。
+        """
+        ...
     def ellipse(self, *, activate: bool = ..., radius_x: float = ..., radius_y: float = ..., angle: float = ..., segments: int = ..., center: Vec3 = ..., key: str | int | None = ..., instance_key: str | int | None = ..., shared: bool = ...) -> Geometry:
         """
         楕円を閉じたpolylineとして生成する。
@@ -143,6 +190,16 @@ class _G(Protocol):
             ny: 正方形領域に等間隔で配置する横線の本数を指定します。, int, range [1, 500]
             center: グリッド全体を平行移動する XYZ 座標を指定します。, vec3, range [0.0, 300.0]
             scale: 一辺 1 のグリッド全体に適用する等方スケールを指定します。, float, range [0.0, 200.0]
+            key: コード移動後も同じパラメータグループとして扱うための semantic identity。
+            instance_key: loop/comprehension の反復ごとにパラメータグループを分ける identity。
+            shared: True なら反復呼び出しで同じ semantic parameter group を意図的に共有する。instance_key とは同時指定できない。
+        """
+        ...
+    def inner_disc_knockout(self, *, key: str | int | None = ..., instance_key: str | int | None = ..., shared: bool = ..., **params: Any) -> Geometry:
+        """
+        重なった主円盤を暖かな白円で測量図のように切り抜く。
+
+        引数:
             key: コード移動後も同じパラメータグループとして扱うための semantic identity。
             instance_key: loop/comprehension の反復ごとにパラメータグループを分ける identity。
             shared: True なら反復呼び出しで同じ semantic parameter group を意図的に共有する。instance_key とは同時指定できない。
@@ -190,6 +247,26 @@ class _G(Protocol):
             shared: True なら反復呼び出しで同じ semantic parameter group を意図的に共有する。instance_key とは同時指定できない。
         """
         ...
+    def left_disc_dot_lattice(self, *, key: str | int | None = ..., instance_key: str | int | None = ..., shared: bool = ..., **params: Any) -> Geometry:
+        """
+        暗部に規則正しい微小な測点格子を置く。
+
+        引数:
+            key: コード移動後も同じパラメータグループとして扱うための semantic identity。
+            instance_key: loop/comprehension の反復ごとにパラメータグループを分ける identity。
+            shared: True なら反復呼び出しで同じ semantic parameter group を意図的に共有する。instance_key とは同時指定できない。
+        """
+        ...
+    def left_disc_hatch(self, *, key: str | int | None = ..., instance_key: str | int | None = ..., shared: bool = ..., **params: Any) -> Geometry:
+        """
+        主円盤の左半分を極細水平線でほぼ黒く埋める。
+
+        引数:
+            key: コード移動後も同じパラメータグループとして扱うための semantic identity。
+            instance_key: loop/comprehension の反復ごとにパラメータグループを分ける identity。
+            shared: True なら反復呼び出しで同じ semantic parameter group を意図的に共有する。instance_key とは同時指定できない。
+        """
+        ...
     def line(self, *, activate: bool = ..., center: Vec3 = ..., anchor: Literal['center', 'left', 'right'] = ..., length: float = ..., angle: float = ..., key: str | int | None = ..., instance_key: str | int | None = ..., shared: bool = ...) -> Geometry:
         """
         正規化済み引数から線分を生成する。
@@ -223,6 +300,16 @@ class _G(Protocol):
             shared: True なら反復呼び出しで同じ semantic parameter group を意図的に共有する。instance_key とは同時指定できない。
         """
         ...
+    def lower_measurement_field(self, *, key: str | int | None = ..., instance_key: str | int | None = ..., shared: bool = ..., **params: Any) -> Geometry:
+        """
+        中央下へ落ちる微細な縦線と点列を作る。
+
+        引数:
+            key: コード移動後も同じパラメータグループとして扱うための semantic identity。
+            instance_key: loop/comprehension の反復ごとにパラメータグループを分ける identity。
+            shared: True なら反復呼び出しで同じ semantic parameter group を意図的に共有する。instance_key とは同時指定できない。
+        """
+        ...
     def lsystem(self, *, activate: bool = ..., kind: Literal['plant', 'circuit', 'custom'] = ..., iters: int = ..., center: Vec3 = ..., heading: float = ..., angle: float = ..., step: float = ..., jitter: float = ..., seed: int = ..., axiom: str = ..., rules: str = ..., key: str | int | None = ..., instance_key: str | int | None = ..., shared: bool = ...) -> Geometry:
         """
         L-system を展開し、枝分かれした線（開ポリライン列）を生成する。
@@ -239,6 +326,26 @@ class _G(Protocol):
             seed: ゆらぎの乱数列を決定し、同じ形を再現できるようにします。, int, range [0, 9999]
             axiom: 独自規則を展開するときの出発点となる初期文字列を指定します。, str
             rules: 独自 L-system の一文字ごとの置換を A=... 形式で指定します。, str
+            key: コード移動後も同じパラメータグループとして扱うための semantic identity。
+            instance_key: loop/comprehension の反復ごとにパラメータグループを分ける identity。
+            shared: True なら反復呼び出しで同じ semantic parameter group を意図的に共有する。instance_key とは同時指定できない。
+        """
+        ...
+    def marginal_calibration_marks(self, *, key: str | int | None = ..., instance_key: str | int | None = ..., shared: bool = ..., **params: Any) -> Geometry:
+        """
+        余白の小型スケール、座標括弧、交点記号を置く。
+
+        引数:
+            key: コード移動後も同じパラメータグループとして扱うための semantic identity。
+            instance_key: loop/comprehension の反復ごとにパラメータグループを分ける identity。
+            shared: True なら反復呼び出しで同じ semantic parameter group を意図的に共有する。instance_key とは同時指定できない。
+        """
+        ...
+    def measured_paper_field(self, *, key: str | int | None = ..., instance_key: str | int | None = ..., shared: bool = ..., **params: Any) -> Geometry:
+        """
+        密な走査線でキャンバスを暖白の紙色にする。
+
+        引数:
             key: コード移動後も同じパラメータグループとして扱うための semantic identity。
             instance_key: loop/comprehension の反復ごとにパラメータグループを分ける identity。
             shared: True なら反復呼び出しで同じ semantic parameter group を意図的に共有する。instance_key とは同時指定できない。
@@ -297,6 +404,16 @@ class _G(Protocol):
             height: 回転前の Y 軸方向における長方形の高さを指定します。, float, range [0.0, 200.0]
             angle: 長方形を中心まわりに回転させる角度を度単位で指定します。, float, range [-180.0, 180.0]
             center: 長方形の中心となる XYZ 座標を指定します。, vec3, range [-300.0, 300.0]
+            key: コード移動後も同じパラメータグループとして扱うための semantic identity。
+            instance_key: loop/comprehension の反復ごとにパラメータグループを分ける identity。
+            shared: True なら反復呼び出しで同じ semantic parameter group を意図的に共有する。instance_key とは同時指定できない。
+        """
+        ...
+    def right_disc_hatch(self, *, key: str | int | None = ..., instance_key: str | int | None = ..., shared: bool = ..., **params: Any) -> Geometry:
+        """
+        主円盤の右半分を中間灰の水平ハッチで埋める。
+
+        引数:
             key: コード移動後も同じパラメータグループとして扱うための semantic identity。
             instance_key: loop/comprehension の反復ごとにパラメータグループを分ける identity。
             shared: True なら反復呼び出しで同じ semantic parameter group を意図的に共有する。instance_key とは同時指定できない。

@@ -3,399 +3,686 @@ from __future__ import annotations
 import math
 
 import numpy as np
+from shapely import MultiPoint, delaunay_triangles, get_coordinates
 
-from grafix import E, G, L, primitive, run
-
-
-CANVAS = (905, 1280)
-SEED = 87024
-
-PAPER = (0.94, 0.925, 0.89)
-PAPER_LIGHT = (0.968, 0.958, 0.928)
-GRAPHITE = (0.045, 0.05, 0.048)
-DARK_GRAY = (0.20, 0.21, 0.20)
-MID_GRAY = (0.46, 0.46, 0.43)
-PALE_GRAY = (0.70, 0.69, 0.64)
+from grafix import G, L, primitive
 
 
-def _pack(paths: list[list[tuple[float, float, float]]]) -> tuple[np.ndarray, np.ndarray]:
-    """複数の折れ線を custom primitive 用の正規形へまとめる。"""
-
-    arrays = [np.asarray(path, dtype=np.float32) for path in paths]
-    coords = np.ascontiguousarray(np.concatenate(arrays, axis=0), dtype=np.float32)
-    lengths = np.asarray([len(path) for path in arrays], dtype=np.int32)
-    offsets = np.empty(len(arrays) + 1, dtype=np.int32)
-    offsets[0] = 0
-    np.cumsum(lengths, out=offsets[1:])
-    return coords, np.ascontiguousarray(offsets, dtype=np.int32)
+CANVAS = (210, 148)
+SEED = 73624
 
 
-def _segment(
-    x0: float, y0: float, x1: float, y1: float
-) -> list[tuple[float, float, float]]:
-    return [(x0, y0, 0.0), (x1, y1, 0.0)]
+Point = tuple[float, float]
+Polyline = list[Point]
 
 
-@primitive
-def measured_paper_field() -> tuple[np.ndarray, np.ndarray]:
-    """密な走査線でキャンバスを暖白の紙色にする。"""
+def _pack(polylines: list[Polyline]) -> tuple[np.ndarray, np.ndarray]:
+    """Convert explicit two-dimensional polylines to Grafix primitive buffers."""
+    values: list[tuple[float, float, float]] = []
+    offsets_values: list[int] = [0]
+    for polyline in polylines:
+        if len(polyline) < 2:
+            continue
+        for x, y in polyline:
+            values.append((float(x), float(y), 0.0))
+        offsets_values.append(len(values))
 
-    paths: list[list[tuple[float, float, float]]] = []
-    for y in np.arange(-4.0, CANVAS[1] + 4.1, 3.0):
-        paths.append(_segment(-7.0, float(y), CANVAS[0] + 7.0, float(y)))
-    return _pack(paths)
-
-
-@primitive
-def left_disc_hatch() -> tuple[np.ndarray, np.ndarray]:
-    """主円盤の左半分を極細水平線でほぼ黒く埋める。"""
-
-    cx, cy, radius = 442.0, 480.0, 198.0
-    paths: list[list[tuple[float, float, float]]] = []
-    for y in np.arange(cy - radius + 0.5, cy + radius, 1.18):
-        half = math.sqrt(max(0.0, radius * radius - (float(y) - cy) ** 2))
-        if half > 0.7:
-            paths.append(_segment(cx - half, float(y), cx + 0.35, float(y)))
-    return _pack(paths)
+    coords = np.asarray(values, dtype=np.float32)
+    offsets = np.asarray(offsets_values, dtype=np.int32)
+    return np.ascontiguousarray(coords), np.ascontiguousarray(offsets)
 
 
-@primitive
-def right_disc_hatch() -> tuple[np.ndarray, np.ndarray]:
-    """主円盤の右半分を中間灰の水平ハッチで埋める。"""
-
-    cx, cy, radius = 442.0, 480.0, 198.0
-    paths: list[list[tuple[float, float, float]]] = []
-    for y in np.arange(cy - radius + 0.8, cy + radius, 1.55):
-        half = math.sqrt(max(0.0, radius * radius - (float(y) - cy) ** 2))
-        if half > 0.7:
-            paths.append(_segment(cx - 0.35, float(y), cx + half, float(y)))
-    return _pack(paths)
-
-
-@primitive
-def inner_disc_knockout() -> tuple[np.ndarray, np.ndarray]:
-    """重なった主円盤を暖かな白円で測量図のように切り抜く。"""
-
-    cx, cy, radius = 470.0, 530.0, 145.0
-    paths: list[list[tuple[float, float, float]]] = []
-    for y in np.arange(cy - radius - 2.0, cy + radius + 2.1, 2.45):
-        half = math.sqrt(max(0.0, (radius + 1.6) ** 2 - (float(y) - cy) ** 2))
-        if half > 0.5:
-            paths.append(_segment(cx - half, float(y), cx + half, float(y)))
-    return _pack(paths)
+def _boundary_point(theta: float) -> Point:
+    """Irregular rounded-rectangle rim with the exact technical bbox."""
+    cosine = math.cos(theta)
+    sine = math.sin(theta)
+    power = 2.0 / 5.2
+    ux = math.copysign(abs(cosine) ** power, cosine)
+    uy = math.copysign(abs(sine) ** power, sine)
+    x = 105.0 + 96.0 * ux
+    y = 62.0 + 51.0 * uy
+    # Irregularity vanishes at the four extrema, preserving x=9..201, y=11..113.
+    x += (1.0 - abs(ux)) * (1.55 * math.sin(3.0 * theta + 0.4))
+    x += (1.0 - abs(ux)) * (0.55 * math.sin(8.0 * theta - 0.7))
+    y += (1.0 - abs(uy)) * (1.05 * math.sin(5.0 * theta - 0.25))
+    y += (1.0 - abs(uy)) * (0.38 * math.cos(9.0 * theta + 0.5))
+    return (min(201.0, max(9.0, x)), min(113.0, max(11.0, y)))
 
 
-@primitive
-def left_disc_dot_lattice() -> tuple[np.ndarray, np.ndarray]:
-    """暗部に規則正しい微小な測点格子を置く。"""
-
-    cx, cy, radius = 442.0, 480.0, 198.0
-    paths: list[list[tuple[float, float, float]]] = []
-    for row, y in enumerate(np.arange(294.0, 670.0, 8.15)):
-        x_shift = 0.0 if row % 2 == 0 else 1.75
-        for x in np.arange(254.0 + x_shift, 438.0, 7.0):
-            if (float(x) - cx) ** 2 + (float(y) - cy) ** 2 < (radius - 5.0) ** 2:
-                paths.append(_segment(float(x) - 0.22, float(y), float(x) + 0.22, float(y)))
-    return _pack(paths)
+def _inside_domain(x: float, y: float) -> bool:
+    """Warped superellipse membership test matching the rounded rectangle."""
+    shifted_x = x - 105.0 - 0.78 * math.sin((y - 62.0) / 10.5)
+    shifted_y = y - 62.0 - 0.48 * math.sin((x - 105.0) / 14.0)
+    nx = abs(shifted_x / 96.0)
+    ny = abs(shifted_y / 51.0)
+    angle = math.atan2(shifted_y / 51.0, shifted_x / 96.0)
+    rim = 0.973 + 0.009 * math.sin(5.0 * angle + 0.3)
+    rim += 0.004 * math.sin(11.0 * angle - 0.8)
+    return nx**5.2 + ny**5.2 < rim
 
 
-@primitive
-def diagonal_survey_bundles() -> tuple[np.ndarray, np.ndarray]:
-    """指定された二本の測量方向に平行な髪線束を生成する。"""
+def _horizontal_rim_x(y: float, side: float) -> float:
+    """Return an inset left/right superellipse boundary at a given y."""
+    normalized_y = min(0.999, abs((y - 62.0) / 51.0))
+    extent = 96.0 * max(0.0, 1.0 - normalized_y**5.2) ** (1.0 / 5.2)
+    wobble = 0.55 * math.sin(y * 0.31) * (1.0 - normalized_y)
+    return 105.0 + side * (extent - 0.45) + wobble
 
-    paths: list[list[tuple[float, float, float]]] = []
 
-    def add_bundle(
-        start: tuple[float, float],
-        end: tuple[float, float],
-        offsets: tuple[float, ...],
-    ) -> None:
-        x0, y0 = start
-        x1, y1 = end
-        dx, dy = x1 - x0, y1 - y0
-        length = math.hypot(dx, dy)
-        nx, ny = -dy / length, dx / length
-        for index, offset in enumerate(offsets):
-            trim_start = float((index % 3) * 2.2)
-            trim_end = float(((index + 1) % 4) * 2.8)
-            ux, uy = dx / length, dy / length
-            paths.append(
-                _segment(
-                    x0 + nx * offset + ux * trim_start,
-                    y0 + ny * offset + uy * trim_start,
-                    x1 + nx * offset - ux * trim_end,
-                    y1 + ny * offset - uy * trim_end,
-                )
+def _adaptive_points(seed: int) -> np.ndarray:
+    """Create one reproducible, nonuniform 868-vertex rounded-field cloud."""
+    rng = np.random.default_rng(seed)
+    points: list[tuple[float, float]] = []
+
+    # A finely sampled noncircular rim constrains the otherwise true Delaunay hull.
+    for index in range(104):
+        theta = math.tau * index / 104.0
+        points.append(_boundary_point(theta))
+
+    # Broad irregular coverage, sampled without a latent rectangular lattice.
+    while len(points) < 608:
+        x = float(rng.uniform(9.4, 200.6))
+        y = float(rng.uniform(11.4, 112.6))
+        if _inside_domain(x, y):
+            points.append((x, y))
+
+    # The central anisotropic collision band supplies adaptive mesh density.
+    while len(points) < 748:
+        x = float(rng.normal(103.0, 24.0))
+        y = float(rng.normal(62.0, 7.0))
+        if _inside_domain(x, y):
+            points.append((x, y))
+
+    # Three smaller halos tighten the triangles only near the singularities.
+    for cx, cy, sx, sy, target in (
+        (48.5, 32.0, 9.0, 6.0, 788),
+        (159.0, 45.5, 10.0, 6.5, 828),
+        (96.5, 94.0, 10.5, 6.0, 868),
+    ):
+        while len(points) < target:
+            x = float(rng.normal(cx, sx))
+            y = float(rng.normal(cy, sy))
+            if _inside_domain(x, y):
+                points.append((x, y))
+
+    return np.ascontiguousarray(np.asarray(points, dtype=np.float64))
+
+
+def _delaunay_edge_pairs(seed: int) -> list[tuple[Point, Point]]:
+    points = _adaptive_points(seed)
+    point_values: list[tuple[float, float]] = []
+    for x, y in points:
+        point_values.append((float(x), float(y)))
+
+    unique_edges = delaunay_triangles(MultiPoint(point_values), only_edges=True)
+    pairs: list[tuple[Point, Point]] = []
+    for edge in unique_edges.geoms:
+        xy = get_coordinates(edge)
+        if xy.shape[0] >= 2:
+            p0 = (float(xy[0, 0]), float(xy[0, 1]))
+            p1 = (float(xy[-1, 0]), float(xy[-1, 1]))
+            pairs.append((p0, p1))
+    return pairs
+
+
+def _catmull_rom(anchors: list[Point], samples_per_span: int = 14) -> Polyline:
+    """Sample a smooth polyline through every supplied anchor."""
+    result: Polyline = []
+    last = len(anchors) - 1
+    for span in range(last):
+        p0 = anchors[max(0, span - 1)]
+        p1 = anchors[span]
+        p2 = anchors[span + 1]
+        p3 = anchors[min(last, span + 2)]
+        for step in range(samples_per_span):
+            u = step / float(samples_per_span)
+            u2 = u * u
+            u3 = u2 * u
+            x = 0.5 * (
+                2.0 * p1[0]
+                + (-p0[0] + p2[0]) * u
+                + (2.0 * p0[0] - 5.0 * p1[0] + 4.0 * p2[0] - p3[0]) * u2
+                + (-p0[0] + 3.0 * p1[0] - 3.0 * p2[0] + p3[0]) * u3
             )
+            y = 0.5 * (
+                2.0 * p1[1]
+                + (-p0[1] + p2[1]) * u
+                + (2.0 * p0[1] - 5.0 * p1[1] + 4.0 * p2[1] - p3[1]) * u2
+                + (-p0[1] + 3.0 * p1[1] - 3.0 * p2[1] + p3[1]) * u3
+            )
+            result.append((x, y))
+    result.append(anchors[-1])
+    return result
 
-    add_bundle((250.0, 635.0), (782.0, 383.0), (-8.0, -5.4, -3.2, -1.2, 0.6, 2.6, 5.1, 8.1))
-    add_bundle((25.0, 1080.0), (402.0, 855.0), (-6.2, -3.8, -1.5, 0.7, 3.2, 6.0))
-    return _pack(paths)
+
+def _cubic(p0: Point, p1: Point, p2: Point, p3: Point, count: int) -> Polyline:
+    values: Polyline = []
+    for index in range(count):
+        u = index / float(count - 1)
+        v = 1.0 - u
+        x = v**3 * p0[0] + 3.0 * v * v * u * p1[0]
+        x += 3.0 * v * u * u * p2[0] + u**3 * p3[0]
+        y = v**3 * p0[1] + 3.0 * v * v * u * p1[1]
+        y += 3.0 * v * u * u * p2[1] + u**3 * p3[1]
+        values.append((x, y))
+    return values
+
+
+def _quadratic(p0: Point, control: Point, p1: Point, count: int = 34) -> Polyline:
+    values: Polyline = []
+    for index in range(count):
+        u = index / float(count - 1)
+        v = 1.0 - u
+        x = v * v * p0[0] + 2.0 * v * u * control[0] + u * u * p1[0]
+        y = v * v * p0[1] + 2.0 * v * u * control[1] + u * u * p1[1]
+        values.append((x, y))
+    return values
+
+
+def _loop_from_cubics(
+    tip: Point,
+    c1: Point,
+    c2: Point,
+    back: Point,
+    c3: Point,
+    c4: Point,
+    scale: float,
+) -> Polyline:
+    def scaled(point: Point) -> Point:
+        return (
+            tip[0] + scale * (point[0] - tip[0]),
+            tip[1] + scale * (point[1] - tip[1]),
+        )
+
+    first = _cubic(tip, scaled(c1), scaled(c2), scaled(back), 43)
+    second = _cubic(scaled(back), scaled(c3), scaled(c4), tip, 43)
+    return first + second[1:]
+
+
+def _dash_polyline(polyline: Polyline, on: int = 5, off: int = 3) -> list[Polyline]:
+    pieces: list[Polyline] = []
+    cursor = 0
+    while cursor < len(polyline) - 1:
+        end = min(len(polyline), cursor + on + 1)
+        if end - cursor >= 2:
+            pieces.append(polyline[cursor:end])
+        cursor += on + off
+    return pieces
 
 
 @primitive
-def datum_axes_and_ticks() -> tuple[np.ndarray, np.ndarray]:
-    """全高の基準軸、補助軸、円周の短い目盛をまとめる。"""
+def ricci_mesh(*, seed: int = SEED) -> tuple[np.ndarray, np.ndarray]:
+    polylines: list[Polyline] = []
+    for p0, p1 in _delaunay_edge_pairs(seed):
+        polylines.append([p0, p1])
+    return _pack(polylines)
 
-    paths: list[list[tuple[float, float, float]]] = [
-        _segment(445.0, -8.0, 445.0, 1288.0),
-        _segment(441.5, 42.0, 448.5, 42.0),
-        _segment(441.5, 1233.0, 448.5, 1233.0),
-        _segment(490.0, 202.0, 490.0, 1183.0),
-    ]
 
-    for y in range(78, 1241, 29):
-        tick = 3.8 if y % 58 == 0 else 2.2
-        paths.append(_segment(445.0 - tick, float(y), 445.0 + tick, float(y)))
+@primitive
+def crossing_chord_mesh(*, seed: int = SEED) -> tuple[np.ndarray, np.ndarray]:
+    """Longer alternate Delaunay edges crossing the fine current topology."""
+    points = _adaptive_points(seed + 503)
+    sparse_values: list[tuple[float, float]] = []
+    for index in range(0, points.shape[0], 2):
+        sparse_values.append((float(points[index, 0]), float(points[index, 1])))
+    edges = delaunay_triangles(MultiPoint(sparse_values), only_edges=True)
+    polylines: list[Polyline] = []
+    for index, edge in enumerate(edges.geoms):
+        # The retained irregular subset raises total mesh density without a dark wash.
+        if index % 4 == 0:
+            continue
+        xy = get_coordinates(edge)
+        if xy.shape[0] >= 2:
+            polylines.append(
+                [
+                    (float(xy[0, 0]), float(xy[0, 1])),
+                    (float(xy[-1, 0]), float(xy[-1, 1])),
+                ]
+            )
+    return _pack(polylines)
 
-    for angle in range(0, 360, 15):
-        a = math.radians(float(angle))
-        inner = 198.0 - (7.0 if angle % 45 == 0 else 3.5)
-        outer = 198.0 + (7.0 if angle % 45 == 0 else 3.5)
-        paths.append(
-            _segment(
-                442.0 + inner * math.cos(a),
-                480.0 + inner * math.sin(a),
-                442.0 + outer * math.cos(a),
-                480.0 + outer * math.sin(a),
+
+@primitive
+def collision_triangles(*, seed: int = SEED) -> tuple[np.ndarray, np.ndarray]:
+    """Mixed-scale micro-triangulation across the central saddle band."""
+    rng = np.random.default_rng(seed + 911)
+    values: list[tuple[float, float]] = []
+    # Irregular band rim makes the local Delaunay patch end without a box.
+    for index in range(34):
+        theta = math.tau * index / 34.0
+        radius_x = 35.0 + 2.2 * math.sin(5.0 * theta)
+        radius_y = 11.5 + 1.1 * math.cos(3.0 * theta)
+        values.append((103.0 + radius_x * math.cos(theta), 62.0 + radius_y * math.sin(theta)))
+    while len(values) < 214:
+        x = float(rng.normal(103.0, 18.5))
+        y = float(rng.normal(62.0, 5.2))
+        if 69.0 < x < 138.0 and 49.0 < y < 75.0:
+            values.append((x, y))
+    edges = delaunay_triangles(MultiPoint(values), only_edges=True)
+    polylines: list[Polyline] = []
+    for edge in edges.geoms:
+        xy = get_coordinates(edge)
+        if xy.shape[0] >= 2:
+            polylines.append(
+                [
+                    (float(xy[0, 0]), float(xy[0, 1])),
+                    (float(xy[-1, 0]), float(xy[-1, 1])),
+                ]
+            )
+    return _pack(polylines)
+
+
+@primitive
+def historic_topology(*, seed: int = SEED) -> tuple[np.ndarray, np.ndarray]:
+    """A displaced, dashed subset of an earlier triangulation state."""
+    polylines: list[Polyline] = []
+    for index, (p0, p1) in enumerate(_delaunay_edge_pairs(seed + 137)):
+        if (index * 41 + 17) % 11 != 0:
+            continue
+        dx = p1[0] - p0[0]
+        dy = p1[1] - p0[1]
+        length = math.hypot(dx, dy)
+        if length < 1.2:
+            continue
+        ox = -dy / length * 0.22
+        oy = dx / length * 0.22
+        for start in (0.08, 0.43, 0.78):
+            finish = min(0.96, start + 0.13)
+            a = (p0[0] + dx * start + ox, p0[1] + dy * start + oy)
+            b = (p0[0] + dx * finish + ox, p0[1] + dy * finish + oy)
+            polylines.append([a, b])
+    return _pack(polylines)
+
+
+@primitive
+def vertex_ticks(*, seed: int = SEED) -> tuple[np.ndarray, np.ndarray]:
+    points = _adaptive_points(seed)
+    polylines: list[Polyline] = []
+    for index, (x, y) in enumerate(points):
+        angle = (index * 2.399963229728653 + float(x) * 0.071) % math.tau
+        half = 0.13 + 0.055 * (0.5 + 0.5 * math.sin(index * 1.71))
+        dx = half * math.cos(angle)
+        dy = half * math.sin(angle)
+        polylines.append([(float(x) - dx, float(y) - dy), (float(x) + dx, float(y) + dy)])
+    return _pack(polylines)
+
+
+@primitive
+def outer_levels() -> tuple[np.ndarray, np.ndarray]:
+    polylines: list[Polyline] = []
+    for level in range(6):
+        rx = 94.0 - 5.5 * level
+        ry = 49.2 - 4.25 * level
+        phase = 0.55 * level
+        loop: Polyline = []
+        for index in range(241):
+            theta = math.tau * index / 240.0
+            cosine = math.cos(theta)
+            sine = math.sin(theta)
+            ux = math.copysign(abs(cosine) ** (2.0 / 5.0), cosine)
+            uy = math.copysign(abs(sine) ** (2.0 / 5.0), sine)
+            wavex = (1.0 - abs(ux)) * 1.25 * math.sin(5.0 * theta + phase)
+            wavey = (1.0 - abs(uy)) * 0.85 * math.cos(7.0 * theta - phase)
+            x = 105.0 + rx * ux + wavex
+            y = 62.0 + ry * uy + wavey
+            loop.append((x, y))
+        polylines.append(loop)
+    return _pack(polylines)
+
+
+@primitive
+def geodesic_bundle() -> tuple[np.ndarray, np.ndarray]:
+    polylines: list[Polyline] = []
+    count = 68
+    for index in range(count):
+        fraction = (index + 0.5) / count
+        q = 2.0 * fraction - 1.0
+        start_y = 17.0 + 91.0 * fraction + 1.5 * math.sin(index * 0.71)
+        end_y = 18.0 + 89.0 * (1.0 - fraction) + 1.2 * math.cos(index * 0.63)
+        anchors = [
+            (_horizontal_rim_x(start_y, -1.0), start_y),
+            (48.5 + 0.20 * math.sin(index * 0.43), 32.0 + 0.67 * q),
+            (77.0 + 0.9 * math.sin(index * 0.27), 51.0 - 2.3 * q),
+            (103.0 + 0.28 * q, 62.0 + 0.31 * q),
+            (130.0 + 0.7 * math.cos(index * 0.31), 53.0 + 2.2 * q),
+            (159.0 + 0.21 * math.cos(index * 0.51), 45.5 - 0.67 * q),
+            (_horizontal_rim_x(end_y, 1.0), end_y),
+        ]
+        polylines.append(_catmull_rom(anchors, samples_per_span=10))
+    return _pack(polylines)
+
+
+@primitive
+def radial_fans() -> tuple[np.ndarray, np.ndarray]:
+    polylines: list[Polyline] = []
+    for focus_index, focus in enumerate(((48.5, 32.0), (159.0, 45.5))):
+        for index in range(38):
+            theta = math.tau * (index + 0.35 * focus_index) / 38.0
+            target = _boundary_point(theta)
+            dx = target[0] - focus[0]
+            dy = target[1] - focus[1]
+            length = max(1.0, math.hypot(dx, dy))
+            bend = 2.1 * math.sin(3.0 * theta + focus_index * 1.7)
+            control = (
+                focus[0] + 0.48 * dx - dy / length * bend,
+                focus[1] + 0.48 * dy + dx / length * bend,
+            )
+            polylines.append(_quadratic(focus, control, target))
+    return _pack(polylines)
+
+
+@primitive
+def saddle_bottom_fan() -> tuple[np.ndarray, np.ndarray]:
+    polylines: list[Polyline] = []
+    count = 31
+    for index in range(count):
+        q = 2.0 * index / float(count - 1) - 1.0
+        anchors = [
+            (103.0 + 1.1 * q, 61.2 + 0.35 * q),
+            (102.0 + 4.6 * q, 76.5),
+            (96.5 + 0.72 * q, 94.0 + 0.48 * q),
+            (96.5 + 20.5 * q, 112.0 - 1.5 * q * q),
+        ]
+        polylines.append(_catmull_rom(anchors, samples_per_span=13))
+    return _pack(polylines)
+
+
+@primitive
+def solid_tangent_contours() -> tuple[np.ndarray, np.ndarray]:
+    polylines: list[Polyline] = []
+    # Twenty-one solid loops visibly pinch into P1 from the upper-left lobe.
+    for index in range(21):
+        scale = 0.15 + index * 0.0425
+        polylines.append(
+            _loop_from_cubics(
+                (48.5, 32.0),
+                (46.5, 14.0),
+                (27.0, 13.8),
+                (18.5, 22.5),
+                (19.5, 30.0),
+                (37.0, 33.0),
+                scale,
             )
         )
-    return _pack(paths)
+
+    # Twenty continuous peanut contours join upper and lower lobes exactly at P3.
+    for index in range(20):
+        scale = 0.15 + index * 0.045
+        upper = _loop_from_cubics(
+            (96.5, 94.0),
+            (79.0, 93.0),
+            (73.5, 77.0),
+            (96.5, 66.5),
+            (119.0, 75.5),
+            (116.5, 91.5),
+            scale,
+        )
+        lower = _loop_from_cubics(
+            (96.5, 94.0),
+            (77.5, 95.0),
+            (75.0, 108.0),
+            (96.5, 113.0),
+            (119.5, 108.0),
+            (116.5, 95.0),
+            scale,
+        )
+        polylines.append(upper + lower[1:])
+    return _pack(polylines)
 
 
 @primitive
-def lower_measurement_field() -> tuple[np.ndarray, np.ndarray]:
-    """中央下へ落ちる微細な縦線と点列を作る。"""
+def dashed_tangent_contours() -> tuple[np.ndarray, np.ndarray]:
+    polylines: list[Polyline] = []
+    # Twenty dashed loops arrive at P2 through a distinct lower-left cusp.
+    for index in range(20):
+        scale = 0.15 + index * 0.045
+        loop = _loop_from_cubics(
+            (159.0, 45.5),
+            (165.0, 14.0),
+            (184.0, 15.8),
+            (191.0, 24.0),
+            (190.0, 39.0),
+            (145.0, 54.0),
+            scale,
+        )
+        polylines.extend(_dash_polyline(loop, on=4, off=3))
+    return _pack(polylines)
 
-    paths: list[list[tuple[float, float, float]]] = []
-    columns = (
-        (414.0, 744.0, 950.0),
-        (422.0, 772.0, 1028.0),
-        (430.0, 730.0, 1087.0),
-        (437.0, 756.0, 985.0),
-        (453.0, 718.0, 1128.0),
-        (461.0, 780.0, 948.0),
-        (471.0, 744.0, 1066.0),
-        (480.0, 762.0, 1153.0),
-        (501.0, 732.0, 1016.0),
-        (511.0, 790.0, 1102.0),
-        (522.0, 748.0, 970.0),
+
+@primitive
+def singularity_marks() -> tuple[np.ndarray, np.ndarray]:
+    polylines: list[Polyline] = []
+    for focus_index, (cx, cy) in enumerate(((48.5, 32.0), (159.0, 45.5), (96.5, 94.0))):
+        for ring_index, radius in enumerate((0.48, 0.88, 1.34)):
+            ring: Polyline = []
+            for index in range(33):
+                theta = math.tau * index / 32.0
+                ripple = 1.0 + 0.08 * math.sin(5.0 * theta + focus_index + ring_index)
+                ring.append((cx + radius * ripple * math.cos(theta), cy + radius * ripple * math.sin(theta)))
+            polylines.append(ring)
+        for index in range(24):
+            theta = math.tau * index / 24.0 + focus_index * 0.17
+            inner = 0.14
+            outer = 1.75 + 0.40 * (0.5 + 0.5 * math.sin(index * 2.17))
+            polylines.append(
+                [
+                    (cx + inner * math.cos(theta), cy + inner * math.sin(theta)),
+                    (cx + outer * math.cos(theta), cy + outer * math.sin(theta)),
+                ]
+            )
+
+    # Open hyperbolic brackets identify the bridge without inventing a fourth focus.
+    for sign in (-1.0, 1.0):
+        upper: Polyline = []
+        lower: Polyline = []
+        for index in range(25):
+            u = index / 24.0
+            x = 103.0 + sign * (1.1 + 5.8 * u)
+            y_offset = 0.45 + 2.2 * u * u
+            upper.append((x, 62.0 - y_offset))
+            lower.append((x, 62.0 + y_offset))
+        polylines.append(upper)
+        polylines.append(lower)
+    return _pack(polylines)
+
+
+def _bitmap_text(text: str, x: float, y: float, scale: float) -> list[Polyline]:
+    """Render compact monoline technical lettering without a text dependency."""
+    glyphs: dict[str, tuple[str, ...]] = {
+        " ": ("00000",) * 7,
+        "/": ("00001", "00010", "00100", "00100", "01000", "10000", "10000"),
+        ">": ("10000", "01000", "00100", "00010", "00100", "01000", "10000"),
+        "0": ("01110", "10001", "10011", "10101", "11001", "10001", "01110"),
+        "1": ("00100", "01100", "00100", "00100", "00100", "00100", "01110"),
+        "2": ("01110", "10001", "00001", "00010", "00100", "01000", "11111"),
+        "3": ("11110", "00001", "00001", "01110", "00001", "00001", "11110"),
+        "4": ("00010", "00110", "01010", "10010", "11111", "00010", "00010"),
+        "5": ("11111", "10000", "10000", "11110", "00001", "00001", "11110"),
+        "6": ("01110", "10000", "10000", "11110", "10001", "10001", "01110"),
+        "7": ("11111", "00001", "00010", "00100", "01000", "01000", "01000"),
+        "8": ("01110", "10001", "10001", "01110", "10001", "10001", "01110"),
+        "9": ("01110", "10001", "10001", "01111", "00001", "00001", "01110"),
+        "A": ("01110", "10001", "10001", "11111", "10001", "10001", "10001"),
+        "B": ("11110", "10001", "10001", "11110", "10001", "10001", "11110"),
+        "C": ("01111", "10000", "10000", "10000", "10000", "10000", "01111"),
+        "D": ("11110", "10001", "10001", "10001", "10001", "10001", "11110"),
+        "E": ("11111", "10000", "10000", "11110", "10000", "10000", "11111"),
+        "F": ("11111", "10000", "10000", "11110", "10000", "10000", "10000"),
+        "G": ("01111", "10000", "10000", "10111", "10001", "10001", "01111"),
+        "H": ("10001", "10001", "10001", "11111", "10001", "10001", "10001"),
+        "I": ("11111", "00100", "00100", "00100", "00100", "00100", "11111"),
+        "J": ("00111", "00010", "00010", "00010", "10010", "10010", "01100"),
+        "K": ("10001", "10010", "10100", "11000", "10100", "10010", "10001"),
+        "L": ("10000", "10000", "10000", "10000", "10000", "10000", "11111"),
+        "M": ("10001", "11011", "10101", "10101", "10001", "10001", "10001"),
+        "N": ("10001", "11001", "10101", "10011", "10001", "10001", "10001"),
+        "O": ("01110", "10001", "10001", "10001", "10001", "10001", "01110"),
+        "P": ("11110", "10001", "10001", "11110", "10000", "10000", "10000"),
+        "Q": ("01110", "10001", "10001", "10001", "10101", "10010", "01101"),
+        "R": ("11110", "10001", "10001", "11110", "10100", "10010", "10001"),
+        "S": ("01111", "10000", "10000", "01110", "00001", "00001", "11110"),
+        "T": ("11111", "00100", "00100", "00100", "00100", "00100", "00100"),
+        "U": ("10001", "10001", "10001", "10001", "10001", "10001", "01110"),
+        "V": ("10001", "10001", "10001", "10001", "10001", "01010", "00100"),
+        "W": ("10001", "10001", "10001", "10101", "10101", "11011", "10001"),
+        "X": ("10001", "10001", "01010", "00100", "01010", "10001", "10001"),
+        "Y": ("10001", "10001", "01010", "00100", "00100", "00100", "00100"),
+        "Z": ("11111", "00001", "00010", "00100", "01000", "10000", "11111"),
+    }
+    polylines: list[Polyline] = []
+    cursor_x = x
+    for character in text.upper():
+        pattern = glyphs.get(character, glyphs[" "])
+        for row, pixels in enumerate(pattern):
+            column = 0
+            while column < 5:
+                if pixels[column] == "0":
+                    column += 1
+                    continue
+                start = column
+                while column + 1 < 5 and pixels[column + 1] == "1":
+                    column += 1
+                py = y + (row + 0.5) * scale
+                polylines.append(
+                    [
+                        (cursor_x + start * scale, py),
+                        (cursor_x + (column + 0.82) * scale, py),
+                    ]
+                )
+                column += 1
+        cursor_x += 6.0 * scale
+    return polylines
+
+
+@primitive
+def reference_footer() -> tuple[np.ndarray, np.ndarray]:
+    """Unboxed source-style title, legend, transform chain, and beta axis."""
+    polylines: list[Polyline] = [[(11.0, 121.25), (100.0, 121.25)]]
+
+    polylines.extend(_bitmap_text("ADAPTIVE RICCI TRIANGULATION", 11.0, 122.15, 0.30))
+    polylines.extend(_bitmap_text("IRREGULAR DELAUNAY FIELD / 868 VERTICES", 11.0, 125.15, 0.205))
+    polylines.extend(_bitmap_text("GEODESIC FLOW / THREE SINGULARITIES", 11.0, 127.45, 0.205))
+    polylines.extend(_bitmap_text("PAST TOPOLOGY / CURRENT EMBEDDING", 11.0, 129.75, 0.205))
+
+    # Four line types begin exactly at x=56 and remain deliberately lightweight.
+    legend_rows = (133.55, 136.25, 138.95, 141.65)
+    polylines.append([(56.0, legend_rows[0]), (66.0, legend_rows[0])])
+    for x in (56.0, 58.5, 61.0, 63.5):
+        polylines.append([(x, legend_rows[1]), (x + 1.35, legend_rows[1])])
+    polylines.append(
+        [(56.0 + 10.0 * i / 24.0, legend_rows[2] + 0.38 * math.sin(i / 24.0 * math.tau)) for i in range(25)]
     )
-    for index, (x, y0, y1) in enumerate(columns):
-        paths.append(_segment(x, y0, x, y1))
-        cap = 3.0 + float(index % 3)
-        paths.append(_segment(x - cap, y0, x + cap, y0))
-        paths.append(_segment(x - 2.0, y1, x + 2.0, y1))
-
-    for col, x in enumerate((418.0, 434.0, 457.0, 476.0, 505.0, 519.0)):
-        for row, y in enumerate(np.arange(793.0 + col * 3.0, 1084.0, 13.0)):
-            if (row + col) % 4 != 1:
-                paths.append(_segment(x - 0.35, float(y), x + 0.35, float(y)))
-
-    for y, x0, x1 in (
-        (815.0, 402.0, 535.0),
-        (869.0, 424.0, 552.0),
-        (936.0, 391.0, 514.0),
-        (1035.0, 409.0, 540.0),
-    ):
-        paths.append(_segment(x0, y, x1, y))
-    return _pack(paths)
-
-
-@primitive
-def descending_black_blocks() -> tuple[np.ndarray, np.ndarray]:
-    """縦の測点列へ小さな黒い方形を落とす。"""
-
-    paths: list[list[tuple[float, float, float]]] = []
-    blocks = (
-        (438.0, 786.0, 5.0, 5.0),
-        (486.0, 842.0, 7.0, 7.0),
-        (463.0, 909.0, 4.5, 6.0),
-        (508.0, 982.0, 6.0, 6.0),
-        (433.0, 1049.0, 4.0, 8.0),
-        (479.0, 1119.0, 5.0, 5.0),
-    )
-    for cx, cy, width, height in blocks:
-        for y in np.arange(cy - height / 2.0, cy + height / 2.0 + 0.1, 1.05):
-            paths.append(_segment(cx - width / 2.0, float(y), cx + width / 2.0, float(y)))
-    return _pack(paths)
-
-
-@primitive
-def marginal_calibration_marks() -> tuple[np.ndarray, np.ndarray]:
-    """余白の小型スケール、座標括弧、交点記号を置く。"""
-
-    paths: list[list[tuple[float, float, float]]] = []
-    # Upper-left scale.
-    paths.extend(
+    polylines.extend(
         [
-            _segment(66.0, 118.0, 185.0, 118.0),
-            _segment(66.0, 114.0, 66.0, 122.0),
-            _segment(185.0, 114.0, 185.0, 122.0),
-            _segment(64.0, 248.0, 64.0, 322.0),
-            _segment(60.0, 248.0, 68.0, 248.0),
-            _segment(60.0, 322.0, 68.0, 322.0),
+            [(56.0, legend_rows[3] - 0.22), (66.0, legend_rows[3] - 0.22)],
+            [(56.0, legend_rows[3] + 0.22), (66.0, legend_rows[3] + 0.22)],
         ]
     )
-    for x in np.linspace(66.0, 185.0, 13):
-        height = 4.5 if abs((x - 66.0) % 29.75) < 0.2 else 2.4
-        paths.append(_segment(float(x), 118.0 - height, float(x), 118.0 + height))
+    for label, y in zip(("CURRENT", "PAST", "GEODESIC", "LEVEL"), legend_rows, strict=True):
+        polylines.extend(_bitmap_text(label, 68.0, y - 0.66, 0.18))
 
-    # Sparse coordinate brackets and crosshairs.
-    for x, y in ((215.0, 635.0), (782.0, 383.0), (402.0, 855.0), (446.0, 680.0), (491.0, 620.0)):
-        paths.append(_segment(x - 5.0, y, x + 5.0, y))
-        paths.append(_segment(x, y - 5.0, x, y + 5.0))
+    polylines.extend(
+        _bitmap_text(
+            "FIELD > METRIC > CURVATURE > TOPOLOGY > EMBEDDING",
+            104.0,
+            122.3,
+            0.31,
+        )
+    )
 
-    paths.extend(
+    # The beta axis indexes the five metric/topology snapshots without frames.
+    axis_y = 144.25
+    polylines.append([(114.0, axis_y), (198.0, axis_y)])
+    polylines.extend(
         [
-            _segment(741.0, 708.0, 830.0, 708.0),
-            _segment(741.0, 708.0, 741.0, 721.0),
-            _segment(830.0, 708.0, 830.0, 721.0),
-            _segment(91.0, 1134.0, 237.0, 1134.0),
-            _segment(91.0, 1129.0, 91.0, 1139.0),
-            _segment(237.0, 1129.0, 237.0, 1139.0),
+            [(197.0, axis_y - 0.45), (198.0, axis_y)],
+            [(197.0, axis_y + 0.45), (198.0, axis_y)],
         ]
     )
-    return _pack(paths)
+    for center_x in (133.5, 146.8, 160.0, 173.7, 188.0):
+        polylines.append([(center_x, axis_y - 0.55), (center_x, axis_y + 0.55)])
+
+    # A compact handwritten beta followed by its baseline label.
+    polylines.extend(
+        [
+            [(105.5, 141.2), (105.5, 145.0)],
+            _cubic((105.5, 141.5), (109.2, 140.9), (109.4, 143.0), (105.5, 143.1), 13),
+            _cubic((105.5, 143.0), (109.6, 142.8), (109.3, 145.0), (105.5, 144.7), 13),
+        ]
+    )
+    polylines.extend(_bitmap_text("BETA", 110.2, 142.35, 0.19))
+    return _pack(polylines)
+
+
+@primitive
+def delaunay_footer_disks(*, seed: int = SEED) -> tuple[np.ndarray, np.ndarray]:
+    """Five small irregular Delaunay disks, each recomputed at a beta step."""
+    polylines: list[Polyline] = []
+    centers = (133.5, 146.8, 160.0, 173.7, 188.0)
+    for disk_index, center_x in enumerate(centers):
+        rng = np.random.default_rng(seed + 1200 + disk_index * 29)
+        center_y = 135.65
+        points: list[tuple[float, float]] = []
+        for index in range(14):
+            theta = math.tau * index / 14.0
+            radius = 5.05 + 0.34 * math.sin(3.0 * theta + disk_index * 0.7)
+            radius += 0.18 * math.cos(7.0 * theta - disk_index)
+            points.append((center_x + radius * math.cos(theta), center_y + radius * math.sin(theta)))
+        for _ in range(14):
+            theta = float(rng.uniform(0.0, math.tau))
+            radius = 4.35 * math.sqrt(float(rng.uniform(0.025, 0.92)))
+            metric = 1.0 + 0.055 * (disk_index - 2)
+            x = center_x + radius * math.cos(theta) * metric
+            y = center_y + radius * math.sin(theta) / metric
+            points.append((x, y))
+        edges = delaunay_triangles(MultiPoint(points), only_edges=True)
+        for edge in edges.geoms:
+            xy = get_coordinates(edge)
+            if xy.shape[0] >= 2:
+                polylines.append(
+                    [
+                        (float(xy[0, 0]), float(xy[0, 1])),
+                        (float(xy[-1, 0]), float(xy[-1, 1])),
+                    ]
+                )
+        for index, (x, y) in enumerate(points):
+            angle = index * 2.17 + disk_index
+            dx = 0.11 * math.cos(angle)
+            dy = 0.11 * math.sin(angle)
+            polylines.append([(x - dx, y - dy), (x + dx, y + dy)])
+    return _pack(polylines)
 
 
 def draw(t: float):
-    _ = t
-
-    # Paper and tonal fields.
-    paper = G.measured_paper_field()
-    left_hatch = G.left_disc_hatch()
-    right_hatch = G.right_disc_hatch()
-    knockout = G.inner_disc_knockout()
-    dots = G.left_disc_dot_lattice()
-
-    # Precisely located circular construction.
-    large_circle = G.circle(radius=270.0, segments=640, center=(448.0, 387.0, 0.0))
-    primary_circle = G.circle(radius=198.0, segments=640, center=(442.0, 480.0, 0.0))
-    primary_echo = G.circle(radius=202.5, segments=640, center=(442.0, 480.0, 0.0))
-    inner_circle = G.circle(radius=145.0, segments=560, center=(470.0, 530.0, 0.0))
-    lower_circle = G.circle(radius=176.0, segments=600, center=(446.0, 680.0, 0.0))
-    orbit_circle = G.circle(radius=220.0, segments=640, center=(491.0, 620.0, 0.0))
-    orbit_echo = G.circle(radius=216.0, segments=640, center=(491.0, 620.0, 0.0))
-
-    bundles = G.diagonal_survey_bundles()
-    datum = G.datum_axes_and_ticks()
-    strong_vertical = G.line(
-        center=(490.0, 640.0, 0.0),
-        anchor="center",
-        length=1060.0,
-        angle=90.0,
-    )
-    lower_field = G.lower_measurement_field()
-    blocks = G.descending_black_blocks()
-    margins = G.marginal_calibration_marks()
-
-    # Native Grafix text keeps the marks typographic rather than diagrammatic glyph hacks.
-    label_upper_left = G.text(
-        text="DATUM 01 / R270\n44.8  :  38.7",
-        scale=7.4,
-        quality=0.28,
-        letter_spacing_em=0.12,
-        line_height=1.35,
-        center=(66.0, 132.0, 0.0),
-    )
-    label_left_mid = G.text(
-        text="M—442.480\nHALF / FIELD",
-        scale=6.8,
-        quality=0.24,
-        letter_spacing_em=0.14,
-        line_height=1.28,
-        center=(70.0, 352.0, 0.0),
-    )
-    label_right = E.rotate(rotation=(0.0, 0.0, 90.0))(
-        G.text(
-            text="MEASURED  RECONSTRUCTION  /  87024  /  V01",
-            scale=6.8,
-            quality=0.24,
-            letter_spacing_em=0.16,
-            center=(740.0, 240.0, 0.0),
-        )
-    )
-    label_orbit = G.text(
-        text="R220  /  AXIS 490\n+35° 12′",
-        scale=6.8,
-        quality=0.24,
-        letter_spacing_em=0.12,
-        line_height=1.3,
-        center=(744.0, 726.0, 0.0),
-    )
-    label_lower_vertical = E.rotate(rotation=(0.0, 0.0, 90.0))(
-        G.text(
-            text="DATUM 445 / 12 DIV",
-            scale=6.2,
-            quality=0.22,
-            letter_spacing_em=0.18,
-            center=(389.0, 835.0, 0.0),
-        )
-    )
-    label_bottom = G.text(
-        text="RECONSTRUCTION FIELD\nSCALE  1 : 08     N—87024",
-        scale=7.2,
-        quality=0.26,
-        letter_spacing_em=0.13,
-        line_height=1.32,
-        center=(91.0, 1150.0, 0.0),
-    )
-
-    wave_top = G.wave(
-        kind="sine",
-        length=154.0,
-        amplitude=4.0,
-        cycles=13.0,
-        samples=420,
-        center=(265.0, 73.0, 0.0),
-    )
-    wave_right = G.wave(
-        kind="sine",
-        length=170.0,
-        amplitude=3.6,
-        cycles=17.0,
-        samples=520,
-        angle=90.0,
-        center=(824.0, 1014.0, 0.0),
-    )
+    del t
+    levels = G.outer_levels()
+    history = G.historic_topology(seed=SEED)
+    mesh = G.ricci_mesh(seed=SEED)
+    chords = G.crossing_chord_mesh(seed=SEED)
+    collision = G.collision_triangles(seed=SEED)
+    ticks = G.vertex_ticks(seed=SEED)
+    fans = G.radial_fans()
+    geodesics = G.geodesic_bundle()
+    vertical = G.saddle_bottom_fan()
+    solid_contours = G.solid_tangent_contours()
+    dashed_contours = G.dashed_tangent_contours()
+    marks = G.singularity_marks()
+    footer = G.reference_footer()
+    morphs = G.delaunay_footer_disks(seed=SEED)
 
     return (
-        L("warm paper").layer(paper, color=PAPER, thickness=0.005),
-        L("left near-black hatch").layer(left_hatch, color=GRAPHITE, thickness=0.00135),
-        L("right gray hatch").layer(right_hatch, color=MID_GRAY, thickness=0.00105),
-        L("inner warm-white knockout").layer(knockout, color=PAPER_LIGHT, thickness=0.0048),
-        L("large pale circle").layer(large_circle, color=PALE_GRAY, thickness=0.00045),
-        L("primary echo").layer(primary_echo, color=PALE_GRAY, thickness=0.00035),
-        L("primary rim").layer(primary_circle, color=GRAPHITE, thickness=0.00095),
-        L("inner rim").layer(inner_circle, color=DARK_GRAY, thickness=0.00075),
-        L("lower circle").layer(lower_circle, color=DARK_GRAY, thickness=0.00055),
-        L("orbital echo").layer(orbit_echo, color=PALE_GRAY, thickness=0.00035),
-        L("orbital circle").layer(orbit_circle, color=MID_GRAY, thickness=0.00055),
-        L("negative dot lattice").layer(dots, color=PALE_GRAY, thickness=0.00085),
-        L("diagonal bundles").layer(bundles, color=DARK_GRAY, thickness=0.00042),
-        L("datum and ticks").layer(datum, color=GRAPHITE, thickness=0.00062),
-        L("strong vertical axis").layer(strong_vertical, color=GRAPHITE, thickness=0.0023),
-        L("lower measurements").layer(lower_field, color=DARK_GRAY, thickness=0.00040),
-        L("black blocks").layer(blocks, color=GRAPHITE, thickness=0.00125),
-        L("marginal calibration").layer(margins, color=DARK_GRAY, thickness=0.00042),
-        L("upper waveform").layer(wave_top, color=MID_GRAY, thickness=0.00038),
-        L("right waveform").layer(wave_right, color=MID_GRAY, thickness=0.00038),
-        L("upper-left label").layer(label_upper_left, color=DARK_GRAY, thickness=0.00042),
-        L("left label").layer(label_left_mid, color=MID_GRAY, thickness=0.00038),
-        L("right vertical label").layer(label_right, color=DARK_GRAY, thickness=0.00042),
-        L("orbit label").layer(label_orbit, color=MID_GRAY, thickness=0.00040),
-        L("lower vertical label").layer(label_lower_vertical, color=DARK_GRAY, thickness=0.00038),
-        L("bottom label").layer(label_bottom, color=DARK_GRAY, thickness=0.00042),
-    )
-
-
-if __name__ == "__main__":
-    run(
-        draw,
-        canvas_size=CANVAS,
-        render_scale=3.0,
-        background_color=PAPER,
-        parameter_gui=True,
-        parameter_persistence=False,
+        L("pale rounded Ricci levels").layer(levels, color=(0.84, 0.84, 0.81), thickness=0.00043),
+        L("historic short topology").layer(history, color=(0.60, 0.60, 0.57), thickness=0.00036),
+        L("alternate crossing chords").layer(chords, color=(0.47, 0.47, 0.44), thickness=0.00028),
+        L("unique-edge Delaunay mesh").layer(mesh, color=(0.17, 0.17, 0.155), thickness=0.00031),
+        L("central mixed triangles").layer(collision, color=(0.34, 0.34, 0.31), thickness=0.00027),
+        L("irregular vertex dashes").layer(ticks, color=(0.10, 0.10, 0.085), thickness=0.00036),
+        L("radial focus fans").layer(fans, color=(0.38, 0.38, 0.35), thickness=0.00032),
+        L("saddle to bottom fan").layer(vertical, color=(0.31, 0.31, 0.28), thickness=0.00036),
+        L("pale narrow geodesics").layer(geodesics, color=(0.43, 0.43, 0.40), thickness=0.00027),
+        L("solid P1 and P3 contours").layer(solid_contours, color=(0.25, 0.25, 0.22), thickness=0.00038),
+        L("dashed P2 contours").layer(dashed_contours, color=(0.43, 0.43, 0.39), thickness=0.00036),
+        L("three overlap singularities").layer(marks, color=(0.04, 0.04, 0.03), thickness=0.00048),
+        L("source technical footer").layer(footer, color=(0.10, 0.10, 0.085), thickness=0.00042),
+        L("five Delaunay beta disks").layer(morphs, color=(0.22, 0.22, 0.19), thickness=0.00034),
     )
