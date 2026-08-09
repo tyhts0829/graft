@@ -120,6 +120,7 @@ def grn_a5_frame(
         density=838.488,
         spacing_gradient=0.0,
         remove_boundary=False,
+        min_spacing=0.05,
     )(series_name)
 
     number = G.text(

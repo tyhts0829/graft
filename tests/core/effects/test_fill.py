@@ -8,15 +8,16 @@ import pytest
 from grafix.api import E, G
 from grafix.core.effects.fill import (
     _build_evenodd_groups,
+    _generate_y_values,
     _pack_planar_fill_chunks,
     _point_in_polygon_coords_njit,
     _polygon_area_abs,
     _scanline_endpoints_njit,
     fill as fill_effect,
 )
-from grafix.core.geometry_kernels.planar import PlanarFrame
+from grafix.core.geometry_kernels.planar import PlanarFrame, planarity_threshold
 from grafix.core.operation_authoring import primitive
-from grafix.core.realize import RealizeError, realize
+from grafix.core.realize import RealizeError, RealizeSession, realize
 from grafix.core.realized_geometry import GeomTuple, RealizedGeometry
 
 
@@ -84,6 +85,51 @@ def fill_test_square_with_hole() -> GeomTuple:
 
 
 @primitive
+def fill_test_two_squares() -> GeomTuple:
+    """X 方向に離れた、一辺 10 の正方形を 2 個返す。"""
+    first = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [10.0, 0.0, 0.0],
+            [10.0, 10.0, 0.0],
+            [0.0, 10.0, 0.0],
+            [0.0, 0.0, 0.0],
+        ],
+        dtype=np.float32,
+    )
+    second = first + np.array([20.0, 0.0, 0.0], dtype=np.float32)
+    coords = np.concatenate([first, second], axis=0)
+    offsets = np.array([0, first.shape[0], coords.shape[0]], dtype=np.int32)
+    return coords, offsets
+
+
+@primitive
+def fill_test_two_planar_faces() -> GeomTuple:
+    """全体では非平面になる XY 面と斜面の閉ポリラインを返す。"""
+    first = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [10.0, 0.0, 0.0],
+            [10.0, 10.0, 0.0],
+            [0.0, 10.0, 0.0],
+            [0.0, 0.0, 0.0],
+        ],
+        dtype=np.float64,
+    )
+    origin = np.array([30.0, 0.0, 5.0], dtype=np.float64)
+    axis_u = np.array([1.0, 0.0, 1.0], dtype=np.float64) / np.sqrt(2.0)
+    axis_v = np.array([0.0, 1.0, 0.0], dtype=np.float64)
+    local = np.array(
+        [[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0], [0.0, 0.0]],
+        dtype=np.float64,
+    )
+    second = origin + local[:, :1] * axis_u + local[:, 1:] * axis_v
+    coords = np.concatenate([first, second], axis=0).astype(np.float32)
+    offsets = np.array([0, first.shape[0], coords.shape[0]], dtype=np.int32)
+    return coords, offsets
+
+
+@primitive
 def fill_test_empty() -> GeomTuple:
     """空のジオメトリを返す。"""
     coords = np.zeros((0, 3), dtype=np.float32)
@@ -109,6 +155,125 @@ def _point_inside(point: np.ndarray, polygon: np.ndarray) -> bool:
             float(point[1]),
         )
     )
+
+
+def _generate_y_values_legacy_reference(
+    min_y: float,
+    max_y: float,
+    base_spacing: float,
+    spacing_gradient: float,
+) -> np.ndarray:
+    """``min_spacing`` 導入前の走査 level 算術を凍結して再現する。"""
+    if not np.isfinite(base_spacing) or base_spacing <= 0.0:
+        return np.empty(0, dtype=np.float32)
+    if max_y <= min_y:
+        return np.empty(0, dtype=np.float32)
+
+    start = float(min_y) + 0.5 * float(base_spacing)
+    if start >= max_y:
+        mid = 0.5 * (float(min_y) + float(max_y))
+        return np.asarray([mid], dtype=np.float32)
+
+    if abs(spacing_gradient) < 1e-6:
+        return np.arange(start, max_y, base_spacing, dtype=np.float32)
+
+    height = max_y - min_y
+    k = spacing_gradient
+    if abs(k) < 1e-3:
+        c = 1.0
+    else:
+        c = k / (2.0 * float(np.sinh(k / 2.0)))
+
+    y_values: list[float] = []
+    y = float(start)
+    min_step = base_spacing * 1e-3
+    while y < max_y:
+        t = (y - min_y) / height
+        factor = c * float(np.exp(k * (t - 0.5)))
+        step = base_spacing * max(factor, 0.0)
+        if step < min_step:
+            step = min_step
+        y_values.append(y)
+        y += step
+    if not y_values:
+        mid = 0.5 * (float(min_y) + float(max_y))
+        return np.asarray([mid], dtype=np.float32)
+    return np.asarray(y_values, dtype=np.float32)
+
+
+def _level_tolerance(levels: np.ndarray, min_spacing: float) -> float:
+    """float32 level の絶対座標と下限値に応じた比較許容差を返す。"""
+    assert levels.size > 0
+    scale = max(1.0, float(np.max(np.abs(levels))))
+    tolerance = max(
+        float(np.finfo(np.float32).eps) * scale * 8.0,
+        abs(float(min_spacing)) * 2e-6,
+    )
+    assert 0.0 < tolerance < min_spacing * 0.1
+    return tolerance
+
+
+def _distinct_levels(
+    levels: np.ndarray,
+    *,
+    tolerance: float,
+) -> np.ndarray:
+    """hole 分割などで重複した近接 level を一つにまとめる。"""
+    ordered = np.sort(np.asarray(levels, dtype=np.float64))
+    if ordered.size == 0:
+        return ordered
+    distinct = [float(ordered[0])]
+    for value in ordered[1:]:
+        if float(value) - distinct[-1] > tolerance:
+            distinct.append(float(value))
+    return np.asarray(distinct, dtype=np.float64)
+
+
+def _assert_minimum_level_spacing(
+    levels: np.ndarray,
+    min_spacing: float,
+) -> None:
+    """2 本以上の distinct level が下限以上の間隔を持つことを検証する。"""
+    assert levels.size >= 2, "pitch を測れる distinct scanline level が必要"
+    tolerance = _level_tolerance(levels, min_spacing)
+    differences = np.diff(levels.astype(np.float64, copy=False))
+    assert np.all(differences > 0.0)
+    assert np.all(differences >= min_spacing - tolerance)
+
+
+def _projected_family_levels(
+    realized: RealizedGeometry,
+    *,
+    angle_deg: float,
+    min_spacing: float,
+) -> np.ndarray:
+    """指定方向の 2 点 hatch を選び、法線方向の distinct level を返す。"""
+    angle_rad = float(np.deg2rad(angle_deg))
+    tangent = np.array(
+        [np.cos(angle_rad), np.sin(angle_rad), 0.0],
+        dtype=np.float64,
+    )
+    normal = np.array(
+        [-np.sin(angle_rad), np.cos(angle_rad), 0.0],
+        dtype=np.float64,
+    )
+    levels: list[float] = []
+    for segment in _iter_polylines(realized):
+        if segment.shape != (2, 3):
+            continue
+        direction = segment[1].astype(np.float64) - segment[0].astype(np.float64)
+        length = float(np.linalg.norm(direction))
+        if length <= 1e-9:
+            continue
+        if abs(float(np.dot(direction / length, tangent))) < 0.999:
+            continue
+        midpoint = np.mean(segment.astype(np.float64), axis=0)
+        levels.append(float(np.dot(midpoint, normal)))
+
+    raw = np.asarray(levels, dtype=np.float64)
+    assert raw.size > 0, f"{angle_deg} 度 family の hatch が必要"
+    tolerance = _level_tolerance(raw, min_spacing)
+    return _distinct_levels(raw, tolerance=tolerance)
 
 
 def _scanline_endpoints_reference(
@@ -154,6 +319,84 @@ def _scanline_endpoints_reference(
             endpoints[cursor + 1] = (x_b, y)
             cursor += 2
     return endpoints
+
+
+@pytest.mark.parametrize("spacing_gradient", [-4.0, 0.0, 4.0])
+def test_fill_y_values_apply_min_spacing_to_every_step(
+    spacing_gradient: float,
+) -> None:
+    min_spacing = 0.75
+    levels = _generate_y_values(
+        0.0,
+        10.0,
+        0.1,
+        spacing_gradient,
+        min_spacing,
+    )
+
+    assert levels[0] == np.float32(0.05)
+    _assert_minimum_level_spacing(levels, min_spacing)
+
+
+@pytest.mark.parametrize("spacing_gradient", [-4.0, 0.0, 4.0])
+def test_fill_y_values_zero_floor_matches_frozen_legacy_arithmetic(
+    spacing_gradient: float,
+) -> None:
+    expected = _generate_y_values_legacy_reference(
+        -1.25,
+        8.75,
+        0.37,
+        spacing_gradient,
+    )
+    actual = _generate_y_values(
+        -1.25,
+        8.75,
+        0.37,
+        spacing_gradient,
+        0.0,
+    )
+
+    assert expected.size >= 2
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize("spacing_gradient", [-4.0, 0.0, 4.0])
+def test_fill_y_values_inactive_positive_floor_preserves_legacy_levels(
+    spacing_gradient: float,
+) -> None:
+    expected = _generate_y_values_legacy_reference(
+        0.0,
+        10.0,
+        0.4,
+        spacing_gradient,
+    )
+    legacy_differences = np.diff(expected.astype(np.float64))
+    assert legacy_differences.size > 0
+    min_spacing = float(np.min(legacy_differences)) * 0.25
+    actual = _generate_y_values(
+        0.0,
+        10.0,
+        0.4,
+        spacing_gradient,
+        min_spacing,
+    )
+
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize("spacing_gradient", [-4.0, 0.0, 4.0])
+def test_fill_y_values_floor_larger_than_extent_returns_one_level(
+    spacing_gradient: float,
+) -> None:
+    levels = _generate_y_values(
+        0.0,
+        1.0,
+        0.25,
+        spacing_gradient,
+        2.0,
+    )
+
+    np.testing.assert_array_equal(levels, np.array([0.125], dtype=np.float32))
 
 
 def test_fill_scanline_kernel_is_bitwise_equal_to_numpy_reference() -> None:
@@ -334,6 +577,178 @@ def test_fill_square_generates_expected_line_count() -> None:
         assert float(seg[0, 1]) == float(seg[1, 1])
 
 
+def test_fill_min_spacing_reduces_high_density_square_and_bounds_pitch() -> None:
+    source = G.fill_test_square()
+    legacy = realize(
+        E.fill(
+            angle_sets=1,
+            angle=0.0,
+            density=1000.0,
+            remove_boundary=True,
+        )(source)
+    )
+    min_spacing = 0.75
+    floored = realize(
+        E.fill(
+            angle_sets=1,
+            angle=0.0,
+            density=1000.0,
+            min_spacing=min_spacing,
+            remove_boundary=True,
+        )(source)
+    )
+
+    assert len(floored.offsets) < len(legacy.offsets)
+    levels = _projected_family_levels(
+        floored,
+        angle_deg=0.0,
+        min_spacing=min_spacing,
+    )
+    _assert_minimum_level_spacing(levels, min_spacing)
+
+
+@pytest.mark.parametrize("spacing_gradient", [-4.0, 4.0])
+def test_fill_min_spacing_bounds_rotated_gradient_family(
+    spacing_gradient: float,
+) -> None:
+    min_spacing = 0.6
+    realized = realize(
+        E.fill(
+            angle_sets=1,
+            angle=37.0,
+            density=1000.0,
+            min_spacing=min_spacing,
+            spacing_gradient=spacing_gradient,
+            remove_boundary=True,
+        )(G.fill_test_square())
+    )
+
+    levels = _projected_family_levels(
+        realized,
+        angle_deg=37.0,
+        min_spacing=min_spacing,
+    )
+    _assert_minimum_level_spacing(levels, min_spacing)
+
+
+@pytest.mark.parametrize(
+    ("source_name", "fill_kwargs"),
+    [
+        (
+            "square",
+            {
+                "angle_sets": 1,
+                "angle": 37.0,
+                "density": 17.0,
+                "spacing_gradient": 0.0,
+                "remove_boundary": True,
+            },
+        ),
+        (
+            "hole",
+            {
+                "angle_sets": 1,
+                "angle": 0.0,
+                "density": 19.0,
+                "spacing_gradient": 2.5,
+                "remove_boundary": True,
+            },
+        ),
+        (
+            "tilted",
+            {
+                "angle_sets": 2,
+                "angle": 13.0,
+                "density": 11.0,
+                "spacing_gradient": -2.0,
+                "remove_boundary": True,
+            },
+        ),
+    ],
+)
+def test_fill_omitted_and_explicit_zero_min_spacing_are_array_exact(
+    source_name: str,
+    fill_kwargs: dict[str, int | float | bool],
+) -> None:
+    sources = {
+        "square": G.fill_test_square,
+        "hole": G.fill_test_square_with_hole,
+        "tilted": G.fill_test_tilted_collinear_start,
+    }
+    source = sources[source_name]()
+    omitted = realize(E.fill(**fill_kwargs)(source))
+    explicit = realize(E.fill(min_spacing=0.0, **fill_kwargs)(source))
+
+    np.testing.assert_array_equal(explicit.coords, omitted.coords)
+    np.testing.assert_array_equal(explicit.offsets, omitted.offsets)
+
+
+def test_fill_inactive_positive_min_spacing_preserves_public_output() -> None:
+    source = G.fill_test_square()
+    legacy = realize(
+        E.fill(
+            angle_sets=1,
+            angle=0.0,
+            density=10.0,
+            remove_boundary=True,
+        )(source)
+    )
+    inactive_floor = realize(
+        E.fill(
+            angle_sets=1,
+            angle=0.0,
+            density=10.0,
+            min_spacing=0.2,
+            remove_boundary=True,
+        )(source)
+    )
+
+    np.testing.assert_array_equal(inactive_floor.coords, legacy.coords)
+    np.testing.assert_array_equal(inactive_floor.offsets, legacy.offsets)
+
+
+def test_fill_positive_min_spacing_is_deterministic_across_sessions() -> None:
+    def make_geometry():
+        return E.fill(
+            angle_sets=1,
+            angle=37.0,
+            density=1000.0,
+            min_spacing=0.6,
+            spacing_gradient=4.0,
+            remove_boundary=True,
+        )(G.fill_test_square())
+
+    with RealizeSession() as first_session:
+        first = first_session.realize(make_geometry())
+    with RealizeSession() as second_session:
+        second = second_session.realize(make_geometry())
+
+    np.testing.assert_array_equal(second.coords, first.coords)
+    np.testing.assert_array_equal(second.offsets, first.offsets)
+
+
+def test_fill_min_spacing_is_checked_per_angle_family() -> None:
+    min_spacing = 0.75
+    base_angle = 17.0
+    realized = realize(
+        E.fill(
+            angle_sets=2,
+            angle=base_angle,
+            density=1000.0,
+            min_spacing=min_spacing,
+            remove_boundary=True,
+        )(G.fill_test_square())
+    )
+
+    for angle_deg in (base_angle, base_angle + 90.0):
+        levels = _projected_family_levels(
+            realized,
+            angle_deg=angle_deg,
+            min_spacing=min_spacing,
+        )
+        _assert_minimum_level_spacing(levels, min_spacing)
+
+
 def test_fill_uses_all_points_for_tilted_ring_with_collinear_start() -> None:
     filled = E.fill(angle_sets=1, angle=0.0, density=8.0, remove_boundary=True)(
         G.fill_test_tilted_collinear_start()
@@ -347,6 +762,49 @@ def test_fill_uses_all_points_for_tilted_ring_with_collinear_start() -> None:
         rtol=0.0,
         atol=2e-5,
     )
+
+
+def test_fill_min_spacing_applies_in_each_nonplanar_local_frame() -> None:
+    source = realize(G.fill_test_two_planar_faces())
+    global_frame = PlanarFrame.from_points(source.coords, source.offsets)
+    assert global_frame.valid
+    assert not global_frame.is_planar(planarity_threshold(source.coords))
+
+    face_frames: list[PlanarFrame] = []
+    for index in range(2):
+        start = int(source.offsets[index])
+        stop = int(source.offsets[index + 1])
+        face = source.coords[start:stop]
+        frame = PlanarFrame.from_points(face)
+        assert frame.valid
+        assert frame.is_planar(planarity_threshold(face))
+        face_frames.append(frame)
+
+    min_spacing = 0.75
+    filled = realize(
+        E.fill(
+            angle_sets=1,
+            angle=0.0,
+            density=1000.0,
+            min_spacing=min_spacing,
+            remove_boundary=True,
+        )(G.fill_test_two_planar_faces())
+    )
+    segments_by_face: list[list[np.ndarray]] = [[], []]
+    for segment in _iter_polylines(filled):
+        midpoint_x = float(np.mean(segment[:, 0]))
+        face_index = 0 if midpoint_x < 20.0 else 1
+        segments_by_face[face_index].append(segment)
+
+    for frame, segments in zip(face_frames, segments_by_face, strict=True):
+        assert len(segments) >= 2
+        local = frame.to_local(np.concatenate(segments, axis=0))
+        np.testing.assert_allclose(local[:, 2], 0.0, rtol=0.0, atol=2e-5)
+        local_segments = local.reshape(-1, 2, 3)
+        raw_levels = np.mean(local_segments[:, :, 1], axis=1)
+        tolerance = _level_tolerance(raw_levels, min_spacing)
+        levels = _distinct_levels(raw_levels, tolerance=tolerance)
+        _assert_minimum_level_spacing(levels, min_spacing)
 
 
 def test_fill_packed_hatch_offsets_use_two_vertex_stride() -> None:
@@ -375,6 +833,39 @@ def test_fill_remove_boundary_false_keeps_input() -> None:
     np.testing.assert_allclose(first, realize(g).coords, rtol=0.0, atol=1e-6)
 
 
+def test_fill_min_spacing_keeps_boundary_as_array_exact_prefix() -> None:
+    source = G.fill_test_square()
+    boundary = realize(source)
+    filled = realize(
+        E.fill(
+            angle_sets=1,
+            angle=29.0,
+            density=1000.0,
+            min_spacing=0.75,
+            remove_boundary=False,
+        )(source)
+    )
+
+    vertex_count = int(boundary.coords.shape[0])
+    assert filled.offsets[:2].tolist() == [0, vertex_count]
+    np.testing.assert_array_equal(filled.coords[:vertex_count], boundary.coords)
+
+
+def test_fill_density_zero_still_generates_no_hatch_with_positive_floor() -> None:
+    filled = realize(
+        E.fill(
+            angle_sets=2,
+            angle=0.0,
+            density=0.0,
+            min_spacing=0.75,
+            remove_boundary=True,
+        )(G.fill_test_square())
+    )
+
+    assert filled.coords.shape == (0, 3)
+    assert filled.offsets.tolist() == [0]
+
+
 def test_fill_outer_with_hole_avoids_hole_region() -> None:
     g = G.fill_test_square_with_hole()
     filled = E.fill(angle_sets=1, angle=0.0, density=10.0, remove_boundary=True)(g)
@@ -386,6 +877,74 @@ def test_fill_outer_with_hole_avoids_hole_region() -> None:
     for seg in _iter_polylines(realized):
         mid = seg.mean(axis=0)
         assert not (3.0 < float(mid[0]) < 7.0 and 3.0 < float(mid[1]) < 7.0)
+
+
+def test_fill_min_spacing_deduplicates_hole_split_levels_before_pitch_check() -> None:
+    min_spacing = 0.75
+    realized = realize(
+        E.fill(
+            angle_sets=1,
+            angle=0.0,
+            density=1000.0,
+            min_spacing=min_spacing,
+            remove_boundary=True,
+        )(G.fill_test_square_with_hole())
+    )
+    segments = list(_iter_polylines(realized))
+    raw_levels = np.asarray(
+        [float(np.mean(segment[:, 1])) for segment in segments],
+        dtype=np.float64,
+    )
+    tolerance = _level_tolerance(raw_levels, min_spacing)
+    ordered = np.sort(raw_levels)
+    level_groups: list[list[float]] = []
+    for level in ordered:
+        if not level_groups or float(level) - level_groups[-1][-1] > tolerance:
+            level_groups.append([float(level)])
+        else:
+            level_groups[-1].append(float(level))
+
+    assert any(
+        len(group) >= 2 and 3.0 < float(np.mean(group)) < 7.0
+        for group in level_groups
+    ), "hole 帯で同じ scanline が 2 segment に分割される必要がある"
+    distinct = np.asarray([float(np.mean(group)) for group in level_groups])
+    _assert_minimum_level_spacing(distinct, min_spacing)
+
+    for segment in segments:
+        midpoint = np.mean(segment, axis=0)
+        assert not (
+            3.0 < float(midpoint[0]) < 7.0
+            and 3.0 < float(midpoint[1]) < 7.0
+        )
+
+
+def test_fill_min_spacing_is_checked_within_each_outer_group() -> None:
+    min_spacing = 0.75
+    realized = realize(
+        E.fill(
+            angle_sets=1,
+            angle=0.0,
+            density=1000.0,
+            min_spacing=min_spacing,
+            remove_boundary=True,
+        )(G.fill_test_two_squares())
+    )
+    levels_by_group: list[list[float]] = [[], []]
+    for segment in _iter_polylines(realized):
+        midpoint = np.mean(segment.astype(np.float64), axis=0)
+        if float(midpoint[0]) < 15.0:
+            levels_by_group[0].append(float(midpoint[1]))
+        else:
+            assert float(midpoint[0]) > 15.0
+            levels_by_group[1].append(float(midpoint[1]))
+
+    for raw_levels in levels_by_group:
+        raw = np.asarray(raw_levels, dtype=np.float64)
+        assert raw.size > 0
+        tolerance = _level_tolerance(raw, min_spacing)
+        levels = _distinct_levels(raw, tolerance=tolerance)
+        _assert_minimum_level_spacing(levels, min_spacing)
 
 
 def test_fill_evenodd_grouping_groups_square_with_hole() -> None:
@@ -495,6 +1054,7 @@ def test_fill_empty_geometry_is_noop() -> None:
     [
         ({"angle_sets": 0}, "angle_sets"),
         ({"density": -0.1}, "density"),
+        ({"min_spacing": -0.1}, "min_spacing"),
         ({"spacing_gradient": -4.1}, "spacing_gradient"),
         ({"spacing_gradient": 4.1}, "spacing_gradient"),
     ],
@@ -508,6 +1068,36 @@ def test_fill_rejects_invalid_parameters_before_empty_input(
 
     assert isinstance(exc_info.value.__cause__, ValueError)
     assert parameter in str(exc_info.value.__cause__)
+
+
+@pytest.mark.parametrize("invalid", [-0.1, float("nan"), float("inf"), -float("inf")])
+def test_fill_direct_evaluator_rejects_invalid_min_spacing_before_empty_input(
+    invalid: float,
+) -> None:
+    empty = (
+        np.empty((0, 3), dtype=np.float32),
+        np.zeros((1,), dtype=np.int32),
+    )
+
+    with pytest.raises(ValueError, match="min_spacing"):
+        fill_effect(empty, min_spacing=invalid)
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [True, "0.5", [0.5], (0.5,), float("nan"), float("inf"), -float("inf")],
+)
+def test_fill_public_schema_rejects_invalid_min_spacing(invalid: object) -> None:
+    with pytest.raises((TypeError, ValueError)):
+        E.fill(min_spacing=invalid)
+
+
+def test_fill_public_schema_canonicalizes_integer_min_spacing_to_float() -> None:
+    step = E.fill(min_spacing=2).steps[0]
+    value = dict(step.args)["min_spacing"]
+
+    assert value == 2.0
+    assert type(value) is float
 
 
 def test_fill_degenerate_input_is_noop() -> None:

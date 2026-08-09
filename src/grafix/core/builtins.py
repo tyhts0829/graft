@@ -126,6 +126,8 @@ _EFFECT_NAMES = (
     "offset_curve",
 )
 
+_EFFECT_EVALUATOR_ABI_OVERRIDES = MappingProxyType({"fill": "2"})
+
 _BUILTIN_OPERATION_MANIFEST = tuple(
     BuiltinOperationManifestItem(
         kind="primitive",
@@ -141,7 +143,7 @@ _BUILTIN_OPERATION_MANIFEST = tuple(
         name=name,
         module=f"grafix.core.effects.{name}",
         attribute=name,
-        evaluator_abi="1",
+        evaluator_abi=_EFFECT_EVALUATOR_ABI_OVERRIDES.get(name, "1"),
     )
     for name in _EFFECT_NAMES
 )

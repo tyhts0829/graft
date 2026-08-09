@@ -275,6 +275,7 @@ def test_g_polyline_avoids_permissive_normalization_for_fixed_argument(
         lambda: E.fill(angle_sets=[1, 2]),
         lambda: E.fill(angle=[0.0, 90.0]),
         lambda: E.fill(density=[10.0, 20.0]),
+        lambda: E.fill(min_spacing=[0.1, 0.2]),
         lambda: E.fill(spacing_gradient=[0.0, 0.5]),
         lambda: E.fill(remove_boundary=[True, False]),
     ],

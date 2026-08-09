@@ -622,7 +622,7 @@ class _EffectBuilder(Protocol):
             shared: True なら反復呼び出しで同じ semantic parameter group を意図的に共有する。instance_key とは同時指定できない。
         """
         ...
-    def fill(self, *, activate: bool = ..., angle_sets: int = ..., angle: float = ..., density: float = ..., spacing_gradient: float = ..., remove_boundary: bool = ..., key: str | int | None = ..., instance_key: str | int | None = ..., shared: bool = ...) -> _EffectBuilder:
+    def fill(self, *, activate: bool = ..., angle_sets: int = ..., angle: float = ..., density: float = ..., min_spacing: float = ..., spacing_gradient: float = ..., remove_boundary: bool = ..., key: str | int | None = ..., instance_key: str | int | None = ..., shared: bool = ...) -> _EffectBuilder:
         """
         閉領域をハッチングで塗りつぶす。
 
@@ -631,6 +631,7 @@ class _EffectBuilder(Protocol):
             angle_sets: 180 度を等分して重ねるハッチング方向の数。, int, range [1, 6]
             angle: ハッチング方向群の基準角を度単位で指定する。, float, range [0.0, 180.0]
             density: 領域を埋めるハッチング線の密度を指定する。, float, range [0.0, 1000.0]
+            min_spacing: 同一方向の隣接ハッチ走査線に適用する、fill 評価時の作業平面の scene 座標単位での最小ピッチ。標準 2D plot では通常 mm に対応し、0 で無効。, float, range [0.0, 10.0]
             spacing_gradient: スキャン方向に沿ってハッチング線の間隔を変化させる。, float, range [-4.0, 4.0]
             remove_boundary: 塗り線だけを残し、入力された境界線を出力から除く。, bool
             key: コード移動後も同じパラメータグループとして扱うための semantic identity。
@@ -1241,7 +1242,7 @@ class _E(Protocol):
             shared: True なら反復呼び出しで同じ semantic parameter group を意図的に共有する。instance_key とは同時指定できない。
         """
         ...
-    def fill(self, *, activate: bool = ..., angle_sets: int = ..., angle: float = ..., density: float = ..., spacing_gradient: float = ..., remove_boundary: bool = ..., key: str | int | None = ..., instance_key: str | int | None = ..., shared: bool = ...) -> _EffectBuilder:
+    def fill(self, *, activate: bool = ..., angle_sets: int = ..., angle: float = ..., density: float = ..., min_spacing: float = ..., spacing_gradient: float = ..., remove_boundary: bool = ..., key: str | int | None = ..., instance_key: str | int | None = ..., shared: bool = ...) -> _EffectBuilder:
         """
         閉領域をハッチングで塗りつぶす。
 
@@ -1250,6 +1251,7 @@ class _E(Protocol):
             angle_sets: 180 度を等分して重ねるハッチング方向の数。, int, range [1, 6]
             angle: ハッチング方向群の基準角を度単位で指定する。, float, range [0.0, 180.0]
             density: 領域を埋めるハッチング線の密度を指定する。, float, range [0.0, 1000.0]
+            min_spacing: 同一方向の隣接ハッチ走査線に適用する、fill 評価時の作業平面の scene 座標単位での最小ピッチ。標準 2D plot では通常 mm に対応し、0 で無効。, float, range [0.0, 10.0]
             spacing_gradient: スキャン方向に沿ってハッチング線の間隔を変化させる。, float, range [-4.0, 4.0]
             remove_boundary: 塗り線だけを残し、入力された境界線を出力から除く。, bool
             key: コード移動後も同じパラメータグループとして扱うための semantic identity。

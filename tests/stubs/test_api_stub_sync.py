@@ -2,10 +2,36 @@
 
 from __future__ import annotations
 
+import ast
 import os
 import subprocess
 import sys
 from pathlib import Path
+
+
+def _fill_keyword_names(stub_source: str, *, class_name: str) -> tuple[str, ...]:
+    tree = ast.parse(stub_source)
+    class_node = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == class_name
+    )
+    fill_node = next(
+        node
+        for node in class_node.body
+        if isinstance(node, ast.FunctionDef) and node.name == "fill"
+    )
+    return tuple(argument.arg for argument in fill_node.args.kwonlyargs)
+
+
+def _assert_fill_min_spacing(stub_source: str) -> None:
+    for class_name in ("_EffectBuilder", "_E"):
+        keyword_names = _fill_keyword_names(stub_source, class_name=class_name)
+        assert "min_spacing" in keyword_names
+        assert keyword_names.index("min_spacing") == keyword_names.index("density") + 1
+        assert keyword_names.index("spacing_gradient") == (
+            keyword_names.index("min_spacing") + 1
+        )
 
 
 def test_api_stub_sync(tmp_path: Path) -> None:
@@ -46,7 +72,8 @@ def test_api_stub_sync(tmp_path: Path) -> None:
     actual = stub_path.read_text(encoding="utf-8")
     assert actual == expected
     assert "        gcode_optimize: bool = ...,\n" in actual
+    _assert_fill_min_spacing(actual)
     project_stub = repo_root / "typings" / "grafix" / "api" / "__init__.pyi"
-    assert "        gcode_optimize: bool = ...,\n" in project_stub.read_text(
-        encoding="utf-8"
-    )
+    project_stub_source = project_stub.read_text(encoding="utf-8")
+    assert "        gcode_optimize: bool = ...,\n" in project_stub_source
+    _assert_fill_min_spacing(project_stub_source)

@@ -1,8 +1,9 @@
 # `E.fill(min_spacing)` 実装計画（2026-08-09）
 
-- 状態: **承認待ち（実装未着手）**
+- 状態: **実装完了（focused / broader検証済み、full pytest未実施）**
 - 計画作成時 branch: `main`
 - 計画作成時 HEAD: `4d76235`
+- 実装開始時 HEAD: `2ea7668`
 - 対象: `E.fill` が生成する平行ハッチ走査線の最小ピッチ
 - 公開名: `min_spacing`（`min_spaceing` という綴りは採用しない）
 
@@ -269,17 +270,17 @@ fingerprint を作る。したがって `fill` の生成意味を変える本実
 
 `tests/core/effects/test_fill.py` に、走査線 level を直接検証する focused test を追加する。
 
-- [ ] `spacing_gradient=-4.0, 0.0, 4.0` の各ケースで、`base_spacing < min_spacing` のとき
+- [x] `spacing_gradient=-4.0, 0.0, 4.0` の各ケースで、`base_spacing < min_spacing` のとき
   level が単調増加し、全 `np.diff(levels)` が下限以上になる。
-- [ ] 各ケースで level が 2 本以上生成される fixture を使い、空虚な assertion を避ける。
-- [ ] `min_spacing=0.0` が、新 helper を呼ばない凍結した旧算術の test-local reference
+- [x] 各ケースで level が 2 本以上生成される fixture を使い、空虚な assertion を避ける。
+- [x] `min_spacing=0.0` が、新 helper を呼ばない凍結した旧算術の test-local reference
   または実装前に固定した golden level 配列と array-exact で一致する。
-- [ ] 一様間隔では `min_spacing < base_spacing`、gradient では `min_spacing` が legacy level
+- [x] 一様間隔では `min_spacing < base_spacing`、gradient では `min_spacing` が legacy level
   列の全 `np.diff` 以下という、floor が実際に発動しない条件で旧 level 配列と
   array-exact に一致する。
-- [ ] 有効な `base_spacing` と正の extent に対し、`min_spacing` が extent より大きいとき
+- [x] 有効な `base_spacing` と正の extent に対し、`min_spacing` が extent より大きいとき
   private generator が exactly 1 level を返す。公開 clipping 結果は形状により高々 1 level とする。
-- [ ] float32 丸めを考慮し、下限判定には level の絶対座標スケール由来の小さい tolerance を使う。
+- [x] float32 丸めを考慮し、下限判定には level の絶対座標スケール由来の小さい tolerance を使う。
 
 数値判定の目安は次とし、fixture は原点近傍かつ `min_spacing` が tolerance より十分大きい
 範囲に置く。helper は level の絶対座標スケールを含め、assert 自体が空虚にならないことも
@@ -296,59 +297,59 @@ assert np.all(np.diff(levels) >= min_spacing - tolerance)
 
 ### 7.2 公開 `E.fill` 統合
 
-- [ ] 高 density の XY square、正の floor で、distinct scanline level 数が legacy より減り、
+- [x] 高 density の XY square、正の floor で、distinct scanline level 数が legacy より減り、
   level 差が下限以上になる。
-- [ ] angle が 0 以外でも、2 点線分の midpoint を hatch normal へ射影して level を復元する。
+- [x] angle が 0 以外でも、2 点線分の midpoint を hatch normal へ射影して level を復元する。
   分類後に 2 distinct levels 以上あることを先に assert してから垂直ピッチを検証する。
-- [ ] 引数省略と `min_spacing=0.0` を、coords と offsets の array-exact 比較で固定する。
-- [ ] legacy の全実 step が既に floor 以上なら output が array-exact で変わらない。
-- [ ] `spacing_gradient=-4.0` と `4.0` の両方で、全ての実 step に floor が効く。
-- [ ] `angle_sets=2` は方向で family を分類し、各 family に 2 distinct levels 以上あることを
+- [x] 引数省略と `min_spacing=0.0` を、coords と offsets の array-exact 比較で固定する。
+- [x] legacy の全実 step が既に floor 以上なら output が array-exact で変わらない。
+- [x] `spacing_gradient=-4.0` と `4.0` の両方で、全ての実 step に floor が効く。
+- [x] `angle_sets=2` は方向で family を分類し、各 family に 2 distinct levels 以上あることを
   assert してから family ごとにだけ下限を検証する。family 横断距離 0 は違反扱いしない。
-- [ ] square-with-hole では、hole 帯を横断して同じ level が 2 segment へ分割された witness を
+- [x] square-with-hole では、hole 帯を横断して同じ level が 2 segment へ分割された witness を
   1 本以上確認する。その重複 level を deduplicate してからピッチを測り、hole 内部に線が
   生成されない既存契約も維持する。
-- [ ] x 方向に離した 2 square を同時に fill し、各 group に 2 distinct levels 以上あることと
+- [x] x 方向に離した 2 square を同時に fill し、各 group に 2 distinct levels 以上あることと
   group 内 floor を確認する。group 横断の level 差や共通 phase は assert しない。
-- [ ] 単一 square の `remove_boundary=False` では、入力 boundary polyline が出力 prefix として
+- [x] 単一 square の `remove_boundary=False` では、入力 boundary polyline が出力 prefix として
   array-exact に保持され、先頭 offsets が `[0, input_vertex_count]` であることを確認する。hatch 追加後の
   全 offsets 配列との完全一致は要求しない。
-- [ ] `density=0` と正の `min_spacing` の組み合わせでも hatch を生成しない。
-- [ ] positive-floor 用の新規 test は上記の最小 fixture に集約し、既存の grouping、
+- [x] `density=0` と正の `min_spacing` の組み合わせでも hatch を生成しない。
+- [x] positive-floor 用の新規 test は上記の最小 fixture に集約し、既存の grouping、
   text `"o"`、boundary、rotation test は `min_spacing=0.0` 回帰としてそのまま通す。
 
 ### 7.3 3D / local 経路
 
-- [ ] 全体は nonplanar だが各 polyline は planar な入力を用意し、入力全体が
+- [x] 全体は nonplanar だが各 polyline は planar な入力を用意し、入力全体が
   `is_planar=False`、各対象 polyline が `valid and is_planar=True` であることを先に assert する。
-- [ ] 少なくとも一面を XZ または oblique plane にし、出力を面ごとに元の PlanarFrame へ
+- [x] 少なくとも一面を XZ または oblique plane にし、出力を面ごとに元の PlanarFrame へ
   投影する。各面で 2 distinct levels 以上を確認して local 経路の floor を測り、XY 平面だけで
   local/world 往復を空虚化しない。
-- [ ] tilted planar、真に nonplanar な単一 ring、transform 合成は既存 test を
+- [x] tilted planar、真に nonplanar な単一 ring、transform 合成は既存 test を
   `min_spacing=0.0` の回帰として通す。後段縮小が保証外であることは docstring Notes に記し、
   新しい warp/scale characterization test は作らない。
 
 ### 7.4 validation
 
-- [ ] 負値を empty input の early return より前に `ValueError` とする。
-- [ ] `nan`、`+inf`、`-inf` を公開 schema 境界で拒否する。
-- [ ] evaluator 自身の契約は、公開 `E` wrapper を通さない direct call と empty geometry を使い、
+- [x] 負値を empty input の early return より前に `ValueError` とする。
+- [x] `nan`、`+inf`、`-inf` を公開 schema 境界で拒否する。
+- [x] evaluator 自身の契約は、公開 `E` wrapper を通さない direct call と empty geometry を使い、
   負値と非有限値を early return より前に拒否することを確認する。
-- [ ] `bool`、文字列、list/tuple の groupwise sequence を parameter schema で拒否する。
-- [ ] `tests/api/test_operation_argument_validation.py` の fill scalar 一覧へ `min_spacing` を追加する。
-- [ ] 整数など schema が受理する実数入力は canonical float として扱う。
+- [x] `bool`、文字列、list/tuple の groupwise sequence を parameter schema で拒否する。
+- [x] `tests/api/test_operation_argument_validation.py` の fill scalar 一覧へ `min_spacing` を追加する。
+- [x] 整数など schema が受理する実数入力は canonical float として扱う。
 
 ### 7.5 metadata、stub、catalog、cache
 
-- [ ] `fill_meta` と NumPy docstring に新引数の説明があり、description completeness test を通す。
-- [ ] `describe effect fill` / catalog view が default、型、UI range、説明を表示する。
-- [ ] `src/grafix/api/__init__.pyi` の `_E.fill` と `_EffectBuilder.fill` に新 keyword が出る。
-- [ ] `typings/grafix/api/__init__.pyi` の同 2 signature にも新 keywordが出る。
-- [ ] packaged stub は fresh generator output と byte-exact に一致する。
-- [ ] project-local stub は、既存 preset に同名引数が存在しても global occurrence 数を数えず、
+- [x] `fill_meta` と NumPy docstring に新引数の説明があり、description completeness test を通す。
+- [x] `describe effect fill` / catalog view が default、型、UI range、説明を表示する。
+- [x] `src/grafix/api/__init__.pyi` の `_E.fill` と `_EffectBuilder.fill` に新 keyword が出る。
+- [x] `typings/grafix/api/__init__.pyi` の同 2 signature にも新 keywordが出る。
+- [x] packaged stub は fresh generator output と byte-exact に一致する。
+- [x] project-local stub は、既存 preset に同名引数が存在しても global occurrence 数を数えず、
   `_E.fill` と `_EffectBuilder.fill` の各 signature 内に新 keyword があることを個別検証する。
-- [ ] builtin manifest で `effect:fill` だけ ABI が `"2"`、他の既存 effect は `"1"` のままである。
-- [ ] 独立に構築した同値 DAG を別 `RealizeSession` で評価し、cache hit の再利用だけに
+- [x] builtin manifest で `effect:fill` だけ ABI が `"2"`、他の既存 effect は `"1"` のままである。
+- [x] 独立に構築した同値 DAG を別 `RealizeSession` で評価し、cache hit の再利用だけに
   ならない条件で output が array-exact に決定的である。
 
 ### 7.6 既存回帰
@@ -429,21 +430,21 @@ unit test とは別に、`P.grn_a5_frame` の高 density 文字と同じ text ge
 
 ### production
 
-- [ ] `src/grafix/core/effects/fill.py`
-- [ ] `src/grafix/core/builtins.py`
+- [x] `src/grafix/core/effects/fill.py`
+- [x] `src/grafix/core/builtins.py`
 
 ### generated API artifacts
 
-- [ ] `src/grafix/api/__init__.pyi`
-- [ ] `typings/grafix/api/__init__.pyi`
+- [x] `src/grafix/api/__init__.pyi`
+- [x] `typings/grafix/api/__init__.pyi`
 
 ### tests
 
-- [ ] `tests/core/effects/test_fill.py`
-- [ ] `tests/api/test_operation_argument_validation.py`
-- [ ] `tests/core/test_builtin_catalog_bootstrap.py`
-- [ ] `tests/stubs/test_api_stub_sync.py`
-- [ ] 必要な場合のみ `tests/devtools/test_generate_stub_semantic_meta.py`
+- [x] `tests/core/effects/test_fill.py`
+- [x] `tests/api/test_operation_argument_validation.py`
+- [x] `tests/core/test_builtin_catalog_bootstrap.py`
+- [x] `tests/stubs/test_api_stub_sync.py`
+- [x] `tests/devtools/test_generate_stub_semantic_meta.py` は変更不要と確認し、既存testを実行
 
 ### docs
 
@@ -465,51 +466,51 @@ unit test とは別に、`P.grn_a5_frame` の高 density 文字と同じ text ge
 
 ### Phase 0: 境界確認
 
-- [ ] `git status --porcelain` と HEAD を再記録する。
-- [ ] 依頼外差分、特に既存 G-code/stub 差分を識別する。
-- [ ] 現行 fill の omitted/explicit 0 相当となる baseline checksum を `/tmp` に記録する。
+- [x] `git status --porcelain` と HEAD を再記録する。
+- [x] 依頼外差分、特に既存 G-code/stub 差分を識別する。
+- [x] 現行 fill の omitted/explicit 0 相当となる baseline checksum を `/tmp` に記録する。
 
 ### Phase 1: RED test
 
-- [ ] level generator の一様/gradient floor test を追加して RED を確認する。
-- [ ] public square/hole/angle family/local planar test を追加する。
-- [ ] invalid value、stub、ABI test を追加する。
-- [ ] 既存 test を新仕様に合わせて安易に書き換えず、追加契約として失敗させる。
+- [x] level generator の一様/gradient floor test を追加して RED を確認する。
+- [x] public square/hole/angle family/local planar test を追加する。
+- [x] invalid value、stub、ABI test を追加する。
+- [x] 既存 test を新仕様に合わせて安易に書き換えず、追加契約として失敗させる。
 
 ### Phase 2: 最小 production 実装
 
-- [ ] public signature、metadata、validation、docstring を追加する。
-- [ ] `min_spacing` を global/local 両経路へ伝播する。
-- [ ] uniform と gradient の実 step を clamp する。
-- [ ] start phase と packed output 契約を維持する。
-- [ ] fill evaluator ABI だけを `"2"` へ上げる。
-- [ ] exporter、Geometry metadata、generic thinning pass を追加していないことを diff で確認する。
+- [x] public signature、metadata、validation、docstring を追加する。
+- [x] `min_spacing` を global/local 両経路へ伝播する。
+- [x] uniform と gradient の実 step を clamp する。
+- [x] start phase と packed output 契約を維持する。
+- [x] fill evaluator ABI だけを `"2"` へ上げる。
+- [x] exporter、Geometry metadata、generic thinning pass を追加していないことを diff で確認する。
 
 ### Phase 3: stub 同期
 
-- [ ] packaged config / `--no-default-import` で packaged stub を正規生成する。
-- [ ] project config を使う正規経路で project-local stub を生成する。
-- [ ] 既存の並列差分を保持し、fill signature の差分だけが追加されたことを確認する。
+- [x] packaged config / `--no-default-import` で packaged stub を正規生成する。
+- [x] project config を使う正規経路で project-local stub を生成する。
+- [x] 既存の並列差分を保持し、fill signature の差分だけが追加されたことを確認する。
 
 ### Phase 4: focused validation
 
-- [ ] fill、argument validation、builtin catalog、stub、metadata の focused pytest を通す。
-- [ ] 変更対象の ruff を通す。
-- [ ] production source の mypy を通す。
-- [ ] `git diff --check` を通す。
-- [ ] `git status --porcelain` で依頼外差分を変更していないことを確認する。
+- [x] fill、argument validation、builtin catalog、stub、metadata の focused pytest を通す。
+- [x] 変更対象の ruff を通す。
+- [x] production source の mypy を通す。
+- [x] `git diff --check` を通す。
+- [x] `git status --porcelain` で依頼外差分を変更していないことを確認する。
 
 ### Phase 5: 高 density 文字の再現 acceptance とレビュー
 
-- [ ] 高 density text の 0.0 / 0.2 比較値を本計画の実施結果欄へ記録する。
-- [ ] floor、hole、boundary、決定性を確認する。
-- [ ] 独立レビューで API、数値契約、ABI、test の過不足を確認する。
-- [ ] finding を解消後、完了項目と未完了項目を本計画へ反映する。
+- [x] 高 density text の 0.0 / 0.2 比較値を本計画の実施結果欄へ記録する。
+- [x] floor、hole、boundary、決定性を確認する。
+- [x] 独立レビューで API、数値契約、ABI、test の過不足を確認する。
+- [x] finding を解消後、完了項目と未完了項目を本計画へ反映する。
 
 ### Phase 6: broad validation（承認がある場合）
 
-- [ ] effects/API/stub/catalog の broader test を実行する。
-- [ ] full pytest は長時間実行に当たるため、必要性を説明して承認後にのみ実行する。
+- [x] effects/API/stub/catalog の broader test を実行する。
+- [ ] full pytest は長時間実行に当たるため未実施。必要性を説明して承認後にのみ実行する。
 
 ## 12. 検証コマンド案
 
@@ -544,67 +545,131 @@ git status --porcelain
 stub の正規生成コマンドは、実装開始時の `grafix stub --help` と既存
 `tests/stubs/test_api_stub_sync.py` を確認して exact path/config を確定する。生成物を手編集しない。
 
-## 13. リスクと対策
+## 13. 実施結果
 
-### 13.1 「線間隔」の意味を広く読み過ぎる
+### 13.1 production / API
+
+- `src/grafix/core/effects/fill.py` に `min_spacing: float = 0.0` を追加した。
+- `density` の直後、`spacing_gradient` の直前に置き、metadata、NumPy style docstring、
+  direct evaluator validationを同期した。
+- uniform step と gradient の各実 step に floor を適用した。
+- 現行の `start = min_y + 0.5 * base_spacing` は維持した。
+- planar-global の全groupと nonplanar-local の全planar faceへ同値を伝播した。
+- exporter、Layer、RealizedGeometry、runtime config、preset、作品にはfieldやheuristicを追加していない。
+- builtin manifestは`fill`だけ evaluator ABI `"2"`、他effectは`"1"`を維持した。
+- packaged / project-local stubの`_EffectBuilder.fill`と`_E.fill`を同期した。
+  project-local stubの正規生成で検出した本件外のcustom primitive再同期は取り込まず、
+  HEADを基準にfill差分だけを保持した。
+
+### 13.2 自動検証
+
+- focused suite: **147 passed in 8.55s**
+  - `tests/core/effects/test_fill.py`
+  - `tests/api/test_operation_argument_validation.py`
+  - `tests/core/test_builtin_catalog_bootstrap.py`
+  - `tests/core/parameters/test_description_completeness.py`
+  - `tests/devtools/test_generate_stub_semantic_meta.py`
+  - `tests/stubs/test_api_stub_sync.py`
+- broader effects / API / catalog / stub suite: **620 passed in 40.58s**
+- Ruff（変更対象）: pass
+- mypy（`fill.py`、`builtins.py`）: pass
+- `git diff --check`: pass
+- full pytest: **未実施**。長時間実行は本計画どおり別途承認が必要。
+
+独立レビューを3系統で実施し、P1/P2 findingは0件だった。P3で指摘された
+「fill以外の全effect ABI」「actual catalogへのABI配線とmetadata」「別RealizeSession決定性」は
+targeted testを補強した。実装前full geometryとの互換は次のmanual acceptanceで確認した。
+
+### 13.3 高density文字 acceptance
+
+実装前HEAD `2ea7668`の結果を`/tmp/fill-min-spacing-baseline.json`へ保存し、実装後の
+`min_spacing=0.0`および`0.2`を`/tmp/fill-min-spacing-acceptance.json`で比較した。
+
+| 対象 | 条件 | polylines | vertices | 0.0比 |
+| --- | --- | ---: | ---: | ---: |
+| `Grafix / Design / Studies` | `0.0` | 5,151 | 15,876 | baselineとarray-exact |
+| 同上 | `0.2` | 623 | 6,820 | polyline 87.91%減 |
+| `G.lissajous()`説明文字 | `0.0` | 4,747 | 12,816 | baselineとarray-exact |
+| 同上 | `0.2` | 180 | 3,682 | polyline 96.21%減 |
+
+実装前後の`0.0` checksumも一致した。
+
+- title: `bfcf691ea76401e56891de5afc4f78c6052e9b50da7995dda6f6502004c7b61f`
+- explanation: `2fe235765e641de1f69edef7e9370532eb3e7f268ec9dc8ed519f67bd99c78ef`
+
+単一 outer+hole groupのglyph `"o"`へ`min_spacing=0.2`を適用した結果は、
+18 distinct levels、最小実測pitch `0.1999998093`であり、float32 tolerance内でfloorを満たした。
+独立に構築したDAGを別`RealizeSession`で評価したchecksumも一致した。
+
+### 13.4 未実施・非対象
+
+- full pytestは未実施。
+- `P.grn_a5_frame`と`sketch/readme/grn/18.py`へ正の値は設定していない。
+- したがって、同じ`18.py`をそのまま再exportした既定出力は意図どおり変わらない。
+- 実機較正後のpreset/作品へのopt-inは別タスクとする。
+
+## 14. リスクと対策
+
+### 14.1 「線間隔」の意味を広く読み過ぎる
 
 リスク: 全線分間の最短距離や ink clearance と誤解される。
 
 対策: scanline level の垂直中心線ピッチに契約を限定し、family/group/boundary/transform の
 非保証を docstring と test 名に明示する。
 
-### 13.2 gradient の base だけ clamp して局所違反を残す
+### 14.2 gradient の base だけ clamp して局所違反を残す
 
 リスク: 勾配の密側で `min_spacing` 未満になる。
 
 対策: `-4, 0, +4` を直接 test し、各反復 step を clamp する。
 
-### 13.3 floor により phase まで不必要に変える
+### 14.3 floor により phase まで不必要に変える
 
 リスク: ハッチ位置が大きく移動し、境界付近の見た目が余計に変わる。
 
 対策: 現行 `base_spacing / 2` の start phase を維持し、2 本目以降の step だけを制約する。
 
-### 13.4 `min_spacing=0` の隠れた回帰
+### 14.4 `min_spacing=0` の隠れた回帰
 
 リスク: arithmetic order、dtype、offset順の差で既存作品の checksum が変わる。
 
 対策: omitted / explicit 0 / test-local legacy reference を array-exact に比較する。
 
-### 13.5 ABI を上げず旧 cache と混同する
+### 14.5 ABI を上げず旧 cache と混同する
 
 リスク: schema は変わっても builtin evaluator fingerprint が旧実装と同一になる。
 
 対策: fill の manifest ABI だけを 2 に上げ、targeted test で固定する。
 
-### 13.6 GUI range を物理保証と誤認する
+### 14.6 GUI range を物理保証と誤認する
 
 リスク: `ui_max=10.0` が runtime clamp や mm 固定契約に見える。
 
 対策: ParamMeta の既存契約どおり UI 初期範囲に限定し、runtime validation と scene-unit
 docstring を別に置く。`unit="mm"` は付けない。
 
-### 13.7 preset へ未較正値を波及させる
+### 14.7 preset へ未較正値を波及させる
 
 リスク: 共有 `P.grn_a5_frame` を使う多数作品の見た目と checksum が一括で変わる。
 
 対策: core API の default を 0.0 とし、本タスクでは preset を変更しない。実機較正後に
 作品側 opt-in を別タスクとして扱う。
 
-## 14. 完了条件
+## 15. 完了条件
 
-- [ ] `E.fill(min_spacing=...)` が公開 API、metadata、docstring、両 stub に現れる。
-- [ ] default は 0.0 で、旧出力と array-exact に一致する。
-- [ ] uniform と gradient 正負で family 内 distinct scanline pitch が下限以上になる。
-- [ ] planar-global / nonplanar-local、hole、cross-hatch、boundary の既存意味を維持する。
-- [ ] invalid value を適切な境界で拒否する。
-- [ ] fill ABI だけが更新され、cache identity が安全に失効する。
-- [ ] exporter、Geometry provenance、preset に不要な複雑性を追加しない。
-- [ ] focused pytest、ruff、mypy、diff-check が成功する。
-- [ ] 高 density text acceptance で線数削減と floor 遵守を確認する。
-- [ ] 実施結果と未実施の broad/full test を本計画に明記する。
+- [x] `E.fill(min_spacing=...)` が公開 API、metadata、docstring、両 stub に現れる。
+- [x] default は 0.0 で、旧出力と array-exact に一致する。
+- [x] uniform と gradient 正負で family 内 distinct scanline pitch が下限以上になる。
+- [x] planar-global / nonplanar-local、hole、cross-hatch、boundary の既存意味を維持する。
+- [x] invalid value を適切な境界で拒否する。
+- [x] fill ABI だけが更新され、cache identity が安全に失効する。
+- [x] exporter、Geometry provenance、preset に不要な複雑性を追加しない。
+- [x] focused pytest、ruff、mypy、diff-check が成功する。
+- [x] 高 density text acceptance で線数削減と floor 遵守を確認する。
+- [x] broader testの実施結果と、full testが未実施であることを本計画に明記する。
 
-## 15. 承認ゲート
+## 16. 承認・実装状態
 
-この計画への承認後にのみ production code、test、generated stub を変更する。
-承認前は本計画ファイル以外を編集しない。
+本計画は承認済みであり、production code、test、generated stubの実装とfocused / broader検証を
+完了した。残る未実施項目は、承認を必要とするfull pytestと、別タスク扱いの作品/presetへの
+実機較正値の適用だけである。

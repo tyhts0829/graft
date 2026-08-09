@@ -48,6 +48,15 @@ fill_meta = {
         ui_max=float(MAX_FILL_LINES),
         description="領域を埋めるハッチング線の密度を指定する。",
     ),
+    "min_spacing": ParamMeta(
+        kind="float",
+        ui_min=0.0,
+        ui_max=10.0,
+        description=(
+            "同一方向の隣接ハッチ走査線に適用する、fill 評価時の作業平面の "
+            "scene 座標単位での最小ピッチ。標準 2D plot では通常 mm に対応し、0 で無効。"
+        ),
+    ),
     "spacing_gradient": ParamMeta(
         kind="float",
         ui_min=-4.0,
@@ -373,7 +382,11 @@ def _spacing_from_height(height: float, density: float) -> float:
 
 
 def _generate_y_values(
-    min_y: float, max_y: float, base_spacing: float, spacing_gradient: float
+    min_y: float,
+    max_y: float,
+    base_spacing: float,
+    spacing_gradient: float,
+    min_spacing: float = 0.0,
 ) -> np.ndarray:
     """スキャンライン Y 値列を生成する（max_y は含めない）。"""
     # 入力は「回転後の作業座標」での min/max。
@@ -392,7 +405,8 @@ def _generate_y_values(
 
     if abs(spacing_gradient) < 1e-6:
         # 等間隔
-        return np.arange(start, max_y, base_spacing, dtype=np.float32)
+        step = max(base_spacing, min_spacing)
+        return np.arange(start, max_y, step, dtype=np.float32)
 
     height = max_y - min_y
     k = spacing_gradient
@@ -405,7 +419,7 @@ def _generate_y_values(
 
     y_values: list[float] = []
     y = float(start)
-    min_step = base_spacing * 1e-3
+    min_step = max(base_spacing * 1e-3, min_spacing)
     while y < max_y:
         t = (y - min_y) / height
         factor = c * float(np.exp(k * (t - 0.5)))
@@ -645,6 +659,7 @@ def _generate_line_fill_evenodd_multi(
     density: float,
     angle_rad: float,
     spacing_override: float | None,
+    min_spacing: float,
     spacing_gradient: float,
 ) -> np.ndarray:
     """複数輪郭のハッチ端点をline順のpacked ``(2*n, 2)`` で返す。"""
@@ -686,7 +701,13 @@ def _generate_line_fill_evenodd_multi(
     if not np.isfinite(spacing) or spacing <= 0.0:
         return np.empty((0, 2), dtype=np.float32)
 
-    y_values = _generate_y_values(min_y, max_y, spacing, float(spacing_gradient))
+    y_values = _generate_y_values(
+        min_y,
+        max_y,
+        spacing,
+        float(spacing_gradient),
+        min_spacing,
+    )
 
     # 全輪郭の辺を 1 つの配列へ集約する（交点計算のベクトル化）。
     edges_list: list[np.ndarray] = []
@@ -784,6 +805,7 @@ def fill(
     angle_sets: int = 1,
     angle: float = 45.0,
     density: float = 35.0,
+    min_spacing: float = 0.0,
     spacing_gradient: float = 0.0,
     remove_boundary: bool = False,
 ) -> GeomTuple:
@@ -800,6 +822,10 @@ def fill(
     density : float, default 35.0
         密度スケール。
         `round(density)` 本相当の間隔を基準高さから算出する。0 では塗り線を生成しない。
+    min_spacing : float, default 0.0
+        同一方向の隣接ハッチ走査線に適用する最小ピッチ。
+        fill 評価時の作業平面上の scene 座標単位で指定し、0.0 で無効になる。
+        標準的な 2D plot では、scene 座標単位は通常 mm と一致する。
     spacing_gradient : float, default 0.0
         -4 以上 4 以下の、スキャン方向に沿った線間隔勾配。
         0.0 で一様間隔。
@@ -814,13 +840,25 @@ def fill(
     Raises
     ------
     ValueError
-        `angle_sets` が 1 未満、`density` が負、または `spacing_gradient` が
-        -4 から 4 の範囲外の場合。
+        `angle_sets` が 1 未満、`density` が負、`min_spacing` が有限な 0 以上の
+        値でない、または `spacing_gradient` が -4 から 4 の範囲外の場合。
+
+    Notes
+    -----
+    `min_spacing` が保証するのは、同じ planar filled region と hatch angle family
+    に属する、連続する異なる走査線レベル間の垂直な中心線ピッチである。
+    異なる region や angle family、境界線、別の fill 呼び出しとの距離は保証しない。
+    fill 後の縮小、非一様変形、warp、3D 投影は、最終出力上のピッチを縮め得る。
     """
     if angle_sets < 1:
         raise ValueError("fill の angle_sets は 1 以上である必要がある")
     if density < 0.0:
         raise ValueError("fill の density は 0 以上である必要がある")
+    min_spacing = float(min_spacing)
+    if not np.isfinite(min_spacing) or min_spacing < 0.0:
+        raise ValueError(
+            "fill の min_spacing は有限な 0 以上の値である必要がある"
+        )
     if not -4.0 <= spacing_gradient <= 4.0:
         raise ValueError(
             "fill の spacing_gradient は -4 以上 4 以下である必要がある"
@@ -923,6 +961,7 @@ def fill(
                     density=density,
                     angle_rad=float(ang_i),
                     spacing_override=float(base_spacing),
+                    min_spacing=min_spacing,
                     spacing_gradient=spacing_gradient,
                 )
                 if endpoints.size > 0:
@@ -997,6 +1036,7 @@ def fill(
                 density=density,
                 angle_rad=float(ang_i),
                 spacing_override=float(base_spacing),
+                min_spacing=min_spacing,
                 spacing_gradient=spacing_gradient,
             )
             if endpoints.size > 0:

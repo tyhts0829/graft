@@ -9,7 +9,10 @@ import sys
 import textwrap
 from pathlib import Path
 
-from grafix.core.builtins import builtin_operation_manifest
+from grafix.core.builtins import (
+    builtin_operation_catalog,
+    builtin_operation_manifest,
+)
 
 
 def _catalog_payload(order: str) -> dict[str, object]:
@@ -58,6 +61,31 @@ def test_builtin_manifest_has_one_unique_locator_per_operation() -> None:
     assert len(set(keys)) == len(keys)
     assert len(set(locators)) == len(locators)
     assert all(item.evaluator_abi for item in manifest)
+
+
+def test_fill_evaluator_abi_is_the_only_effect_abi_bumped() -> None:
+    items = builtin_operation_manifest()
+    manifest = {(item.kind, item.name): item for item in items}
+
+    assert manifest[("effect", "fill")].evaluator_abi == "2"
+    assert all(
+        item.evaluator_abi == "1"
+        for item in items
+        if item.kind == "effect" and item.name != "fill"
+    )
+
+    fill = builtin_operation_catalog().resolve("effect", "fill")
+    assert fill.declaration.evaluator_abi == "grafix-builtin-effect-2"
+    assert fill.schema.defaults["min_spacing"] == 0.0
+    assert fill.schema.param_order.index("min_spacing") == (
+        fill.schema.param_order.index("density") + 1
+    )
+    min_spacing_meta = fill.schema.meta["min_spacing"]
+    assert min_spacing_meta.kind == "float"
+    assert min_spacing_meta.ui_min == 0.0
+    assert min_spacing_meta.ui_max == 10.0
+    assert min_spacing_meta.description is not None
+    assert "scene 座標単位" in min_spacing_meta.description
 
 
 def test_direct_import_and_bootstrap_order_produce_the_same_catalog() -> None:
