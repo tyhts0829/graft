@@ -21,7 +21,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install
-        run: python -m pip install -e ".[dev]"
+        run: python -m pip install -e ".[dev,benchmark-report]"
       - name: Ruff
         run: ruff check src/grafix tests
       - name: Mypy
@@ -52,7 +52,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install
-        run: python -m pip install -e ".[dev]"
+        run: python -m pip install -e ".[dev,benchmark-report]"
       - name: Deterministic benchmark smoke
         run: >-
           python -m grafix benchmark run
@@ -74,6 +74,7 @@ jobs:
           path: |
             ${{ runner.temp }}/grafix-benchmark/runs/*.json
             ${{ runner.temp }}/grafix-benchmark/report.html
+            ${{ runner.temp }}/grafix-benchmark/overview.svg
             ${{ runner.temp }}/grafix-benchmark/warnings.json
           if-no-files-found: error
 
@@ -88,7 +89,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install
-        run: python -m pip install -e ".[dev]"
+        run: python -m pip install -e ".[dev,benchmark-report]"
       - name: Full cold and warm benchmark
         run: >-
           python -m grafix benchmark run
@@ -119,5 +120,6 @@ jobs:
           path: |
             ${{ runner.temp }}/grafix-benchmark/runs/*.json
             ${{ runner.temp }}/grafix-benchmark/report.html
+            ${{ runner.temp }}/grafix-benchmark/overview.svg
             ${{ runner.temp }}/grafix-benchmark/warnings.json
           if-no-files-found: error

@@ -17,7 +17,10 @@ from grafix.devtools.benchmarks.environment import (
     collect_environment_fingerprint,
     collect_source_identity,
 )
-from grafix.devtools.benchmarks.report import write_report
+from grafix.devtools.benchmarks.report import (
+    BenchmarkReportDependencyError,
+    write_report,
+)
 from grafix.devtools.benchmarks.catalog import (
     case_definitions,
     select_case_definitions,
@@ -297,17 +300,22 @@ def _compare(args: argparse.Namespace) -> int:
 
 
 def _report(args: argparse.Namespace) -> int:
-    report_path, warnings_path, loaded = write_report(args.out)
-    print(f"[grafix-bench] wrote: {report_path}")  # noqa: T201
-    print(f"[grafix-bench] wrote: {warnings_path}")  # noqa: T201
-    for warning in loaded.warnings:
+    try:
+        artifacts = write_report(args.out)
+    except BenchmarkReportDependencyError as exc:
+        print(str(exc), file=sys.stderr)  # noqa: T201
+        return 2
+    print(f"[grafix-bench] wrote: {artifacts.report_path}")  # noqa: T201
+    print(f"[grafix-bench] wrote: {artifacts.overview_path}")  # noqa: T201
+    print(f"[grafix-bench] wrote: {artifacts.warnings_path}")  # noqa: T201
+    for warning in artifacts.loaded.warnings:
         print(f"[grafix-bench] warning: {warning}", file=sys.stderr)  # noqa: T201
-    if not loaded.runs:
+    if not artifacts.loaded.runs:
         print("no valid schema v4 runs found", file=sys.stderr)  # noqa: T201
         return 2
     hard_contract_failure = any(
         contract.severity == "hard" and not contract.passed
-        for run in loaded.runs
+        for run in artifacts.loaded.runs
         for result in run.cases
         for contract in result.contracts
     )

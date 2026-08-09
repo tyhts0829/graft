@@ -486,131 +486,33 @@ def singularity_marks() -> tuple[np.ndarray, np.ndarray]:
     return _pack(polylines)
 
 
-def _bitmap_text(text: str, x: float, y: float, scale: float) -> list[Polyline]:
-    """Render compact monoline technical lettering without a text dependency."""
-    glyphs: dict[str, tuple[str, ...]] = {
-        " ": ("00000",) * 7,
-        "/": ("00001", "00010", "00100", "00100", "01000", "10000", "10000"),
-        ">": ("10000", "01000", "00100", "00010", "00100", "01000", "10000"),
-        "0": ("01110", "10001", "10011", "10101", "11001", "10001", "01110"),
-        "1": ("00100", "01100", "00100", "00100", "00100", "00100", "01110"),
-        "2": ("01110", "10001", "00001", "00010", "00100", "01000", "11111"),
-        "3": ("11110", "00001", "00001", "01110", "00001", "00001", "11110"),
-        "4": ("00010", "00110", "01010", "10010", "11111", "00010", "00010"),
-        "5": ("11111", "10000", "10000", "11110", "00001", "00001", "11110"),
-        "6": ("01110", "10000", "10000", "11110", "10001", "10001", "01110"),
-        "7": ("11111", "00001", "00010", "00100", "01000", "01000", "01000"),
-        "8": ("01110", "10001", "10001", "01110", "10001", "10001", "01110"),
-        "9": ("01110", "10001", "10001", "01111", "00001", "00001", "01110"),
-        "A": ("01110", "10001", "10001", "11111", "10001", "10001", "10001"),
-        "B": ("11110", "10001", "10001", "11110", "10001", "10001", "11110"),
-        "C": ("01111", "10000", "10000", "10000", "10000", "10000", "01111"),
-        "D": ("11110", "10001", "10001", "10001", "10001", "10001", "11110"),
-        "E": ("11111", "10000", "10000", "11110", "10000", "10000", "11111"),
-        "F": ("11111", "10000", "10000", "11110", "10000", "10000", "10000"),
-        "G": ("01111", "10000", "10000", "10111", "10001", "10001", "01111"),
-        "H": ("10001", "10001", "10001", "11111", "10001", "10001", "10001"),
-        "I": ("11111", "00100", "00100", "00100", "00100", "00100", "11111"),
-        "J": ("00111", "00010", "00010", "00010", "10010", "10010", "01100"),
-        "K": ("10001", "10010", "10100", "11000", "10100", "10010", "10001"),
-        "L": ("10000", "10000", "10000", "10000", "10000", "10000", "11111"),
-        "M": ("10001", "11011", "10101", "10101", "10001", "10001", "10001"),
-        "N": ("10001", "11001", "10101", "10011", "10001", "10001", "10001"),
-        "O": ("01110", "10001", "10001", "10001", "10001", "10001", "01110"),
-        "P": ("11110", "10001", "10001", "11110", "10000", "10000", "10000"),
-        "Q": ("01110", "10001", "10001", "10001", "10101", "10010", "01101"),
-        "R": ("11110", "10001", "10001", "11110", "10100", "10010", "10001"),
-        "S": ("01111", "10000", "10000", "01110", "00001", "00001", "11110"),
-        "T": ("11111", "00100", "00100", "00100", "00100", "00100", "00100"),
-        "U": ("10001", "10001", "10001", "10001", "10001", "10001", "01110"),
-        "V": ("10001", "10001", "10001", "10001", "10001", "01010", "00100"),
-        "W": ("10001", "10001", "10001", "10101", "10101", "11011", "10001"),
-        "X": ("10001", "10001", "01010", "00100", "01010", "10001", "10001"),
-        "Y": ("10001", "10001", "01010", "00100", "00100", "00100", "00100"),
-        "Z": ("11111", "00001", "00010", "00100", "01000", "10000", "11111"),
-    }
-    polylines: list[Polyline] = []
-    cursor_x = x
-    for character in text.upper():
-        pattern = glyphs.get(character, glyphs[" "])
-        for row, pixels in enumerate(pattern):
-            column = 0
-            while column < 5:
-                if pixels[column] == "0":
-                    column += 1
-                    continue
-                start = column
-                while column + 1 < 5 and pixels[column + 1] == "1":
-                    column += 1
-                py = y + (row + 0.5) * scale
-                polylines.append(
-                    [
-                        (cursor_x + start * scale, py),
-                        (cursor_x + (column + 0.82) * scale, py),
-                    ]
-                )
-                column += 1
-        cursor_x += 6.0 * scale
-    return polylines
-
 
 @primitive
 def reference_footer() -> tuple[np.ndarray, np.ndarray]:
-    """Unboxed source-style title, legend, transform chain, and beta axis."""
+    """参照図版に合わせた罫線、線種見本、continuation 軸を生成する。"""
     polylines: list[Polyline] = [[(11.0, 121.25), (100.0, 121.25)]]
 
-    polylines.extend(_bitmap_text("ADAPTIVE RICCI TRIANGULATION", 11.0, 122.15, 0.30))
-    polylines.extend(_bitmap_text("IRREGULAR DELAUNAY FIELD / 868 VERTICES", 11.0, 125.15, 0.205))
-    polylines.extend(_bitmap_text("GEODESIC FLOW / THREE SINGULARITIES", 11.0, 127.45, 0.205))
-    polylines.extend(_bitmap_text("PAST TOPOLOGY / CURRENT EMBEDDING", 11.0, 129.75, 0.205))
-
-    # Four line types begin exactly at x=56 and remain deliberately lightweight.
-    legend_rows = (133.55, 136.25, 138.95, 141.65)
-    polylines.append([(56.0, legend_rows[0]), (66.0, legend_rows[0])])
-    for x in (56.0, 58.5, 61.0, 63.5):
-        polylines.append([(x, legend_rows[1]), (x + 1.35, legend_rows[1])])
+    legend_rows = (125.25, 128.25, 131.25, 134.25)
+    polylines.append([(56.0, legend_rows[0]), (63.0, legend_rows[0])])
+    for x in (56.0, 58.1, 60.2, 62.3):
+        polylines.append([(x, legend_rows[1]), (x + 1.05, legend_rows[1])])
     polylines.append(
-        [(56.0 + 10.0 * i / 24.0, legend_rows[2] + 0.38 * math.sin(i / 24.0 * math.tau)) for i in range(25)]
-    )
-    polylines.extend(
         [
-            [(56.0, legend_rows[3] - 0.22), (66.0, legend_rows[3] - 0.22)],
-            [(56.0, legend_rows[3] + 0.22), (66.0, legend_rows[3] + 0.22)],
+            (56.0 + 7.0 * i / 24.0, legend_rows[2] + 0.22 * math.sin(i / 24.0 * math.tau))
+            for i in range(25)
         ]
     )
-    for label, y in zip(("CURRENT", "PAST", "GEODESIC", "LEVEL"), legend_rows, strict=True):
-        polylines.extend(_bitmap_text(label, 68.0, y - 0.66, 0.18))
+    for x in np.linspace(56.0, 63.0, 13):
+        polylines.append([(float(x) - 0.10, legend_rows[3]), (float(x) + 0.10, legend_rows[3])])
 
-    polylines.extend(
-        _bitmap_text(
-            "FIELD > METRIC > CURVATURE > TOPOLOGY > EMBEDDING",
-            104.0,
-            122.3,
-            0.31,
-        )
-    )
-
-    # The beta axis indexes the five metric/topology snapshots without frames.
-    axis_y = 144.25
-    polylines.append([(114.0, axis_y), (198.0, axis_y)])
+    axis_y = 138.3
+    polylines.append([(129.4, axis_y), (193.4, axis_y)])
     polylines.extend(
         [
-            [(197.0, axis_y - 0.45), (198.0, axis_y)],
-            [(197.0, axis_y + 0.45), (198.0, axis_y)],
+            [(192.4, axis_y - 0.45), (193.4, axis_y)],
+            [(192.4, axis_y + 0.45), (193.4, axis_y)],
         ]
     )
-    for center_x in (133.5, 146.8, 160.0, 173.7, 188.0):
-        polylines.append([(center_x, axis_y - 0.55), (center_x, axis_y + 0.55)])
-
-    # A compact handwritten beta followed by its baseline label.
-    polylines.extend(
-        [
-            [(105.5, 141.2), (105.5, 145.0)],
-            _cubic((105.5, 141.5), (109.2, 140.9), (109.4, 143.0), (105.5, 143.1), 13),
-            _cubic((105.5, 143.0), (109.6, 142.8), (109.3, 145.0), (105.5, 144.7), 13),
-        ]
-    )
-    polylines.extend(_bitmap_text("BETA", 110.2, 142.35, 0.19))
     return _pack(polylines)
 
 
@@ -621,16 +523,16 @@ def delaunay_footer_disks(*, seed: int = SEED) -> tuple[np.ndarray, np.ndarray]:
     centers = (133.5, 146.8, 160.0, 173.7, 188.0)
     for disk_index, center_x in enumerate(centers):
         rng = np.random.default_rng(seed + 1200 + disk_index * 29)
-        center_y = 135.65
+        center_y = 128.2
         points: list[tuple[float, float]] = []
         for index in range(14):
             theta = math.tau * index / 14.0
-            radius = 5.05 + 0.34 * math.sin(3.0 * theta + disk_index * 0.7)
+            radius = 4.9 + 0.34 * math.sin(3.0 * theta + disk_index * 0.7)
             radius += 0.18 * math.cos(7.0 * theta - disk_index)
             points.append((center_x + radius * math.cos(theta), center_y + radius * math.sin(theta)))
         for _ in range(14):
             theta = float(rng.uniform(0.0, math.tau))
-            radius = 4.35 * math.sqrt(float(rng.uniform(0.025, 0.92)))
+            radius = 4.15 * math.sqrt(float(rng.uniform(0.025, 0.92)))
             metric = 1.0 + 0.055 * (disk_index - 2)
             x = center_x + radius * math.cos(theta) * metric
             y = center_y + radius * math.sin(theta) / metric
@@ -655,6 +557,7 @@ def delaunay_footer_disks(*, seed: int = SEED) -> tuple[np.ndarray, np.ndarray]:
 
 def draw(t: float):
     del t
+    footer_font = "/System/Library/Fonts/Menlo.ttc"
     levels = G.outer_levels()
     history = G.historic_topology(seed=SEED)
     mesh = G.ricci_mesh(seed=SEED)
@@ -669,6 +572,74 @@ def draw(t: float):
     marks = G.singularity_marks()
     footer = G.reference_footer()
     morphs = G.delaunay_footer_disks(seed=SEED)
+    footer_title = G.text(
+        text="CONCEPT 24 — CURVATURE SURGERY",
+        font=footer_font,
+        center=(11.0, 122.35, 0.0),
+        scale=1.42,
+        quality=0.58,
+        letter_spacing_em=0.025,
+    )
+    footer_description = G.text(
+        text="Discrete Conformal Ricci Flow\n+ Delaunay Edge Flip\n+ Nonlinear Metric Embedding",
+        font=footer_font,
+        center=(11.0, 126.15, 0.0),
+        scale=0.92,
+        quality=0.50,
+        line_height=1.65,
+    )
+    footer_legend = G.text(
+        text=(
+            "current Delaunay mesh\n"
+            "topology surgery (past edges)\n"
+            "iso-u (conformal potential)\n"
+            "curvature singularities"
+        ),
+        font=footer_font,
+        center=(64.5, 124.25, 0.0),
+        scale=0.82,
+        quality=0.48,
+        line_height=2.9,
+    )
+    footer_process = G.text(
+        text=(
+            "field (K*)\n"
+            "↓\n"
+            "metric (l_ij)\n"
+            "↓\n"
+            "curvature (K)\n"
+            "↓\n"
+            "topology (flip)\n"
+            "↓\n"
+            "embedding (R^2)"
+        ),
+        font=footer_font,
+        center=(104.2, 121.8, 0.0),
+        scale=0.78,
+        quality=0.48,
+        line_height=1.62,
+    )
+    footer_axis_left = G.text(
+        text="0",
+        font=footer_font,
+        center=(127.8, 137.4, 0.0),
+        scale=0.78,
+        quality=0.45,
+    )
+    footer_axis_right = G.text(
+        text="1",
+        font=footer_font,
+        center=(195.0, 137.4, 0.0),
+        scale=0.78,
+        quality=0.45,
+    )
+    footer_axis_caption = G.text(
+        text="continuation (β)",
+        font=footer_font,
+        center=(153.0, 139.25, 0.0),
+        scale=0.72,
+        quality=0.45,
+    )
 
     return (
         L("pale rounded Ricci levels").layer(levels, color=(0.84, 0.84, 0.81), thickness=0.00043),
@@ -685,4 +656,35 @@ def draw(t: float):
         L("three overlap singularities").layer(marks, color=(0.04, 0.04, 0.03), thickness=0.00048),
         L("source technical footer").layer(footer, color=(0.10, 0.10, 0.085), thickness=0.00042),
         L("five Delaunay beta disks").layer(morphs, color=(0.22, 0.22, 0.19), thickness=0.00034),
+        L("footer title").layer(footer_title, color=(0.01, 0.01, 0.01), thickness=0.00062),
+        L("footer description").layer(
+            footer_description,
+            color=(0.06, 0.06, 0.055),
+            thickness=0.00050,
+        ),
+        L("footer line legend").layer(
+            footer_legend,
+            color=(0.08, 0.08, 0.07),
+            thickness=0.00048,
+        ),
+        L("footer process").layer(
+            footer_process,
+            color=(0.05, 0.05, 0.045),
+            thickness=0.00048,
+        ),
+        L("footer axis labels").layer(
+            footer_axis_left,
+            color=(0.06, 0.06, 0.055),
+            thickness=0.00046,
+        ),
+        L("footer axis right").layer(
+            footer_axis_right,
+            color=(0.06, 0.06, 0.055),
+            thickness=0.00046,
+        ),
+        L("footer axis caption").layer(
+            footer_axis_caption,
+            color=(0.06, 0.06, 0.055),
+            thickness=0.00046,
+        ),
     )

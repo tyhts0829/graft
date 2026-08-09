@@ -30,7 +30,10 @@ def test_top_level_cli_dispatches_benchmark_actions(capsys) -> None:
     assert "core.concat_recipe.parts_10" in capsys.readouterr().out
 
 
-def test_run_and_report_cli_create_schema_v4_artifacts(tmp_path: Path) -> None:
+def test_run_and_report_cli_create_schema_v4_artifacts(
+    tmp_path: Path,
+    capsys,
+) -> None:
     assert (
         cli.main(
             [
@@ -61,8 +64,14 @@ def test_run_and_report_cli_create_schema_v4_artifacts(tmp_path: Path) -> None:
     assert payload["cases"][0]["metrics"]
     assert payload["cases"][0]["contracts"] == []
 
+    capsys.readouterr()
     assert cli.main(["report", "--out", str(tmp_path)]) == 0
+    report_output = capsys.readouterr().out
+    assert "report.html" in report_output
+    assert "overview.svg" in report_output
+    assert "warnings.json" in report_output
     assert (tmp_path / "report.html").is_file()
+    assert (tmp_path / "overview.svg").is_file()
     assert (tmp_path / "warnings.json").is_file()
 
     assert (
@@ -250,3 +259,4 @@ def test_run_cli_returns_nonzero_for_hard_contract_failure(
     assert payload["cases"][0]["contracts"][0]["severity"] == "hard"
     assert cli.main(["report", "--out", str(tmp_path)]) == 1
     assert (tmp_path / "report.html").is_file()
+    assert (tmp_path / "overview.svg").is_file()

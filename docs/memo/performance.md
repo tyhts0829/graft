@@ -80,23 +80,38 @@ checksum が変わった正常 case がある場合、`compare` は非 0 で終�
 
 ### Offline report
 
+可視化用の optional extra を導入する。
+
+```bash
+python -m pip install -e ".[benchmark-report]"
+```
+
 ```bash
 python -m grafix benchmark report --out /tmp/grafix-benchmark
 ```
 
 次を生成する。
 
-- `/tmp/grafix-benchmark/report.html`
-- `/tmp/grafix-benchmark/warnings.json`
+- `/tmp/grafix-benchmark/report.html`: filter や tooltip を備えた対話的 report
+- `/tmp/grafix-benchmark/overview.svg`: 共有しやすい静的 overview
+- `/tmp/grafix-benchmark/warnings.json`: 読み込み warning の機械可読 summary
 
-HTML は CDN、JavaScript、ネットワークを必要としない。壊れた JSON や非対応 schema
-は黙って除外せず、HTML と warning summary に path と理由を残す。
+HTML は Vega runtime と chart spec を inline に含めるため JavaScript を使うが、CDN や
+表示時のネットワーク接続は必要としない。壊れた JSON や非対応 schema は黙って
+除外せず、HTML と warning summary に path と理由を残す。
+
+report の差分は最新 run を head とし、environment、measurement settings、case set、
+各 case の compatibility key がすべて一致する過去 run のうち直近のものだけを strict
+baseline として選ぶ。棒グラフの値は `(head - base) / base` で、正が regression、負が
+improvement を表す。履歴の帯は median ± MAD、guardrail は soft contract の閾値に
+対する負荷率である。workload や iteration 数の異なる case 間では絶対時間を直接比較
+しない。
 
 ## 3. CI での扱い
 
 - hosted runner の wall time は artifact として観察し、hard gate にしない。
 - smoke job は checksum 生成、case 完走、schema 検証を確認する。
-- JSON、HTML、warning summary は GitHub Actions artifact として保存する。
+- JSON、HTML、SVG overview、warning summary は GitHub Actions artifact として保存する。
 - wall-time ratio の gate が必要な場合は、固定された self-hosted Mac で base/head を
   同一 job 内に交互実行する。
 

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+from html.parser import HTMLParser
 from pathlib import Path
+from xml.etree import ElementTree
 
 from grafix.devtools.benchmarks.report import (
     LoadedRuns,
@@ -28,17 +30,40 @@ from grafix.devtools.benchmarks.schema import (
 )
 
 
+class _ExternalResourceParser(HTMLParser):
+    """HTML の resource 属性に remote URL がないことだけを検査する。"""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.remote_resources: list[str] = []
+
+    def handle_starttag(
+        self,
+        tag: str,
+        attrs: list[tuple[str, str | None]],
+    ) -> None:
+        del tag
+        for name, value in attrs:
+            if (
+                name in {"src", "href", "poster"}
+                and value is not None
+                and value.startswith(("http://", "https://", "//"))
+            ):
+                self.remote_resources.append(value)
+
+
 def _write_valid_run(
     runs_dir: Path,
     *,
     warnings: tuple[str, ...] = (),
     contract_actual: float = 12.5,
+    label: str = "System example",
 ) -> None:
     empty_object = freeze_json_object({})
     spec = CaseSpec(
         case_id="system.example",
         version=1,
-        label="System example",
+        label=label,
         category="system",
         suite="pipeline",
         fixture="fixture",
@@ -140,16 +165,37 @@ def test_report_keeps_broken_and_unsupported_runs_as_warnings(tmp_path: Path) ->
     assert "2.00" in html
     assert "soft: <span" in html
     assert "input_to_present_ms" in html
-    assert "cdn" not in html.lower()
+    assert ".chart.vega-embed" in html
+    resource_parser = _ExternalResourceParser()
+    resource_parser.feed(html)
+    assert resource_parser.remote_resources == []
     assert "broken.json" in html
 
-    report_path, warnings_path, written = write_report(tmp_path)
-    assert written == loaded
-    assert report_path.is_file()
-    assert warnings_path.is_file()
-    warning_payload = json.loads(warnings_path.read_text(encoding="utf-8"))
+    artifacts = write_report(tmp_path)
+    assert artifacts.loaded == loaded
+    assert artifacts.report_path.is_file()
+    assert artifacts.overview_path.is_file()
+    assert artifacts.warnings_path.is_file()
+    svg_root = ElementTree.parse(artifacts.overview_path).getroot()
+    assert svg_root.tag.endswith("svg")
+    warning_payload = json.loads(artifacts.warnings_path.read_text(encoding="utf-8"))
     assert warning_payload["valid_runs"] == 1
     assert warning_payload["warning_count"] == 2
+
+
+def test_report_escapes_script_breakout_in_chart_data(tmp_path: Path) -> None:
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir()
+    _write_valid_run(
+        runs_dir,
+        label='</script><script id="benchmark-report-breakout">',
+    )
+
+    html = render_report_html(load_runs(runs_dir))
+
+    assert 'id="benchmark-report-breakout"' not in html
+    assert "benchmark-report-breakout" in html
+    assert r"\u003c/script\u003e\u003cscript" in html
 
 
 def test_report_includes_warnings_from_valid_runs(tmp_path: Path) -> None:

@@ -36,10 +36,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+benchmark-report = [
+  "altair>=6,<7",
+  "vl-convert-python>=1.9,<2",
+]
 dev = [
+  "altair>=6,<7",
   "pytest",
   "ruff",
   "mypy",
+  "vl-convert-python>=1.9,<2",
 ]
 
 [tool.setuptools.packages.find]
