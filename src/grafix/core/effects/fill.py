@@ -12,10 +12,6 @@ from collections.abc import Sequence
 import numpy as np
 from numba import njit  # type: ignore[attr-defined]
 
-from grafix.core.operation_authoring import effect
-from grafix.core.operation_diagnostics import emit_operation_diagnostic
-from grafix.core.parameters.meta import ParamMeta
-from grafix.core.realized_geometry import GeomTuple
 from grafix.core.geometry_kernels.packed import (
     empty_packed_geometry,
     pack_polylines,
@@ -24,6 +20,10 @@ from grafix.core.geometry_kernels.planar import (
     PlanarFrame,
     planarity_threshold,
 )
+from grafix.core.operation_authoring import effect
+from grafix.core.operation_diagnostics import emit_operation_diagnostic
+from grafix.core.parameters.meta import ParamMeta
+from grafix.core.realized_geometry import GeomTuple
 
 # 生成する塗り線の最大本数（密度の上限）。
 MAX_FILL_LINES = 1000
@@ -80,6 +80,7 @@ def _emit_fill_fallback(original: str, *, reason: str) -> None:
         reason=reason,
     )
 
+
 def _polygon_area_abs(vertices: np.ndarray) -> float:
     """2D ポリゴンの面積絶対値を返す（閉じは仮定しない）。"""
     # Shoelace formula（頂点列が「閉じている/いない」どちらでも動く）。
@@ -129,7 +130,9 @@ def _is_degenerate_fill_input(coords_2d_all: np.ndarray, offsets: np.ndarray) ->
 
 
 @njit(cache=True)  # type: ignore[misc]
-def _polygon_area_abs_coords_njit(coords_2d_all: np.ndarray, start: int, end: int) -> float:
+def _polygon_area_abs_coords_njit(
+    coords_2d_all: np.ndarray, start: int, end: int
+) -> float:
     """2D ポリゴンの面積絶対値を返す（閉じは仮定しない、Numba 版）。"""
     n = int(end - start)
     if n < 3:
@@ -304,7 +307,9 @@ def _evenodd_parent_outer_njit(
     return is_outer, parent_outer
 
 
-def _build_evenodd_groups(coords_2d_all: np.ndarray, offsets: np.ndarray) -> list[list[int]]:
+def _build_evenodd_groups(
+    coords_2d_all: np.ndarray, offsets: np.ndarray
+) -> list[list[int]]:
     """外周＋穴を even-odd でグルーピングし、[outer, hole...] のリストを返す。"""
     # 目的:
     # - 入力が「外周 + 穴 + 穴の穴 + ...」の入れ子になっていても、
@@ -498,10 +503,7 @@ def _scanline_endpoints_njit(
             continue
         _sort_intersections_numpy_order(scratch, intersection_count)
         for pair_index in range(0, intersection_count - 1, 2):
-            if (
-                scratch[pair_index + 1] - scratch[pair_index]
-                > np.float32(1e-9)
-            ):
+            if scratch[pair_index + 1] - scratch[pair_index] > np.float32(1e-9):
                 segment_count += 1
 
     endpoints = np.empty((2 * segment_count, 2), dtype=np.float32)
@@ -697,7 +699,11 @@ def _generate_line_fill_evenodd_multi(
     min_y = float(np.min(work[:, 1]))
     max_y = float(np.max(work[:, 1]))
 
-    spacing = float(spacing_override) if spacing_override is not None else _spacing_from_height(ref_height, density)
+    spacing = (
+        float(spacing_override)
+        if spacing_override is not None
+        else _spacing_from_height(ref_height, density)
+    )
     if not np.isfinite(spacing) or spacing <= 0.0:
         return np.empty((0, 2), dtype=np.float32)
 
@@ -805,7 +811,7 @@ def fill(
     angle_sets: int = 1,
     angle: float = 45.0,
     density: float = 35.0,
-    min_spacing: float = 0.0,
+    min_spacing: float = 0.05,
     spacing_gradient: float = 0.0,
     remove_boundary: bool = False,
 ) -> GeomTuple:
@@ -856,13 +862,9 @@ def fill(
         raise ValueError("fill の density は 0 以上である必要がある")
     min_spacing = float(min_spacing)
     if not np.isfinite(min_spacing) or min_spacing < 0.0:
-        raise ValueError(
-            "fill の min_spacing は有限な 0 以上の値である必要がある"
-        )
+        raise ValueError("fill の min_spacing は有限な 0 以上の値である必要がある")
     if not -4.0 <= spacing_gradient <= 4.0:
-        raise ValueError(
-            "fill の spacing_gradient は -4 以上 4 以下である必要がある"
-        )
+        raise ValueError("fill の spacing_gradient は -4 以上 4 以下である必要がある")
 
     base_angle_rad = float(np.deg2rad(angle))
 
@@ -905,7 +907,9 @@ def fill(
                 out_lines.append(coords[s:e])
             return pack_polylines(out_lines)
 
-        ref_height_global = float(np.max(coords2d_all[:, 1]) - np.min(coords2d_all[:, 1]))
+        ref_height_global = float(
+            np.max(coords2d_all[:, 1]) - np.min(coords2d_all[:, 1])
+        )
         if ref_height_global <= 0.0:
             # グループの実体が無い場合は境界のみを返す。
             out_lines = []
@@ -1006,7 +1010,9 @@ def fill(
         vxy = frame.to_local(vertices)
 
         coords2d = vxy[:, :2].astype(np.float32, copy=False)
-        if _is_degenerate_fill_input(coords2d, np.array([0, coords2d.shape[0]], dtype=np.int32)):
+        if _is_degenerate_fill_input(
+            coords2d, np.array([0, coords2d.shape[0]], dtype=np.int32)
+        ):
             # 退化入力はそのまま返す（remove_boundary / density の有無に関わらず no-op）。
             _emit_fill_fallback(
                 "degenerate_boundary",
