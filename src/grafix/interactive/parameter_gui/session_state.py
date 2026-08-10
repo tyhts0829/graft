@@ -32,9 +32,15 @@ class MidiClearNotice:
 
 @dataclass(slots=True)
 class WidgetSessionState:
-    """widget と snippet popup の GUI instance 固有状態。"""
+    """widget と snippet popup の GUI instance 固有状態。
+
+    ``font_choices`` は font combo を初めて開いた時に構築し、この
+    GUI session の全 font row で共有する。filesystem の変化は
+    font picker の明示的な refresh でのみ反映する。
+    """
 
     font_filter_by_key: dict[tuple[str, str, str], str] = field(default_factory=dict)
+    font_choices: tuple[tuple[str, str, bool, str], ...] | None = None
     choice_filter_by_key: dict[tuple[str, str, str], str] = field(default_factory=dict)
     snippet_popup_text: str = ""
     snippet_popup_focus_next: bool = False
@@ -43,6 +49,7 @@ class WidgetSessionState:
         """GUI close 時に widget 固有の一時状態をまとめて解放する。"""
 
         self.font_filter_by_key.clear()
+        self.font_choices = None
         self.choice_filter_by_key.clear()
         self.snippet_popup_text = ""
         self.snippet_popup_focus_next = False

@@ -8,6 +8,7 @@ from typing import Iterator
 import numpy as np
 import pytest
 
+import grafix.core.font_resolver as font_resolver_module
 from grafix.api import E, G
 from grafix.core.evaluation_config import EvaluationConfig
 from grafix.core.evaluation_context import EvaluationContext, EvaluationResources
@@ -121,6 +122,47 @@ def test_preflight_and_evaluator_share_exact_lease_and_warm_lookup(
     assert first is second
     assert first_key == second_key
     assert after_second.hits > after_first.hits
+
+
+def test_nested_font_sixty_frames_scan_once_and_hit_geometry_cache(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    regular, _other = _packaged_fonts()
+    font_dir = tmp_path / "fonts"
+    nested = font_dir / "Supplemental"
+    nested.mkdir(parents=True)
+    font_path = nested / "Legacy Nested.ttf"
+    font_path.write_bytes(regular.read_bytes())
+    config = _config_with_font_dirs(tmp_path, font_dir)
+    geometry = G.text(text="A", font="Legacy Nested.ttf", scale=10.0)
+    original_scan = font_resolver_module._scan_font_tree
+    original_resolve = FontResources.resolve
+    scans = 0
+    leases: list[ResolvedFontLease] = []
+
+    def recording_scan(*, dirs):
+        nonlocal scans
+        scans += 1
+        return original_scan(dirs=dirs)
+
+    def recording_resolve(self, font, face_index, *, config):
+        lease = original_resolve(self, font, face_index, config=config)
+        leases.append(lease)
+        return lease
+
+    monkeypatch.setattr(font_resolver_module, "_scan_font_tree", recording_scan)
+    monkeypatch.setattr(FontResources, "resolve", recording_resolve)
+    with _realize_session(config) as (session, _resources):
+        realized = [session.realize(geometry) for _ in range(60)]
+        stats = session.stats()
+
+    assert scans == 1
+    assert len(leases) == 60
+    assert all(lease is leases[0] for lease in leases)
+    assert all(result is realized[0] for result in realized)
+    assert stats.misses == 1
+    assert stats.hits == 59
 
 
 def test_same_session_observes_font_replacement_in_key_and_output(tmp_path: Path) -> None:

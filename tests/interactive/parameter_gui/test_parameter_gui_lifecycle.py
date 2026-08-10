@@ -202,10 +202,14 @@ def test_widget_state_is_released_across_fake_gui_close_and_reopen(
         store=ParamStore(),
     )
     first._session.widgets.font_filter_by_key[key] = "old filter"
+    first._session.widgets.font_choices = (
+        ("Old", "Nested/Old.ttf", False, "old"),
+    )
     first._session.widgets.snippet_popup_text = "old snippet"
     first.close()
 
     assert first._session.widgets.font_filter_by_key == {}
+    assert first._session.widgets.font_choices is None
     assert first._session.widgets.snippet_popup_text == ""
 
     reopened = ParameterGUI(
@@ -214,6 +218,7 @@ def test_widget_state_is_released_across_fake_gui_close_and_reopen(
         store=ParamStore(),
     )
     assert reopened._session.widgets.font_filter_by_key == {}
+    assert reopened._session.widgets.font_choices is None
     assert reopened._session.widgets.snippet_popup_text == ""
     reopened.close()
     assert calls == [

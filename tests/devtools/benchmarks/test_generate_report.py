@@ -55,6 +55,9 @@ class _ExternalResourceParser(HTMLParser):
 def _write_valid_run(
     runs_dir: Path,
     *,
+    run_id: str = "valid",
+    created_at: str = "2026-07-17T00:00:00+00:00",
+    elapsed_ns: int = 1_250_000,
     warnings: tuple[str, ...] = (),
     contract_actual: float = 12.5,
     label: str = "System example",
@@ -80,11 +83,11 @@ def _write_valid_run(
         ),
         tags=("scaling",),
     )
-    sample = Sample(elapsed_ns=1_250_000, iterations=1)
+    sample = Sample(elapsed_ns=elapsed_ns, iterations=1)
     run = BenchmarkRun(
         meta=RunMeta(
-            run_id="valid",
-            created_at="2026-07-17T00:00:00+00:00",
+            run_id=run_id,
+            created_at=created_at,
             suite="pipeline",
             profile="short",
             mode="warm",
@@ -139,7 +142,7 @@ def _write_valid_run(
         ),
         warnings=warnings,
     )
-    write_benchmark_run(runs_dir / "valid.json", run)
+    write_benchmark_run(runs_dir / f"{run_id}.json", run)
 
 
 def test_report_keeps_broken_and_unsupported_runs_as_warnings(tmp_path: Path) -> None:
@@ -159,6 +162,8 @@ def test_report_keeps_broken_and_unsupported_runs_as_warnings(tmp_path: Path) ->
     assert any("v2.json" in warning for warning in loaded.warnings)
 
     html = render_report_html(loaded)
+    assert "Grafix benchmark history" in html
+    assert "Trend cohorts" in html
     assert "System example" in html
     assert "system.example" in html
     assert "1.250000" in html
@@ -166,6 +171,12 @@ def test_report_keeps_broken_and_unsupported_runs_as_warnings(tmp_path: Path) ->
     assert "soft: <span" in html
     assert "input_to_present_ms" in html
     assert ".chart.vega-embed" in html
+    assert 'id="history-category-control"' in html
+    assert 'id="history-case-control"' in html
+    assert 'data-category="system"' in html
+    assert 'data-measured="true"' in html
+    assert 'view.signal("history_case"' in html
+    assert "時系列化できる timing observation がありません" in html
     resource_parser = _ExternalResourceParser()
     resource_parser.feed(html)
     assert resource_parser.remote_resources == []
@@ -173,6 +184,7 @@ def test_report_keeps_broken_and_unsupported_runs_as_warnings(tmp_path: Path) ->
 
     artifacts = write_report(tmp_path)
     assert artifacts.loaded == loaded
+    assert artifacts.latest_run_id == "valid"
     assert artifacts.report_path.is_file()
     assert artifacts.overview_path.is_file()
     assert artifacts.warnings_path.is_file()
@@ -210,6 +222,59 @@ def test_report_includes_warnings_from_valid_runs(tmp_path: Path) -> None:
     assert "system.example: skipped" in loaded.warnings[0]
 
 
+def test_load_runs_excludes_every_copy_of_a_duplicate_run_id(
+    tmp_path: Path,
+) -> None:
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir()
+    _write_valid_run(
+        runs_dir,
+        run_id="duplicate",
+        warnings=("must not leak from excluded run",),
+        contract_actual=75.0,
+    )
+    duplicate_path = runs_dir / "duplicate-copy.json"
+    duplicate_path.write_text(
+        (runs_dir / "duplicate.json").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    _write_valid_run(
+        runs_dir,
+        run_id="usable",
+        created_at="2026-07-17T00:01:00+00:00",
+        warnings=("usable run warning",),
+    )
+
+    loaded = load_runs(runs_dir)
+
+    assert tuple(run.meta.run_id for run in loaded.runs) == ("usable",)
+    duplicate_warnings = [
+        warning for warning in loaded.warnings if "duplicate benchmark run_id" in warning
+    ]
+    assert len(duplicate_warnings) == 1
+    assert "'duplicate'" in duplicate_warnings[0]
+    assert "duplicate.json" in duplicate_warnings[0]
+    assert "duplicate-copy.json" in duplicate_warnings[0]
+    assert "must not leak from excluded run" not in "\n".join(loaded.warnings)
+    assert "soft contract failed" not in "\n".join(loaded.warnings)
+    assert any("usable run warning" in warning for warning in loaded.latest_warnings)
+    assert duplicate_warnings[0] in loaded.historical_warnings
+
+
+def test_load_runs_classifies_unassociated_warnings_as_historical(
+    tmp_path: Path,
+) -> None:
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir()
+    (runs_dir / "broken.json").write_text("{broken", encoding="utf-8")
+
+    loaded = load_runs(runs_dir)
+
+    assert loaded.runs == ()
+    assert loaded.latest_warnings == ()
+    assert loaded.historical_warnings == loaded.warnings
+
+
 def test_report_warns_on_soft_contract_without_failing_case(
     tmp_path: Path,
 ) -> None:
@@ -225,59 +290,113 @@ def test_report_warns_on_soft_contract_without_failing_case(
     assert "soft-fail" in html
 
 
-def test_report_delta_requires_compatible_mode_and_settings(
+def test_report_is_history_first_and_omits_pairwise_delta(
     tmp_path: Path,
 ) -> None:
     runs_dir = tmp_path / "runs"
     runs_dir.mkdir()
-    _write_valid_run(runs_dir)
-    base = load_runs(runs_dir).runs[0]
-    slower_sample = Sample(elapsed_ns=2_500_000, iterations=1)
-    slower_result = replace(
-        base.cases[0],
-        samples=(slower_sample,),
-        stats=summarize_samples((slower_sample,)),
+    _write_valid_run(
+        runs_dir,
+        run_id="first",
+        created_at="2026-07-17T00:00:00+00:00",
     )
-    incompatible = replace(
-        base,
-        meta=replace(
-            base.meta,
-            run_id="incompatible",
-            created_at="2026-07-17T00:01:00+00:00",
-            mode="process-cold",
-        ),
-        cases=(slower_result,),
+    _write_valid_run(
+        runs_dir,
+        run_id="latest",
+        created_at="2026-07-17T00:01:00+00:00",
+        elapsed_ns=2_500_000,
     )
 
-    html = render_report_html(LoadedRuns((base, incompatible), ()))
+    html = render_report_html(load_runs(runs_dir))
 
-    assert "+100.0%" not in html
+    assert "Performance history" in html
+    assert html.index('id="history-chart"') < html.index('id="case-overview-chart"')
+    assert html.index('id="case-overview-chart"') < html.index('id="guardrail-chart"')
+    assert "Regression / improvement" not in html
+    assert "compatible Δ" not in html
+    assert "From first positive" not in html
+    assert "first" in html
+    assert "latest" in html
 
-    self_sampling_result = replace(
-        base.cases[0], spec=replace(base.cases[0].spec, self_sampling=True)
+
+def test_report_separates_latest_and_historical_warnings(tmp_path: Path) -> None:
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir()
+    _write_valid_run(
+        runs_dir,
+        run_id="old",
+        created_at="2026-07-17T00:00:00+00:00",
+        warnings=("old run warning",),
     )
-    self_sampling_base = replace(base, cases=(self_sampling_result,))
-    compatible_head = replace(
-        base,
-        meta=replace(
-            base.meta,
-            run_id="compatible",
-            created_at="2026-07-17T00:01:00+00:00",
-            samples=20,
-            warmup=3,
-            target_ns=250_000_000,
-        ),
-        cases=(
-            replace(
-                slower_result,
-                spec=replace(slower_result.spec, self_sampling=True),
-            ),
-        ),
+    _write_valid_run(
+        runs_dir,
+        run_id="latest",
+        created_at="2026-07-17T00:01:00+00:00",
+        warnings=("latest run warning",),
     )
 
-    html = render_report_html(LoadedRuns((self_sampling_base, compatible_head), ()))
+    loaded = load_runs(runs_dir)
+    html = render_report_html(loaded)
 
-    assert "+100.0%" in html
+    assert "Latest warnings" in html
+    assert "Historical warnings" in html
+    assert html.index("latest run warning") < html.index("old run warning")
+
+    artifacts = write_report(tmp_path)
+    payload = json.loads(artifacts.warnings_path.read_text(encoding="utf-8"))
+    assert payload["latest_warning_count"] == 1
+    assert payload["historical_warning_count"] == 1
+    assert any("latest run warning" in warning for warning in payload["latest_warnings"])
+    assert any("old run warning" in warning for warning in payload["historical_warnings"])
+
+
+def test_load_runs_uses_utc_order_for_latest_warning_group(tmp_path: Path) -> None:
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir()
+    _write_valid_run(
+        runs_dir,
+        run_id="offset-old",
+        created_at="2026-07-17T02:00:00+02:00",
+        warnings=("offset old warning",),
+    )
+    _write_valid_run(
+        runs_dir,
+        run_id="utc-latest",
+        created_at="2026-07-17T01:00:00+00:00",
+        warnings=("UTC latest warning",),
+    )
+
+    loaded = load_runs(runs_dir)
+
+    assert loaded.runs[-1].meta.run_id == "utc-latest"
+    assert any("UTC latest warning" in warning for warning in loaded.latest_warnings)
+    assert any("offset old warning" in warning for warning in loaded.historical_warnings)
+
+
+def test_report_keeps_invalid_timestamp_run_in_audit_and_warning_json(
+    tmp_path: Path,
+) -> None:
+    runs_dir = tmp_path / "runs"
+    runs_dir.mkdir()
+    _write_valid_run(
+        runs_dir,
+        run_id="invalid-time",
+        created_at="not-a-date",
+    )
+
+    loaded = load_runs(runs_dir)
+    html = render_report_html(loaded)
+
+    assert "invalid-time" in html
+    assert "not-a-date" in html
+    assert "created_at" in html
+
+    artifacts = write_report(tmp_path)
+    payload = json.loads(artifacts.warnings_path.read_text(encoding="utf-8"))
+    assert artifacts.latest_run_id is None
+    assert any("created_at" in warning for warning in artifacts.history_warnings)
+    assert payload["latest_warning_count"] == 0
+    assert payload["historical_warning_count"] == 1
 
 
 def test_report_prioritizes_ux_metrics_and_shows_contract_operands(

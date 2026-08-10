@@ -15,7 +15,7 @@ from typing import Any, Generic, TypeVar
 import numpy as np
 
 from grafix.core.evaluation_config import EvaluationConfig
-from grafix.core.font_resolver import resolve_font_path
+from grafix.core.font_resolver import FontPathResolver
 from grafix.core.value_validation import exact_integer
 
 _DEFAULT_MAX_ASSETS = 8
@@ -479,9 +479,9 @@ class FontResourceStats:
 
 
 class FontResources:
-    """一 evaluation owner の font lease と outline cache を所有する。"""
+    """一 evaluation owner の path resolver、font lease、outline cache を所有する。"""
 
-    __slots__ = ("_assets", "_closed", "_lock", "_renderer")
+    __slots__ = ("_assets", "_closed", "_lock", "_path_resolver", "_renderer")
 
     def __init__(
         self,
@@ -500,6 +500,7 @@ class FontResources:
             maxbytes=max_asset_bytes,
             size_of=lambda lease: len(lease.data),
         )
+        self._path_resolver = FontPathResolver()
         self._renderer = TextRenderer(
             max_fonts=max_fonts,
             max_glyph_commands=max_glyph_commands,
@@ -544,7 +545,7 @@ class FontResources:
         index = exact_integer(face_index, name="face_index", minimum=0)
         with self._lock:
             self._ensure_open()
-        path = resolve_font_path(font, config=config)
+            path = self._path_resolver.resolve(font, config=config)
         canonical_path = path.as_posix()
         stat = FontFileStat.from_os_stat(path.stat())
         key = (canonical_path, index, stat)
@@ -600,7 +601,10 @@ class FontResources:
             try:
                 self._renderer.clear()
             finally:
-                self._assets.clear()
+                try:
+                    self._assets.clear()
+                finally:
+                    self._path_resolver.clear()
 
     def close(self) -> None:
         """所有 resource を一度だけ解放し、以後の利用を禁止する。"""
@@ -612,7 +616,10 @@ class FontResources:
             try:
                 self._renderer.close()
             finally:
-                self._assets.clear()
+                try:
+                    self._assets.clear()
+                finally:
+                    self._path_resolver.clear()
 
 
 __all__ = [

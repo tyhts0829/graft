@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, cast
@@ -44,6 +45,44 @@ def _filter_choices_by_query_and(
         if all(t in search_key.casefold() for t in tokens):
             out.append(item)
     return out
+
+
+def _font_choice_labels(
+    choices: tuple[tuple[str, str, bool, str], ...],
+) -> tuple[str, ...]:
+    """font choice と同じ順序で、重複 stem のみ path 付き label を返す。"""
+
+    stem_counts = Counter(stem.casefold() for stem, _rel, _is_ttc, _key in choices)
+    return tuple(
+        f"{stem} ({rel})" if stem_counts[stem.casefold()] > 1 else stem
+        for stem, rel, _is_ttc, _key in choices
+    )
+
+
+def _selected_font_choice_value(
+    choices: tuple[tuple[str, str, bool, str], ...],
+    *,
+    current_value: str,
+) -> str | None:
+    """popup 内で selected 表示する choice value を返す。
+
+    exact value を優先する。既存 ParamStore が basename のみを持つ場合は、
+    basename が一意に対応する候補だけを selected 表示する。値自体は
+    書き換えない。
+    """
+
+    if any(rel == current_value for _stem, rel, _is_ttc, _key in choices):
+        return current_value
+    if Path(current_value).name != current_value:
+        return None
+    matches = tuple(
+        rel
+        for _stem, rel, _is_ttc, _key in choices
+        if Path(rel).name == current_value
+    )
+    if len(matches) == 1:
+        return matches[0]
+    return None
 
 
 def _filter_choice_labels(
@@ -380,7 +419,7 @@ def widget_font_picker(
     -----
     control 列に以下を縦に描画する。
     - フィルター入力（AND: スペース区切り）
-    - フィルター結果のプルダウン（表示は stem のみ）
+    - フィルター結果のプルダウン（通常は stem、重複時だけ relative path を併記）
     """
 
     import imgui
@@ -394,10 +433,6 @@ def widget_font_picker(
     if changed_filter:
         state.font_filter_by_key[key] = str(new_filter)
         filter_text = str(new_filter)
-
-    # --- dropdown ---
-    choices = list_font_choices()
-    filtered = _filter_choices_by_query_and(choices, query=str(filter_text))
 
     current_value = cast(
         str,
@@ -414,12 +449,33 @@ def widget_font_picker(
 
     with imgui.begin_combo("##font_combo", str(preview)) as combo:
         if combo.opened:
+            refresh = imgui.button("Refresh fonts")
+            if refresh or state.font_choices is None:
+                state.font_choices = tuple(list_font_choices())
+
+            choices = state.font_choices
+            labels_by_value = {
+                choice[1]: label
+                for choice, label in zip(
+                    choices,
+                    _font_choice_labels(choices),
+                    strict=True,
+                )
+            }
+            selected_value = _selected_font_choice_value(
+                choices,
+                current_value=current_value,
+            )
+            filtered = _filter_choices_by_query_and(
+                choices,
+                query=str(filter_text),
+            )
             if not filtered:
                 imgui.text("No match")
             else:
                 for stem, rel, _is_ttc, _search_key in filtered:
-                    selected = rel == current_value
-                    label = f"{stem}##{rel}"
+                    selected = rel == selected_value
+                    label = f"{labels_by_value[rel]}##{rel}"
                     clicked, _selected_now = imgui.selectable(label, selected)
                     if clicked:
                         value_out = rel

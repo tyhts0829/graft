@@ -18,6 +18,7 @@ def test_parameter_gui_session_state_owns_mutable_frame_state() -> None:
     assert session.midi_clear_notice is None
     assert session.reconcile_model is not None
     assert session.widgets.font_filter_by_key == {}
+    assert session.widgets.font_choices is None
     assert session.widgets.choice_filter_by_key == {}
     assert session.widgets.snippet_popup_text == ""
     assert session.widgets.snippet_popup_focus_next is False
@@ -40,12 +41,16 @@ def test_widget_state_is_isolated_between_simultaneous_gui_sessions() -> None:
     second = ParameterGuiSessionState.for_store(ParamStore(), catalog=catalog)
 
     first.widgets.font_filter_by_key[key] = "noto sans"
+    first.widgets.font_choices = (
+        ("Noto Sans", "Nested/Noto Sans.ttf", False, "noto sans"),
+    )
     first.widgets.choice_filter_by_key[key] = "serif"
     first.widgets.snippet_popup_text = "G.text(...)"
     first.widgets.snippet_popup_focus_next = True
 
     assert first.widgets is not second.widgets
     assert second.widgets.font_filter_by_key == {}
+    assert second.widgets.font_choices is None
     assert second.widgets.choice_filter_by_key == {}
     assert second.widgets.snippet_popup_text == ""
     assert second.widgets.snippet_popup_focus_next is False
@@ -65,6 +70,9 @@ def test_reopened_gui_session_does_not_reuse_closed_session_widget_state() -> No
         show_inactive_params=True,
     )
     closed_session.widgets.font_filter_by_key[key] = "old font"
+    closed_session.widgets.font_choices = (
+        ("Old", "Nested/Old.ttf", False, "old"),
+    )
     closed_session.widgets.choice_filter_by_key[key] = "old choice"
     closed_session.widgets.snippet_popup_text = "old snippet"
     closed_session.widgets.snippet_popup_focus_next = True
@@ -83,6 +91,8 @@ def test_reopened_gui_session_does_not_reuse_closed_session_widget_state() -> No
     assert reopened_session.table_cache is not closed_cache
     assert reopened_session.widgets is not closed_session.widgets
     assert reopened_session.widgets.font_filter_by_key == {}
+    assert closed_session.widgets.font_choices is None
+    assert reopened_session.widgets.font_choices is None
     assert reopened_session.widgets.choice_filter_by_key == {}
     assert reopened_session.widgets.snippet_popup_text == ""
     assert reopened_session.widgets.snippet_popup_focus_next is False

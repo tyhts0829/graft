@@ -64,7 +64,7 @@ python -m grafix benchmark run \
 同じ出力先に既存 run ID がある場合は上書きしない。run ID を省略すると、
 microsecond timestamp と random suffix を持つ ID が生成される。
 
-### 比較する
+### 2 run を厳格に比較する
 
 ```bash
 python -m grafix benchmark compare \
@@ -72,13 +72,14 @@ python -m grafix benchmark compare \
   /tmp/grafix-after/runs/AFTER.json
 ```
 
+`compare` は指定した 2 run の before/after を確認するためのコマンドである。
 source identity が違うことは比較目的上許可する。一方、environment、measurement
 mode、case identity が違う比較は既定で拒否する。`--allow-incompatible` は調査用で
 あり、正式な before/after 判定には使わない。
 
 checksum が変わった正常 case がある場合、`compare` は非 0 で終了する。
 
-### Offline report
+### 履歴を可視化する offline report
 
 可視化用の optional extra を導入する。
 
@@ -90,6 +91,21 @@ python -m pip install -e ".[benchmark-report]"
 python -m grafix benchmark report --out /tmp/grafix-benchmark
 ```
 
+`report` は `--out` の `runs/*.json` に蓄積された schema v4 run を時系列で探索する。
+同じ machine と measurement settings で同じ出力先を継続利用する。
+
+```bash
+python -m grafix benchmark run --suite smoke --profile short \
+  --out /tmp/grafix-benchmark
+# 実装を変更した後も同じ出力先へ追加する
+python -m grafix benchmark run --suite smoke --profile short \
+  --out /tmp/grafix-benchmark
+python -m grafix benchmark report --out /tmp/grafix-benchmark
+```
+
+run ID は一意であり、既存 JSON は上書きされない。別 machine や計測条件の run も
+失われないが、同じ性能線へは接続されず、別の compatibility cohort として表示される。
+
 次を生成する。
 
 - `/tmp/grafix-benchmark/report.html`: filter や tooltip を備えた対話的 report
@@ -100,18 +116,40 @@ HTML は Vega runtime と chart spec を inline に含めるため JavaScript �
 表示時のネットワーク接続は必要としない。壊れた JSON や非対応 schema は黙って
 除外せず、HTML と warning summary に path と理由を残す。
 
-report の差分は最新 run を head とし、environment、measurement settings、case set、
-各 case の compatibility key がすべて一致する過去 run のうち直近のものだけを strict
-baseline として選ぶ。棒グラフの値は `(head - base) / base` で、正が regression、負が
-improvement を表す。履歴の帯は median ± MAD、guardrail は soft contract の閾値に
-対する負荷率である。workload や iteration 数の異なる case 間では絶対時間を直接比較
-しない。
+主 chart は横軸が UTC の実測日時、縦軸が 1 iteration 当たりの median milliseconds
+である。点と線が median、各点の縦 whisker が `median ± MAD` を表す。MAD は同一 run
+内 sample のばらつきであり、信頼区間ではない。2 点だけの上下から regression や
+improvement を断定しない。category と case を選ぶと、互換性の異なる cohort が独立した
+縦軸の row panel として並ぶ。
+
+同じ case ID、case compatibility key、environment compatibility key、mode、実効
+measurement settings を持つ点だけが 1 本の線へ接続される。case を含まない run が
+途中にあっても線は切れない。一方、環境・case 定義・設定の変更は別 cohort となり、
+failure や checksum 変更では線が切れる。workload や iteration 数の異なる case 間では
+絶対時間を直接比較しない。
+
+run coverage strip は、青が current cohort、橙が checksum 変更、黄が同じ case の別 cohort、
+灰が case 欠測、赤が current cohort の failure を表す。guardrail history は同じ contract
+定義の `actual / limit` を追跡し、`1.0` を閾値として表示する。どちら側が pass かは
+contract の comparator に依存する。
+
+`benchmark report` は保存済み run 全体の推移を探索するために使い、特定の変更前後を
+厳格に比較する場合は `benchmark compare BASE.json HEAD.json` を使う。report は
+schema v4 の compatibility key と計測情報を前提とするため、情報の不足した legacy
+schema を推測で v4 の系列へ接続しない。
+
+report の終了 code は最新の valid run にある hard contract failure だけで決まる。
+過去の failure と読み込み warning は HTML / `warnings.json` の historical audit に残るが、
+最新 run が正常な report を継続して失敗させない。
 
 ## 3. CI での扱い
 
 - hosted runner の wall time は artifact として観察し、hard gate にしない。
 - smoke job は checksum 生成、case 完走、schema 検証を確認する。
 - JSON、HTML、SVG overview、warning summary は GitHub Actions artifact として保存する。
+- report が示す履歴は、その workflow で出力先に存在した run の範囲だけである。
+  現在の一時 directory は workflow 間で継続されないため、CI artifact を長期履歴とは
+  扱わない。
 - wall-time ratio の gate が必要な場合は、固定された self-hosted Mac で base/head を
   同一 job 内に交互実行する。
 

@@ -1,23 +1,31 @@
-"""Benchmark run から可視化用の有限・比較可能な view model を構築する。"""
+"""Benchmark run から履歴中心の有限な report view model を構築する。"""
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
+from collections import defaultdict
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import TypeAlias, cast
 
 from grafix.devtools.benchmarks.schema import (
     BenchmarkRun,
     CaseResult,
     ContractResult,
+    materialize_json_object,
 )
 
 _MEASURED_STATUSES = frozenset(("ok", "contract-failure"))
 _DIRECTIONAL_COMPARATORS = frozenset(("lt", "le", "gt", "ge"))
+_MeasurementSignature: TypeAlias = tuple[tuple[str, object], ...]
+_CohortSignature: TypeAlias = tuple[str, str, str, _MeasurementSignature]
 
 
 @dataclass(frozen=True, slots=True)
 class SummaryView:
-    """最新 run の状態を report 冒頭へ表示するための要約。"""
+    """最新の時刻付き run の health summary。"""
 
     run_id: str
     created_at: str
@@ -35,35 +43,96 @@ class SummaryView:
 
 
 @dataclass(frozen=True, slots=True)
-class DeltaView:
-    """互換な base/head の 1 case 差分。"""
+class HistorySummaryView:
+    """読み込んだ benchmark history の範囲と coverage。"""
 
-    base_run_id: str
-    head_run_id: str
-    case_id: str
-    label: str
-    category: str
-    base_median_ms: float
-    head_median_ms: float
-    base_mad_ms: float
-    head_mad_ms: float
-    delta_fraction: float
-    direction: str
+    start_at: str | None
+    end_at: str | None
+    run_count: int
+    temporal_run_count: int
+    unique_case_count: int
+    cohort_count: int
+    trend_cohort_count: int
+    latest_warning_count: int
+    historical_warning_count: int
 
 
 @dataclass(frozen=True, slots=True)
-class RunComparisonView:
-    """1 run と、その直前の完全互換 run の比較。"""
+class TrendCaseView:
+    """case selector と small multiples に使う case summary。"""
 
-    head_run_id: str
-    base_run_id: str | None
-    unavailable_reason: str | None
-    deltas: tuple[DeltaView, ...]
+    case_id: str
+    label: str
+    category: str
+    tags: tuple[str, ...]
+    selector_label: str
+    current_cohort_id: str | None
+    cohort_count: int
+    successful_observation_count: int
+    historical: bool
+
+
+@dataclass(frozen=True, slots=True)
+class TrendPointView:
+    """同一 compatibility cohort 内の 1 timing observation。"""
+
+    case_id: str
+    label: str
+    category: str
+    tags: tuple[str, ...]
+    case_selector_label: str
+    cohort_id: str
+    cohort_label: str
+    is_current: bool
+    run_id: str
+    created_at: str
+    run_index: int
+    segment_id: int
+    status: str
+    median_ms: float
+    mad_ms: float
+    mad_low_ms: float
+    mad_high_ms: float
+    p95_ms: float | None
+    p99_ms: float | None
+    sample_count: int
+    source_commit: str
+    source_dirty: bool | None
+    mode: str
+    measurement_label: str
+    checksum: str
+    checksum_changed: bool
+    is_latest: bool
+
+
+@dataclass(frozen=True, slots=True)
+class CoveragePointView:
+    """観測された case が run で採用・分離・失敗した理由。"""
+
+    case_id: str
+    case_selector_label: str
+    run_id: str
+    created_at: str
+    run_index: int
+    cohort_id: str | None
+    state: str
+    reason: str
+    status: str
+    is_current: bool
+
+
+@dataclass(frozen=True, slots=True)
+class RunTimelineView:
+    """coverage の基準となる 1 run の時刻。"""
+
+    run_id: str
+    created_at: str
+    run_index: int
 
 
 @dataclass(frozen=True, slots=True)
 class TimingView:
-    """最新 run の 1 case timing。"""
+    """最新 run の補助的な 1 case timing。"""
 
     case_id: str
     label: str
@@ -77,32 +146,18 @@ class TimingView:
 
 
 @dataclass(frozen=True, slots=True)
-class HistoryView:
-    """互換性境界で分割済みの case timing 時系列点。"""
+class GuardrailTrendView:
+    """同じ contract 定義を時系列で追う directional soft guardrail。"""
 
     case_id: str
-    label: str
-    category: str
+    contract_id: str
+    cohort_id: str
+    cohort_label: str
+    is_current: bool
     run_id: str
     created_at: str
     run_index: int
     segment_id: int
-    view_mode: str
-    value: float
-    low: float
-    high: float
-    unit: str
-    value_label: str
-    mad_label: str
-
-
-@dataclass(frozen=True, slots=True)
-class GuardrailView:
-    """数値 soft contract の比較方向を揃えた bullet chart 用値。"""
-
-    case_id: str
-    contract_id: str
-    comparator: str
     passed: bool
     actual: float
     limit: float
@@ -113,185 +168,568 @@ class GuardrailView:
 
 @dataclass(frozen=True, slots=True)
 class ReportViewModel:
-    """report の表と chart が共有する不変 view model。"""
+    """report の表と chart が共有する history-first view model。"""
 
     summary: SummaryView | None
+    history_summary: HistorySummaryView
     latest_run_id: str | None
-    baseline_run_id: str | None
-    baseline_message: str
-    comparisons: tuple[RunComparisonView, ...]
-    deltas: tuple[DeltaView, ...]
+    cases: tuple[TrendCaseView, ...]
+    history: tuple[TrendPointView, ...]
+    timeline: tuple[RunTimelineView, ...]
+    coverage: tuple[CoveragePointView, ...]
     timings: tuple[TimingView, ...]
-    history: tuple[HistoryView, ...]
-    guardrails: tuple[GuardrailView, ...]
+    guardrails: tuple[GuardrailTrendView, ...]
+    history_warnings: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _Occurrence:
+    run: BenchmarkRun
+    result: CaseResult
+    run_index: int
+    created_at: str
+    signature: _CohortSignature
+    cohort_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class _GuardrailObservation:
+    """chartable な 1 guardrail observation と系列内の線分番号。"""
+
+    run: BenchmarkRun
+    run_index: int
+    result: CaseResult
+    contract: ContractResult
+    case_cohort_id: str
+    series_id: str
+    segment_id: int
+    load_ratio: float
+    direction: str
+
+
+def parse_created_at_utc(value: str) -> datetime | None:
+    """timezone 付き ISO 8601 timestamp を UTC datetime に正規化する。"""
+
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    return parsed.astimezone(timezone.utc)
+
+
+def chronological_runs(runs: tuple[BenchmarkRun, ...]) -> tuple[BenchmarkRun, ...]:
+    """時刻を解釈できる run を UTC timestamp と run ID で安定 sort する。"""
+
+    dated = (
+        (timestamp, run.meta.run_id, run)
+        for run in runs
+        if (timestamp := parse_created_at_utc(run.meta.created_at)) is not None
+    )
+    return tuple(run for _timestamp, _run_id, run in sorted(dated, key=lambda row: row[:2]))
+
+
+def latest_valid_run(runs: tuple[BenchmarkRun, ...]) -> BenchmarkRun | None:
+    """時刻を解釈できる最新 run を返す。"""
+
+    ordered = chronological_runs(runs)
+    return None if not ordered else ordered[-1]
+
+
+def measurement_signature(run: BenchmarkRun, result: CaseResult) -> _MeasurementSignature:
+    """case の実効 measurement settings を canonical tuple にする。"""
+
+    fields = (
+        ("disable_gc", "timeout_seconds")
+        if result.spec.self_sampling
+        else (
+            "samples",
+            "warmup",
+            "target_ns",
+            "disable_gc",
+            "timeout_seconds",
+        )
+    )
+    return tuple((field, getattr(run.meta, field)) for field in fields)
+
+
+def trend_cohort_key(run: BenchmarkRun, result: CaseResult) -> str:
+    """case/environment/mode/実効設定から短い安定 cohort ID を返す。"""
+
+    payload = (
+        result.spec.case_id,
+        result.spec.compatibility_key,
+        run.environment.compatibility_key,
+        run.meta.mode,
+        measurement_signature(run, result),
+    )
+    encoded = json.dumps(payload, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()[:12]
 
 
 def build_report_view_model(
     runs: tuple[BenchmarkRun, ...],
     *,
-    warning_count: int,
+    warning_count: int = 0,
+    latest_warning_count: int = 0,
+    historical_warning_count: int | None = None,
 ) -> ReportViewModel:
-    """検証済み run から chart と表に共通の view model を構築する。"""
+    """検証済み schema v4 run から report view model を構築する。"""
 
-    if not runs:
-        return ReportViewModel(
-            summary=None,
-            latest_run_id=None,
-            baseline_run_id=None,
-            baseline_message="No valid schema v4 run is available.",
-            comparisons=(),
-            deltas=(),
-            timings=(),
-            history=(),
-            guardrails=(),
-        )
-
-    comparisons = tuple(_comparison_for_run(head, runs[:index]) for index, head in enumerate(runs))
-    latest = runs[-1]
-    latest_comparison = comparisons[-1]
-    return ReportViewModel(
-        summary=_summary_view(latest, warning_count=warning_count),
-        latest_run_id=latest.meta.run_id,
-        baseline_run_id=latest_comparison.base_run_id,
-        baseline_message=(
-            f"Compared with {latest_comparison.base_run_id}."
-            if latest_comparison.base_run_id is not None
-            else str(latest_comparison.unavailable_reason)
-        ),
-        comparisons=comparisons,
-        deltas=latest_comparison.deltas,
-        timings=_timing_views(latest),
-        history=_history_views(runs, latest),
-        guardrails=_guardrail_views(latest),
+    ordered = chronological_runs(runs)
+    invalid_timestamp_warnings = tuple(
+        f"{run.meta.run_id}: invalid created_at for history: {run.meta.created_at!r}"
+        for run in runs
+        if parse_created_at_utc(run.meta.created_at) is None
     )
-
-
-def select_baseline(
-    head: BenchmarkRun,
-    candidates: tuple[BenchmarkRun, ...],
-) -> BenchmarkRun | None:
-    """head より前の run から最も近い完全互換 run を返す。"""
-
-    return next(
-        (
-            candidate
-            for candidate in reversed(candidates)
-            if not run_compatibility_issues(candidate, head)
-        ),
-        None,
-    )
-
-
-def run_compatibility_issues(
-    base: BenchmarkRun,
-    head: BenchmarkRun,
-) -> tuple[str, ...]:
-    """全 case を同じ base/head として比較できない理由を返す。"""
-
-    issues: list[str] = []
-    if base.environment.compatibility_key != head.environment.compatibility_key:
-        issues.append("environment differs")
-    if base.meta.mode != head.meta.mode:
-        issues.append("measurement mode differs")
-
-    all_cases_self_sampling = bool(base.cases and head.cases) and all(
-        result.spec.self_sampling for result in (*base.cases, *head.cases)
-    )
-    measurement_fields = (
-        ("disable_gc", "timeout_seconds")
-        if all_cases_self_sampling
-        else (
-            "samples",
-            "warmup",
-            "target_ns",
-            "disable_gc",
-            "timeout_seconds",
-        )
-    )
-    differing_measurements = tuple(
-        field
-        for field in measurement_fields
-        if getattr(base.meta, field) != getattr(head.meta, field)
-    )
-    if differing_measurements:
-        issues.append("measurement settings differ: " + ", ".join(differing_measurements))
-
-    base_cases = {result.spec.case_id: result for result in base.cases}
-    head_cases = {result.spec.case_id: result for result in head.cases}
-    if set(base_cases) != set(head_cases):
-        issues.append("case set differs")
-        return tuple(issues)
-
-    for case_id in sorted(head_cases):
-        base_result = base_cases[case_id]
-        head_result = head_cases[case_id]
-        if base_result.spec.compatibility_key != head_result.spec.compatibility_key:
-            issues.append(f"{case_id}: case definition differs")
-    return tuple(issues)
-
-
-def measurement_compatible(
-    base_run: BenchmarkRun,
-    base_result: CaseResult,
-    head_run: BenchmarkRun,
-    head_result: CaseResult,
-) -> bool:
-    """case の計測値を同じ系列として扱えるか判定する。"""
-
-    if base_run.meta.mode != head_run.meta.mode:
-        return False
-    fields = (
-        ("disable_gc", "timeout_seconds")
-        if base_result.spec.self_sampling and head_result.spec.self_sampling
-        else (
-            "samples",
-            "warmup",
-            "target_ns",
-            "disable_gc",
-            "timeout_seconds",
-        )
-    )
-    return all(getattr(base_run.meta, field) == getattr(head_run.meta, field) for field in fields)
-
-
-def comparison_delta_lookup(
-    model: ReportViewModel,
-) -> dict[tuple[str, str], DeltaView]:
-    """詳細表から head run / case で差分を引くための mapping を返す。"""
-
-    return {
-        (comparison.head_run_id, delta.case_id): delta
-        for comparison in model.comparisons
-        for delta in comparison.deltas
+    latest = None if not ordered else ordered[-1]
+    occurrences, case_results = _index_occurrences(ordered)
+    current_cohorts = {
+        case_id: rows[-1].cohort_id
+        for case_id, rows in case_results.items()
+        if rows
     }
+    cohort_labels = _cohort_labels(occurrences, current_cohorts=current_cohorts)
+    history = _trend_points(
+        occurrences,
+        current_cohorts=current_cohorts,
+        cohort_labels=cohort_labels,
+        latest_run_id=None if latest is None else latest.meta.run_id,
+        latest_case_ids=(
+            frozenset() if latest is None else frozenset(result.spec.case_id for result in latest.cases)
+        ),
+    )
+    cases = _trend_cases(
+        ordered,
+        case_results=case_results,
+        current_cohorts=current_cohorts,
+        history=history,
+        latest=latest,
+    )
+    coverage = _coverage_points(
+        ordered,
+        cases=cases,
+        current_cohorts=current_cohorts,
+        occurrences=occurrences,
+        history=history,
+    )
+    historical_count = (
+        max(0, warning_count - latest_warning_count)
+        if historical_warning_count is None
+        else historical_warning_count
+    )
+    summary = HistorySummaryView(
+        start_at=None if not ordered else _normalized_created_at(ordered[0]),
+        end_at=None if not ordered else _normalized_created_at(ordered[-1]),
+        run_count=len(runs),
+        temporal_run_count=len(ordered),
+        unique_case_count=len(cases),
+        cohort_count=len(occurrences),
+        trend_cohort_count=_trend_cohort_count(history),
+        latest_warning_count=latest_warning_count,
+        historical_warning_count=historical_count + len(invalid_timestamp_warnings),
+    )
+    return ReportViewModel(
+        summary=(
+            None
+            if latest is None
+            else _summary_view(latest, warning_count=latest_warning_count)
+        ),
+        history_summary=summary,
+        latest_run_id=None if latest is None else latest.meta.run_id,
+        cases=cases,
+        history=history,
+        timeline=_run_timeline(ordered),
+        coverage=coverage,
+        timings=() if latest is None else _timing_views(latest),
+        guardrails=_guardrail_trends(
+            ordered,
+            cohort_labels=cohort_labels,
+        ),
+        history_warnings=invalid_timestamp_warnings,
+    )
 
 
-def _comparison_for_run(
-    head: BenchmarkRun,
-    candidates: tuple[BenchmarkRun, ...],
-) -> RunComparisonView:
-    base = select_baseline(head, candidates)
-    if base is None:
-        reason = (
-            "No earlier run is available."
-            if not candidates
-            else (
-                "No earlier run has the same environment, case definitions, "
-                "and measurement settings."
+def _cohort_signature(run: BenchmarkRun, result: CaseResult) -> _CohortSignature:
+    return (
+        result.spec.compatibility_key,
+        run.environment.compatibility_key,
+        run.meta.mode,
+        measurement_signature(run, result),
+    )
+
+
+def _index_occurrences(
+    runs: tuple[BenchmarkRun, ...],
+) -> tuple[dict[tuple[str, str], tuple[_Occurrence, ...]], dict[str, tuple[_Occurrence, ...]]]:
+    by_cohort: dict[tuple[str, str], list[_Occurrence]] = defaultdict(list)
+    by_case: dict[str, list[_Occurrence]] = defaultdict(list)
+    for run_index, run in enumerate(runs):
+        created_at = _normalized_created_at(run)
+        for result in run.cases:
+            cohort_id = trend_cohort_key(run, result)
+            occurrence = _Occurrence(
+                run=run,
+                result=result,
+                run_index=run_index,
+                created_at=created_at,
+                signature=_cohort_signature(run, result),
+                cohort_id=cohort_id,
+            )
+            by_cohort[(result.spec.case_id, cohort_id)].append(occurrence)
+            by_case[result.spec.case_id].append(occurrence)
+    return (
+        {key: tuple(value) for key, value in by_cohort.items()},
+        {key: tuple(value) for key, value in by_case.items()},
+    )
+
+
+def _cohort_labels(
+    occurrences: dict[tuple[str, str], tuple[_Occurrence, ...]],
+    *,
+    current_cohorts: dict[str, str],
+) -> dict[tuple[str, str], str]:
+    labels: dict[tuple[str, str], str] = {}
+    for (case_id, cohort_id), rows in occurrences.items():
+        reference = rows[-1]
+        successful = sum(row.result.status == "ok" for row in rows)
+        state = "current" if current_cohorts.get(case_id) == cohort_id else "past"
+        environment = _environment_label(reference.run)
+        measurement = _measurement_label(reference.run, reference.result)
+        labels[(case_id, cohort_id)] = (
+            f"{state} · {successful} ok · {environment} · "
+            f"{reference.run.meta.mode} · {measurement}"
+        )
+    return labels
+
+
+def _trend_points(
+    occurrences: dict[tuple[str, str], tuple[_Occurrence, ...]],
+    *,
+    current_cohorts: dict[str, str],
+    cohort_labels: dict[tuple[str, str], str],
+    latest_run_id: str | None,
+    latest_case_ids: frozenset[str],
+) -> tuple[TrendPointView, ...]:
+    points: list[TrendPointView] = []
+    for key in sorted(occurrences):
+        case_id, cohort_id = key
+        rows = occurrences[key]
+        segment_id = 0
+        previous_checksum: str | None = None
+        for occurrence in rows:
+            result = occurrence.result
+            if result.status not in _MEASURED_STATUSES or result.stats is None:
+                segment_id += 1
+                continue
+            median_ms = float(result.stats.median_ns) / 1_000_000.0
+            mad_ms = float(result.stats.mad_ns) / 1_000_000.0
+            if not all(math.isfinite(value) and value >= 0.0 for value in (median_ms, mad_ms)):
+                segment_id += 1
+                continue
+            checksum_changed = (
+                previous_checksum is not None and result.checksum != previous_checksum
+            )
+            if checksum_changed or result.status != "ok":
+                segment_id += 1
+            points.append(
+                TrendPointView(
+                    case_id=case_id,
+                    label=result.spec.label,
+                    category=result.spec.category,
+                    tags=result.spec.tags,
+                    case_selector_label=_case_selector_label(
+                        result,
+                        historical=case_id not in latest_case_ids,
+                    ),
+                    cohort_id=cohort_id,
+                    cohort_label=cohort_labels[key],
+                    is_current=current_cohorts.get(case_id) == cohort_id,
+                    run_id=occurrence.run.meta.run_id,
+                    created_at=occurrence.created_at,
+                    run_index=occurrence.run_index,
+                    segment_id=segment_id,
+                    status=result.status,
+                    median_ms=median_ms,
+                    mad_ms=mad_ms,
+                    mad_low_ms=max(0.0, median_ms - mad_ms),
+                    mad_high_ms=median_ms + mad_ms,
+                    p95_ms=(
+                        None
+                        if result.stats.p95_ns is None
+                        else float(result.stats.p95_ns) / 1_000_000.0
+                    ),
+                    p99_ms=(
+                        None
+                        if result.stats.p99_ns is None
+                        else float(result.stats.p99_ns) / 1_000_000.0
+                    ),
+                    sample_count=result.stats.n,
+                    source_commit=occurrence.run.source.commit or "unavailable",
+                    source_dirty=occurrence.run.source.dirty,
+                    mode=occurrence.run.meta.mode,
+                    measurement_label=_measurement_label(occurrence.run, result),
+                    checksum=result.checksum or "unavailable",
+                    checksum_changed=checksum_changed,
+                    is_latest=occurrence.run.meta.run_id == latest_run_id,
+                )
+            )
+            previous_checksum = result.checksum
+            if result.status != "ok":
+                segment_id += 1
+    points.sort(key=lambda row: (row.case_id, row.cohort_id, row.run_index, row.run_id))
+    return tuple(points)
+
+
+def _trend_cases(
+    all_runs: tuple[BenchmarkRun, ...],
+    *,
+    case_results: dict[str, tuple[_Occurrence, ...]],
+    current_cohorts: dict[str, str],
+    history: tuple[TrendPointView, ...],
+    latest: BenchmarkRun | None,
+) -> tuple[TrendCaseView, ...]:
+    latest_case_ids = set() if latest is None else {result.spec.case_id for result in latest.cases}
+    latest_any_result: dict[str, CaseResult] = {}
+    for run in all_runs:
+        for result in run.cases:
+            latest_any_result[result.spec.case_id] = result
+    success_counts: dict[tuple[str, str], int] = defaultdict(int)
+    for point in history:
+        if point.status == "ok":
+            success_counts[(point.case_id, point.cohort_id)] += 1
+    rows: list[TrendCaseView] = []
+    for case_id in sorted(latest_any_result):
+        result = latest_any_result[case_id]
+        historical = case_id not in latest_case_ids
+        cohort_ids = {row.cohort_id for row in case_results.get(case_id, ())}
+        current_cohort_id = current_cohorts.get(case_id)
+        rows.append(
+            TrendCaseView(
+                case_id=case_id,
+                label=result.spec.label,
+                category=result.spec.category,
+                tags=result.spec.tags,
+                selector_label=_case_selector_label(result, historical=historical),
+                current_cohort_id=current_cohort_id,
+                cohort_count=len(cohort_ids),
+                successful_observation_count=(
+                    0
+                    if current_cohort_id is None
+                    else success_counts.get((case_id, current_cohort_id), 0)
+                ),
+                historical=historical,
             )
         )
-        return RunComparisonView(
-            head_run_id=head.meta.run_id,
-            base_run_id=None,
-            unavailable_reason=reason,
-            deltas=(),
+    rows.sort(
+        key=lambda row: (
+            row.historical,
+            -row.successful_observation_count,
+            row.case_id,
         )
-    return RunComparisonView(
-        head_run_id=head.meta.run_id,
-        base_run_id=base.meta.run_id,
-        unavailable_reason=None,
-        deltas=_delta_views(base, head),
     )
+    return tuple(rows)
+
+
+def _coverage_points(
+    runs: tuple[BenchmarkRun, ...],
+    *,
+    cases: tuple[TrendCaseView, ...],
+    current_cohorts: dict[str, str],
+    occurrences: dict[tuple[str, str], tuple[_Occurrence, ...]],
+    history: tuple[TrendPointView, ...],
+) -> tuple[CoveragePointView, ...]:
+    occurrence_by_run_case = {
+        (row.run.meta.run_id, row.result.spec.case_id): row
+        for rows in occurrences.values()
+        for row in rows
+    }
+    latest_signature = {
+        case.case_id: occurrences[(case.case_id, case.current_cohort_id)][-1].signature
+        for case in cases
+        if case.current_cohort_id is not None
+    }
+    checksum_changes = {
+        (point.run_id, point.case_id)
+        for point in history
+        if point.checksum_changed
+    }
+    cases_by_id = {case.case_id: case for case in cases}
+    coverage_rows: list[CoveragePointView] = []
+    for run_index, run in enumerate(runs):
+        for result in run.cases:
+            case_id = result.spec.case_id
+            case = cases_by_id[case_id]
+            occurrence = occurrence_by_run_case[(run.meta.run_id, case_id)]
+            cohort_id = occurrence.cohort_id
+            status = result.status
+            is_current = current_cohorts.get(case_id) == cohort_id
+            if not is_current:
+                state = "other-cohort"
+                difference = _cohort_difference_reason(
+                    occurrence.signature,
+                    latest_signature[case_id],
+                )
+                reason = (
+                    difference
+                    if status == "ok"
+                    else f"{difference}; case status is {status}"
+                )
+            elif status != "ok":
+                state = "failure"
+                reason = f"current cohort status is {status}"
+            elif (run.meta.run_id, case_id) in checksum_changes:
+                state = "output-changed"
+                reason = "checksum changed within the current cohort"
+            else:
+                state = "current"
+                reason = "included in the current compatibility cohort"
+            coverage_rows.append(
+                CoveragePointView(
+                    case_id=case_id,
+                    case_selector_label=case.selector_label,
+                    run_id=run.meta.run_id,
+                    created_at=_normalized_created_at(run),
+                    run_index=run_index,
+                    cohort_id=cohort_id,
+                    state=state,
+                    reason=reason,
+                    status=status,
+                    is_current=is_current,
+                )
+            )
+    return tuple(coverage_rows)
+
+
+def _run_timeline(runs: tuple[BenchmarkRun, ...]) -> tuple[RunTimelineView, ...]:
+    return tuple(
+        RunTimelineView(
+            run_id=run.meta.run_id,
+            created_at=_normalized_created_at(run),
+            run_index=run_index,
+        )
+        for run_index, run in enumerate(runs)
+    )
+
+
+def _guardrail_trends(
+    runs: tuple[BenchmarkRun, ...],
+    *,
+    cohort_labels: dict[tuple[str, str], str],
+) -> tuple[GuardrailTrendView, ...]:
+    observations: list[_GuardrailObservation] = []
+    latest_occurrences: dict[str, tuple[str, CaseResult]] = {}
+    case_occurrence_count: dict[str, int] = defaultdict(int)
+    latest_case_occurrence_by_series: dict[str, int] = {}
+    segment_by_series: dict[str, int] = defaultdict(int)
+    for run_index, run in enumerate(runs):
+        for result in run.cases:
+            case_id = result.spec.case_id
+            case_occurrence_index = case_occurrence_count[case_id]
+            case_occurrence_count[case_id] += 1
+            case_cohort_id = trend_cohort_key(run, result)
+            latest_occurrences[case_id] = (case_cohort_id, result)
+            for contract in result.contracts:
+                normalized = _normalized_guardrail(contract)
+                if normalized is None:
+                    continue
+                load_ratio, direction = normalized
+                series_id = _guardrail_cohort_id(case_cohort_id, contract)
+                previous_occurrence = latest_case_occurrence_by_series.get(series_id)
+                if (
+                    previous_occurrence is not None
+                    and case_occurrence_index != previous_occurrence + 1
+                ):
+                    segment_by_series[series_id] += 1
+                observations.append(
+                    _GuardrailObservation(
+                        run=run,
+                        run_index=run_index,
+                        result=result,
+                        contract=contract,
+                        case_cohort_id=case_cohort_id,
+                        series_id=series_id,
+                        segment_id=segment_by_series[series_id],
+                        load_ratio=load_ratio,
+                        direction=direction,
+                    )
+                )
+                latest_case_occurrence_by_series[series_id] = case_occurrence_index
+
+    current_series = {
+        _guardrail_cohort_id(case_cohort_id, contract)
+        for case_cohort_id, result in latest_occurrences.values()
+        for contract in result.contracts
+        if _normalized_guardrail(contract) is not None
+    }
+    rows: list[GuardrailTrendView] = []
+    for observation in observations:
+        run = observation.run
+        result = observation.result
+        contract = observation.contract
+        series_label = (
+            f"{contract.contract_id} · {contract.comparator} {contract.limit} · "
+            f"{contract.reason} · "
+            f"{cohort_labels.get((result.spec.case_id, observation.case_cohort_id), observation.case_cohort_id)}"
+        )
+        rows.append(
+            GuardrailTrendView(
+                case_id=result.spec.case_id,
+                contract_id=contract.contract_id,
+                cohort_id=observation.series_id,
+                cohort_label=series_label,
+                is_current=observation.series_id in current_series,
+                run_id=run.meta.run_id,
+                created_at=_normalized_created_at(run),
+                run_index=observation.run_index,
+                segment_id=observation.segment_id,
+                passed=contract.passed,
+                actual=float(contract.actual),
+                limit=float(contract.limit),
+                load_ratio=observation.load_ratio,
+                direction=observation.direction,
+                reason=contract.reason,
+            )
+        )
+    rows.sort(key=lambda row: (not row.is_current, row.case_id, row.contract_id, row.run_index))
+    return tuple(rows)
+
+
+def _guardrail_cohort_id(case_cohort_id: str, contract: ContractResult) -> str:
+    payload = (
+        case_cohort_id,
+        contract.contract_id,
+        contract.severity,
+        contract.comparator,
+        float(contract.limit),
+        contract.reason,
+    )
+    encoded = json.dumps(payload, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()[:12]
+
+
+def _normalized_guardrail(contract: ContractResult) -> tuple[float, str] | None:
+    if (
+        contract.severity != "soft"
+        or contract.comparator not in _DIRECTIONAL_COMPARATORS
+        or not _finite_number(contract.actual)
+        or not _finite_number(contract.limit)
+    ):
+        return None
+    actual = float(contract.actual)
+    limit = float(contract.limit)
+    if actual < 0.0 or limit <= 0.0:
+        return None
+    load_ratio = actual / limit
+    direction = (
+        "lower is better"
+        if contract.comparator in {"lt", "le"}
+        else "higher is better"
+    )
+    if not math.isfinite(load_ratio):
+        return None
+    return load_ratio, direction
 
 
 def _summary_view(run: BenchmarkRun, *, warning_count: int) -> SummaryView:
@@ -310,7 +748,7 @@ def _summary_view(run: BenchmarkRun, *, warning_count: int) -> SummaryView:
     )
     return SummaryView(
         run_id=run.meta.run_id,
-        created_at=run.meta.created_at,
+        created_at=_normalized_created_at(run),
         source=run.source.commit or "unavailable",
         suite=run.meta.suite,
         profile=run.meta.profile,
@@ -323,40 +761,6 @@ def _summary_view(run: BenchmarkRun, *, warning_count: int) -> SummaryView:
         soft_passed=sum(contract.passed for contract in soft),
         soft_total=len(soft),
     )
-
-
-def _delta_views(base: BenchmarkRun, head: BenchmarkRun) -> tuple[DeltaView, ...]:
-    base_cases = {result.spec.case_id: result for result in base.cases}
-    rows: list[DeltaView] = []
-    for head_result in head.cases:
-        base_result = base_cases[head_result.spec.case_id]
-        if base_result.stats is None or head_result.stats is None:
-            continue
-        base_median = float(base_result.stats.median_ns) / 1_000_000.0
-        head_median = float(head_result.stats.median_ns) / 1_000_000.0
-        if base_median <= 0.0:
-            continue
-        delta = head_median / base_median - 1.0
-        if not all(math.isfinite(value) for value in (base_median, head_median, delta)):
-            continue
-        direction = "regression" if delta > 0.0 else ("improvement" if delta < 0.0 else "unchanged")
-        rows.append(
-            DeltaView(
-                base_run_id=base.meta.run_id,
-                head_run_id=head.meta.run_id,
-                case_id=head_result.spec.case_id,
-                label=head_result.spec.label,
-                category=head_result.spec.category,
-                base_median_ms=base_median,
-                head_median_ms=head_median,
-                base_mad_ms=float(base_result.stats.mad_ns) / 1_000_000.0,
-                head_mad_ms=float(head_result.stats.mad_ns) / 1_000_000.0,
-                delta_fraction=delta,
-                direction=direction,
-            )
-        )
-    rows.sort(key=lambda row: (-row.delta_fraction, row.case_id))
-    return tuple(rows)
 
 
 def _timing_views(run: BenchmarkRun) -> tuple[TimingView, ...]:
@@ -383,154 +787,74 @@ def _timing_views(run: BenchmarkRun) -> tuple[TimingView, ...]:
     return tuple(rows)
 
 
-def _history_views(
-    runs: tuple[BenchmarkRun, ...],
-    latest: BenchmarkRun,
-) -> tuple[HistoryView, ...]:
-    rows: list[HistoryView] = []
-    latest_cases = {result.spec.case_id: result for result in latest.cases}
-    for case_id in sorted(latest_cases):
-        reference = latest_cases[case_id]
-        segment_id = 0
-        origin_ms: float | None = None
-        for run_index, run in enumerate(runs):
-            result = next(
-                (candidate for candidate in run.cases if candidate.spec.case_id == case_id),
-                None,
-            )
-            compatible = (
-                result is not None
-                and run.environment.compatibility_key == latest.environment.compatibility_key
-                and result.spec.compatibility_key == reference.spec.compatibility_key
-                and measurement_compatible(run, result, latest, reference)
-                and result.status in _MEASURED_STATUSES
-                and result.stats is not None
-            )
-            if not compatible or result is None or result.stats is None:
-                segment_id += 1
-                continue
-
-            median_ms = float(result.stats.median_ns) / 1_000_000.0
-            mad_ms = float(result.stats.mad_ns) / 1_000_000.0
-            if not all(math.isfinite(value) and value >= 0.0 for value in (median_ms, mad_ms)):
-                segment_id += 1
-                continue
-            if origin_ms is None and median_ms > 0.0:
-                origin_ms = median_ms
-            rows.append(
-                _history_view(
-                    reference=reference,
-                    run=run,
-                    run_index=run_index,
-                    segment_id=segment_id,
-                    view_mode="absolute",
-                    value=median_ms,
-                    low=max(0.0, median_ms - mad_ms),
-                    high=median_ms + mad_ms,
-                    unit="ms",
-                    value_label=f"{median_ms:.6f} ms",
-                    mad_label=f"{mad_ms:.6f} ms",
-                )
-            )
-            if origin_ms is not None:
-                value = (median_ms / origin_ms - 1.0) * 100.0
-                low = (max(0.0, median_ms - mad_ms) / origin_ms - 1.0) * 100.0
-                high = ((median_ms + mad_ms) / origin_ms - 1.0) * 100.0
-                rows.append(
-                    _history_view(
-                        reference=reference,
-                        run=run,
-                        run_index=run_index,
-                        segment_id=segment_id,
-                        view_mode="relative",
-                        value=value,
-                        low=low,
-                        high=high,
-                        unit="%",
-                        value_label=f"{value:+.2f}%",
-                        mad_label=f"±{mad_ms / origin_ms * 100.0:.2f}%",
-                    )
-                )
-    return tuple(rows)
+def _environment_label(run: BenchmarkRun) -> str:
+    values = materialize_json_object(run.environment.values)
+    hardware = values.get("hardware")
+    python = values.get("python")
+    cpu = hardware.get("cpu") if isinstance(hardware, dict) else None
+    implementation = python.get("implementation") if isinstance(python, dict) else None
+    version = python.get("version") if isinstance(python, dict) else None
+    machine = str(cpu or "unknown CPU")
+    runtime = " ".join(str(value) for value in (implementation, version) if value)
+    return f"{machine} / {runtime or 'unknown Python'}"
 
 
-def _history_view(
-    *,
-    reference: CaseResult,
-    run: BenchmarkRun,
-    run_index: int,
-    segment_id: int,
-    view_mode: str,
-    value: float,
-    low: float,
-    high: float,
-    unit: str,
-    value_label: str,
-    mad_label: str,
-) -> HistoryView:
-    return HistoryView(
-        case_id=reference.spec.case_id,
-        label=reference.spec.label,
-        category=reference.spec.category,
-        run_id=run.meta.run_id,
-        created_at=run.meta.created_at,
-        run_index=run_index,
-        segment_id=segment_id,
-        view_mode=view_mode,
-        value=value,
-        low=low,
-        high=high,
-        unit=unit,
-        value_label=value_label,
-        mad_label=mad_label,
+def _measurement_label(run: BenchmarkRun, result: CaseResult) -> str:
+    values = dict(measurement_signature(run, result))
+    parts: list[str] = []
+    if not result.spec.self_sampling:
+        parts.extend(
+            (
+                f"samples={values['samples']}",
+                f"warmup={values['warmup']}",
+                f"target={float(cast(int | float, values['target_ns'])) / 1_000_000.0:g}ms",
+            )
+        )
+    parts.extend(
+        (
+            f"gc={'off' if values['disable_gc'] else 'on'}",
+            f"timeout={float(cast(int | float, values['timeout_seconds'])):g}s",
+        )
+    )
+    return ", ".join(parts)
+
+
+def _case_selector_label(result: CaseResult, *, historical: bool) -> str:
+    suffix = " · historical" if historical else ""
+    return (
+        f"{result.spec.category} / {result.spec.label} · "
+        f"{result.spec.case_id}{suffix}"
     )
 
 
-def _guardrail_views(run: BenchmarkRun) -> tuple[GuardrailView, ...]:
-    rows: list[GuardrailView] = []
-    for result in run.cases:
-        for contract in result.contracts:
-            row = _guardrail_view(result, contract)
-            if row is not None:
-                rows.append(row)
-    rows.sort(key=lambda row: (row.passed, -row.load_ratio, row.contract_id))
-    return tuple(rows)
+def _cohort_difference_reason(
+    candidate: _CohortSignature,
+    current: _CohortSignature,
+) -> str:
+    reasons: list[str] = []
+    if candidate[0] != current[0]:
+        reasons.append("case definition differs")
+    if candidate[1] != current[1]:
+        reasons.append("environment differs")
+    if candidate[2] != current[2]:
+        reasons.append("measurement mode differs")
+    if candidate[3] != current[3]:
+        reasons.append("measurement settings differ")
+    return ", ".join(reasons) or "different compatibility cohort"
 
 
-def _guardrail_view(
-    result: CaseResult,
-    contract: ContractResult,
-) -> GuardrailView | None:
-    if (
-        contract.severity != "soft"
-        or contract.comparator not in _DIRECTIONAL_COMPARATORS
-        or not _finite_number(contract.actual)
-        or not _finite_number(contract.limit)
-    ):
-        return None
-    actual = float(contract.actual)
-    limit = float(contract.limit)
-    if actual < 0.0 or limit <= 0.0:
-        return None
-    if contract.comparator in {"lt", "le"}:
-        load_ratio = actual / limit
-        direction = "lower is better"
-    else:
-        load_ratio = limit / actual if actual > 0.0 else 2.0
-        direction = "higher is better"
-    if not math.isfinite(load_ratio):
-        return None
-    return GuardrailView(
-        case_id=result.spec.case_id,
-        contract_id=contract.contract_id,
-        comparator=contract.comparator,
-        passed=contract.passed,
-        actual=actual,
-        limit=limit,
-        load_ratio=load_ratio,
-        direction=direction,
-        reason=contract.reason,
-    )
+def _trend_cohort_count(history: tuple[TrendPointView, ...]) -> int:
+    counts: dict[tuple[str, str], int] = defaultdict(int)
+    for point in history:
+        if point.status == "ok":
+            counts[(point.case_id, point.cohort_id)] += 1
+    return sum(count >= 2 for count in counts.values())
+
+
+def _normalized_created_at(run: BenchmarkRun) -> str:
+    timestamp = parse_created_at_utc(run.meta.created_at)
+    assert timestamp is not None
+    return timestamp.isoformat().replace("+00:00", "Z")
 
 
 def _finite_number(value: object) -> bool:
@@ -542,16 +866,19 @@ def _finite_number(value: object) -> bool:
 
 
 __all__ = [
-    "DeltaView",
-    "GuardrailView",
-    "HistoryView",
+    "CoveragePointView",
+    "GuardrailTrendView",
+    "HistorySummaryView",
     "ReportViewModel",
-    "RunComparisonView",
+    "RunTimelineView",
     "SummaryView",
     "TimingView",
+    "TrendCaseView",
+    "TrendPointView",
     "build_report_view_model",
-    "comparison_delta_lookup",
-    "measurement_compatible",
-    "run_compatibility_issues",
-    "select_baseline",
+    "chronological_runs",
+    "latest_valid_run",
+    "measurement_signature",
+    "parse_created_at_utc",
+    "trend_cohort_key",
 ]

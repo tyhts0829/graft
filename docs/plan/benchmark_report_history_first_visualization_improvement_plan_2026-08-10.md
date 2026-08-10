@@ -138,9 +138,10 @@ latest health は現在状態の補助情報として残すが、過去との自
   `historical` と明示して選択可能にする。
 - default case は「latest run に存在し、latest を含む cohort の成功観測数が最も多い case」とし、
   同数なら case id で決定する。
-- cohort selector は `current/past`、成功観測数、期間、OS/CPU/Python、mode、主要 measurement settings を
-  人が読める短い label にする。hash は tooltip の診断情報に留める。
-- default cohort は latest の測定点を含む cohort、なければ最も新しい cohort とする。
+- cohort は `current/past`、成功観測数、OS/CPU/Python、mode、主要 measurement settings を示す
+  人が読める label の独立 row panel として並べる。hash は tooltip の診断情報に留める。
+- current cohort を先頭にし、past cohort と同じ y 軸へ重ねない。case と連動しない無効な cohort 選択を
+  生まないため、cohort dropdown より全系列を俯瞰できる row facet を採用する。
 - x 軸は UTC datetime、y 軸は median milliseconds の linear scale とする。
 - median line / point、MAD whisker、latest point の値 label を表示する。
 - tooltip に日時、run id、commit、dirty、median、MAD、p95/p99、sample 数、status、
@@ -151,7 +152,7 @@ latest health は現在状態の補助情報として残すが、過去との自
 
 主 chart の直下に、選択した case / cohort に対する全 run の扱いを 1 行で表示する。
 
-- 青: 選択 cohort に採用した成功点
+- 青: 選択 case の current cohort に採用した成功点
 - 黄: 同じ case だが別 cohort
 - 灰: case 欠測
 - 赤: 選択 cohort の failure / contract-failure
@@ -173,8 +174,9 @@ latest health は現在状態の補助情報として残すが、過去との自
 
 ### 5.5 Guardrail history と詳細情報
 
-- latest guardrail の pass/fail だけでなく、同じ contract 定義の load ratio 推移を表示する。
-- threshold を `1.0` とし、contract id、comparator、limit、unit、severity が変わった場合は別系列にする。
+- latest guardrail の pass/fail だけでなく、同じ contract 定義の `actual / limit` 推移を表示する。
+- threshold を `1.0` とし、pass 側は comparator で読む。contract id、comparator、limit、severity、reason が
+  変わった場合は別系列にする（現行 schema の contract には unit field がない）。
 - latest timing、warnings、contracts、runs、scaling table は補助情報として後段へ移し、
   HTML では折りたためる構成にする。
 - detailed runs table から `compatible Δ` 列を削除する。
@@ -195,15 +197,15 @@ regression / improvement / base-head delta は載せない。
 
 ## 6. report model の変更
 
-- [ ] `ReportViewModel` から report 専用の baseline、comparison、delta を削除する。
-- [ ] `DeltaView`、`RunComparisonView`、`select_baseline()` と report 内の比較 lookup を削除する。
-- [ ] history coverage、case、cohort、point、failure event、guardrail history の immutable view を追加する。
-- [ ] `measurement_signature(run, result)` と `trend_cohort_key(run, result)` を純粋関数として一箇所に定義する。
-- [ ] 全 valid v4 run / case を最新 run 基準で捨てず、1 pass で cohort 化する。
-- [ ] checksum 変化と同 cohort failure だけから segment を構築する。
-- [ ] datetime の parse、UTC 正規化、安定 sort、invalid timestamp warning を実装する。
-- [ ] chart record を有限の JSON-compatible 値に限定し、raw samples を含めない。
-- [ ] latest summary と historical coverage / warning summary を分離する。
+- [x] `ReportViewModel` から report 専用の baseline、comparison、delta を削除する。
+- [x] `DeltaView`、`RunComparisonView`、`select_baseline()` と report 内の比較 lookup を削除する。
+- [x] history coverage、case、cohort、point、failure event、guardrail history の immutable view を追加する。
+- [x] `measurement_signature(run, result)` と `trend_cohort_key(run, result)` を純粋関数として一箇所に定義する。
+- [x] 全 valid v4 run / case を最新 run 基準で捨てず、1 pass で cohort 化する。
+- [x] checksum 変化と同 cohort failure だけから segment を構築する。
+- [x] datetime の parse、UTC 正規化、安定 sort、invalid timestamp warning を実装する。
+- [x] chart record を有限の JSON-compatible 値に限定し、raw samples を含めない。
+- [x] latest summary と historical coverage / warning summary を分離する。
 
 候補となる内部 view は次の責務に分ける。名称は実装時に簡潔さを優先して確定する。
 
@@ -218,20 +220,20 @@ report 内部 API は破壊的に置き換え、旧 baseline model の互換 shi
 
 ## 7. chart / HTML / CLI の変更
 
-- [ ] chart 順を history scope、Performance history、coverage strip、case overview、guardrail history、
+- [x] chart 順を history scope、Performance history、coverage strip、case overview、guardrail history、
   latest details の順にする。
-- [ ] regression chart と relative-to-first chart を削除する。
-- [ ] Performance history を median line / point + MAD whisker の layered Altair chart で実装する。
-- [ ] cohort を跨ぐ線、failure を跨ぐ線、checksum 変更を跨ぐ線が生成されない spec にする。
-- [ ] coverage strip と small multiples を同じ view model から生成する。
-- [ ] Vega-Lite の scale resolution を明示し、small multiple 間で y scale を共有しない。
-- [ ] `overview.svg` を history-first な composition へ置き換える。
-- [ ] hero の baseline 文、regression section、詳細表の `compatible Δ` を削除する。
-- [ ] latest / historical warning の表示領域を分ける。
-- [ ] `report.html`、`overview.svg`、`warnings.json` の path と offline 契約を維持する。
-- [ ] Altair / Vega runtime の inline bundle と lazy import を維持し、通常 runtime と benchmark 計測へ
+- [x] regression chart と relative-to-first chart を削除する。
+- [x] Performance history を median line / point + MAD whisker の layered Altair chart で実装する。
+- [x] cohort を跨ぐ線、failure を跨ぐ線、checksum 変更を跨ぐ線が生成されない spec にする。
+- [x] coverage strip と small multiples を同じ view model から生成する。
+- [x] Vega-Lite の scale resolution を明示し、small multiple 間で y scale を共有しない。
+- [x] `overview.svg` を history-first な composition へ置き換える。
+- [x] hero の baseline 文、regression section、詳細表の `compatible Δ` を削除する。
+- [x] latest / historical warning の表示領域を分ける。
+- [x] `report.html`、`overview.svg`、`warnings.json` の path と offline 契約を維持する。
+- [x] Altair / Vega runtime の inline bundle と lazy import を維持し、通常 runtime と benchmark 計測へ
   plotting dependency を強制しない。
-- [ ] `benchmark report` の終了 code を、過去全体ではなく最新の valid run に対して判定する。
+- [x] `benchmark report` の終了 code を、過去全体ではなく最新の valid run に対して判定する。
 
 終了 code は次の契約とする。
 
@@ -248,6 +250,9 @@ report 内部 API は破壊的に置き換え、旧 baseline model の互換 shi
 - local では毎回同じ `--out` を使い、run id を一意にして履歴を蓄積する運用を文書化する。
 - interactive HTML の model では valid v4 history を黙って打ち切らない。表示上限を持つ small multiples と
   static SVG には、表示中件数 / 全件数を必ず表示する。
+- coverage は observed result と run timeline を別 record に正規化し、browser 側の lookup で欠測を導出する。
+  sparse archive で case × run の直積を埋め込まない。dense archive は入力 result 数に対して線形に増えるため、
+  silent cap より履歴の完全性を優先する。
 - CI の `${{ runner.temp }}` は workflow ごとに消えるため、現状の 1-run artifact を
   「長期履歴」とは説明しない。
 - CI artifact の workflow 間永続化は、正本の保存先、retention、branch / machine の分離、
@@ -259,78 +264,78 @@ report 内部 API は破壊的に置き換え、旧 baseline model の互換 shi
 
 ### 9.1 model
 
-- [ ] 0 run、1 run、複数 run の empty / one-point / trend 状態をテストする。
-- [ ] 最新 run にない過去 case も model と selector に残ることをテストする。
-- [ ] full suite と smoke suite の共有 case が、case 単位で互換なら同じ cohort になることをテストする。
-- [ ] environment、mode、case compatibility key、通常 case の各 measurement setting が
+- [x] 0 run、1 run、複数 run の empty / one-point / trend 状態をテストする。
+- [x] 最新 run にない過去 case も model と selector に残ることをテストする。
+- [x] full suite と smoke suite の共有 case が、case 単位で互換なら同じ cohort になることをテストする。
+- [x] environment、mode、case compatibility key、通常 case の各 measurement setting が
   cohort を分けることをテストする。
-- [ ] self-sampling の outer samples / warmup / target 差は cohort を分けず、
+- [x] self-sampling の outer samples / warmup / target 差は cohort を分けず、
   disable_gc / timeout 差は分けることをテストする。
-- [ ] 別 cohort run が途中にあっても、同 cohort の成功点が接続されることをテストする。
-- [ ] case 欠測では線が切れず、同 cohort failure と checksum 変更では切れることをテストする。
-- [ ] contract-failure の測定点を残し、成功線へ接続しないことをテストする。
-- [ ] offset 付き日時、同時刻の run id tie-break、逆順 input、invalid timestamp warning をテストする。
-- [ ] median 0、MAD 0、下限 0 clamp、p95/p99 欠測、単一点をテストする。
-- [ ] 250 run × 50 case の synthetic archive で、全 result が欠落なく線形構造へ集約され、
+- [x] 別 cohort run が途中にあっても、同 cohort の成功点が接続されることをテストする。
+- [x] case 欠測では線が切れず、同 cohort failure と checksum 変更では切れることをテストする。
+- [x] contract-failure の測定点を残し、成功線へ接続しないことをテストする。
+- [x] offset 付き日時、同時刻の run id tie-break、逆順 input、invalid timestamp warning をテストする。
+- [x] median 0、MAD 0、下限 0 clamp、p95/p99 欠測、単一点をテストする。
+- [x] 250 run × 50 case の synthetic archive で、全 result が欠落なく線形構造へ集約され、
   silent cap されないことをテストする。wall-clock 閾値は設けない。
-- [ ] report の旧 baseline / delta model tests を削除し、明示的 2-run 比較の tests は
+- [x] report の旧 baseline / delta model tests を削除し、明示的 2-run 比較の tests は
   `compare` module 側で維持する。
 
 ### 9.2 chart / artifact
 
-- [ ] 全 Altair spec を `to_dict(validate=True)` で検証する。
-- [ ] temporal x、absolute median y、MAD whisker、cohort / segment detail、failure layer、tooltip を検査する。
-- [ ] history が最初の chart で、regression / delta field / baseline 文が spec と HTML にないことを検査する。
-- [ ] small multiples の y scale が independent で、表示件数が明記されることを検査する。
-- [ ] coverage 色の意味と分離理由が view model / tooltip に存在することを検査する。
-- [ ] static SVG を XML parse し、複数日時の history と finite 値を含むことを検査する。
-- [ ] external `src` / `href` がない offline HTML、inline runtime 1 回、script breakout、
+- [x] 全 Altair spec を `to_dict(validate=True)` で検証する。
+- [x] temporal x、absolute median y、MAD whisker、cohort / segment detail、failure layer、tooltip を検査する。
+- [x] history が最初の chart で、regression / delta field / baseline 文が spec と HTML にないことを検査する。
+- [x] small multiples の y scale が independent で、表示件数が明記されることを検査する。
+- [x] coverage 色の意味と分離理由が view model / tooltip に存在することを検査する。
+- [x] static SVG を XML parse し、複数日時の history と finite 値を含むことを検査する。
+- [x] external `src` / `href` がない offline HTML、inline runtime 1 回、script breakout、
   Unicode line separator、JSON escaping の既存 tests を維持する。
-- [ ] HTML / spec に raw samples が埋め込まれないことを検査する。
-- [ ] warnings、contracts、scaling、詳細表、3 artifact path の既存契約を回帰 test する。
-- [ ] report exit code が「旧 failure + 最新 success」で 0、「最新 failure」で 1 になることをテストする。
+- [x] HTML / spec に raw samples が埋め込まれないことを検査する。
+- [x] warnings、contracts、scaling、詳細表、3 artifact path の既存契約を回帰 test する。
+- [x] report exit code が「旧 failure + 最新 success」で 0、「最新 failure」で 1 になることをテストする。
 
 ## 10. ドキュメント更新
 
-- [ ] `docs/memo/performance.md` の strict baseline / delta 説明を history-first の読み方へ置き換える。
-- [ ] x=UTC datetime、y=median ms、whisker=MAD、line=同一 cohort の意味を記載する。
-- [ ] MAD は信頼区間ではなく、2 点だけで trend を断定しないことを記載する。
-- [ ] 同じ `--out` を継続利用し、同じ machine / settings で run を蓄積する例を追加する。
-- [ ] `benchmark report` は時系列探索、`benchmark compare` は指定した 2 run の厳格比較という
+- [x] `docs/memo/performance.md` の strict baseline / delta 説明を history-first の読み方へ置き換える。
+- [x] x=UTC datetime、y=median ms、whisker=MAD、line=同一 cohort の意味を記載する。
+- [x] MAD は信頼区間ではなく、2 点だけで trend を断定しないことを記載する。
+- [x] 同じ `--out` を継続利用し、同じ machine / settings で run を蓄積する例を追加する。
+- [x] `benchmark report` は時系列探索、`benchmark compare` は指定した 2 run の厳格比較という
   役割分担を記載する。
-- [ ] schema v4 のみを対象とし、legacy を接続しない理由を記載する。
-- [ ] CI artifact は保存済み run の範囲だけを示し、workflow 間履歴を現在は保持しないことを明記する。
+- [x] schema v4 のみを対象とし、legacy を接続しない理由を記載する。
+- [x] CI artifact は保存済み run の範囲だけを示し、workflow 間履歴を現在は保持しないことを明記する。
 
 ## 11. 実装順序
 
 ### Phase 1: model の置換
 
-- [ ] 既存 tests を history-first の契約へ書き換える。
-- [ ] datetime / measurement signature / cohort / segment の純粋関数を実装する。
-- [ ] 全 run / case を一度だけ走査する history model を実装する。
-- [ ] latest summary、historical summary、coverage、guardrail history を追加する。
-- [ ] baseline / delta model と report 内参照を削除する。
+- [x] 既存 tests を history-first の契約へ書き換える。
+- [x] datetime / measurement signature / cohort / segment の純粋関数を実装する。
+- [x] 全 run / case を一度だけ走査する history model を実装する。
+- [x] latest summary、historical summary、coverage、guardrail history を追加する。
+- [x] baseline / delta model と report 内参照を削除する。
 
 ### Phase 2: interactive report
 
-- [ ] Performance history、coverage strip、case overview、guardrail history を実装する。
-- [ ] hero、section order、detailed table を history-first に変更する。
-- [ ] empty、one-point、multiple cohort、failure の説明表示を実装する。
+- [x] Performance history、coverage strip、case overview、guardrail history を実装する。
+- [x] hero、section order、detailed table を history-first に変更する。
+- [x] empty、one-point、multiple cohort、failure の説明表示を実装する。
 
 ### Phase 3: static artifact と CLI
 
-- [ ] history-first `overview.svg` を実装する。
-- [ ] latest-based exit code と warning 分離を実装する。
-- [ ] offline / atomic write / lazy dependency の既存契約を回帰確認する。
+- [x] history-first `overview.svg` を実装する。
+- [x] latest-based exit code と warning 分離を実装する。
+- [x] offline / atomic write / lazy dependency の既存契約を回帰確認する。
 
 ### Phase 4: 検証と文書
 
-- [ ] synthetic history tests、既存 benchmark tests、Ruff、mypy を実行する。
-- [ ] 5 点以上の互換 run、途中の無関係 run、別 cohort、failure、checksum 変更を含む fixture で
+- [x] synthetic history tests、既存 benchmark tests、Ruff、mypy を実行する。
+- [x] 5 点以上の互換 run、途中の無関係 run、別 cohort、failure、checksum 変更を含む fixture で
   report を生成する。
-- [ ] desktop 幅と 390 px 幅で selector、tooltip、coverage、長い case label、empty state を目視する。
-- [ ] `overview.svg` を画像として確認し、異なる panel の y scale と MAD 表示を照合する。
-- [ ] 文書を更新し、完了した項目へチェックを入れる。
+- [x] desktop 幅と 390 px 幅で selector、tooltip、coverage、長い case label、empty state を目視する。
+- [x] `overview.svg` を画像として確認し、異なる panel の y scale と MAD 表示を照合する。
+- [x] 文書を更新し、完了した項目へチェックを入れる。
 
 ## 12. 非目標
 
@@ -362,3 +367,22 @@ report 内部 API は破壊的に置き換え、旧 baseline model の互換 shi
 ## 14. 承認ゲート
 
 この文書の方針を確認後に実装を開始する。承認前は source、tests、CI、既存 docs を変更しない。
+
+## 15. 実装結果（2026-08-10）
+
+全実装項目と検証項目を完了した。
+
+- report の主表示を UTC の performance history、cohort 別の独立 panel、MAD whisker、run coverage へ置換した。
+- Category / Case の連動 control、failure-only の説明、checksum 境界、guardrail history を実装した。
+- sparse archive は observed result と run timeline の lookup に正規化し、case × run の直積を除去した。
+- duplicate run ID、invalid timestamp、latest / historical warning、latest-based exit code を明示的に扱う。
+- 実データ 4 run / 162 case で offline HTML と SVG を生成し、desktop と 390 px、Chrome の SVG 描画を確認した。
+- `tests/devtools/benchmarks`: 228 passed。対象 Ruff、mypy、`git diff --check` も通過した。
+
+意図的に残した制約は次の通り。
+
+- dense 200 run × 162 case（32,400 result）では chart spec が約 19.65 MiB、生成が約 10 秒になる。
+  入力 result 数に対して線形であり、履歴を黙って切り捨てない契約を優先する。
+- cohort が非常に多い case は縦長になる。狭い画面では chart を横スクロールして読む場合がある。
+- cohort の短い表示 label は CPU / Python / mode / measurement を優先し、OS は canonical
+  environment compatibility の内部情報として保持する。

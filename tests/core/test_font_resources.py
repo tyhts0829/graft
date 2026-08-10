@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-import os
 import importlib
+import os
 from pathlib import Path
+from threading import Event, Thread
 
 import pytest
 
+import grafix.core.font_resolver as font_resolver_module
 from grafix.core.evaluation_config import EvaluationConfig
-from grafix.core.font_resolver import default_font_path
+from grafix.core.font_resolver import FontPathResolver, default_font_path
 from grafix.core.font_resources import (
     FontAssetFingerprint,
     FontResources,
@@ -67,6 +69,230 @@ def test_same_font_name_in_two_fixed_configs_has_distinct_identity(tmp_path: Pat
     assert lease_a.fingerprint != lease_b.fingerprint
     assert lease_a.data == b"font-a"
     assert lease_b.data == b"font-b"
+
+
+def test_nested_basename_scans_once_and_reuses_lease_for_sixty_lookups(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    font_dir = tmp_path / "fonts"
+    nested = font_dir / "Supplemental"
+    nested.mkdir(parents=True)
+    font_path = nested / "Legacy Nested.ttf"
+    font_path.write_bytes(b"font")
+    config = _config_with_font_dirs(tmp_path, font_dir)
+    original_scan = font_resolver_module._scan_font_tree
+    original_open = Path.open
+    scans = 0
+    asset_opens: list[Path] = []
+
+    def recording_scan(*, dirs):
+        nonlocal scans
+        scans += 1
+        return original_scan(dirs=dirs)
+
+    def recording_open(self, *args, **kwargs):
+        if self == font_path:
+            asset_opens.append(self)
+        return original_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(font_resolver_module, "_scan_font_tree", recording_scan)
+    monkeypatch.setattr(Path, "open", recording_open)
+    with FontResources() as resources:
+        leases = [resources.resolve("Legacy Nested.ttf", 0, config=config) for _ in range(60)]
+
+    assert scans == 1
+    assert asset_opens == [font_path]
+    assert all(lease is leases[0] for lease in leases)
+
+
+def test_font_tree_snapshot_is_owner_local_and_clear_discards_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    font_dir = tmp_path / "fonts"
+    nested = font_dir / "nested"
+    nested.mkdir(parents=True)
+    font_path = nested / "Owned.ttf"
+    font_path.write_bytes(b"font")
+    config = _config_with_font_dirs(tmp_path, font_dir)
+    original_scan = font_resolver_module._scan_font_tree
+    scans = 0
+
+    def recording_scan(*, dirs):
+        nonlocal scans
+        scans += 1
+        return original_scan(dirs=dirs)
+
+    monkeypatch.setattr(font_resolver_module, "_scan_font_tree", recording_scan)
+    with FontResources() as first_owner:
+        first_owner.resolve("Owned.ttf", 0, config=config)
+        first_owner.resolve("Owned.ttf", 0, config=config)
+        first_owner.clear()
+        first_owner.resolve("Owned.ttf", 0, config=config)
+    with FontResources() as second_owner:
+        second_owner.resolve("Owned.ttf", 0, config=config)
+
+    assert scans == 3
+
+
+def test_clear_is_serialized_with_inflight_path_resolution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    font_dir = tmp_path / "fonts"
+    nested = font_dir / "nested"
+    nested.mkdir(parents=True)
+    (nested / "ConcurrentClear.ttf").write_bytes(b"font")
+    config = _config_with_font_dirs(tmp_path, font_dir)
+    original_path_resolve = FontPathResolver.resolve
+    original_scan = font_resolver_module._scan_font_tree
+    resolver_entered = Event()
+    allow_resolver = Event()
+    clear_started = Event()
+    clear_finished = Event()
+    errors: list[BaseException] = []
+    scans = 0
+
+    def blocking_path_resolve(self, font, *, config):
+        resolver_entered.set()
+        if not allow_resolver.wait(timeout=5.0):
+            raise TimeoutError("test did not release path resolver")
+        return original_path_resolve(self, font, config=config)
+
+    def recording_scan(*, dirs):
+        nonlocal scans
+        scans += 1
+        return original_scan(dirs=dirs)
+
+    monkeypatch.setattr(FontPathResolver, "resolve", blocking_path_resolve)
+    monkeypatch.setattr(font_resolver_module, "_scan_font_tree", recording_scan)
+    resources = FontResources()
+
+    def resolve_once() -> None:
+        try:
+            resources.resolve("ConcurrentClear.ttf", 0, config=config)
+        except BaseException as error:
+            errors.append(error)
+
+    def clear_once() -> None:
+        clear_started.set()
+        try:
+            resources.clear()
+        except BaseException as error:
+            errors.append(error)
+        finally:
+            clear_finished.set()
+
+    resolve_thread = Thread(target=resolve_once)
+    clear_thread = Thread(target=clear_once)
+    try:
+        resolve_thread.start()
+        assert resolver_entered.wait(timeout=5.0)
+        parent_lock_was_free = resources._lock.acquire(blocking=False)
+        if parent_lock_was_free:
+            resources._lock.release()
+        assert not parent_lock_was_free
+
+        clear_thread.start()
+        assert clear_started.wait(timeout=5.0)
+
+        allow_resolver.set()
+        resolve_thread.join(timeout=5.0)
+        clear_thread.join(timeout=5.0)
+        assert not resolve_thread.is_alive()
+        assert not clear_thread.is_alive()
+        assert clear_finished.is_set()
+        assert errors == []
+
+        resources.resolve("ConcurrentClear.ttf", 0, config=config)
+        assert scans == 2
+    finally:
+        allow_resolver.set()
+        resolve_thread.join(timeout=5.0)
+        clear_thread.join(timeout=5.0)
+        resources.close()
+
+
+def test_empty_nested_directory_identity_detects_first_font_and_removal(
+    tmp_path: Path,
+) -> None:
+    preferred = tmp_path / "preferred"
+    empty_nested = preferred / "empty" / "nested"
+    fallback = tmp_path / "fallback"
+    empty_nested.mkdir(parents=True)
+    fallback.mkdir()
+    fallback_font = fallback / "DynamicFallback.ttf"
+    fallback_font.write_bytes(b"fallback")
+    preferred_font = empty_nested / "DynamicPreferred.ttf"
+    config = _config_with_font_dirs(tmp_path, preferred, fallback)
+
+    with FontResources() as resources:
+        first = resources.resolve("Dynamic", 0, config=config)
+        preferred_font.write_bytes(b"preferred")
+        second = resources.resolve("Dynamic", 0, config=config)
+        preferred_font.unlink()
+        restored = resources.resolve("Dynamic", 0, config=config)
+
+    assert first.path == fallback_font.resolve()
+    assert second.path == preferred_font.resolve()
+    assert restored is first
+
+
+def test_missing_search_root_appearance_is_observed_on_next_lookup(
+    tmp_path: Path,
+) -> None:
+    preferred = tmp_path / "missing-preferred"
+    fallback = tmp_path / "fallback"
+    fallback.mkdir()
+    fallback_font = fallback / "DynamicFallback.ttf"
+    fallback_font.write_bytes(b"fallback")
+    config = _config_with_font_dirs(tmp_path, preferred, fallback)
+
+    with FontResources() as resources:
+        first = resources.resolve("Dynamic", 0, config=config)
+        nested = preferred / "new" / "nested"
+        nested.mkdir(parents=True)
+        preferred_font = nested / "DynamicPreferred.ttf"
+        preferred_font.write_bytes(b"preferred")
+        second = resources.resolve("Dynamic", 0, config=config)
+
+    assert first.path == fallback_font.resolve()
+    assert second.path == preferred_font.resolve()
+
+
+def test_partial_lookup_replaces_latest_snapshot_when_config_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dir_a = tmp_path / "a"
+    dir_b = tmp_path / "b"
+    (dir_a / "nested").mkdir(parents=True)
+    (dir_b / "nested").mkdir(parents=True)
+    path_a = dir_a / "nested" / "SwitchA.ttf"
+    path_b = dir_b / "nested" / "SwitchB.ttf"
+    path_a.write_bytes(b"font-a")
+    path_b.write_bytes(b"font-b")
+    config_a = _config_with_font_dirs(tmp_path, dir_a)
+    config_b = _config_with_font_dirs(tmp_path, dir_b)
+    original_scan = font_resolver_module._scan_font_tree
+    scans = 0
+
+    def recording_scan(*, dirs):
+        nonlocal scans
+        scans += 1
+        return original_scan(dirs=dirs)
+
+    monkeypatch.setattr(font_resolver_module, "_scan_font_tree", recording_scan)
+    with FontResources() as resources:
+        lease_a = resources.resolve("Switch", 0, config=config_a)
+        lease_b = resources.resolve("Switch", 0, config=config_b)
+        lease_a_again = resources.resolve("Switch", 0, config=config_a)
+
+    assert lease_a.path == path_a.resolve()
+    assert lease_b.path == path_b.resolve()
+    assert lease_a_again is lease_a
+    assert scans == 3
 
 
 def test_unchanged_asset_is_warm_and_replacement_gets_new_lease(

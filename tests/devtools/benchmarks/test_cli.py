@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -88,6 +89,12 @@ def test_run_and_report_cli_create_schema_v4_artifacts(
         )
         == 2
     )
+
+    payload["meta"]["created_at"] = "not-a-date"
+    run_path.write_text(json.dumps(payload), encoding="utf-8")
+    capsys.readouterr()
+    assert cli.main(["report", "--out", str(tmp_path)]) == 2
+    assert "invalid created_at" in capsys.readouterr().err
     assert (
         cli.main(
             [
@@ -169,6 +176,84 @@ def test_cli_rejects_ignored_or_duplicate_selection_arguments(
         )
         == 2
     )
+
+
+def test_report_cli_returns_two_when_only_duplicate_run_ids_exist(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    definition = next(
+        definition
+        for definition in case_definitions()
+        if definition.case_id == "core.concat_recipe.parts_10"
+    )
+    sample = Sample(elapsed_ns=100, iterations=1)
+    result = CaseResult(
+        spec=definition.spec(seed=0),
+        status="ok",
+        samples=(sample,),
+        stats=summarize_samples((sample,)),
+        checksum="checksum",
+        checksum_kind="exact",
+        setup_rss_bytes=10,
+        baseline_rss_bytes=10,
+        peak_rss_bytes=10,
+        peak_rss_delta_bytes=0,
+    )
+    monkeypatch.setattr(cli, "run_case_isolated", lambda *_args, **_kwargs: result)
+    assert (
+        cli.main(
+            [
+                "run",
+                "--case",
+                definition.case_id,
+                "--samples",
+                "1",
+                "--warmup",
+                "0",
+                "--target-ms",
+                "0",
+                "--run-id",
+                "duplicate",
+                "--out",
+                str(tmp_path),
+            ]
+        )
+        == 0
+    )
+    original = tmp_path / "runs" / "duplicate.json"
+    (tmp_path / "runs" / "duplicate-copy.json").write_text(
+        original.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    capsys.readouterr()
+
+    assert cli.main(["report", "--out", str(tmp_path)]) == 2
+    captured = capsys.readouterr()
+    assert "duplicate benchmark run_id 'duplicate'" in captured.err
+    assert "no valid schema v4 runs found" in captured.err
+    assert (tmp_path / "report.html").is_file()
+    assert (tmp_path / "overview.svg").is_file()
+    assert (tmp_path / "warnings.json").is_file()
+    warning_payload = json.loads((tmp_path / "warnings.json").read_text(encoding="utf-8"))
+    assert warning_payload["valid_runs"] == 0
+    assert warning_payload["latest_warning_count"] == 0
+    assert warning_payload["historical_warning_count"] == 1
+
+
+def test_report_cli_returns_two_for_chart_generation_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fail_report(_out: str | Path) -> None:
+        raise cli.BenchmarkReportGenerationError("synthetic chart failure")
+
+    monkeypatch.setattr(cli, "write_report", fail_report)
+
+    assert cli.main(["report", "--out", str(tmp_path)]) == 2
+    assert "synthetic chart failure" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(
@@ -260,3 +345,34 @@ def test_run_cli_returns_nonzero_for_hard_contract_failure(
     assert cli.main(["report", "--out", str(tmp_path)]) == 1
     assert (tmp_path / "report.html").is_file()
     assert (tmp_path / "overview.svg").is_file()
+
+    succeeded = replace(
+        result,
+        status="ok",
+        contracts=(),
+        error=None,
+    )
+    monkeypatch.setattr(cli, "run_case_isolated", lambda *_args, **_kwargs: succeeded)
+    assert (
+        cli.main(
+            [
+                "run",
+                "--case",
+                definition.case_id,
+                "--samples",
+                "1",
+                "--warmup",
+                "0",
+                "--target-ms",
+                "0",
+                "--run-id",
+                "zz-latest-success",
+                "--out",
+                str(tmp_path),
+            ]
+        )
+        == 0
+    )
+
+    # Historical failure は report に残るが、終了 code は最新 run だけで決める。
+    assert cli.main(["report", "--out", str(tmp_path)]) == 0

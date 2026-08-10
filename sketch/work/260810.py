@@ -7,7 +7,7 @@ CANVAS_HEIGHT = 210
 
 def draw(t: float):
     g = G.text()
-    return g
+    return L.layer(g)
 
 
 if __name__ == "__main__":
