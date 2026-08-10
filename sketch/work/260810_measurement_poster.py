@@ -7,20 +7,20 @@ import numpy as np
 
 from grafix import E, G, L, primitive, run
 
-# A5 portrait in millimetres.  The reference artwork is authored on a 200 x 250
-# design board, then fitted uniformly to A5 so its original 4:5 proportions are
+# A4 portrait in millimetres.  The reference artwork is authored on a 200 x 250
+# design board, then fitted uniformly to A4 so its original 4:5 proportions are
 # preserved instead of being stretched to the paper ratio.
-CANVAS = (148, 210)
+CANVAS = (210, 297)
 DESIGN_CANVAS = (200.0, 250.0)
-A5_FIT_SCALE = CANVAS[0] / DESIGN_CANVAS[0]
-A5_FIT_OFFSET_Y = (CANVAS[1] - DESIGN_CANVAS[1] * A5_FIT_SCALE) / 2.0
+A4_FIT_SCALE = CANVAS[0] / DESIGN_CANVAS[0]
+A4_FIT_OFFSET_Y = (CANVAS[1] - DESIGN_CANVAS[1] * A4_FIT_SCALE) / 2.0
 SEED = 1203
 FONT = "/System/Library/Fonts/HelveticaNeue.ttc"
 PAPER = (234 / 255, 233 / 255, 229 / 255)
 
 # Every typography fill reads these two shared defaults.  Change them here to
 # tune all text groups at once; each named group remains editable in the GUI.
-TEXT_FILL_DENSITY = 400.0
+TEXT_FILL_DENSITY = 700.0
 TEXT_FILL_MIN_SPACING = 0.05
 
 # Black-only value swatches use line spacing rather than different Layer colors.
@@ -764,7 +764,6 @@ def _archive_groups() -> tuple[tuple[np.ndarray, np.ndarray], ...]:
                 inset = 0.28
             else:
                 inset = 0.62
-            _line(groups["grid"], (x0 + inset, y), (x1 - inset, y))
             if side == 1 and i % 3 == 0:
                 _line(heavy, (x0 + inset, y), (x1 - inset, y))
             elif side == 0:
@@ -1145,12 +1144,12 @@ def _text_groups() -> tuple:
 
 def draw(t: float):
     del t
-    fit_a5 = E(name="A5 portrait layout / artwork fit").affine(
+    fit_a4 = E(name="A4 portrait layout / artwork fit").affine(
         auto_center=False,
         pivot=(0.0, 0.0, 0.0),
-        scale=(A5_FIT_SCALE, A5_FIT_SCALE, 1.0),
-        delta=(0.0, A5_FIT_OFFSET_Y, 0.0),
-        key="a5-portrait-artwork-fit",
+        scale=(A4_FIT_SCALE, A4_FIT_SCALE, 1.0),
+        delta=(0.0, A4_FIT_OFFSET_Y, 0.0),
+        key="a4-portrait-artwork-fit",
     )
     grain = G(name="Paper fibers / archival grain").measurement_poster_lines(
         activate=False,
@@ -1182,7 +1181,7 @@ def draw(t: float):
         ("Footer labels", "footer-labels"),
     )
     typography = tuple(
-        fit_a5(
+        fit_a4(
             E(name=f"Typography fill / {name}").fill(
                 angle_sets=2,
                 angle=45.0,
@@ -1195,12 +1194,12 @@ def draw(t: float):
         )
         for (name, key), geometry in zip(typography_specs, _text_groups())
     )
-    value_swatches = tuple(fit_a5(geometry) for geometry in _value_swatch_geometries())
-    grain = fit_a5(grain)
-    mist = fit_a5(mist)
-    grid = fit_a5(grid)
-    main = fit_a5(main)
-    heavy = fit_a5(heavy)
+    value_swatches = tuple(fit_a4(geometry) for geometry in _value_swatch_geometries())
+    grain = fit_a4(grain)
+    mist = fit_a4(mist)
+    grid = fit_a4(grid)
+    main = fit_a4(main)
+    heavy = fit_a4(heavy)
 
     geometry = (
         grain,
@@ -1217,9 +1216,9 @@ def draw(t: float):
 if __name__ == "__main__":
     run(
         draw,
-        run_id="measurement_poster_a5",
+        run_id="measurement_poster_a4",
         canvas_size=CANVAS,
-        render_scale=6,
+        render_scale=4.2,
         background_color=PAPER,
         line_color=(0.0, 0.0, 0.0),
         line_thickness=0.001,

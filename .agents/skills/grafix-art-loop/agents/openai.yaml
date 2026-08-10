@@ -2,3 +2,5 @@ interface:
   display_name: "Grafix Art Loop"
   short_description: "Grafix作品候補を描画比較し、必要な勝者だけを一度改善"
   default_prompt: "$grafix-art-loopを使って、異なる3つのGrafix作品候補をレンダー比較し、必要な場合だけ勝者を改善してください。"
+policy:
+  allow_implicit_invocation: false

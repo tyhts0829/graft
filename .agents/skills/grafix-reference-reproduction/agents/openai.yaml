@@ -1,0 +1,6 @@
+interface:
+  display_name: "Grafix Reference Reproduction"
+  short_description: "参照画像を単一のA5縦Grafixスケッチとして忠実に再現"
+  default_prompt: "$grafix-reference-reproductionを使って、この参照画像を単一のGrafixスケッチとして忠実に再現してください。"
+policy:
+  allow_implicit_invocation: true
