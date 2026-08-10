@@ -41,6 +41,15 @@ def test_mapping_parser_performs_no_filesystem_io(
     assert config.output_dir == Path("data/output")
 
 
+@pytest.mark.parametrize("removed_key", ("origin", "canvas_height_mm"))
+def test_mapping_parser_rejects_removed_gcode_placement_keys(removed_key: str) -> None:
+    payload = runtime_config_module._load_packaged_default_config()
+    payload["export"]["gcode"][removed_key] = [0.0, 0.0]
+
+    with pytest.raises(RuntimeError, match=rf"export\.gcode\.{removed_key}.*廃止"):
+        runtime_config_from_mapping(payload)
+
+
 @pytest.mark.parametrize("value", (0, 1.0, object()))
 def test_load_runtime_config_rejects_implicit_path_conversion(value: Any) -> None:
     with pytest.raises(TypeError, match="str、Path、None"):
@@ -69,7 +78,9 @@ def test_nested_runtime_config_binding_restores_after_exception(tmp_path: Path) 
         current_runtime_config()
 
 
-def test_loader_reloads_same_path_without_retaining_failed_state(tmp_path: Path) -> None:
+def test_loader_reloads_same_path_without_retaining_failed_state(
+    tmp_path: Path,
+) -> None:
     config_path = tmp_path / "config.yaml"
     config_path.write_text("paths:\n  output_dir: first\n", encoding="utf-8")
     first = load_runtime_config(config_path)
@@ -108,7 +119,9 @@ def test_explicit_path_matching_discovery_is_loaded_once(
     assert loaded_paths == [config_path.resolve()]
 
 
-def test_output_root_dir_uses_packaged_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_output_root_dir_uses_packaged_defaults(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     _isolate_config_discovery(tmp_path, monkeypatch)
 
     assert output_root_dir() == Path("data") / "output"
@@ -129,7 +142,7 @@ def test_output_root_dir_uses_packaged_defaults(tmp_path: Path, monkeypatch: pyt
     assert cfg.gcode.z_up == 3.0
     assert cfg.gcode.z_down == -1.0
     assert cfg.gcode.y_down is True
-    assert cfg.gcode.origin == (154.019, 14.195)
+    assert cfg.gcode.paper_bottom_right_mm == (302.019, 0.0)
     assert cfg.gcode.decimals == 3
     assert cfg.gcode.paper_margin_mm == 2.0
     assert cfg.gcode.bed_x_range is None
@@ -137,7 +150,6 @@ def test_output_root_dir_uses_packaged_defaults(tmp_path: Path, monkeypatch: pyt
     assert cfg.gcode.bridge_draw_distance == 0.5
     assert cfg.gcode.optimize_travel is True
     assert cfg.gcode.allow_reverse is True
-    assert cfg.gcode.canvas_height_mm is None
     assert cfg.midi_inputs == ()
 
 
@@ -161,7 +173,9 @@ def test_discovered_config_overrides_packaged_defaults(
     assert cfg.font_dirs == (discovered.parent / "fonts_discovered",)
 
 
-def test_discovered_sketch_dir_is_loaded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_discovered_sketch_dir_is_loaded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     _isolate_config_discovery(tmp_path, monkeypatch)
 
     discovered = tmp_path / ".grafix" / "config.yaml"
@@ -175,7 +189,9 @@ def test_discovered_sketch_dir_is_loaded(tmp_path: Path, monkeypatch: pytest.Mon
     assert cfg.sketch_dir == discovered.parent / "sketch"
 
 
-def test_discovered_midi_inputs_are_loaded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_discovered_midi_inputs_are_loaded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     _isolate_config_discovery(tmp_path, monkeypatch)
 
     discovered = tmp_path / ".grafix" / "config.yaml"
@@ -189,7 +205,9 @@ def test_discovered_midi_inputs_are_loaded(tmp_path: Path, monkeypatch: pytest.M
     assert cfg.midi_inputs == (("Grid", "14bit"),)
 
 
-def test_parameter_gui_config_values_are_loaded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_parameter_gui_config_values_are_loaded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     _isolate_config_discovery(tmp_path, monkeypatch)
 
     discovered = tmp_path / ".grafix" / "config.yaml"
@@ -259,7 +277,9 @@ def test_explicit_config_overrides_discovered_config(
     assert cfg.font_dirs == (explicit.parent / "fonts_discovered",)
 
 
-def test_environment_variables_are_ignored(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_environment_variables_are_ignored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     _isolate_config_discovery(tmp_path, monkeypatch)
 
     monkeypatch.setenv("GRAFIX_OUTPUT_DIR", str(tmp_path / "out_env"))
@@ -272,7 +292,9 @@ def test_environment_variables_are_ignored(tmp_path: Path, monkeypatch: pytest.M
     assert cfg.font_dirs == (Path("data") / "input" / "font",)
 
 
-def test_explicit_config_path_missing_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_explicit_config_path_missing_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     _isolate_config_discovery(tmp_path, monkeypatch)
 
     missing = tmp_path / "missing.yaml"
@@ -325,6 +347,81 @@ def test_partial_gcode_override_keeps_other_packaged_defaults(
     assert cfg.gcode.travel_feed == 4321.0
     assert cfg.gcode.draw_feed == 3000.0
     assert cfg.gcode.optimize_travel is True
+
+
+def test_paper_bottom_right_override_is_loaded_as_finite_pair(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _isolate_config_discovery(tmp_path, monkeypatch)
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "export:\n  gcode:\n    paper_bottom_right_mm: [310, 20.5]\n",
+        encoding="utf-8",
+    )
+
+    assert load_runtime_config(config_path).gcode.paper_bottom_right_mm == (310.0, 20.5)
+
+
+@pytest.mark.parametrize(
+    "yaml_value",
+    (
+        "302.019",
+        "[302.019]",
+        "[302.019, 14.195, 0.0]",
+        "[[302.019], 14.195]",
+        '["302.019", 14.195]',
+        "[302.019, true]",
+    ),
+)
+def test_paper_bottom_right_requires_exact_numeric_pair(
+    yaml_value: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _isolate_config_discovery(tmp_path, monkeypatch)
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        f"export:\n  gcode:\n    paper_bottom_right_mm: {yaml_value}\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="paper_bottom_right_mm"):
+        load_runtime_config(config_path)
+
+
+@pytest.mark.parametrize("yaml_value", (".nan", ".inf", "-.inf"))
+def test_paper_bottom_right_rejects_non_finite_coordinates(
+    yaml_value: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _isolate_config_discovery(tmp_path, monkeypatch)
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        f"export:\n  gcode:\n    paper_bottom_right_mm: [{yaml_value}, 14.195]\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="paper_bottom_right_mm.*finite"):
+        load_runtime_config(config_path)
+
+
+@pytest.mark.parametrize("removed_key", ("origin", "canvas_height_mm"))
+def test_removed_gcode_placement_keys_are_rejected(
+    removed_key: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _isolate_config_discovery(tmp_path, monkeypatch)
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        f"export:\n  gcode:\n    {removed_key}: [0.0, 0.0]\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match=rf"export\.gcode\.{removed_key}"):
+        load_runtime_config(config_path)
 
 
 def test_missing_gcode_error_matches_recursive_merge_contract(
@@ -495,7 +592,9 @@ def test_interactive_fallback_is_explicit_and_does_not_mutate_default_discovery(
     assert cfg.config_path is None
     assert cfg.output_dir == Path("data") / "output"
     assert runtime_config().config_path is None
-    assert runtime_config_report().active_source == "grafix/resource/default_config.yaml"
+    assert (
+        runtime_config_report().active_source == "grafix/resource/default_config.yaml"
+    )
 
 
 @pytest.mark.parametrize("value", (".nan", ".inf", "-.inf"))

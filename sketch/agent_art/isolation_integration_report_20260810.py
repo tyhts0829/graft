@@ -7,7 +7,6 @@ import numpy as np
 
 from grafix import E, G, L, primitive, run
 
-
 # Reference-reproduction adjustment block.  The 150 x 200 source board keeps
 # the attached 3:4 composition intact; it is uniformly contained on A5 rather
 # than being stretched.  Crop is deliberately zero so every registration mark
@@ -18,8 +17,8 @@ LINE_THICKNESS = 0.001
 SEED = 240517
 LINE_COLORS = {"ink": (8 / 255, 8 / 255, 8 / 255)}
 FILL_DENSITIES = {
-    "typography": 1000.0,
-    "solid": 1000.0,
+    "typography": 800.0,
+    "solid": 800.0,
 }
 FILL_MIN_SPACINGS = {
     "typography": 0.05,
@@ -88,7 +87,13 @@ def _circle(
 
 
 def _ellipse(
-    lines: list[Polyline], cx: float, cy: float, rx: float, ry: float, *, samples: int = 72
+    lines: list[Polyline],
+    cx: float,
+    cy: float,
+    rx: float,
+    ry: float,
+    *,
+    samples: int = 72,
 ) -> None:
     points = [
         (
@@ -370,7 +375,13 @@ def _body_text_geometry():
         _text("REPORT NO. 24–05–17", 6.55, 6.75, 1.10),
         _text("SYSTEMS OBSERVATORY", 6.55, 8.75, 1.10),
         _text("[ INDEX ]", 6.55, 20.95, 1.12),
-        _text("01  STATES\n02  TRANSITION\n03  METRICS\n04  NOTES", 6.55, 24.00, 1.10, line_height=1.55),
+        _text(
+            "01  STATES\n02  TRANSITION\n03  METRICS\n04  NOTES",
+            6.55,
+            24.00,
+            1.10,
+            line_height=1.55,
+        ),
         _text("[ OBSERVER ]\nSYSTEMS LAB 7", 127.55, 6.75, 1.08, line_height=1.45),
         _text("[ DATE ]\n17 MAY 2024", 127.55, 13.20, 1.08, line_height=1.45),
         _text("[ VERSION ]\n1.0", 127.55, 19.65, 1.08, line_height=1.45),
@@ -386,8 +397,20 @@ def _body_text_geometry():
         _text("SUMMARY INDICATORS", 6.55, 40.80, 1.62, font_index=MONO_BOLD_INDEX),
         _text("LEVEL OF CONNECTION (MEAN)", 6.55, 46.15, 1.25),
         _text("SENSE OF BELONGING (MEAN)", 6.55, 52.60, 1.25),
-        _text("Average increase in\nperceived connection\nafter integration.", 94.8, 44.25, 1.06, line_height=1.42),
-        _text("Average increase in\nbelonging after\nintegration.", 94.8, 50.75, 1.06, line_height=1.42),
+        _text(
+            "Average increase in\nperceived connection\nafter integration.",
+            94.8,
+            44.25,
+            1.06,
+            line_height=1.42,
+        ),
+        _text(
+            "Average increase in\nbelonging after\nintegration.",
+            94.8,
+            50.75,
+            1.06,
+            line_height=1.42,
+        ),
         _text("LOW / DISCONNECTED", 124.8, 43.72, 1.04),
         _text("ACTIVE / ENGAGED", 124.8, 47.72, 1.04),
         _text("INTEGRATED / ALIGNED", 124.8, 51.72, 1.04),
@@ -405,44 +428,150 @@ def _body_text_geometry():
         ),
         # Transition title and five columns.
         _text("THE TRANSITION", 6.55, 75.78, 1.58, font_index=MONO_BOLD_INDEX),
-        _text("01", 10.3, 80.85, 2.55, font=DISPLAY_FONT, font_index=DISPLAY_REGULAR_INDEX),
+        _text(
+            "01", 10.3, 80.85, 2.55, font=DISPLAY_FONT, font_index=DISPLAY_REGULAR_INDEX
+        ),
         _text("FRAGMENTED", 10.3, 84.40, 1.62, font_index=MONO_BOLD_INDEX),
-        _text("Scattered attention.\nDisconnected from self\nand others.", 10.3, 86.60, 1.18, line_height=1.35),
-        _text("02", 36.8, 80.85, 2.55, font=DISPLAY_FONT, font_index=DISPLAY_REGULAR_INDEX),
+        _text(
+            "Scattered attention.\nDisconnected from self\nand others.",
+            10.3,
+            86.60,
+            1.18,
+            line_height=1.35,
+        ),
+        _text(
+            "02", 36.8, 80.85, 2.55, font=DISPLAY_FONT, font_index=DISPLAY_REGULAR_INDEX
+        ),
         _text("AWARE", 36.8, 84.40, 1.62, font_index=MONO_BOLD_INDEX),
-        _text("Notices disconnection.\nBegins observing\npatterns.", 36.8, 86.60, 1.18, line_height=1.35),
-        _text("03", 64.2, 80.85, 2.55, font=DISPLAY_FONT, font_index=DISPLAY_REGULAR_INDEX),
+        _text(
+            "Notices disconnection.\nBegins observing\npatterns.",
+            36.8,
+            86.60,
+            1.18,
+            line_height=1.35,
+        ),
+        _text(
+            "03", 64.2, 80.85, 2.55, font=DISPLAY_FONT, font_index=DISPLAY_REGULAR_INDEX
+        ),
         _text("ACCOUNTABLE", 64.2, 84.40, 1.62, font_index=MONO_BOLD_INDEX),
-        _text("Takes responsibility.\nChooses direction\nconsciously.", 64.2, 86.60, 1.18, line_height=1.35),
-        _text("04", 94.2, 80.85, 2.55, font=DISPLAY_FONT, font_index=DISPLAY_REGULAR_INDEX),
+        _text(
+            "Takes responsibility.\nChooses direction\nconsciously.",
+            64.2,
+            86.60,
+            1.18,
+            line_height=1.35,
+        ),
+        _text(
+            "04", 94.2, 80.85, 2.55, font=DISPLAY_FONT, font_index=DISPLAY_REGULAR_INDEX
+        ),
         _text("CONNECTED", 94.2, 84.40, 1.62, font_index=MONO_BOLD_INDEX),
-        _text("Builds relationships.\nEngages in reciprocal\nexchange.", 94.2, 86.60, 1.18, line_height=1.35),
-        _text("05", 124.3, 80.85, 2.55, font=DISPLAY_FONT, font_index=DISPLAY_REGULAR_INDEX),
+        _text(
+            "Builds relationships.\nEngages in reciprocal\nexchange.",
+            94.2,
+            86.60,
+            1.18,
+            line_height=1.35,
+        ),
+        _text(
+            "05",
+            124.3,
+            80.85,
+            2.55,
+            font=DISPLAY_FONT,
+            font_index=DISPLAY_REGULAR_INDEX,
+        ),
         _text("INTEGRATED", 124.3, 84.40, 1.62, font_index=MONO_BOLD_INDEX),
-        _text("Aligned within.\nContributing to\nthe whole.", 124.3, 86.60, 1.18, line_height=1.35),
+        _text(
+            "Aligned within.\nContributing to\nthe whole.",
+            124.3,
+            86.60,
+            1.18,
+            line_height=1.35,
+        ),
         _text("ISOLATION", 9.0, 121.25, 1.12, font_index=MONO_BOLD_INDEX),
         _text("INTEGRATION", 127.4, 121.25, 1.12, font_index=MONO_BOLD_INDEX),
         # Layer band.
         _text("LAYERS OF INTEGRATION", 6.55, 127.55, 1.52, font_index=MONO_BOLD_INDEX),
         _text("SELF", 37.5, 129.0, 1.27, align="center", font_index=MONO_BOLD_INDEX),
         _text("OTHERS", 60.0, 129.0, 1.27, align="center", font_index=MONO_BOLD_INDEX),
-        _text("COMMUNITY", 82.95, 129.0, 1.27, align="center", font_index=MONO_BOLD_INDEX),
-        _text("SYSTEMS", 107.35, 129.0, 1.27, align="center", font_index=MONO_BOLD_INDEX),
+        _text(
+            "COMMUNITY", 82.95, 129.0, 1.27, align="center", font_index=MONO_BOLD_INDEX
+        ),
+        _text(
+            "SYSTEMS", 107.35, 129.0, 1.27, align="center", font_index=MONO_BOLD_INDEX
+        ),
         _text("WHOLE", 131.55, 129.0, 1.27, align="center", font_index=MONO_BOLD_INDEX),
-        _text("Clarity, regulation,\nand self-trust.", 37.5, 147.20, 1.08, align="center", line_height=1.34),
-        _text("Empathy, trust,\nand communication.", 60.0, 147.20, 1.08, align="center", line_height=1.34),
-        _text("Shared norms,\nsafety, and care.", 82.95, 147.20, 1.08, align="center", line_height=1.34),
-        _text("Structures that\nsupport well-being.", 107.35, 147.20, 1.08, align="center", line_height=1.34),
-        _text("Participation in\nsomething larger.", 131.55, 147.20, 1.08, align="center", line_height=1.34),
+        _text(
+            "Clarity, regulation,\nand self-trust.",
+            37.5,
+            147.20,
+            1.08,
+            align="center",
+            line_height=1.34,
+        ),
+        _text(
+            "Empathy, trust,\nand communication.",
+            60.0,
+            147.20,
+            1.08,
+            align="center",
+            line_height=1.34,
+        ),
+        _text(
+            "Shared norms,\nsafety, and care.",
+            82.95,
+            147.20,
+            1.08,
+            align="center",
+            line_height=1.34,
+        ),
+        _text(
+            "Structures that\nsupport well-being.",
+            107.35,
+            147.20,
+            1.08,
+            align="center",
+            line_height=1.34,
+        ),
+        _text(
+            "Participation in\nsomething larger.",
+            131.55,
+            147.20,
+            1.08,
+            align="center",
+            line_height=1.34,
+        ),
         # Metrics table.
         _text("INTEGRATION METRICS", 6.55, 156.95, 1.52, font_index=MONO_BOLD_INDEX),
         _text("BEFORE", 65.2, 157.35, 1.02, font_index=MONO_BOLD_INDEX),
         _text("AFTER", 87.0, 157.35, 1.02, font_index=MONO_BOLD_INDEX),
         _text("CHANGE", 132.0, 157.35, 1.02, font_index=MONO_BOLD_INDEX),
-        _text("SELF-CLARITY\nRELATIONSHIP QUALITY\nCONTRIBUTION\nINNER PEACE\nLIFE SATISFACTION", 29.4, 161.25, 1.23, line_height=2.52),
-        _text("0.31\n0.28\n0.19\n0.24\n0.22", 66.0, 161.25, 1.18, align="center", line_height=2.63),
-        _text("0.87\n0.81\n0.76\n0.79\n0.84", 88.7, 161.25, 1.18, align="center", line_height=2.63),
-        _text("+180%\n+189%\n+300%\n+229%\n+282%", 134.0, 161.25, 1.18, line_height=2.63),
+        _text(
+            "SELF-CLARITY\nRELATIONSHIP QUALITY\nCONTRIBUTION\nINNER PEACE\nLIFE SATISFACTION",
+            29.4,
+            161.25,
+            1.23,
+            line_height=2.52,
+        ),
+        _text(
+            "0.31\n0.28\n0.19\n0.24\n0.22",
+            66.0,
+            161.25,
+            1.18,
+            align="center",
+            line_height=2.63,
+        ),
+        _text(
+            "0.87\n0.81\n0.76\n0.79\n0.84",
+            88.7,
+            161.25,
+            1.18,
+            align="center",
+            line_height=2.63,
+        ),
+        _text(
+            "+180%\n+189%\n+300%\n+229%\n+282%", 134.0, 161.25, 1.18, line_height=2.63
+        ),
         _text("0.00", 95.35, 177.25, 1.00, align="center"),
         _text("0.50", 109.28, 177.25, 1.00, align="center"),
         _text("1.00", 123.20, 177.25, 1.00, align="center"),
@@ -456,13 +585,21 @@ def _body_text_geometry():
             1.18,
             line_height=1.36,
         ),
-        _text("[ COORDINATES ]\n37.7749° N, 122.4194° W", 115.8, 184.25, 1.00, line_height=1.42),
+        _text(
+            "[ COORDINATES ]\n37.7749° N, 122.4194° W",
+            115.8,
+            184.25,
+            1.00,
+            line_height=1.42,
+        ),
         _text("[ SCALE ]\nVARIABLE", 115.8, 189.25, 1.00, line_height=1.42),
         _text("[ A ]", 6.55, 191.95, 1.00),
         _text("01–05", 27.8, 191.95, 1.00),
         _text("[ B ]", 6.55, 193.75, 1.00),
         _text("∞", 27.8, 193.75, 1.00),
-        _text("SYSTEMS ARE RELATIONAL", 74.45, 195.75, 0.98, align="center", spacing=0.08),
+        _text(
+            "SYSTEMS ARE RELATIONAL", 74.45, 195.75, 0.98, align="center", spacing=0.08
+        ),
     ]
     return _combine(text_items)
 
@@ -626,11 +763,10 @@ if __name__ == "__main__":
         draw,
         run_id="isolation_integration_report_20260810",
         canvas_size=CANVAS_SIZE,
-        render_scale=4.0,
+        render_scale=3.0,
         background_color=BACKGROUND_COLOR,
         line_color=LINE_COLORS["ink"],
         line_thickness=LINE_THICKNESS,
-        parameter_gui=False,
         parameter_persistence=False,
         midi_port_name=None,
         n_worker=0,

@@ -29,21 +29,21 @@ Grafix は、線の生成と変形を **不変な Geometry DAG** として記述
 
 ## 2. レイヤと依存方向
 
-| レイヤ | 主な責務 |
-|---|---|
-| `grafix` | 公開 DSL、application callable、共通公開型を定義 module へ対応付ける標準 PEP 562 root facade |
-| `grafix.api` | 公開 DSL (`G` / `E` / `L` / `P`)、公開 value type、application callable の定義 module |
-| `grafix.api._runner_application` | config、GUI、MIDI、window/runtime を組み立てる private interactive composition root |
-| `grafix.core` | Geometry、catalog、評価、parameters、immutable runtime/evaluation config の domain contract |
-| `grafix.core.geometry_kernels` | packed geometry、平面、grid、raster、marching、resample の数値 kernel |
-| `grafix.authoring_loader` | config authoring source の filesystem capture、candidate catalog 構築 |
-| `grafix._snapshot_import` | source bytes の一時 import、`sys.meta_path` / `sys.modules` transaction と共有 lock |
-| `grafix.runtime_config_loader` | YAML/package resource、CWD/HOME 探索、merge、path 解決 |
-| `grafix.parameter_storage` | ParamStore の非変更 read、明示 recovery、atomic commit |
-| `grafix.export` | 形式別 encode、出力 path、staging、no-clobber publish、provenance collection |
-| `grafix.interactive` | diagnostics / transport / telemetry の中立 contract と GL / MIDI / GUI の leaf 実装 |
-| `grafix.interactive.runtime` | window loop と interactive subsystem の composition |
-| `grafix.devtools` | CLI、stub、diagnostics、benchmark tooling |
+| レイヤ                           | 主な責務                                                                                     |
+| -------------------------------- | -------------------------------------------------------------------------------------------- |
+| `grafix`                         | 公開 DSL、application callable、共通公開型を定義 module へ対応付ける標準 PEP 562 root facade |
+| `grafix.api`                     | 公開 DSL (`G` / `E` / `L` / `P`)、公開 value type、application callable の定義 module        |
+| `grafix.api._runner_application` | config、GUI、MIDI、window/runtime を組み立てる private interactive composition root          |
+| `grafix.core`                    | Geometry、catalog、評価、parameters、immutable runtime/evaluation config の domain contract  |
+| `grafix.core.geometry_kernels`   | packed geometry、平面、grid、raster、marching、resample の数値 kernel                        |
+| `grafix.authoring_loader`        | config authoring source の filesystem capture、candidate catalog 構築                        |
+| `grafix._snapshot_import`        | source bytes の一時 import、`sys.meta_path` / `sys.modules` transaction と共有 lock          |
+| `grafix.runtime_config_loader`   | YAML/package resource、CWD/HOME 探索、merge、path 解決                                       |
+| `grafix.parameter_storage`       | ParamStore の非変更 read、明示 recovery、atomic commit                                       |
+| `grafix.export`                  | 形式別 encode、出力 path、staging、no-clobber publish、provenance collection                 |
+| `grafix.interactive`             | diagnostics / transport / telemetry の中立 contract と GL / MIDI / GUI の leaf 実装          |
+| `grafix.interactive.runtime`     | window loop と interactive subsystem の composition                                          |
+| `grafix.devtools`                | CLI、stub、diagnostics、benchmark tooling                                                    |
 
 依存規則は次のとおり。
 
@@ -89,17 +89,17 @@ callable/module の dual behavior を持たない。root は標準 PEP 562 `__ge
 `公開名 -> 定義 module/attribute` の静的 mapping だけで遅延解決する。各 dotted name の意味は
 一つに固定する。
 
-| 名前 | 意味 |
-|---|---|
-| `grafix.export` | encode、staging、publish を持つ package |
-| `grafix.api.export` | 保存 API module |
-| `grafix.save` / `grafix.api.export.save` | `Frame` を保存する同一 callable |
-| `grafix.render` / `grafix.api.render.render` | headless render callable |
-| `grafix.api.render` | render API module |
-| `grafix.run` / `grafix.api.runner.run` | interactive runner callable |
-| `grafix.api.runner` | runner API module |
-| `grafix.cc` | root から取得する `CcView` object |
-| `grafix.api.cc` | `CcView` の定義 module |
+| 名前                                         | 意味                                    |
+| -------------------------------------------- | --------------------------------------- |
+| `grafix.export`                              | encode、staging、publish を持つ package |
+| `grafix.api.export`                          | 保存 API module                         |
+| `grafix.save` / `grafix.api.export.save`     | `Frame` を保存する同一 callable         |
+| `grafix.render` / `grafix.api.render.render` | headless render callable                |
+| `grafix.api.render`                          | render API module                       |
+| `grafix.run` / `grafix.api.runner.run`       | interactive runner callable             |
+| `grafix.api.runner`                          | runner API module                       |
+| `grafix.cc`                                  | root から取得する `CcView` object       |
+| `grafix.api.cc`                              | `CcView` の定義 module                  |
 
 application callable (`render` / `save` / `run` / `render_variation_batch`) は root または定義 module
 から取得し、`grafix.api` package 直下では re-export しない。`grafix.api.render` と
@@ -539,6 +539,51 @@ interactive の PNG/G-code は `ExportJobSystem` の長寿命 spawn worker を�
 拒否する。provenance は keypress 時点の frame とともに親で固定し、worker は Git/config/source を
 再探索しない。
 
+### G-code の canvas/machine 座標 contract
+
+preview/canvas 座標は左上原点で、X は右向き、Y は下向きである。G-code の紙配置は
+`GCodeParams.paper_bottom_right_mm=(anchor_x, anchor_y)` を正本とし、canvas の右下 `(W, H)` を
+この machine 座標へ写像する。紙サイズは frame の `canvas_size=(W, H)` だけから取得する。
+
+```text
+dx = canvas_x - W
+dy = canvas_y - H
+
+machine_x = anchor_x + dx
+machine_y = anchor_y - dy  # y_down=true
+machine_y = anchor_y + dy  # y_down=false
+```
+
+したがって紙サイズや `y_down` にかかわらず canvas 右下は常に anchor と一致する。通常の
+`y_down=true` は preview の Y 下向きと machine の Y 上向きの差だけを反転する。X の符号は変えず、
+左右反転は行わない。2026-08-10 の初回移行では、校正済み A5 の旧
+`origin=(154.019, 14.195)` から anchor `(302.019, 14.195)` mm を導出した。`14.195` mm は
+この旧 A5 校正に由来する歴史的な Y 値である。2026-08-11 の最初の安全再校正では
+Y を 12 mm 小さくする中間 anchor `(302.019, 2.195)` mm を使用した。その後、右下の
+machine Y を厳密に `0.0` mm へ合わせる後続再校正を行い、現在の既定 anchor は
+`(302.019, 0.0)` mm である。現行出力は旧 `14.195` mm anchor 比で全 machine Y が
+一律 `-14.195 mm`、中間 `2.195` mm anchor 比で一律 `-2.195 mm` となる。最終整合の根拠と
+検証は
+[`docs/plan/gcode_bottom_right_anchor_y_zero_followup_plan_2026-08-11.md`](docs/plan/gcode_bottom_right_anchor_y_zero_followup_plan_2026-08-11.md)
+に記録する。X は変更せず、A5 幅 148 mm の実効 X offset は `154.019` mm、
+A4 幅 210 mm では `92.019` mm である。
+
+既定の `y_down=true` で紙全体が占める machine 範囲は次のとおりである。
+
+| 紙              |        machine X範囲 | machine Y範囲 |      右下 anchor |
+| --------------- | -------------------: | ------------: | ---------------: |
+| A5 `(148, 210)` | `154.019 .. 302.019` |    `0 .. 210` | `(302.019, 0.0)` |
+| A4 `(210, 297)` |  `92.019 .. 302.019` |    `0 .. 297` | `(302.019, 0.0)` |
+
+alignment sketch の実描画範囲は、A5 が machine Y=`5 .. 205` mm、A4 が
+machine Y=`5 .. 292` mm である。どちらも紙端から 5 mm 内側に保たれる。
+
+旧 `origin` のような固定左端 offset や、実 canvas 高と独立した `canvas_height_mm` は持たない。
+標準の headless save と interactive export worker は、frame の `canvas_size` と render session で
+確定した immutable `GCodeParams` snapshot を encoder へ渡し、manifest の effective config に
+同じ anchor を記録する。低レベルの `CaptureService` へ frame の effective config と異なる
+`gcode_params` を直接渡す場合、manifest の config snapshot は frame 側のままである。
+
 ### G-code の stroke-order contract
 
 G-code encoder は一つの `RealizedLayer` を、並べ替え、逆向き描画、短距離 bridge の
@@ -551,7 +596,8 @@ semantic boundary とする。各 input polyline を紙の安全領域へクリ�
   clip 後 stroke の入力順と向きを維持し、stroke 間では必ずペンアップする。
 - `Layer.gcode_optimize=True` の場合だけ、global `GCodeParams` の 3 設定を適用する。
   `optimize_travel` はレイヤ内の全 stroke を並べ替え、`allow_reverse` はその並べ替え時の反転候補を
-  許可する。`optimize_travel=False` では入力順と向きを維持する。
+  許可する。これは点列の走査方向だけを変え、canvas/machine 軸や図形を鏡写しにしない。
+  `optimize_travel=False` では入力順と向きを維持する。
 - `bridge_draw_distance=d` は、最終的に確定した隣接 stroke 間の距離が `d` mm 未満なら、
   その gap を描いて繋いでよいという利用者の明示許可である。`null` では connector を追加しない。
   bridge は `optimize_travel=False` でも入力順の隣接 stroke 間へ適用する。
@@ -581,12 +627,12 @@ re-export shim は存在しない。
 
 同じ値を producer と DTO の両方で無条件に再検証せず、信頼境界ごとに owner を決める。
 
-| 境界 | validation owner |
-|---|---|
-| public API | その public method/function。暗黙 coercion を行わず error type/message を固定する |
-| filesystem / IPC deserialize | decoder/receiver。型、範囲、payload 排他、schema を再検証する |
-| custom evaluator output | evaluation boundary。shape/dtype/resource contract を検証する |
-| trusted private DTO | producer が canonical 化し、DTO は残る意味的 invariant だけを持つ |
+| 境界                         | validation owner                                                                  |
+| ---------------------------- | --------------------------------------------------------------------------------- |
+| public API                   | その public method/function。暗黙 coercion を行わず error type/message を固定する |
+| filesystem / IPC deserialize | decoder/receiver。型、範囲、payload 排他、schema を再検証する                     |
+| custom evaluator output      | evaluation boundary。shape/dtype/resource contract を検証する                     |
+| trusted private DTO          | producer が canonical 化し、DTO は残る意味的 invariant だけを持つ                 |
 
 `MpDraw.submit()` が `_DrawTask` の public snapshot/time/revision/epoch/quality validation を所有し、private
 `_DrawTask` は同じ field を再検証しない。export request の format/snapshot/G-code/output-size invariant

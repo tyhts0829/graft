@@ -238,7 +238,7 @@ def _paper_safe_rect(
     """紙（canvas）の安全領域矩形 `[x_min, x_max] × [y_min, y_max]` を返す。"""
 
     # ここでの矩形は canvas 座標系（= ユーザーが描く座標系）で定義する。
-    # y_down/origin などの機械座標変換は「クリップ後」に適用する。
+    # 右下 anchor と Y 方向の機械座標変換は「クリップ後」に適用する。
     w, h = canvas_size
     m = float(paper_margin_mm)
     if m < 0:
@@ -259,26 +259,30 @@ def _canvas_to_machine_xy(
 
     Notes
     -----
-    変換順序は「Y 反転 → origin 加算」。
+    canvas の論理右下 ``(W, H)`` を設定済みの machine 右下 anchor へ写し、
+    その点からの紙面内相対位置で座標を決める。X は反転しない。
+    ``y_down=True`` の場合だけ Y を反転する。
     """
 
-    # 注意: 距離（mm）は Y 反転や origin 平行移動では変わらない（等長変換）。
+    # 注意: 距離（mm）は Y 反転や anchor への平行移動では変わらない（等長変換）。
     # そのため「距離評価（最適化）」は canvas 座標系のままでも成立する。
     x, y = xy
+    canvas_w, canvas_h = canvas_size
+    anchor_x, anchor_y = params.paper_bottom_right_mm
+
+    # X は canvas / machine とも右向きを正とし、反転せずに紙幅分だけ左へ戻す。
+    # これにより canvas_x=W は紙幅によらず常に anchor_x へ写る。
+    x = x + (float(anchor_x) - float(canvas_w))
     if params.y_down:
         # y_down=True の場合:
         # canvas は `(0,0)` が左上・Y が下向き、の感覚で描けるようにしつつ、
-        # 出力は `y -> (H - y)` で反転して機械座標へ合わせる。
-        canvas_h = (
-            float(params.canvas_height_mm)
-            if params.canvas_height_mm is not None
-            else float(canvas_size[1])
-        )
-        y = canvas_h - y
+        # 出力は `H - y` で反転し、canvas_y=H を anchor_y へ写す。
+        y = (float(canvas_h) - y) + float(anchor_y)
+    else:
+        # 無反転でも右下 anchor 契約は維持する。canvas_y=H は anchor_y へ写る。
+        y = y + (float(anchor_y) - float(canvas_h))
 
-    # origin は「機械原点との差」を吸収するためのオフセット。
-    ox, oy = params.origin
-    return x + float(ox), y + float(oy)
+    return x, y
 
 
 def _quantize_xy(xy: tuple[float, float], *, decimals: int) -> tuple[float, float]:

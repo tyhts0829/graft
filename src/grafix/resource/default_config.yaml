@@ -66,11 +66,11 @@ export:
     z_up: 3.0
     z_down: -1.0
 
-    # True の場合、Y 反転を行う（canvas の感覚を左上原点の Y 下向きに寄せる）。
+    # True の場合、canvas の Y 下向きを machine の Y 上向きへ反転する。
     y_down: true
 
-    # 出力座標の原点オフセット [mm]（X, Y）。
-    origin: [154.019, 14.195]
+    # 紙（canvas）の右下角を合わせる machine XY 座標 [mm]。
+    paper_bottom_right_mm: [302.019, 0.0]
 
     # 数値出力の小数点以下の桁数。
     decimals: 3
@@ -94,9 +94,6 @@ export:
     optimize_travel: true
     # `optimize_travel=true` の並べ替え時に、ストロークの逆向き描画を許可する。
     allow_reverse: true
-
-    # `y_down=true` 時の厳密反転に使うキャンバス高さ [mm]（未指定なら export_gcode(canvas_size=...) の高さ）。
-    canvas_height_mm: null
 
 midi:
   # `run(..., midi_port_name="auto")` のときに上から順に接続を試す。

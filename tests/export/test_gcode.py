@@ -8,17 +8,20 @@ from typing import Any
 import numpy as np
 import pytest
 
-from grafix.core.geometry import Geometry
-from grafix.core.gcode_params import GCodeParams as CoreGCodeParams
-from grafix.core.layer import Layer
 from grafix.core.evaluation_context import (
     EMPTY_EXTERNAL_DEPENDENCIES_FINGERPRINT,
     EvaluationFingerprint,
 )
+from grafix.core.gcode_params import GCodeParams as CoreGCodeParams
+from grafix.core.geometry import Geometry
+from grafix.core.layer import Layer
 from grafix.core.pipeline import RealizedLayer
 from grafix.core.realize import GeometryCacheKey
 from grafix.core.realized_geometry import RealizedGeometry
 from grafix.export.gcode import GCodeParams, export_gcode
+
+_CALIBRATED_BOTTOM_RIGHT_MM = (302.019, 0.0)
+_PREVIOUS_BOTTOM_RIGHT_MM = (302.019, 14.195)
 
 
 def _realized_layer(
@@ -70,6 +73,12 @@ def _parse_xy(line: str) -> tuple[float, float] | None:
     return x, y
 
 
+def _xy_moves(text: str) -> list[tuple[float, float]]:
+    """G-code 中の XY 移動先を出力順で返す。"""
+
+    return [xy for line in text.splitlines() if (xy := _parse_xy(line)) is not None]
+
+
 def _pen_is_down_from_z(z: float, *, z_up: float, z_down: float) -> bool:
     return abs(float(z) - float(z_down)) <= abs(float(z) - float(z_up))
 
@@ -97,6 +106,10 @@ def test_gcode_params_is_the_public_reexport_of_the_core_type() -> None:
     assert GCodeParams is CoreGCodeParams
 
 
+def test_gcode_params_uses_recalibrated_default_bottom_right() -> None:
+    assert GCodeParams().paper_bottom_right_mm == _CALIBRATED_BOTTOM_RIGHT_MM
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [
@@ -107,7 +120,6 @@ def test_gcode_params_is_the_public_reexport_of_the_core_type() -> None:
         ("z_down", object()),
         ("paper_margin_mm", False),
         ("bridge_draw_distance", "0.5"),
-        ("canvas_height_mm", float("-inf")),
     ],
 )
 def test_gcode_params_rejects_non_real_or_non_finite_numeric_values(
@@ -125,7 +137,6 @@ def test_gcode_params_rejects_non_real_or_non_finite_numeric_values(
         ("draw_feed", -1.0),
         ("paper_margin_mm", -0.1),
         ("bridge_draw_distance", -0.1),
-        ("canvas_height_mm", 0.0),
     ],
 )
 def test_gcode_params_rejects_values_outside_semantic_ranges(
@@ -155,9 +166,9 @@ def test_gcode_params_requires_non_negative_integer_decimals(value: Any) -> None
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("origin", [0.0, 0.0]),
-        ("origin", (0.0,)),
-        ("origin", (0.0, float("nan"))),
+        ("paper_bottom_right_mm", [0.0, 0.0]),
+        ("paper_bottom_right_mm", (0.0,)),
+        ("paper_bottom_right_mm", (0.0, float("nan"))),
         ("bed_x_range", [0.0, 1.0]),
         ("bed_x_range", (1.0, 1.0)),
         ("bed_y_range", (2.0, 1.0)),
@@ -169,6 +180,198 @@ def test_gcode_params_requires_finite_ordered_tuples(
 ) -> None:
     with pytest.raises((TypeError, ValueError)):
         GCodeParams(**{field: value})  # type: ignore[arg-type]
+
+
+def test_export_gcode_a5_keeps_x_and_moves_y_14_195_mm_to_zero_anchor(
+    tmp_path,
+) -> None:
+    """A5 の X は保ち、旧 anchor 比で Y だけ 14.195 mm 下げる。"""
+
+    layer = _realized_layer(
+        coords=[
+            [0.0, 0.0, 0.0],
+            [74.0, 105.0, 0.0],
+            [148.0, 210.0, 0.0],
+        ],
+        offsets=[0, 3],
+    )
+    params = GCodeParams(
+        paper_bottom_right_mm=_CALIBRATED_BOTTOM_RIGHT_MM,
+        y_down=True,
+        paper_margin_mm=0.0,
+        decimals=3,
+        optimize_travel=False,
+        bridge_draw_distance=None,
+    )
+    out_path = tmp_path / "a5-anchor.gcode"
+
+    export_gcode([layer], out_path, canvas_size=(148.0, 210.0), params=params)
+
+    assert _xy_moves(out_path.read_text(encoding="utf-8")) == [
+        (154.019, 210.0),
+        (228.019, 105.0),
+        (302.019, 0.0),
+    ]
+
+
+def test_export_gcode_a4_moves_left_for_width_and_uses_zero_y_anchor(
+    tmp_path,
+) -> None:
+    layer = _realized_layer(
+        coords=[[105.0, 148.5, 0.0], [210.0, 297.0, 0.0]],
+        offsets=[0, 2],
+    )
+    params = GCodeParams(
+        paper_bottom_right_mm=_CALIBRATED_BOTTOM_RIGHT_MM,
+        y_down=True,
+        paper_margin_mm=0.0,
+        decimals=3,
+        optimize_travel=False,
+        bridge_draw_distance=None,
+    )
+    out_path = tmp_path / "a4-anchor.gcode"
+
+    export_gcode([layer], out_path, canvas_size=(210.0, 297.0), params=params)
+
+    moves = _xy_moves(out_path.read_text(encoding="utf-8"))
+    assert moves == [(197.019, 148.5), (302.019, 0.0)]
+    assert moves[0][0] == 105.0 + 154.019 - 62.0
+    assert moves[0][1] == 162.695 - 14.195
+
+
+def test_export_gcode_zero_y_anchor_shifts_every_y_by_14_195_and_preserves_x(
+    tmp_path,
+) -> None:
+    layer = _realized_layer(
+        coords=[
+            [0.0, 0.0, 0.0],
+            [61.5, 78.25, 0.0],
+            [123.0, 234.0, 0.0],
+        ],
+        offsets=[0, 3],
+    )
+    common: dict[str, Any] = dict(
+        y_down=True,
+        paper_margin_mm=0.0,
+        decimals=3,
+        optimize_travel=False,
+        bridge_draw_distance=None,
+    )
+    previous_path = tmp_path / "previous-y-anchor.gcode"
+    recalibrated_path = tmp_path / "recalibrated-y-anchor.gcode"
+
+    export_gcode(
+        [layer],
+        previous_path,
+        canvas_size=(123.0, 234.0),
+        params=GCodeParams(
+            paper_bottom_right_mm=_PREVIOUS_BOTTOM_RIGHT_MM,
+            **common,
+        ),
+    )
+    export_gcode(
+        [layer],
+        recalibrated_path,
+        canvas_size=(123.0, 234.0),
+        params=GCodeParams(
+            paper_bottom_right_mm=_CALIBRATED_BOTTOM_RIGHT_MM,
+            **common,
+        ),
+    )
+
+    previous = _xy_moves(previous_path.read_text(encoding="utf-8"))
+    recalibrated = _xy_moves(recalibrated_path.read_text(encoding="utf-8"))
+    assert recalibrated == [(x, round(y - 14.195, 3)) for x, y in previous]
+
+
+@pytest.mark.parametrize(
+    "canvas_size",
+    [(100.0, 100.0), (148.0, 210.0), (210.0, 297.0), (297.0, 420.0)],
+)
+def test_export_gcode_keeps_bottom_right_at_anchor_for_arbitrary_paper_sizes(
+    tmp_path,
+    *,
+    canvas_size: tuple[float, float],
+) -> None:
+    width, height = canvas_size
+    layer = _realized_layer(
+        coords=[[width, height, 0.0], [width - 1.0, height - 1.0, 0.0]],
+        offsets=[0, 2],
+    )
+    params = GCodeParams(
+        paper_bottom_right_mm=_CALIBRATED_BOTTOM_RIGHT_MM,
+        y_down=True,
+        paper_margin_mm=0.0,
+        decimals=3,
+        optimize_travel=False,
+        bridge_draw_distance=None,
+    )
+    out_path = tmp_path / f"anchor-{int(width)}x{int(height)}.gcode"
+
+    export_gcode([layer], out_path, canvas_size=canvas_size, params=params)
+
+    assert _xy_moves(out_path.read_text(encoding="utf-8")) == [
+        (302.019, 0.0),
+        (301.019, 1.0),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("y_down", "expected"),
+    [
+        (
+            True,
+            [
+                (260.0, 70.0),
+                (300.0, 70.0),
+                (300.0, 10.0),
+                (260.0, 10.0),
+                (260.0, 70.0),
+            ],
+        ),
+        (
+            False,
+            [
+                (260.0, -50.0),
+                (300.0, -50.0),
+                (300.0, 10.0),
+                (260.0, 10.0),
+                (260.0, -50.0),
+            ],
+        ),
+    ],
+)
+def test_export_gcode_maps_all_corners_without_x_flip_and_with_configured_y_direction(
+    tmp_path,
+    *,
+    y_down: bool,
+    expected: list[tuple[float, float]],
+) -> None:
+    """canvas の TL→TR→BR→BL 順で X 非反転と Y 方向契約を固定する。"""
+
+    layer = _realized_layer(
+        coords=[
+            [0.0, 0.0, 0.0],
+            [40.0, 0.0, 0.0],
+            [40.0, 60.0, 0.0],
+            [0.0, 60.0, 0.0],
+            [0.0, 0.0, 0.0],
+        ],
+        offsets=[0, 5],
+    )
+    params = GCodeParams(
+        paper_bottom_right_mm=(300.0, 10.0),
+        y_down=y_down,
+        paper_margin_mm=0.0,
+        decimals=3,
+        optimize_travel=False,
+        bridge_draw_distance=None,
+    )
+    out_path = tmp_path / f"corners-y-down-{y_down}.gcode"
+
+    export_gcode([layer], out_path, canvas_size=(40.0, 60.0), params=params)
+
+    assert _xy_moves(out_path.read_text(encoding="utf-8")) == expected
 
 
 def test_export_gcode_writes_file_and_is_deterministic(tmp_path) -> None:
@@ -186,7 +389,7 @@ def test_export_gcode_writes_file_and_is_deterministic(tmp_path) -> None:
         )
     ]
     params = GCodeParams(
-        origin=(0.0, 0.0),
+        paper_bottom_right_mm=(20.0, 20.0),
         y_down=False,
         paper_margin_mm=0.0,
         decimals=3,
@@ -214,7 +417,12 @@ def test_export_gcode_clips_to_paper_and_uses_pen_up_for_outside(tmp_path) -> No
             offsets=[0, 4],
         )
     ]
-    params = GCodeParams(origin=(0.0, 0.0), y_down=False, paper_margin_mm=0.0, decimals=3)
+    params = GCodeParams(
+        paper_bottom_right_mm=(10.0, 10.0),
+        y_down=False,
+        paper_margin_mm=0.0,
+        decimals=3,
+    )
 
     out_path = tmp_path / "out.gcode"
     export_gcode(layers, out_path, canvas_size=(10.0, 10.0), params=params)
@@ -231,7 +439,10 @@ def test_export_gcode_clips_to_paper_and_uses_pen_up_for_outside(tmp_path) -> No
 
     assert i_draw_to_exit < i_travel_to_entry < i_draw_after_entry
     assert "G1 Z3.000" in lines[i_draw_to_exit + 1 : i_travel_to_entry]
-    assert f"G1 Z{float(params.z_down):.3f}" in lines[i_travel_to_entry + 1 : i_draw_after_entry]
+    assert (
+        f"G1 Z{float(params.z_down):.3f}"
+        in lines[i_travel_to_entry + 1 : i_draw_after_entry]
+    )
 
 
 def test_export_gcode_allows_input_outside_bed_if_output_is_inside(tmp_path) -> None:
@@ -242,7 +453,7 @@ def test_export_gcode_allows_input_outside_bed_if_output_is_inside(tmp_path) -> 
         )
     ]
     params = GCodeParams(
-        origin=(0.0, 0.0),
+        paper_bottom_right_mm=(10.0, 10.0),
         y_down=False,
         paper_margin_mm=0.0,
         decimals=3,
@@ -263,7 +474,7 @@ def test_export_gcode_raises_if_output_outside_bed(tmp_path) -> None:
         )
     ]
     params = GCodeParams(
-        origin=(0.0, 0.0),
+        paper_bottom_right_mm=(10.0, 10.0),
         y_down=False,
         paper_margin_mm=0.0,
         decimals=3,
@@ -299,14 +510,14 @@ def test_export_gcode_optimize_travel_reorders_fragments_of_one_polyline(
         )
     ]
     params_no_opt = GCodeParams(
-        origin=(0.0, 0.0),
+        paper_bottom_right_mm=(100.0, 100.0),
         y_down=False,
         paper_margin_mm=0.0,
         decimals=3,
         optimize_travel=False,
     )
     params_opt = GCodeParams(
-        origin=(0.0, 0.0),
+        paper_bottom_right_mm=(100.0, 100.0),
         y_down=False,
         paper_margin_mm=0.0,
         decimals=3,
@@ -320,7 +531,9 @@ def test_export_gcode_optimize_travel_reorders_fragments_of_one_polyline(
     export_gcode(layers, b, canvas_size=(100.0, 100.0), params=params_opt)
 
     travel_a = _travel_distance(
-        a.read_text(encoding="utf-8"), z_up=params_no_opt.z_up, z_down=params_no_opt.z_down
+        a.read_text(encoding="utf-8"),
+        z_up=params_no_opt.z_up,
+        z_down=params_no_opt.z_down,
     )
     travel_b = _travel_distance(
         b.read_text(encoding="utf-8"), z_up=params_opt.z_up, z_down=params_opt.z_down
@@ -348,7 +561,12 @@ def test_export_gcode_optimize_travel_can_reverse_clipped_fragment(tmp_path) -> 
             offsets=[0, 12],
         )
     ]
-    params = GCodeParams(origin=(0.0, 0.0), y_down=False, paper_margin_mm=0.0, decimals=3)
+    params = GCodeParams(
+        paper_bottom_right_mm=(100.0, 100.0),
+        y_down=False,
+        paper_margin_mm=0.0,
+        decimals=3,
+    )
 
     out_path = tmp_path / "out.gcode"
     export_gcode(layers, out_path, canvas_size=(100.0, 100.0), params=params)
@@ -377,7 +595,7 @@ def test_export_gcode_draw_bridge_skips_pen_up_between_fragments_of_one_polyline
         )
     ]
     params = GCodeParams(
-        origin=(0.0, 0.0),
+        paper_bottom_right_mm=(10.0, 10.0),
         y_down=False,
         paper_margin_mm=0.0,
         decimals=3,
@@ -413,7 +631,7 @@ def test_export_gcode_draw_bridge_disabled_uses_pen_up(tmp_path) -> None:
         )
     ]
     params = GCodeParams(
-        origin=(0.0, 0.0),
+        paper_bottom_right_mm=(10.0, 10.0),
         y_down=False,
         paper_margin_mm=0.0,
         decimals=3,
@@ -546,7 +764,7 @@ def test_export_gcode_applies_ordering_and_reverse_to_all_strokes_in_layer(
         offsets=[0, 2, 4, 6],
     )
     params = GCodeParams(
-        origin=(0.0, 0.0),
+        paper_bottom_right_mm=(200.0, 200.0),
         y_down=False,
         paper_margin_mm=0.0,
         decimals=3,
@@ -579,7 +797,7 @@ def test_export_gcode_layer_master_false_disables_order_reverse_and_bridge(
         gcode_optimize=False,
     )
     params = GCodeParams(
-        origin=(0.0, 0.0),
+        paper_bottom_right_mm=(200.0, 200.0),
         y_down=False,
         paper_margin_mm=0.0,
         decimals=3,
@@ -622,7 +840,7 @@ def test_export_gcode_bridge_crosses_source_boundary_with_strict_threshold(
     params = GCodeParams(
         travel_feed=4000.0,
         draw_feed=2000.0,
-        origin=(0.0, 0.0),
+        paper_bottom_right_mm=(10.0, 10.0),
         y_down=False,
         paper_margin_mm=0.0,
         decimals=3,
@@ -653,7 +871,7 @@ def test_export_gcode_bridge_uses_endpoint_after_reverse(tmp_path) -> None:
         offsets=[0, 2, 4],
     )
     params = GCodeParams(
-        origin=(0.0, 0.0),
+        paper_bottom_right_mm=(20.0, 20.0),
         y_down=False,
         paper_margin_mm=0.0,
         decimals=3,
@@ -688,7 +906,7 @@ def test_export_gcode_flattens_clipped_fragments_with_other_layer_strokes(
         offsets=[0, 5, 7],
     )
     params = GCodeParams(
-        origin=(0.0, 0.0),
+        paper_bottom_right_mm=(10.0, 10.0),
         y_down=False,
         paper_margin_mm=0.0,
         decimals=3,
@@ -727,7 +945,7 @@ def test_export_gcode_applies_independent_optimization_policy_per_layer(
         ),
     ]
     params = GCodeParams(
-        origin=(0.0, 0.0),
+        paper_bottom_right_mm=(200.0, 200.0),
         y_down=False,
         paper_margin_mm=0.0,
         decimals=3,
@@ -758,7 +976,7 @@ def test_export_gcode_never_bridges_between_enabled_layers(tmp_path) -> None:
         ),
     ]
     params = GCodeParams(
-        origin=(0.0, 0.0),
+        paper_bottom_right_mm=(10.0, 10.0),
         y_down=False,
         paper_margin_mm=0.0,
         decimals=3,
@@ -794,7 +1012,7 @@ def test_export_gcode_optimization_preserves_stroke_geometry_without_bridge(
         offsets=[0, 2, 4, 6],
     )
     common = dict(
-        origin=(0.0, 0.0),
+        paper_bottom_right_mm=(200.0, 200.0),
         y_down=False,
         paper_margin_mm=0.0,
         decimals=3,
@@ -812,12 +1030,18 @@ def test_export_gcode_optimization_preserves_stroke_geometry_without_bridge(
     )
     baseline_path = tmp_path / "geometry-baseline.gcode"
     optimized_path = tmp_path / "geometry-optimized.gcode"
-    export_gcode([layer], baseline_path, canvas_size=(200.0, 200.0), params=baseline_params)
-    export_gcode([layer], optimized_path, canvas_size=(200.0, 200.0), params=optimized_params)
+    export_gcode(
+        [layer], baseline_path, canvas_size=(200.0, 200.0), params=baseline_params
+    )
+    export_gcode(
+        [layer], optimized_path, canvas_size=(200.0, 200.0), params=optimized_params
+    )
 
     baseline = baseline_path.read_text(encoding="utf-8")
     optimized = optimized_path.read_text(encoding="utf-8")
-    baseline_ids = sorted((poly_idx, seg_idx) for poly_idx, seg_idx, _ in _stroke_records(baseline))
+    baseline_ids = sorted(
+        (poly_idx, seg_idx) for poly_idx, seg_idx, _ in _stroke_records(baseline)
+    )
     optimized_ids = sorted(
         (poly_idx, seg_idx) for poly_idx, seg_idx, _ in _stroke_records(optimized)
     )
@@ -851,7 +1075,7 @@ def test_export_gcode_fill_like_layer_becomes_serpentine_and_bridgeable(
         gcode_optimize=False,
     )
     params_without_bridge = GCodeParams(
-        origin=(0.0, 0.0),
+        paper_bottom_right_mm=(10.0, 10.0),
         y_down=False,
         paper_margin_mm=0.0,
         decimals=3,
@@ -860,7 +1084,7 @@ def test_export_gcode_fill_like_layer_becomes_serpentine_and_bridgeable(
         bridge_draw_distance=None,
     )
     params_with_bridge = GCodeParams(
-        origin=(0.0, 0.0),
+        paper_bottom_right_mm=(10.0, 10.0),
         y_down=False,
         paper_margin_mm=0.0,
         decimals=3,
@@ -893,7 +1117,9 @@ def test_export_gcode_fill_like_layer_becomes_serpentine_and_bridgeable(
     optimized = optimized_path.read_text(encoding="utf-8")
     bridged = bridged_path.read_text(encoding="utf-8")
     disabled = disabled_path.read_text(encoding="utf-8")
-    assert _stroke_records(optimized) == [(index, 0, bool(index % 2)) for index in range(n_strokes)]
+    assert _stroke_records(optimized) == [
+        (index, 0, bool(index % 2)) for index in range(n_strokes)
+    ]
     assert _travel_distance(
         optimized,
         z_up=params_without_bridge.z_up,
@@ -907,7 +1133,9 @@ def test_export_gcode_fill_like_layer_becomes_serpentine_and_bridgeable(
     bridge_lengths = _bridge_lengths(bridged, z_up=params_with_bridge.z_up)
     assert len(bridge_lengths) == n_strokes - 1
     assert all(length < 0.101 for length in bridge_lengths)
-    assert _stroke_records(disabled) == [(index, 0, False) for index in range(n_strokes)]
+    assert _stroke_records(disabled) == [
+        (index, 0, False) for index in range(n_strokes)
+    ]
     assert disabled.splitlines().count("G1 Z3.000") == n_strokes
 
 
@@ -938,7 +1166,7 @@ def test_export_gcode_does_not_infer_face_groups_from_mixed_polylines(
     for polyline in polylines:
         offsets.append(offsets[-1] + len(polyline))
     params = GCodeParams(
-        origin=(0.0, 0.0),
+        paper_bottom_right_mm=(200.0, 200.0),
         y_down=False,
         paper_margin_mm=0.0,
         decimals=3,
@@ -968,7 +1196,7 @@ def test_export_gcode_default_and_explicit_true_layer_master_are_identical(
         [3.1, 1.0, 0.0],
     ]
     params = GCodeParams(
-        origin=(0.0, 0.0),
+        paper_bottom_right_mm=(10.0, 10.0),
         y_down=False,
         paper_margin_mm=0.0,
         decimals=3,

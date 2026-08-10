@@ -523,13 +523,20 @@ def _parse_ui_section(payload: dict[str, Any]) -> _UiSection:
 def _parse_gcode_section(gcode: dict[str, Any]) -> GCodeParams:
     """``export.gcode`` section を検証して返す。"""
 
+    for removed_key in ("origin", "canvas_height_mm"):
+        if removed_key in gcode:
+            raise RuntimeError(
+                f"export.gcode.{removed_key} は廃止されました"
+                "（paper_bottom_right_mm へ移行してください）"
+            )
+
     required_keys = (
         "travel_feed",
         "draw_feed",
         "z_up",
         "z_down",
         "y_down",
-        "origin",
+        "paper_bottom_right_mm",
         "decimals",
         "paper_margin_mm",
         "bed_x_range",
@@ -537,7 +544,6 @@ def _parse_gcode_section(gcode: dict[str, Any]) -> GCodeParams:
         "bridge_draw_distance",
         "optimize_travel",
         "allow_reverse",
-        "canvas_height_mm",
     )
     missing_keys = [key for key in required_keys if key not in gcode]
     if missing_keys:
@@ -578,10 +584,14 @@ def _parse_gcode_section(gcode: dict[str, Any]) -> GCodeParams:
         raise RuntimeError(
             "export.gcode.y_down が未設定です（同梱 default_config.yaml を確認してください）"
         )
-    origin = _as_float_pair(gcode.get("origin"), key="export.gcode.origin")
-    if origin is None:
+    paper_bottom_right_mm = _as_float_pair(
+        gcode.get("paper_bottom_right_mm"),
+        key="export.gcode.paper_bottom_right_mm",
+    )
+    if paper_bottom_right_mm is None:
         raise RuntimeError(
-            "export.gcode.origin が未設定です（同梱 default_config.yaml を確認してください）"
+            "export.gcode.paper_bottom_right_mm が未設定です"
+            "（同梱 default_config.yaml を確認してください）"
         )
     decimals = _as_int(gcode.get("decimals"), key="export.gcode.decimals")
     if decimals is None:
@@ -632,15 +642,6 @@ def _parse_gcode_section(gcode: dict[str, Any]) -> GCodeParams:
             f"export.gcode.bed_y_range は [min, max] の昇順である必要があります: got={bed_y_range}"
         )
 
-    canvas_height_mm = _as_float(
-        gcode.get("canvas_height_mm"),
-        key="export.gcode.canvas_height_mm",
-    )
-    if canvas_height_mm is not None and canvas_height_mm <= 0.0:
-        raise ValueError(
-            f"export.gcode.canvas_height_mm は正の値である必要があります: got={canvas_height_mm}"
-        )
-
     optimize_travel = _as_bool(
         gcode.get("optimize_travel"),
         key="export.gcode.optimize_travel",
@@ -665,7 +666,7 @@ def _parse_gcode_section(gcode: dict[str, Any]) -> GCodeParams:
         z_up=z_up,
         z_down=z_down,
         y_down=y_down,
-        origin=origin,
+        paper_bottom_right_mm=paper_bottom_right_mm,
         decimals=decimals,
         paper_margin_mm=paper_margin_mm,
         bed_x_range=bed_x_range,
@@ -673,7 +674,6 @@ def _parse_gcode_section(gcode: dict[str, Any]) -> GCodeParams:
         bridge_draw_distance=bridge_draw_distance,
         optimize_travel=optimize_travel,
         allow_reverse=allow_reverse,
-        canvas_height_mm=canvas_height_mm,
     )
 
 

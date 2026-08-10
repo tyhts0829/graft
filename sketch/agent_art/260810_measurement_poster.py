@@ -10,7 +10,7 @@ from grafix import E, G, L, primitive, run
 # A4 portrait in millimetres.  The reference artwork is authored on a 200 x 250
 # design board, then fitted uniformly to A4 so its original 4:5 proportions are
 # preserved instead of being stretched to the paper ratio.
-CANVAS = (148, 210)
+CANVAS = (210, 297)
 DESIGN_CANVAS = (200.0, 250.0)
 A4_FIT_SCALE = CANVAS[0] / DESIGN_CANVAS[0]
 A4_FIT_OFFSET_Y = (CANVAS[1] - DESIGN_CANVAS[1] * A4_FIT_SCALE) / 2.0

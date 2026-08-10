@@ -49,8 +49,8 @@ class GCodeParams:
         ペンダウン時の Z 高さ [mm]。
     y_down : bool
         True の場合、Y 反転を行う。
-    origin : tuple[float, float]
-        出力座標の原点オフセット [mm]（X, Y）。
+    paper_bottom_right_mm : tuple[float, float]
+        紙（canvas）の右下角を置く machine XY 座標 [mm]。
     decimals : int
         数値出力の小数点以下の桁数。0 以上。
     paper_margin_mm : float
@@ -70,11 +70,13 @@ class GCodeParams:
     allow_reverse : bool
         ``optimize_travel=True`` での並べ替え時に、ストロークの逆向き描画を
         許可する。``Layer.gcode_optimize=False`` のレイヤでは適用しない。
-    canvas_height_mm : float or None
-        Y 反転に使うキャンバス高さ。正の有限実数。None は描画キャンバス高を使う。
 
     Notes
     -----
+    配置変換は ``canvas_size`` の右下 ``(width, height)`` を
+    ``paper_bottom_right_mm`` へ写す。そのため、紙サイズが変わっても
+    同じ machine 上の点へ右下角を合わせられる。
+
     ``L.layer(..., gcode_optimize=False)`` はレイヤ単位の粗いマスタースイッチであり、
     そのレイヤでは並べ替え、逆向き描画、短距離 bridge をすべて停止する。
     ``gcode_optimize=True`` のレイヤだけが本クラスの上記 3 設定に従う。
@@ -85,7 +87,7 @@ class GCodeParams:
     z_up: float = 3.0
     z_down: float = -1.0
     y_down: bool = True
-    origin: tuple[float, float] = (154.019, 14.195)
+    paper_bottom_right_mm: tuple[float, float] = (302.019, 0.0)
     decimals: int = 3
     paper_margin_mm: float = 2.0
     bed_x_range: tuple[float, float] | None = None
@@ -93,7 +95,6 @@ class GCodeParams:
     bridge_draw_distance: float | None = 0.5
     optimize_travel: bool = True
     allow_reverse: bool = True
-    canvas_height_mm: float | None = None
 
     def __post_init__(self) -> None:
         """全 field を暗黙 coercion のない canonical 値へ検証する。"""
@@ -121,7 +122,14 @@ class GCodeParams:
         object.__setattr__(self, "z_up", finite_real(self.z_up, name="z_up"))
         object.__setattr__(self, "z_down", finite_real(self.z_down, name="z_down"))
         object.__setattr__(self, "y_down", exact_bool(self.y_down, name="y_down"))
-        object.__setattr__(self, "origin", _finite_pair(self.origin, name="origin"))
+        object.__setattr__(
+            self,
+            "paper_bottom_right_mm",
+            _finite_pair(
+                self.paper_bottom_right_mm,
+                name="paper_bottom_right_mm",
+            ),
+        )
         object.__setattr__(
             self,
             "decimals",
@@ -168,20 +176,6 @@ class GCodeParams:
             self,
             "allow_reverse",
             exact_bool(self.allow_reverse, name="allow_reverse"),
-        )
-        object.__setattr__(
-            self,
-            "canvas_height_mm",
-            (
-                None
-                if self.canvas_height_mm is None
-                else finite_real(
-                    self.canvas_height_mm,
-                    name="canvas_height_mm",
-                    minimum=0.0,
-                    minimum_inclusive=False,
-                )
-            ),
         )
 
 

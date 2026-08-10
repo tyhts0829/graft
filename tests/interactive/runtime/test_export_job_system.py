@@ -146,7 +146,7 @@ def _gcode_optimization_disabled_snapshot() -> CaptureExportSnapshot:
     )
     gcode_params = replace(
         runtime_config().gcode,
-        origin=(0.0, 0.0),
+        paper_bottom_right_mm=(200.0, 200.0),
         y_down=False,
         paper_margin_mm=0.0,
         decimals=3,
@@ -1216,6 +1216,7 @@ def test_default_worker_uses_parent_gcode_params_recorded_in_manifest(
         runtime_config().gcode,
         z_up=17.0,
         decimals=1,
+        paper_bottom_right_mm=(321.5, 12.25),
     )
     effective_config = replace(runtime_config(), gcode=gcode_params)
 
@@ -1258,8 +1259,12 @@ def test_default_worker_uses_parent_gcode_params_recorded_in_manifest(
         assert "G1 Z37.0" in output_path.read_text(encoding="utf-8")
         assert result.manifest_path is not None
         manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
-        assert manifest["config"]["effective"]["gcode"]["z_up"] == 17.0
-        assert manifest["config"]["effective"]["gcode"]["decimals"] == 1
+        manifest_gcode = manifest["config"]["effective"]["gcode"]
+        assert manifest_gcode["z_up"] == 17.0
+        assert manifest_gcode["decimals"] == 1
+        assert manifest_gcode["paper_bottom_right_mm"] == [321.5, 12.25]
+        assert "origin" not in manifest_gcode
+        assert "canvas_height_mm" not in manifest_gcode
     finally:
         system.close()
 

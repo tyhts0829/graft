@@ -8,7 +8,6 @@ import numpy as np
 
 from grafix import E, G, L, primitive, run
 
-
 # Reference-reproduction adjustment block.  The supplied photograph is already
 # almost exactly A5 portrait, so the layout is fitted uniformly with only the
 # sub-millimetre vertical remainder centered; no independent x/y stretch is used.
@@ -112,7 +111,9 @@ SMALL_QR_PATTERN = (
 HEADER_BARCODE_PATTERN = ".#####.#.....##########....#########.##....#.....##.####...##...##..#...###..##.#.##.#..##...###.....##..#..####.....#####.."
 TICKET_BARCODE_PATTERN = ".##.###...#####.##....###.####.###..#.###.###.###...#..#####.#..######..#########..#..#####.....#####.....###..#####...#####.######...#...####.#######.....#..####..#####...#.##.##.##..#####.#####...##########...###.###.#...######...###.###......#####..####.#."
 SERIAL_BARCODE_PATTERN = ".....##.###.....####..#.....#..####...###..#......###.#..#..#.##.##.##..##........####..##....###..#.###..##..#..#..##.#...#.####...#..#..#####.#....###.##.###.#....###...#..####...##....#....####..##.###..........##...#..###.###..."
-BATCH_BARCODE_PATTERN = ".######.....############..##.###...####.......####.....########."
+BATCH_BARCODE_PATTERN = (
+    ".######.....############..##.###...####.......####.....########."
+)
 CODE_BARCODE_PATTERN = "...#####.....#########....############..####....########.#...##.##..###.####..###...###########.......###...######."
 
 
@@ -359,9 +360,7 @@ def _qr_matrix(size: int, seed: int) -> list[list[bool]]:
                 reserved[gy][gx] = True
                 if 0 <= xx <= 6 and 0 <= yy <= 6:
                     grid[gy][gx] = (
-                        xx in (0, 6)
-                        or yy in (0, 6)
-                        or (2 <= xx <= 4 and 2 <= yy <= 4)
+                        xx in (0, 6) or yy in (0, 6) or (2 <= xx <= 4 and 2 <= yy <= 4)
                     )
 
     finder(0, 0)
@@ -487,8 +486,12 @@ def _component_icon(lines: list[Polyline], index: int, cx: float, cy: float) -> 
         _solid_rect_lines(lines, cx - 0.24, cy - 0.24, cx + 0.24, cy + 0.24, pitch=0.06)
     else:
         for offset in (-0.12, 0.0, 0.12):
-            _line(lines, (cx - 1.15 + offset, cy + 1.15), (cx + 1.15 + offset, cy - 1.15))
-            _line(lines, (cx - 1.25 + offset, cy + 0.45), (cx + 0.45 + offset, cy - 1.25))
+            _line(
+                lines, (cx - 1.15 + offset, cy + 1.15), (cx + 1.15 + offset, cy - 1.15)
+            )
+            _line(
+                lines, (cx - 1.25 + offset, cy + 0.45), (cx + 0.45 + offset, cy - 1.25)
+            )
         _line(lines, (cx - 0.85, cy - 0.2), (cx + 0.85, cy - 0.2))
 
 
@@ -934,7 +937,9 @@ def _arc_text(
         ]
     else:
         visible = [
-            (index, character) for index, character in enumerate(text) if character != " "
+            (index, character)
+            for index, character in enumerate(text)
+            if character != " "
         ]
         if not visible:
             return geometries
@@ -1017,15 +1022,42 @@ def _body_text_geometry():
         _text("SYS. INFRASTRUCTURE", 17.45, 5.80, 1.40, font=LIGHT_FONT, spacing=0.025),
         _text("LAYOUT EXPERIMENT", 42.10, 5.80, 1.35, font=LIGHT_FONT, spacing=0.025),
         _text("REF. NO.   8842-A", 103.25, 5.80, 1.24, font=LIGHT_FONT, spacing=0.045),
-        _rotated_text("SET   •   PRACTICE   •   BUILD", 10.65, 21.70, 1.25, 90.0, font=REGULAR_FONT, spacing=0.24, suffix="side-practice"),
-        _text("CLARITY\nIS A\nKIND OF\nCARE", 45.68, 29.80, 1.98, font=MEDIUM_FONT, align="center", spacing=0.15, line_height=1.58),
+        _rotated_text(
+            "SET   •   PRACTICE   •   BUILD",
+            10.65,
+            21.70,
+            1.25,
+            90.0,
+            font=REGULAR_FONT,
+            spacing=0.24,
+            suffix="side-practice",
+        ),
+        _text(
+            "CLARITY\nIS A\nKIND OF\nCARE",
+            45.68,
+            29.80,
+            1.98,
+            font=MEDIUM_FONT,
+            align="center",
+            spacing=0.15,
+            line_height=1.58,
+        ),
         _text("用", 24.15, 63.56, 1.10, font=JP_MEDIUM_FONT),
         _text("設計服務", 29.05, 63.50, 1.10, font=JP_MEDIUM_FONT, spacing=0.08),
         _text("設計改善系統", 40.15, 63.50, 1.10, font=JP_MEDIUM_FONT, spacing=0.06),
         _text("系統支持人", 55.05, 63.50, 1.10, font=JP_MEDIUM_FONT, spacing=0.07),
         # Rotated infrastructure title is filled separately with the solid
         # treatment so its large counters stay clean rather than cross-hatched.
-        _rotated_text("（實驗印刷機設備）", 98.11, 43.70, 1.42, 90.0, font=JP_FONT, spacing=0.72, suffix="jp-vertical"),
+        _rotated_text(
+            "（實驗印刷機設備）",
+            98.11,
+            43.70,
+            1.42,
+            90.0,
+            font=JP_FONT,
+            spacing=0.72,
+            suffix="jp-vertical",
+        ),
         _text("V.1.0", 95.20, 65.55, 1.24, font=LIGHT_FONT),
         # Right identification panel.
         _text("ID. MHV-RST-2025-01", 107.93, 18.92, 2.10, font=THIN_FONT, spacing=0.10),
@@ -1037,25 +1069,78 @@ def _body_text_geometry():
         _text("ACTIVE", 117.85, 35.30, 1.38, font=THIN_FONT, spacing=0.11),
         _text("UPDATED", 107.98, 38.26, 1.38, font=THIN_FONT, spacing=0.03),
         _text("2025.05.18", 117.85, 38.26, 1.38, font=THIN_FONT, spacing=0.11),
-        _text("CHK: 19A2    APP: 7Z", 107.82, 64.42, 1.05, font=THIN_FONT, spacing=0.25),
+        _text(
+            "CHK: 19A2    APP: 7Z", 107.82, 64.42, 1.05, font=THIN_FONT, spacing=0.25
+        ),
         # Ticket strip.
-        _text("PRIORITY\nSTANDARD", 17.88, 74.95, 1.72, font=THIN_FONT, line_height=1.22),
+        _text(
+            "PRIORITY\nSTANDARD", 17.88, 74.95, 1.72, font=THIN_FONT, line_height=1.22
+        ),
         _text("ROUTE CODE", 83.54, 74.64, 1.35, font=THIN_FONT, spacing=0.05),
         _text("X9-A", 83.54, 76.72, 2.25, font=THIN_FONT, spacing=0.10),
         _text("DESTINATION", 100.32, 75.12, 1.45, font=THIN_FONT, spacing=0.06),
         _text("GLOBAL / NODE", 100.32, 77.37, 1.55, font=THIN_FONT, spacing=0.08),
         _text("FAL 11", 125.21, 75.60, 3.40, font=LIGHT_FONT),
-        _text("ZONE\n3025", 141.39, 75.76, 1.50, font=LIGHT_FONT, align="center", line_height=1.22),
+        _text(
+            "ZONE\n3025",
+            141.39,
+            75.76,
+            1.50,
+            font=LIGHT_FONT,
+            align="center",
+            line_height=1.22,
+        ),
         # Left title block.
-        _text("LAYOUT\nDESIGN\nSYSTEMS", 9.86, 89.79, 3.15, font=THIN_FONT, line_height=1.13),
+        _text(
+            "LAYOUT\nDESIGN\nSYSTEMS",
+            9.86,
+            89.79,
+            3.15,
+            font=THIN_FONT,
+            line_height=1.13,
+        ),
         _text("文", 23.90, 101.62, 2.30, font=JP_FONT),
-        _text("本編 排（合集）", 9.54, 111.31, 2.50, font=JP_MEDIUM_FONT, spacing=0.055),
+        _text(
+            "本編 排（合集）", 9.54, 111.31, 2.50, font=JP_MEDIUM_FONT, spacing=0.055
+        ),
         _text("DESIGN BY NEAR.", 9.88, 115.89, 1.20, font=THIN_FONT, spacing=0.09),
         # Central decision system diagram.
-        _text("WHAT IS\nNEEDED", 65.05, 93.85, 1.35, font=REGULAR_FONT, align="center", line_height=1.20),
-        _text("REMOVE\nNOISE", 54.80, 102.48, 1.30, font=REGULAR_FONT, align="center", line_height=1.22),
-        _text("RESPECT\nCONTEXT", 75.30, 102.48, 1.30, font=REGULAR_FONT, align="center", line_height=1.22),
-        _text("LEAVE ROOM\nTO ADAPT", 65.05, 112.68, 1.35, font=REGULAR_FONT, align="center", line_height=1.22),
+        _text(
+            "WHAT IS\nNEEDED",
+            65.05,
+            93.85,
+            1.35,
+            font=REGULAR_FONT,
+            align="center",
+            line_height=1.20,
+        ),
+        _text(
+            "REMOVE\nNOISE",
+            54.80,
+            102.48,
+            1.30,
+            font=REGULAR_FONT,
+            align="center",
+            line_height=1.22,
+        ),
+        _text(
+            "RESPECT\nCONTEXT",
+            75.30,
+            102.48,
+            1.30,
+            font=REGULAR_FONT,
+            align="center",
+            line_height=1.22,
+        ),
+        _text(
+            "LEAVE ROOM\nTO ADAPT",
+            65.05,
+            112.68,
+            1.35,
+            font=REGULAR_FONT,
+            align="center",
+            line_height=1.22,
+        ),
         # Components list.
         _text("COMPONENTS", 93.35, 87.12, 1.55, font=LIGHT_FONT),
         _text("結構", 99.45, 93.30, 1.50, font=JP_FONT),
@@ -1073,8 +1158,26 @@ def _body_text_geometry():
         _text("維護", 99.45, 117.30, 1.50, font=JP_FONT),
         _text("MAINTENANCE", 105.30, 117.33, 1.45, font=LIGHT_FONT),
         _text("M-05", 120.55, 117.33, 1.40, font=LIGHT_FONT),
-        _rotated_text("TOOLS FOR ORDER", 140.67, 90.90, 2.91, 90.0, font=LIGHT_FONT, spacing=0.02, suffix="tools-order"),
-        _rotated_text("NOT CONTROL", 136.36, 92.87, 2.95, 90.0, font=LIGHT_FONT, spacing=0.02, suffix="not-control"),
+        _rotated_text(
+            "TOOLS FOR ORDER",
+            140.67,
+            90.90,
+            2.91,
+            90.0,
+            font=LIGHT_FONT,
+            spacing=0.02,
+            suffix="tools-order",
+        ),
+        _rotated_text(
+            "NOT CONTROL",
+            136.36,
+            92.87,
+            2.95,
+            90.0,
+            font=LIGHT_FONT,
+            spacing=0.02,
+            suffix="not-control",
+        ),
         # Logistics row.
         _text("SERIAL NUMBER", 11.61, 127.64, 1.58, font=THIN_FONT),
         _text("9281 7341 4151", 11.61, 130.22, 2.25, font=THIN_FONT, spacing=0.03),
@@ -1090,13 +1193,45 @@ def _body_text_geometry():
         # Alignment / notes / code / seal row.
         _text("ALIGNMENT GUIDE", 8.80, 143.30, 1.55, font=REGULAR_FONT),
         _text("NOTES", 62.10, 143.45, 1.25, font=THIN_FONT),
-        _text("SYSTEMS OUTLIVE INTERFACES.\nDESIGN FOR CHANGE.\nDOCUMENT THE WHY.\nLEAVE THINGS\nBETTER THAN FOUND.", 65.15, 147.10, 1.58, font=THIN_FONT, align="center", line_height=1.85),
+        _text(
+            "SYSTEMS OUTLIVE INTERFACES.\nDESIGN FOR CHANGE.\nDOCUMENT THE WHY.\nLEAVE THINGS\nBETTER THAN FOUND.",
+            65.15,
+            147.10,
+            1.58,
+            font=THIN_FONT,
+            align="center",
+            line_height=1.85,
+        ),
         _text("CODE INDEX", 88.30, 157.45, 1.15, font=THIN_FONT),
         _text("A1   B7   C3   D9   E2", 88.40, 160.60, 1.22, font=THIN_FONT),
-        _text("簡單\n有效", 128.00, 150.00, 2.55, font=JP_MEDIUM_FONT, align="center", line_height=1.48),
+        _text(
+            "簡單\n有效",
+            128.00,
+            150.00,
+            2.55,
+            font=JP_MEDIUM_FONT,
+            align="center",
+            line_height=1.48,
+        ),
         # Document control row.
-        _rotated_text("DOCUMENT TYPE", 9.20, 174.55, 1.30, 90.0, font=THIN_FONT, spacing=0.23, suffix="document-type"),
-        _text("SYSTEM\nLAYOUT\nMANUAL", 13.18, 174.05, 2.90, font=LIGHT_FONT, line_height=1.17),
+        _rotated_text(
+            "DOCUMENT TYPE",
+            9.20,
+            174.55,
+            1.30,
+            90.0,
+            font=THIN_FONT,
+            spacing=0.23,
+            suffix="document-type",
+        ),
+        _text(
+            "SYSTEM\nLAYOUT\nMANUAL",
+            13.18,
+            174.05,
+            2.90,
+            font=LIGHT_FONT,
+            line_height=1.17,
+        ),
         _text("REV. A", 13.18, 188.95, 1.52, font=MEDIUM_FONT),
         _text("DOC. ID", 41.70, 175.05, 1.30, font=THIN_FONT),
         _text("NASGT-001", 41.70, 178.70, 2.20, font=THIN_FONT),
@@ -1106,7 +1241,15 @@ def _body_text_geometry():
         _text("L1", 67.40, 180.30, 1.34, font=THIN_FONT),
         _text("L2", 74.20, 180.30, 1.34, font=THIN_FONT),
         _text("L3", 81.00, 180.30, 1.34, font=THIN_FONT),
-        _text("RESTRICTED", 74.25, 187.90, 1.38, font=REGULAR_FONT, align="center", spacing=0.05),
+        _text(
+            "RESTRICTED",
+            74.25,
+            187.90,
+            1.38,
+            font=REGULAR_FONT,
+            align="center",
+            spacing=0.05,
+        ),
         _text("DISTRIBUTION", 95.60, 175.05, 1.30, font=THIN_FONT),
         _text("INT", 96.45, 180.65, 1.35, font=THIN_FONT),
         _text("EXT", 96.45, 184.20, 1.35, font=THIN_FONT),
@@ -1115,12 +1258,46 @@ def _body_text_geometry():
         _text("External", 102.55, 184.20, 1.65, font=THIN_FONT),
         _text("Public", 102.55, 187.75, 1.65, font=THIN_FONT),
         _text("SIGN OFF", 121.65, 175.05, 1.30, font=THIN_FONT),
-        _rotated_text("N E A R", 134.25, 180.10, 1.05, 90.0, font=THIN_FONT, spacing=0.34, suffix="near-side"),
+        _rotated_text(
+            "N E A R",
+            134.25,
+            180.10,
+            1.05,
+            90.0,
+            font=THIN_FONT,
+            spacing=0.34,
+            suffix="near-side",
+        ),
         _text("ARCHIVE  ∞", 121.70, 192.30, 1.40, font=THIN_FONT, spacing=0.10),
         # Footer.
-        _text("NEAR STUDIO\nSYSTEMIC DESIGN PRACTICE", 12.90, 201.05, 1.50, font=THIN_FONT, spacing=0.035, line_height=1.26),
-        _text("WWW.NEAR.STUDIO", 70.95, 201.85, 1.25, font=THIN_FONT, align="center", spacing=0.18),
-        _text("MADE TO BE UNDERSTOOD.\nBUILT TO BE USED.", 129.75, 201.10, 1.45, font=THIN_FONT, align="right", spacing=0.04, line_height=1.25),
+        _text(
+            "NEAR STUDIO\nSYSTEMIC DESIGN PRACTICE",
+            12.90,
+            201.05,
+            1.50,
+            font=THIN_FONT,
+            spacing=0.035,
+            line_height=1.26,
+        ),
+        _text(
+            "WWW.NEAR.STUDIO",
+            70.95,
+            201.85,
+            1.25,
+            font=THIN_FONT,
+            align="center",
+            spacing=0.18,
+        ),
+        _text(
+            "MADE TO BE UNDERSTOOD.\nBUILT TO BE USED.",
+            129.75,
+            201.10,
+            1.45,
+            font=THIN_FONT,
+            align="right",
+            spacing=0.04,
+            line_height=1.25,
+        ),
     ]
     items.extend(
         _arc_text(
@@ -1373,7 +1550,6 @@ if __name__ == "__main__":
         background_color=BACKGROUND_COLOR,
         line_color=LINE_COLORS["ink"],
         line_thickness=LINE_THICKNESS,
-        parameter_gui=False,
         parameter_persistence=False,
         midi_port_name=None,
         n_worker=0,

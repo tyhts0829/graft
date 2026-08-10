@@ -482,7 +482,12 @@ def test_gcode_export_uses_closed_render_session_effective_config(
 ) -> None:
     render_config_path = tmp_path / "render.yaml"
     render_config_path.write_text(
-        "version: 1\nexport:\n  gcode:\n    z_up: 17.0\n    decimals: 1\n",
+        "version: 1\n"
+        "export:\n"
+        "  gcode:\n"
+        "    z_up: 17.0\n"
+        "    decimals: 1\n"
+        "    paper_bottom_right_mm: [321.5, 12.25]\n",
         encoding="utf-8",
     )
 
@@ -495,8 +500,12 @@ def test_gcode_export_uses_closed_render_session_effective_config(
     assert "G1 Z37.0" in result.path.read_text(encoding="utf-8")
     assert result.manifest_path is not None
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
-    assert manifest["config"]["effective"]["gcode"]["z_up"] == 17.0
-    assert manifest["config"]["effective"]["gcode"]["decimals"] == 1
+    manifest_gcode = manifest["config"]["effective"]["gcode"]
+    assert manifest_gcode["z_up"] == 17.0
+    assert manifest_gcode["decimals"] == 1
+    assert manifest_gcode["paper_bottom_right_mm"] == [321.5, 12.25]
+    assert "origin" not in manifest_gcode
+    assert "canvas_height_mm" not in manifest_gcode
 
 
 def test_png_export_uses_closed_render_session_effective_scale(
@@ -595,7 +604,7 @@ def test_gcode_capture_preserves_layer_optimization_master(
     frame = render(draw, options=RenderOptions(canvas_size=(200, 200)))
     params = replace(
         frame.metadata.effective_config.gcode,
-        origin=(0.0, 0.0),
+        paper_bottom_right_mm=(200.0, 200.0),
         y_down=False,
         paper_margin_mm=0.0,
         decimals=3,
