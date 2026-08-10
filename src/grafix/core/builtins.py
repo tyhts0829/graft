@@ -127,7 +127,7 @@ _EFFECT_NAMES = (
 )
 
 _PRIMITIVE_EVALUATOR_ABI_OVERRIDES = MappingProxyType({"delaunay": "2"})
-_EFFECT_EVALUATOR_ABI_OVERRIDES = MappingProxyType({"fill": "2"})
+_EFFECT_EVALUATOR_ABI_OVERRIDES = MappingProxyType({"fill": "3"})
 
 _BUILTIN_OPERATION_MANIFEST = tuple(
     BuiltinOperationManifestItem(

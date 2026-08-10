@@ -10,7 +10,7 @@ from grafix import E, G, L, primitive, run
 # A4 portrait in millimetres.  The reference artwork is authored on a 200 x 250
 # design board, then fitted uniformly to A4 so its original 4:5 proportions are
 # preserved instead of being stretched to the paper ratio.
-CANVAS = (210, 297)
+CANVAS = (148, 210)
 DESIGN_CANVAS = (200.0, 250.0)
 A4_FIT_SCALE = CANVAS[0] / DESIGN_CANVAS[0]
 A4_FIT_OFFSET_Y = (CANVAS[1] - DESIGN_CANVAS[1] * A4_FIT_SCALE) / 2.0
@@ -20,7 +20,7 @@ PAPER = (234 / 255, 233 / 255, 229 / 255)
 
 # Every typography fill reads these two shared defaults.  Change them here to
 # tune all text groups at once; each named group remains editable in the GUI.
-TEXT_FILL_DENSITY = 700.0
+TEXT_FILL_DENSITY = 500.0
 TEXT_FILL_MIN_SPACING = 0.05
 
 # Black-only value swatches use line spacing rather than different Layer colors.
@@ -1216,7 +1216,7 @@ def draw(t: float):
 if __name__ == "__main__":
     run(
         draw,
-        run_id="measurement_poster_a4",
+        run_id="measurement_poster_a5",
         canvas_size=CANVAS,
         render_scale=4.2,
         background_color=PAPER,

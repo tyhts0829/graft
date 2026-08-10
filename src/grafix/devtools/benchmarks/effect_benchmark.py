@@ -22,6 +22,9 @@ _HEAVY_EFFECT_DRAFT_CHECKSUMS = {
     "metaball": "06ef8acbe6cc943a3d7e0dce65cc783ca3febecc7e83a805c7399711fdadf8ae",
     "reaction_diffusion": "1d04f1417005b3409b8bc35a1e3fdcd689aa04b3433afa6d4c5ed0c85d509f3b",
 }
+_FILL_MATCHED_HEIGHT_100_CHECKSUM = (
+    "68ef73d07f730528912b2deb777040a223ceea680e63253d4a704bd36ab78e40"
+)
 
 
 def case_definitions() -> tuple[CaseDefinition, ...]:
@@ -241,6 +244,37 @@ def _target_effect_speedup_definitions() -> list[CaseDefinition]:
                 "remove_boundary": True,
             },
             ("rings", "dense", "topology-changing"),
+        ),
+        (
+            "effect.fill.matched.height_100",
+            "fill matched output / 4k edges / height 100",
+            "fill_ring_height_100",
+            "fill",
+            {
+                "angle_sets": 1,
+                "angle": 0.0,
+                "density": 25.0,
+                "min_spacing": 0.0,
+                "spacing_gradient": 0.0,
+                "remove_boundary": True,
+                "expected_checksum": _FILL_MATCHED_HEIGHT_100_CHECKSUM,
+            },
+            ("rings", "high-edge", "matched-output", "topology-changing"),
+        ),
+        (
+            "effect.fill.scale_4x.height_400",
+            "fill scale 4x / 4k edges / height 400",
+            "fill_ring_height_400",
+            "fill",
+            {
+                "angle_sets": 1,
+                "angle": 0.0,
+                "density": 25.0,
+                "min_spacing": 0.0,
+                "spacing_gradient": 0.0,
+                "remove_boundary": True,
+            },
+            ("rings", "high-edge", "scale-4x", "topology-changing"),
         ),
         (
             "effect.fill.many_rings",

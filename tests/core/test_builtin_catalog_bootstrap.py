@@ -67,7 +67,7 @@ def test_fill_evaluator_abi_is_the_only_effect_abi_bumped() -> None:
     items = builtin_operation_manifest()
     manifest = {(item.kind, item.name): item for item in items}
 
-    assert manifest[("effect", "fill")].evaluator_abi == "2"
+    assert manifest[("effect", "fill")].evaluator_abi == "3"
     assert all(
         item.evaluator_abi == "1"
         for item in items
@@ -75,7 +75,7 @@ def test_fill_evaluator_abi_is_the_only_effect_abi_bumped() -> None:
     )
 
     fill = builtin_operation_catalog().resolve("effect", "fill")
-    assert fill.declaration.evaluator_abi == "grafix-builtin-effect-2"
+    assert fill.declaration.evaluator_abi == "grafix-builtin-effect-3"
     assert fill.schema.defaults["min_spacing"] == 0.0
     assert fill.schema.param_order.index("min_spacing") == (
         fill.schema.param_order.index("density") + 1

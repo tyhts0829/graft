@@ -42,6 +42,7 @@ def draw(t: float):
         center=(150.0, 150.0, 0.0),
         scale=170.0,
     )
+    # density=28 means about 28 lines per 100 scene units.
     effects = E.fill(angle=45.0, density=28.0).rotate(
         rotation=(0.0, 0.0, t * 20.0),
     )

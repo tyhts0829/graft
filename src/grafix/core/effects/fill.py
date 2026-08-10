@@ -25,8 +25,10 @@ from grafix.core.operation_diagnostics import emit_operation_diagnostic
 from grafix.core.parameters.meta import ParamMeta
 from grafix.core.realized_geometry import GeomTuple
 
-# 生成する塗り線の最大本数（密度の上限）。
-MAX_FILL_LINES = 1000
+# density の基準となる scene 座標長。
+_DENSITY_REFERENCE_LENGTH = 100.0
+_MIN_NOMINAL_LINES_PER_REFERENCE = 2
+_MAX_NOMINAL_LINES_PER_REFERENCE = 1000
 _SCANLINE_SAFE_ABS_MIN = np.float32(2.0**-40)
 
 fill_meta = {
@@ -45,8 +47,11 @@ fill_meta = {
     "density": ParamMeta(
         kind="float",
         ui_min=0.0,
-        ui_max=float(MAX_FILL_LINES),
-        description="領域を埋めるハッチング線の密度を指定する。",
+        ui_max=float(_MAX_NOMINAL_LINES_PER_REFERENCE),
+        description=(
+            "100 scene units あたりのnominal scanline数。正値は丸めて "
+            "2〜1000にclampし、0でハッチを生成しない。"
+        ),
     ),
     "min_spacing": ParamMeta(
         kind="float",
@@ -372,18 +377,17 @@ def _build_evenodd_groups(
     return ordered
 
 
-def _spacing_from_height(height: float, density: float) -> float:
-    """高さと密度から線間隔を算出する（round(density) 本相当）。"""
-    # density は「本数そのもの」ではなく「本数スケール」。
-    # 高さから spacing を決めることで、図形サイズや angle の回転に対して見かけ密度を安定化する。
-    num_lines = int(round(float(density)))
-    if num_lines < 2:
-        num_lines = 2
-    if num_lines > MAX_FILL_LINES:
-        num_lines = MAX_FILL_LINES
-    if height <= 0.0:
+def _spacing_from_density(density: float) -> float:
+    """density をgeometry非依存のnominal scanline間隔へ変換する。"""
+    if density == 0.0:
         return 0.0
-    return float(height) / float(num_lines)
+
+    nominal_lines = int(round(float(density)))
+    nominal_lines = min(
+        max(nominal_lines, _MIN_NOMINAL_LINES_PER_REFERENCE),
+        _MAX_NOMINAL_LINES_PER_REFERENCE,
+    )
+    return _DENSITY_REFERENCE_LENGTH / float(nominal_lines)
 
 
 def _generate_y_values(
@@ -658,9 +662,8 @@ def _generate_line_fill_evenodd_multi(
     coords_2d: np.ndarray,
     offsets: np.ndarray,
     *,
-    density: float,
+    base_spacing: float,
     angle_rad: float,
-    spacing_override: float | None,
     min_spacing: float,
     spacing_gradient: float,
 ) -> np.ndarray:
@@ -673,7 +676,7 @@ def _generate_line_fill_evenodd_multi(
     # 2) y=const のスキャンライン列を生成する。
     # 3) 各スキャンラインとポリゴン辺の交点 x を集め、ソートして [x0,x1],[x2,x3]... を線分にする。
     # 4) 回転した場合は線分を元角度に戻す。
-    if density <= 0.0 or offsets.size <= 1 or coords_2d.size == 0:
+    if base_spacing <= 0.0 or offsets.size <= 1 or coords_2d.size == 0:
         return np.empty((0, 2), dtype=np.float32)
 
     c2 = coords_2d.astype(np.float32, copy=False)
@@ -692,18 +695,10 @@ def _generate_line_fill_evenodd_multi(
         sin_fwd = float(np.sin(angle_rad))
         rot_fwd = np.array([[cos_fwd, -sin_fwd], [sin_fwd, cos_fwd]], dtype=np.float32)
 
-    ref_height = float(np.max(c2[:, 1]) - np.min(c2[:, 1]))
-    if ref_height <= 0.0:
-        return np.empty((0, 2), dtype=np.float32)
-
     min_y = float(np.min(work[:, 1]))
     max_y = float(np.max(work[:, 1]))
 
-    spacing = (
-        float(spacing_override)
-        if spacing_override is not None
-        else _spacing_from_height(ref_height, density)
-    )
+    spacing = float(base_spacing)
     if not np.isfinite(spacing) or spacing <= 0.0:
         return np.empty((0, 2), dtype=np.float32)
 
@@ -826,8 +821,9 @@ def fill(
     angle : float, default 45.0
         基準角 [deg]。
     density : float, default 35.0
-        密度スケール。
-        `round(density)` 本相当の間隔を基準高さから算出する。0 では塗り線を生成しない。
+        100 scene units あたりのnominal scanline数。
+        正値は`round(density)`を2〜1000にclampした値を`N`とし、
+        nominal pitchを`100 / N` scene unitsとする。0では塗り線を生成しない。
     min_spacing : float, default 0.0
         同一方向の隣接ハッチ走査線に適用する最小ピッチ。
         fill 評価時の作業平面上の scene 座標単位で指定し、0.0 で無効になる。
@@ -846,11 +842,17 @@ def fill(
     Raises
     ------
     ValueError
-        `angle_sets` が 1 未満、`density` が負、`min_spacing` が有限な 0 以上の
-        値でない、または `spacing_gradient` が -4 から 4 の範囲外の場合。
+        `angle_sets` が 1 未満、`density` が有限な 0 以上の値でない、
+        `min_spacing` が有限な 0 以上の値でない、または
+        `spacing_gradient` が -4 から 4 の範囲外の場合。
 
     Notes
     -----
+    `density` から得るnominal pitchは入力geometryの大きさやbboxに依存せず、
+    別のfill呼び出し、planar region、angle family間で共通になる。
+    `spacing_gradient=0` の実ピッチは `max(nominal pitch, min_spacing)` である。
+    図形が大きいほど、また法線方向の投影幅が大きいangleほど生成本数は増える。
+    fill前のscaleではピッチを保ったまま本数が変わり、fill後のscaleではピッチも変わる。
     `min_spacing` が保証するのは、同じ planar filled region と hatch angle family
     に属する、連続する異なる走査線レベル間の垂直な中心線ピッチである。
     異なる region や angle family、境界線、別の fill 呼び出しとの距離は保証しない。
@@ -858,14 +860,16 @@ def fill(
     """
     if angle_sets < 1:
         raise ValueError("fill の angle_sets は 1 以上である必要がある")
-    if density < 0.0:
-        raise ValueError("fill の density は 0 以上である必要がある")
+    density = float(density)
+    if not np.isfinite(density) or density < 0.0:
+        raise ValueError("fill の density は有限な 0 以上の値である必要がある")
     min_spacing = float(min_spacing)
     if not np.isfinite(min_spacing) or min_spacing < 0.0:
         raise ValueError("fill の min_spacing は有限な 0 以上の値である必要がある")
     if not -4.0 <= spacing_gradient <= 4.0:
         raise ValueError("fill の spacing_gradient は -4 以上 4 以下である必要がある")
 
+    base_spacing = _spacing_from_density(density)
     base_angle_rad = float(np.deg2rad(angle))
 
     # 返すジオメトリの構造:
@@ -907,21 +911,6 @@ def fill(
                 out_lines.append(coords[s:e])
             return pack_polylines(out_lines)
 
-        ref_height_global = float(
-            np.max(coords2d_all[:, 1]) - np.min(coords2d_all[:, 1])
-        )
-        if ref_height_global <= 0.0:
-            # グループの実体が無い場合は境界のみを返す。
-            out_lines = []
-            for ring_indices in groups:
-                if remove_boundary:
-                    continue
-                for ring_i in ring_indices:
-                    s = int(offsets[ring_i])
-                    e = int(offsets[ring_i + 1])
-                    out_lines.append(coords[s:e])
-            return pack_polylines(out_lines)
-
         out_chunks: list[np.ndarray] = []
         for ring_indices in groups:
             # 境界保持（グループ単位）
@@ -931,12 +920,7 @@ def fill(
                     e = int(offsets[ring_i + 1])
                     out_chunks.append(coords_xy_all[s:e])
 
-            # density<=0 は「塗り線無し」。境界だけで終わる。
-            if density <= 0.0:
-                continue
-
-            # global では「全体の参照高さ」から spacing を決め、グループ間で見かけ密度が揃うようにする。
-            base_spacing = _spacing_from_height(ref_height_global, density)
+            # density=0 は「塗り線無し」。境界だけで終わる。
             if base_spacing <= 0.0:
                 continue
 
@@ -962,9 +946,8 @@ def fill(
                 endpoints = _generate_line_fill_evenodd_multi(
                     g_coords2d,
                     g_offsets,
-                    density=density,
+                    base_spacing=base_spacing,
                     angle_rad=float(ang_i),
-                    spacing_override=float(base_spacing),
                     min_spacing=min_spacing,
                     spacing_gradient=spacing_gradient,
                 )
@@ -1024,11 +1007,6 @@ def fill(
         if not remove_boundary:
             out_lines.append(vertices)
 
-        if density <= 0.0:
-            continue
-
-        ref_height = float(np.max(coords2d[:, 1]) - np.min(coords2d[:, 1]))
-        base_spacing = _spacing_from_height(ref_height, density)
         if base_spacing <= 0.0:
             continue
 
@@ -1039,9 +1017,8 @@ def fill(
             endpoints = _generate_line_fill_evenodd_multi(
                 coords2d,
                 poly_offsets,
-                density=density,
+                base_spacing=base_spacing,
                 angle_rad=float(ang_i),
-                spacing_override=float(base_spacing),
                 min_spacing=min_spacing,
                 spacing_gradient=spacing_gradient,
             )

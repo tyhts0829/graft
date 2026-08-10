@@ -76,6 +76,23 @@ def test_growth_quality_cases_emit_typed_work_metrics_and_checksum_contracts() -
     assert final_output.contracts[0].passed
 
 
+def test_fill_matched_height_100_case_keeps_exact_baseline_checksum() -> None:
+    definition = next(
+        definition
+        for definition in case_definitions()
+        if definition.case_id == "effect.fill.matched.height_100"
+    )
+
+    output = definition.workload(definition.setup(dict(definition.parameters), 0))
+    metrics = {metric.name: metric.value for metric in output.metrics}
+
+    assert metrics["n_vertices"] == 50
+    assert metrics["n_lines"] == 25
+    assert len(output.contracts) == 1
+    assert output.contracts[0].severity == "hard"
+    assert output.contracts[0].passed
+
+
 def test_target_effect_speedup_cases_cover_actual_work_and_geometry_shapes() -> None:
     definitions = {definition.case_id: definition for definition in case_definitions()}
 
@@ -91,6 +108,8 @@ def test_target_effect_speedup_cases_cover_actual_work_and_geometry_shapes() -> 
         ),
         "effect.subdivide.actual.many_lines": ("subdivide", "many_lines"),
         "effect.fill.dense.rings_2": ("fill", "rings_2"),
+        "effect.fill.matched.height_100": ("fill", "fill_ring_height_100"),
+        "effect.fill.scale_4x.height_400": ("fill", "fill_ring_height_400"),
         "effect.fill.many_rings": ("fill", "many_rings"),
     }
     for case_id, (effect_name, fixture) in expected.items():
@@ -118,3 +137,19 @@ def test_target_effect_speedup_cases_cover_actual_work_and_geometry_shapes() -> 
             many_rings.coords[start],
             many_rings.coords[stop - 1],
         )
+
+    fill_1x = fixtures["fill_ring_height_100"].inputs[0]
+    fill_4x = fixtures["fill_ring_height_400"].inputs[0]
+    assert fill_1x.coords.shape == fill_4x.coords.shape == (4_097, 3)
+    assert float(np.ptp(fill_1x.coords[:, 1])) == 100.0
+    assert float(np.ptp(fill_4x.coords[:, 1])) == 400.0
+    np.testing.assert_allclose(fill_4x.coords, 4.0 * fill_1x.coords, rtol=0.0, atol=0.0)
+
+    matched = definitions["effect.fill.matched.height_100"]
+    assert matched.parameters["angle_sets"] == 1
+    assert matched.parameters["angle"] == 0.0
+    assert matched.parameters["density"] == 25.0
+    assert matched.parameters["min_spacing"] == 0.0
+    assert matched.parameters["spacing_gradient"] == 0.0
+    assert matched.parameters["remove_boundary"] is True
+    assert matched.parameters["expected_checksum"]

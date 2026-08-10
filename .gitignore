@@ -18,3 +18,5 @@ sketch/agent_loop
 docs/old
 docs/done
 docs/cancel
+sketch/agent_art/*.png
+sketch/agent_art/*.json

@@ -133,6 +133,28 @@ def build_default_cases(*, seed: int) -> list[BenchmarkCase]:
     )
     cases.append(
         BenchmarkCase(
+            case_id="fill_ring_height_100",
+            label="fill ring (4k edges, height 100)",
+            description=(
+                "fill の旧/new density 変換で同じ間隔になる、高さ 100・4096 辺の閉曲線"
+            ),
+            inputs=(_regular_polygon_ring(n_sides=4_096, radius=50.0),),
+            tags=("unary", "rings", "high-edge", "scale-1x"),
+        )
+    )
+    cases.append(
+        BenchmarkCase(
+            case_id="fill_ring_height_400",
+            label="fill ring (4k edges, height 400)",
+            description=(
+                "高さ 100 の matched fill fixture を辺数一定のまま 4 倍した閉曲線"
+            ),
+            inputs=(_regular_polygon_ring(n_sides=4_096, radius=200.0),),
+            tags=("unary", "rings", "high-edge", "scale-4x"),
+        )
+    )
+    cases.append(
+        BenchmarkCase(
             case_id="many_rings",
             label="many rings (512)",
             description="離して並べた正方形リング 512 個",

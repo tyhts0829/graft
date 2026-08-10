@@ -747,7 +747,7 @@ class _EffectBuilder(Protocol):
             activate: このエフェクトによる形状変換を有効にする。, bool
             angle_sets: 180 度を等分して重ねるハッチング方向の数。, int, range [1, 6]
             angle: ハッチング方向群の基準角を度単位で指定する。, float, range [0.0, 180.0]
-            density: 領域を埋めるハッチング線の密度を指定する。, float, range [0.0, 1000.0]
+            density: 100 scene units あたりのnominal scanline数。正値は丸めて 2〜1000にclampし、0でハッチを生成しない。, float, range [0.0, 1000.0]
             min_spacing: 同一方向の隣接ハッチ走査線に適用する、fill 評価時の作業平面の scene 座標単位での最小ピッチ。標準 2D plot では通常 mm に対応し、0 で無効。, float, range [0.0, 10.0]
             spacing_gradient: スキャン方向に沿ってハッチング線の間隔を変化させる。, float, range [-4.0, 4.0]
             remove_boundary: 塗り線だけを残し、入力された境界線を出力から除く。, bool
@@ -1367,7 +1367,7 @@ class _E(Protocol):
             activate: このエフェクトによる形状変換を有効にする。, bool
             angle_sets: 180 度を等分して重ねるハッチング方向の数。, int, range [1, 6]
             angle: ハッチング方向群の基準角を度単位で指定する。, float, range [0.0, 180.0]
-            density: 領域を埋めるハッチング線の密度を指定する。, float, range [0.0, 1000.0]
+            density: 100 scene units あたりのnominal scanline数。正値は丸めて 2〜1000にclampし、0でハッチを生成しない。, float, range [0.0, 1000.0]
             min_spacing: 同一方向の隣接ハッチ走査線に適用する、fill 評価時の作業平面の scene 座標単位での最小ピッチ。標準 2D plot では通常 mm に対応し、0 で無効。, float, range [0.0, 10.0]
             spacing_gradient: スキャン方向に沿ってハッチング線の間隔を変化させる。, float, range [-4.0, 4.0]
             remove_boundary: 塗り線だけを残し、入力された境界線を出力から除く。, bool

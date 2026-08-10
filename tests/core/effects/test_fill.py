@@ -8,11 +8,13 @@ import pytest
 from grafix.api import E, G
 from grafix.core.effects.fill import (
     _build_evenodd_groups,
+    _generate_line_fill_evenodd_multi,
     _generate_y_values,
     _pack_planar_fill_chunks,
     _point_in_polygon_coords_njit,
     _polygon_area_abs,
     _scanline_endpoints_njit,
+    _spacing_from_density,
     fill as fill_effect,
 )
 from grafix.core.geometry_kernels.planar import PlanarFrame, planarity_threshold
@@ -36,6 +38,48 @@ def fill_test_square() -> GeomTuple:
     )
     offsets = np.array([0, coords.shape[0]], dtype=np.int32)
     return coords, offsets
+
+
+@primitive
+def fill_test_rectangle(
+    width: float,
+    height: float,
+    origin: tuple[float, float, float] = (0.0, 0.0, 0.0),
+) -> GeomTuple:
+    """指定した原点を左下とする軸平行の閉じた長方形を返す。"""
+    x, y, z = origin
+    coords = np.asarray(
+        [
+            [x, y, z],
+            [x + width, y, z],
+            [x + width, y + height, z],
+            [x, y + height, z],
+            [x, y, z],
+        ],
+        dtype=np.float32,
+    )
+    offsets = np.asarray([0, coords.shape[0]], dtype=np.int32)
+    return coords, offsets
+
+
+@primitive
+def fill_test_concave_u() -> GeomTuple:
+    """24 x 24のU字型を一つのconcave ringとして返す。"""
+    coords = np.asarray(
+        [
+            [0.0, 0.0, 0.0],
+            [24.0, 0.0, 0.0],
+            [24.0, 24.0, 0.0],
+            [16.0, 24.0, 0.0],
+            [16.0, 8.0, 0.0],
+            [8.0, 8.0, 0.0],
+            [8.0, 24.0, 0.0],
+            [0.0, 24.0, 0.0],
+            [0.0, 0.0, 0.0],
+        ],
+        dtype=np.float32,
+    )
+    return coords, np.asarray([0, coords.shape[0]], dtype=np.int32)
 
 
 @primitive
@@ -105,7 +149,7 @@ def fill_test_two_squares() -> GeomTuple:
 
 @primitive
 def fill_test_two_planar_faces() -> GeomTuple:
-    """全体では非平面になる XY 面と斜面の閉ポリラインを返す。"""
+    """全体では非平面になる一辺10のXY面と一辺40の斜面を返す。"""
     first = np.array(
         [
             [0.0, 0.0, 0.0],
@@ -120,7 +164,7 @@ def fill_test_two_planar_faces() -> GeomTuple:
     axis_u = np.array([1.0, 0.0, 1.0], dtype=np.float64) / np.sqrt(2.0)
     axis_v = np.array([0.0, 1.0, 0.0], dtype=np.float64)
     local = np.array(
-        [[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0], [0.0, 0.0]],
+        [[0.0, 0.0], [40.0, 0.0], [40.0, 40.0], [0.0, 40.0], [0.0, 0.0]],
         dtype=np.float64,
     )
     second = origin + local[:, :1] * axis_u + local[:, 1:] * axis_v
@@ -201,15 +245,16 @@ def _generate_y_values_legacy_reference(
     return np.asarray(y_values, dtype=np.float32)
 
 
-def _level_tolerance(levels: np.ndarray, min_spacing: float) -> float:
-    """float32 level の絶対座標と下限値に応じた比較許容差を返す。"""
+def _level_tolerance(levels: np.ndarray, reference_spacing: float) -> float:
+    """float32 level の絶対座標と基準pitchに応じた比較許容差を返す。"""
     assert levels.size > 0
+    assert reference_spacing > 0.0
     scale = max(1.0, float(np.max(np.abs(levels))))
     tolerance = max(
-        float(np.finfo(np.float32).eps) * scale * 8.0,
-        abs(float(min_spacing)) * 2e-6,
+        float(np.finfo(np.float32).eps) * scale * 16.0,
+        abs(float(reference_spacing)) * 2e-5,
     )
-    assert 0.0 < tolerance < min_spacing * 0.1
+    assert 0.0 < tolerance < reference_spacing * 0.1
     return tolerance
 
 
@@ -241,11 +286,28 @@ def _assert_minimum_level_spacing(
     assert np.all(differences >= min_spacing - tolerance)
 
 
-def _projected_family_levels(
-    realized: RealizedGeometry,
+def _assert_uniform_level_spacing(
+    levels: np.ndarray,
+    expected_spacing: float,
+) -> None:
+    """distinct level が指定pitchで等間隔に並ぶことを検証する。"""
+    assert levels.size >= 2, "pitch を測れる distinct scanline level が必要"
+    tolerance = _level_tolerance(levels, expected_spacing)
+    differences = np.diff(levels.astype(np.float64, copy=False))
+    assert np.all(differences > 0.0)
+    np.testing.assert_allclose(
+        differences,
+        expected_spacing,
+        rtol=0.0,
+        atol=tolerance,
+    )
+
+
+def _projected_family_levels_from_polylines(
+    polylines: list[np.ndarray],
     *,
     angle_deg: float,
-    min_spacing: float,
+    reference_spacing: float,
 ) -> np.ndarray:
     """指定方向の 2 点 hatch を選び、法線方向の distinct level を返す。"""
     angle_rad = float(np.deg2rad(angle_deg))
@@ -258,7 +320,7 @@ def _projected_family_levels(
         dtype=np.float64,
     )
     levels: list[float] = []
-    for segment in _iter_polylines(realized):
+    for segment in polylines:
         if segment.shape != (2, 3):
             continue
         direction = segment[1].astype(np.float64) - segment[0].astype(np.float64)
@@ -272,8 +334,33 @@ def _projected_family_levels(
 
     raw = np.asarray(levels, dtype=np.float64)
     assert raw.size > 0, f"{angle_deg} 度 family の hatch が必要"
-    tolerance = _level_tolerance(raw, min_spacing)
+    tolerance = _level_tolerance(raw, reference_spacing)
     return _distinct_levels(raw, tolerance=tolerance)
+
+
+def _projected_family_levels(
+    realized: RealizedGeometry,
+    *,
+    angle_deg: float,
+    reference_spacing: float,
+) -> np.ndarray:
+    """実体化済みgeometryから指定方向のdistinct levelを返す。"""
+    return _projected_family_levels_from_polylines(
+        list(_iter_polylines(realized)),
+        angle_deg=angle_deg,
+        reference_spacing=reference_spacing,
+    )
+
+
+def _projected_normal_span(coords: np.ndarray, angle_deg: float) -> float:
+    """指定hatch familyの法線方向へ入力座標を投影したspanを返す。"""
+    angle_rad = float(np.deg2rad(angle_deg))
+    normal = np.asarray(
+        [-np.sin(angle_rad), np.cos(angle_rad), 0.0],
+        dtype=np.float64,
+    )
+    projected = coords.astype(np.float64, copy=False) @ normal
+    return float(np.max(projected) - np.min(projected))
 
 
 def _scanline_endpoints_reference(
@@ -543,10 +630,10 @@ def test_fill_scanline_kernel_does_not_overwrite_for_nan_pair_width() -> None:
 def test_fill_scanline_overflow_preserves_numpy_exception() -> None:
     coords = np.array(
         [
-            [0.0, 0.0, 0.0],
-            [1.0e20, 0.0, 0.0],
-            [0.0, 1.0e20, 0.0],
-            [0.0, 0.0, 0.0],
+            [0.0, 0.0],
+            [1.0e38, 0.0],
+            [0.0, 100.0],
+            [0.0, 0.0],
         ],
         dtype=np.float32,
     )
@@ -556,25 +643,340 @@ def test_fill_scanline_overflow_preserves_numpy_exception() -> None:
         FloatingPointError,
         match="overflow encountered in multiply",
     ):
-        fill_effect(
-            (coords, offsets),
-            angle_sets=1,
-            angle=0.0,
-            density=2.0,
-            remove_boundary=True,
+        # 固定100契約のdensity=2に対応するS=50。work-Yは100なので2 levelsに留める。
+        _generate_line_fill_evenodd_multi(
+            coords,
+            offsets,
+            base_spacing=50.0,
+            angle_rad=0.0,
+            min_spacing=0.0,
+            spacing_gradient=0.0,
         )
 
 
-def test_fill_square_generates_expected_line_count() -> None:
+def test_fill_square_density_10_uses_fixed_100_unit_reference() -> None:
     g = G.fill_test_square()
-    filled = E.fill(angle_sets=1, angle=0.0, density=10.0, remove_boundary=True)(g)
+    filled = E.fill(
+        angle_sets=1,
+        angle=0.0,
+        density=10.0,
+        min_spacing=0.0,
+        remove_boundary=True,
+    )(g)
     realized = realize(filled)
 
-    assert len(realized.offsets) - 1 == 10
-    assert realized.coords.shape == (20, 3)
-    for seg in _iter_polylines(realized):
-        assert seg.shape == (2, 3)
-        assert float(seg[0, 1]) == float(seg[1, 1])
+    assert realized.offsets.tolist() == [0, 2]
+    np.testing.assert_allclose(
+        realized.coords,
+        np.asarray([[0.0, 5.0, 0.0], [10.0, 5.0, 0.0]], dtype=np.float32),
+        rtol=0.0,
+        atol=1e-6,
+    )
+
+
+@pytest.mark.parametrize(
+    ("density", "expected_spacing"),
+    [
+        (0.0, 0.0),
+        (0.1, 50.0),
+        (2.49, 50.0),
+        (2.51, 100.0 / 3.0),
+        (25.0, 4.0),
+        (35.0, 100.0 / 35.0),
+        (1000.0, 0.1),
+        (1000.6, 0.1),
+    ],
+)
+def test_fill_density_to_spacing_uses_fixed_reference_and_legacy_quantization(
+    density: float,
+    expected_spacing: float,
+) -> None:
+    assert _spacing_from_density(density) == pytest.approx(expected_spacing)
+
+
+def test_fill_density_25_produces_four_scene_unit_pitch() -> None:
+    source = G.fill_test_rectangle(width=20.0, height=20.0)
+    realized = realize(
+        E.fill(
+            angle_sets=1,
+            angle=0.0,
+            density=25.0,
+            min_spacing=0.0,
+            spacing_gradient=0.0,
+            remove_boundary=True,
+        )(source)
+    )
+
+    levels = _projected_family_levels(
+        realized,
+        angle_deg=0.0,
+        reference_spacing=4.0,
+    )
+    np.testing.assert_allclose(
+        levels,
+        np.asarray([2.0, 6.0, 10.0, 14.0, 18.0]),
+        rtol=0.0,
+        atol=_level_tolerance(levels, 4.0),
+    )
+    _assert_uniform_level_spacing(levels, 4.0)
+
+
+def test_fill_separate_one_and_four_x_calls_keep_same_pitch() -> None:
+    angle_deg = 37.0
+    spacing = 4.0
+    sources = [
+        G.fill_test_rectangle(width=20.0, height=20.0),
+        G.fill_test_rectangle(
+            width=80.0,
+            height=80.0,
+            origin=(120.0, -60.0, 0.0),
+        ),
+    ]
+
+    level_counts: list[int] = []
+    projected_spans: list[float] = []
+    for source in sources:
+        boundary = realize(source)
+        realized = realize(
+            E.fill(
+                angle_sets=1,
+                angle=angle_deg,
+                density=25.0,
+                min_spacing=0.0,
+                spacing_gradient=0.0,
+                remove_boundary=True,
+            )(source)
+        )
+        levels = _projected_family_levels(
+            realized,
+            angle_deg=angle_deg,
+            reference_spacing=spacing,
+        )
+        _assert_uniform_level_spacing(levels, spacing)
+        span = _projected_normal_span(boundary.coords, angle_deg)
+        assert abs(float(levels.size) - span / spacing) <= 1.0
+        level_counts.append(int(levels.size))
+        projected_spans.append(span)
+
+    assert projected_spans[1] == pytest.approx(4.0 * projected_spans[0])
+    assert abs(level_counts[1] - 4 * level_counts[0]) <= 1
+
+
+def test_fill_remote_group_does_not_change_existing_group_pitch_or_phase() -> None:
+    spacing = 4.0
+    small = G.fill_test_rectangle(width=20.0, height=20.0)
+    remote = G.fill_test_rectangle(
+        width=80.0,
+        height=80.0,
+        origin=(200.0, 100.0, 0.0),
+    )
+    fill = E.fill(
+        angle_sets=1,
+        angle=0.0,
+        density=25.0,
+        min_spacing=0.0,
+        spacing_gradient=0.0,
+        remove_boundary=True,
+    )
+    separate = realize(fill(small))
+    combined = realize(fill(small + remote))
+
+    combined_segments = list(_iter_polylines(combined))
+    small_segments = [
+        segment
+        for segment in combined_segments
+        if float(np.mean(segment[:, 0])) < 100.0
+    ]
+    remote_segments = [
+        segment
+        for segment in combined_segments
+        if float(np.mean(segment[:, 0])) > 100.0
+    ]
+    separate_levels = _projected_family_levels(
+        separate,
+        angle_deg=0.0,
+        reference_spacing=spacing,
+    )
+    combined_small_levels = _projected_family_levels_from_polylines(
+        small_segments,
+        angle_deg=0.0,
+        reference_spacing=spacing,
+    )
+    combined_remote_levels = _projected_family_levels_from_polylines(
+        remote_segments,
+        angle_deg=0.0,
+        reference_spacing=spacing,
+    )
+
+    _assert_uniform_level_spacing(combined_small_levels, spacing)
+    _assert_uniform_level_spacing(combined_remote_levels, spacing)
+    np.testing.assert_allclose(
+        combined_small_levels,
+        separate_levels,
+        rtol=0.0,
+        atol=_level_tolerance(combined_small_levels, spacing),
+    )
+
+
+def test_fill_one_two_and_four_x_packed_groups_share_fixed_pitch() -> None:
+    spacing = 4.0
+    sources = [
+        G.fill_test_rectangle(width=20.0, height=20.0),
+        G.fill_test_rectangle(width=40.0, height=40.0, origin=(100.0, 0.0, 0.0)),
+        G.fill_test_rectangle(width=80.0, height=80.0, origin=(240.0, 0.0, 0.0)),
+    ]
+    realized = realize(
+        E.fill(
+            angle_sets=1,
+            angle=0.0,
+            density=25.0,
+            min_spacing=0.0,
+            spacing_gradient=0.0,
+            remove_boundary=True,
+        )(sources[0] + sources[1] + sources[2])
+    )
+    segments = list(_iter_polylines(realized))
+    groups = [
+        [segment for segment in segments if float(np.mean(segment[:, 0])) < 50.0],
+        [
+            segment
+            for segment in segments
+            if 50.0 < float(np.mean(segment[:, 0])) < 200.0
+        ],
+        [segment for segment in segments if float(np.mean(segment[:, 0])) > 200.0],
+    ]
+
+    level_counts: list[int] = []
+    for group in groups:
+        levels = _projected_family_levels_from_polylines(
+            group,
+            angle_deg=0.0,
+            reference_spacing=spacing,
+        )
+        _assert_uniform_level_spacing(levels, spacing)
+        level_counts.append(int(levels.size))
+
+    assert level_counts == [5, 10, 20]
+
+
+def test_fill_span_smaller_than_pitch_keeps_single_midpoint_level() -> None:
+    realized = realize(
+        E.fill(
+            angle_sets=1,
+            angle=0.0,
+            density=25.0,
+            min_spacing=0.0,
+            spacing_gradient=0.0,
+            remove_boundary=True,
+        )(G.fill_test_rectangle(width=2.0, height=2.0))
+    )
+
+    levels = _projected_family_levels(
+        realized,
+        angle_deg=0.0,
+        reference_spacing=4.0,
+    )
+    np.testing.assert_allclose(levels, np.asarray([1.0]), rtol=0.0, atol=1e-6)
+
+
+def test_fill_fixed_pitch_and_count_follow_projected_span_across_angles() -> None:
+    spacing = 4.0
+    source = G.fill_test_rectangle(width=64.0, height=16.0)
+    boundary = realize(source)
+    counts: dict[float, int] = {}
+
+    for angle_deg in (0.0, 15.0, 30.0, 37.0, 45.0, 60.0, 75.0, 90.0):
+        realized = realize(
+            E.fill(
+                angle_sets=1,
+                angle=angle_deg,
+                density=25.0,
+                min_spacing=0.0,
+                spacing_gradient=0.0,
+                remove_boundary=True,
+            )(source)
+        )
+        levels = _projected_family_levels(
+            realized,
+            angle_deg=angle_deg,
+            reference_spacing=spacing,
+        )
+        _assert_uniform_level_spacing(levels, spacing)
+        projected_span = _projected_normal_span(boundary.coords, angle_deg)
+        assert abs(float(levels.size) - projected_span / spacing) <= 1.0
+        counts[angle_deg] = int(levels.size)
+
+    assert counts[90.0] >= 3 * counts[0.0]
+
+
+@pytest.mark.parametrize("angle_sets", [2, 3])
+def test_fill_each_angle_family_uses_fixed_pitch(angle_sets: int) -> None:
+    spacing = 4.0
+    base_angle = 13.0
+    realized = realize(
+        E.fill(
+            angle_sets=angle_sets,
+            angle=base_angle,
+            density=25.0,
+            min_spacing=0.0,
+            spacing_gradient=0.0,
+            remove_boundary=True,
+        )(G.fill_test_rectangle(width=40.0, height=40.0))
+    )
+
+    for family_index in range(angle_sets):
+        levels = _projected_family_levels(
+            realized,
+            angle_deg=base_angle + 180.0 * family_index / angle_sets,
+            reference_spacing=spacing,
+        )
+        _assert_uniform_level_spacing(levels, spacing)
+
+
+def test_fill_angle_count_tracks_projected_span_at_shared_measured_pitch() -> None:
+    """angle補正を入れず、投影幅に応じて本数が変わる既存契約を守る。"""
+    source = G.fill_test_rectangle(width=64.0, height=16.0)
+    boundary = realize(source)
+    measured_pitches: list[float] = []
+    counts: dict[float, int] = {}
+
+    for angle_deg in (0.0, 37.0, 90.0):
+        realized = realize(
+            E.fill(
+                angle_sets=1,
+                angle=angle_deg,
+                density=25.0,
+                min_spacing=0.0,
+                spacing_gradient=0.0,
+                remove_boundary=True,
+            )(source)
+        )
+        levels = _projected_family_levels(
+            realized,
+            angle_deg=angle_deg,
+            reference_spacing=1.0,
+        )
+        differences = np.diff(levels)
+        assert differences.size > 0
+        pitch = float(np.median(differences))
+        np.testing.assert_allclose(
+            differences,
+            pitch,
+            rtol=0.0,
+            atol=_level_tolerance(levels, pitch),
+        )
+        projected_span = _projected_normal_span(boundary.coords, angle_deg)
+        assert abs(float(levels.size) - projected_span / pitch) <= 1.0
+        measured_pitches.append(pitch)
+        counts[angle_deg] = int(levels.size)
+
+    np.testing.assert_allclose(
+        measured_pitches,
+        measured_pitches[0],
+        rtol=0.0,
+        atol=1e-4,
+    )
+    assert counts[90.0] >= 3 * counts[0.0]
 
 
 def test_fill_min_spacing_reduces_high_density_square_and_bounds_pitch() -> None:
@@ -602,7 +1004,7 @@ def test_fill_min_spacing_reduces_high_density_square_and_bounds_pitch() -> None
     levels = _projected_family_levels(
         floored,
         angle_deg=0.0,
-        min_spacing=min_spacing,
+        reference_spacing=min_spacing,
     )
     _assert_minimum_level_spacing(levels, min_spacing)
 
@@ -626,7 +1028,7 @@ def test_fill_min_spacing_bounds_rotated_gradient_family(
     levels = _projected_family_levels(
         realized,
         angle_deg=37.0,
-        min_spacing=min_spacing,
+        reference_spacing=min_spacing,
     )
     _assert_minimum_level_spacing(levels, min_spacing)
 
@@ -744,7 +1146,7 @@ def test_fill_min_spacing_is_checked_per_angle_family() -> None:
         levels = _projected_family_levels(
             realized,
             angle_deg=angle_deg,
-            min_spacing=min_spacing,
+            reference_spacing=min_spacing,
         )
         _assert_minimum_level_spacing(levels, min_spacing)
 
@@ -764,7 +1166,13 @@ def test_fill_uses_all_points_for_tilted_ring_with_collinear_start() -> None:
     )
 
 
-def test_fill_min_spacing_applies_in_each_nonplanar_local_frame() -> None:
+def _fill_two_nonplanar_face_levels(
+    *,
+    density: float,
+    min_spacing: float,
+    reference_spacing: float,
+) -> list[np.ndarray]:
+    """nonplanar local pathを通し、faceごとのdistinct levelを返す。"""
     source = realize(G.fill_test_two_planar_faces())
     global_frame = PlanarFrame.from_points(source.coords, source.offsets)
     assert global_frame.valid
@@ -780,13 +1188,13 @@ def test_fill_min_spacing_applies_in_each_nonplanar_local_frame() -> None:
         assert frame.is_planar(planarity_threshold(face))
         face_frames.append(frame)
 
-    min_spacing = 0.75
     filled = realize(
         E.fill(
             angle_sets=1,
             angle=0.0,
-            density=1000.0,
+            density=density,
             min_spacing=min_spacing,
+            spacing_gradient=0.0,
             remove_boundary=True,
         )(G.fill_test_two_planar_faces())
     )
@@ -796,15 +1204,42 @@ def test_fill_min_spacing_applies_in_each_nonplanar_local_frame() -> None:
         face_index = 0 if midpoint_x < 20.0 else 1
         segments_by_face[face_index].append(segment)
 
+    levels_by_face: list[np.ndarray] = []
     for frame, segments in zip(face_frames, segments_by_face, strict=True):
         assert len(segments) >= 2
         local = frame.to_local(np.concatenate(segments, axis=0))
         np.testing.assert_allclose(local[:, 2], 0.0, rtol=0.0, atol=2e-5)
         local_segments = local.reshape(-1, 2, 3)
         raw_levels = np.mean(local_segments[:, :, 1], axis=1)
-        tolerance = _level_tolerance(raw_levels, min_spacing)
+        tolerance = _level_tolerance(raw_levels, reference_spacing)
         levels = _distinct_levels(raw_levels, tolerance=tolerance)
+        levels_by_face.append(levels)
+    return levels_by_face
+
+
+def test_fill_min_spacing_applies_in_each_nonplanar_local_frame() -> None:
+    min_spacing = 0.75
+    levels_by_face = _fill_two_nonplanar_face_levels(
+        density=1000.0,
+        min_spacing=min_spacing,
+        reference_spacing=min_spacing,
+    )
+
+    for levels in levels_by_face:
         _assert_minimum_level_spacing(levels, min_spacing)
+
+
+def test_fill_fixed_density_pitch_is_shared_by_different_size_nonplanar_faces() -> None:
+    spacing = 4.0
+    levels_by_face = _fill_two_nonplanar_face_levels(
+        density=25.0,
+        min_spacing=0.0,
+        reference_spacing=spacing,
+    )
+
+    assert [int(levels.size) for levels in levels_by_face] == [2, 10]
+    for levels in levels_by_face:
+        _assert_uniform_level_spacing(levels, spacing)
 
 
 def test_fill_packed_hatch_offsets_use_two_vertex_stride() -> None:
@@ -825,10 +1260,16 @@ def test_fill_packed_hatch_offsets_use_two_vertex_stride() -> None:
 
 def test_fill_remove_boundary_false_keeps_input() -> None:
     g = G.fill_test_square()
-    filled = E.fill(angle_sets=1, angle=0.0, density=10.0, remove_boundary=False)(g)
+    filled = E.fill(
+        angle_sets=1,
+        angle=0.0,
+        density=10.0,
+        min_spacing=0.0,
+        remove_boundary=False,
+    )(g)
     realized = realize(filled)
 
-    assert len(realized.offsets) - 1 == 11
+    assert len(realized.offsets) - 1 == 2
     first = next(_iter_polylines(realized))
     np.testing.assert_allclose(first, realize(g).coords, rtol=0.0, atol=1e-6)
 
@@ -868,15 +1309,67 @@ def test_fill_density_zero_still_generates_no_hatch_with_positive_floor() -> Non
 
 def test_fill_outer_with_hole_avoids_hole_region() -> None:
     g = G.fill_test_square_with_hole()
-    filled = E.fill(angle_sets=1, angle=0.0, density=10.0, remove_boundary=True)(g)
+    filled = E.fill(
+        angle_sets=1,
+        angle=0.0,
+        density=10.0,
+        min_spacing=0.0,
+        remove_boundary=True,
+    )(g)
     realized = realize(filled)
 
-    # y=0..9 の 10 本のうち、穴の y 範囲 [3,7) に入る 4 本は 2 セグメントに分割される。
-    assert len(realized.offsets) - 1 == 14
+    # 固定100契約ではdensity=10のpitchは10。y=5の1 levelが穴で2分割される。
+    assert len(realized.offsets) - 1 == 2
 
     for seg in _iter_polylines(realized):
         mid = seg.mean(axis=0)
         assert not (3.0 < float(mid[0]) < 7.0 and 3.0 < float(mid[1]) < 7.0)
+
+
+def test_fill_hole_split_levels_keep_fixed_nominal_pitch() -> None:
+    spacing = 4.0
+    realized = realize(
+        E.fill(
+            angle_sets=1,
+            angle=0.0,
+            density=25.0,
+            min_spacing=0.0,
+            spacing_gradient=0.0,
+            remove_boundary=True,
+        )(G.fill_test_square_with_hole())
+    )
+    segments = list(_iter_polylines(realized))
+    levels = _projected_family_levels_from_polylines(
+        segments,
+        angle_deg=0.0,
+        reference_spacing=spacing,
+    )
+
+    assert len(segments) > int(levels.size), "holeで同一levelが分割される必要がある"
+    _assert_uniform_level_spacing(levels, spacing)
+
+
+def test_fill_concave_split_levels_keep_fixed_nominal_pitch() -> None:
+    spacing = 4.0
+    realized = realize(
+        E.fill(
+            angle_sets=1,
+            angle=0.0,
+            density=25.0,
+            min_spacing=0.0,
+            spacing_gradient=0.0,
+            remove_boundary=True,
+        )(G.fill_test_concave_u())
+    )
+    segments = list(_iter_polylines(realized))
+    levels = _projected_family_levels_from_polylines(
+        segments,
+        angle_deg=0.0,
+        reference_spacing=spacing,
+    )
+
+    assert len(segments) > int(levels.size), "concavityで同一levelが分割される必要がある"
+    _assert_uniform_level_spacing(levels, spacing)
 
 
 def test_fill_min_spacing_deduplicates_hole_split_levels_before_pitch_check() -> None:
@@ -1068,6 +1561,22 @@ def test_fill_rejects_invalid_parameters_before_empty_input(
 
     assert isinstance(exc_info.value.__cause__, ValueError)
     assert parameter in str(exc_info.value.__cause__)
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [-0.1, float("nan"), float("inf"), -float("inf")],
+)
+def test_fill_direct_evaluator_rejects_invalid_density_before_empty_input(
+    invalid: float,
+) -> None:
+    empty = (
+        np.empty((0, 3), dtype=np.float32),
+        np.zeros((1,), dtype=np.int32),
+    )
+
+    with pytest.raises(ValueError, match="density"):
+        fill_effect(empty, density=invalid, min_spacing=0.0)
 
 
 @pytest.mark.parametrize("invalid", [-0.1, float("nan"), float("inf"), -float("inf")])

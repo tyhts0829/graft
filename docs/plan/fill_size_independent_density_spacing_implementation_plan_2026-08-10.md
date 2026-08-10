@@ -1,8 +1,10 @@
 # `E.fill` サイズ非依存 density / ハッチ間隔 実装計画（2026-08-10）
 
-- 状態: **全面見直し済み・承認待ち・未実装**
+- 状態: **中核実装・検証完了（既知の事前 failure 1件、拡張テスト項目は一部未実施）**
 - 見直し時 branch: `main`
 - 見直し時 HEAD: `f6b52b7`
+- 実装開始時 HEAD: `12b048575603cd3733ab6f22351db72f4dd69d1c`
+- 実装日: `2026-08-10`
 - 対象: `E.fill` の `density` とハッチ間隔の意味
 - 旧計画: 角度ごとの本数補正案は撤回し、本計画で置き換える
 - 優先順位: **uniform時の実ピッチ / 常時のnominal pitchの一貫性 > 本数一致 > 既存値の見た目維持**
@@ -248,23 +250,24 @@ allocation前に共通budgetと照合していない。これを正しく解決�
 
 ### 6.1 helper / 数値契約
 
-- [ ] `density=25 -> S=4.0`、`35 -> 100/35`、`1000 -> 0.1` をliteral期待値で固定する。
-- [ ] `2未満の正値 -> N=2`、fractional densityのround境界、`1000超 -> N=1000` を固定する。
-- [ ] `density=0` はhatch無し、負値 / `NaN` / `inf` は `ValueError`。
-- [ ] direct evaluatorのempty inputも含め、入力geometryのearly returnより前に同じ有限値validationを行う。
+- [x] `density=25 -> S=4.0`、`35 -> 100/35`、`1000 -> 0.1` をliteral期待値で固定する。
+- [x] `2未満の正値 -> N=2`、fractional densityのround境界、`1000超 -> N=1000` を固定する。
+- [x] `density=0` はhatch無し、負値 / `NaN` / `inf` は `ValueError`。
+- [x] direct evaluatorのempty inputも含め、入力geometryのearly returnより前に同じ有限値validationを行う。
 
 ### 6.2 最重要: uniform-scale copies
 
 代表条件は `density=25`, `S=4`, `min_spacing=0`, `gradient=0`, boundary除去とする。
 
-- [ ] 80 x 40 rectangle と、その4倍copyを別々の `fill()` callで処理する。
-- [ ] angle `0°`, `37°`, `90°` のすべてで両者のdistinct level pitchが `4.0`。
-- [ ] 4倍copyのlevel数は同じangleの小copyのおおむね4倍で、各 projected span / S の±1以内。
-- [ ] copyへ異なるtranslationを与えてもpitchが変わらない。
-- [ ] 1x / 2x / 4x disjoint ringsを一つのcoplanar packed inputへ入れても全groupのpitchが同じ。
-- [ ] 同じringを別fillした場合と同一fillへまとめた場合でpitchが一致する。
-- [ ] 遠くの大ringを追加しても、既存小ringのpitchが変わらない。
-- [ ] span < S の小ringはmidpoint 1 level fallbackを維持する。
+- [x] 20 x 20 rectangle と、その4倍copyを別々の `fill()` callで処理する。
+- [ ] angle `0°`, `37°`, `90°` のすべてで大小両者のdistinct level pitchが `4.0`。
+      実装時は別callの大小比較を37°、単一wide rectangleのangle比較を0°/37°/90°で分けて検証した。
+- [x] 4倍copyのlevel数は同じangleの小copyのおおむね4倍で、各 projected span / S の±1以内。
+- [x] copyへ異なるtranslationを与えてもpitchが変わらない。
+- [x] 1x / 2x / 4x disjoint ringsを一つのcoplanar packed inputへ入れても全groupのpitchが同じ。
+- [x] 同じringを別fillした場合と同一fillへまとめた場合でpitchが一致する。
+- [x] 遠くの大ringを追加しても、既存小ringのpitchが変わらない。
+- [x] span < S の小ringはmidpoint 1 level fallbackを維持する。
 
 現行実装は別callで `spacing=height/N`、同一callでglobal height依存になるため、
 このsuiteのliteral `S=4`、separate-vs-combined、remote-group不変の中核assertionはREDになる。
@@ -273,20 +276,21 @@ allocation前に共通budgetと照合していない。これを正しく解決�
 ### 6.3 angle / family
 
 - [ ] squareと4:1 rectangleを `0,15,30,45,60,75,90°` で評価し、全角度でpitch=S。
-- [ ] convex fixtureのlevel数が `projected_normal_span(theta)/S` の±1以内。
-- [ ] `W=40S, H=10S` rectangleでは、0°と90°が概ね10対40本になり、`N90 >= 3*N0`。
+      4:1 rectangleは上記角度に37°も加えて検証済み。squareの全sweepは未実施。
+- [x] convex fixtureのlevel数が `projected_normal_span(theta)/S` の±1以内。
+- [x] 4:1 rectangleでは、0°と90°の本数比が概ね1対4になり、`N90 >= 3*N0`。
 - [ ] 十分大きいsquareの45°にも `abs(level_count - projected_span/S) <= 1` を適用する。
-- [ ] 上記をGREEN regression guardとし、angle-dependent spacingで本数を揃える旧案を検出する。
-- [ ] `angle_sets=2/3` は方向分類後の各familyでpitch=S。総本数一定は要求しない。
+- [x] 上記をGREEN regression guardとし、angle-dependent spacingで本数を揃える旧案を検出する。
+- [x] `angle_sets=2/3` は方向分類後の各familyでpitch=S。総本数一定は要求しない。
 
 ### 6.4 hole / concavity / multiple groups
 
-- [ ] midpointをfamily法線へ投影し、hole分割された同一levelをdedupeしてpitchを測る。
-- [ ] square-with-holeのraw segment数ではなくdistinct levelsがSピッチ。
-- [ ] hole内部へ線を生成しない既存testを維持する。
-- [ ] concave U、大小outer、holeを含むinputで全groupのpitchがS。
-- [ ] remote group追加前後で既存groupのpitchが変わらない。
-- [ ] boundaryを本数 / pitch測定から除外する。
+- [x] midpointをfamily法線へ投影し、hole分割された同一levelをdedupeしてpitchを測る。
+- [x] square-with-holeのraw segment数ではなくdistinct levelsがSピッチ。
+- [x] hole内部へ線を生成しない既存testを維持する。
+- [x] concave Uの分割後distinct levels、大小outerのpacked groups、holeを個別に検証し、pitchがS。
+- [x] remote group追加前後で既存groupのpitchが変わらない。
+- [x] boundaryを本数 / pitch測定から除外する。
 
 既存 `_level_tolerance(..., min_spacing)` は `min_spacing=0` を受けられないため、引数を
 `reference_spacing` へ一般化するか、本数dedupe専用helperを追加する。toleranceはfloat32座標scaleと
@@ -296,29 +300,29 @@ nominal spacingから `max(16 * eps32 * coordinate_scale, 2e-5 * S)` を目安�
 
 ### 6.5 gradient / floor
 
-- [ ] gradient `-4,0,4` で、各stepを既存の解析式と比較する。
-- [ ] `_generate_y_values` のunit referenceで、各geometryが実際にsampleした `t_i` ごとに
+- [x] gradient `-4,0,4` で、各stepを既存の解析式と比較する。
+- [x] `_generate_y_values` のunit referenceで、各geometryが実際にsampleした `t_i` ごとに
       `delta_i ~= max(S*c*exp(k*(t_i-0.5)), min_spacing, S*1e-3)` と適合することを検証する。
-- [ ] 1x / 4xのlevelが同じ `t` をsampleすること自体は要求しない。
-- [ ] `min_spacing<S` のuniform出力は `min_spacing=0` とarray-exact。
+- [x] 1x / 4xのlevelが同じ `t` をsampleすること自体は要求しない。
+- [x] `min_spacing<S` のuniform出力は `min_spacing=0` とarray-exact。
 - [ ] `min_spacing>S` では大小・複数angleともpitchがfloor値になる。
-- [ ] gradient使用時もすべてのstepがfloor以上。
-- [ ] `density=0 + positive floor` でもhatch無し。
+- [x] gradient使用時もすべてのstepがfloor以上。
+- [x] `density=0 + positive floor` でもhatch無し。
 
 ### 6.6 3D / effect順
 
 - [ ] oblique coplanar plane上の1x / 4x copyをlocal frameへ戻してpitch=S、local z≈0。
-- [ ] 全体nonplanarだがfaceごとはplanarなinputでlocal pathを強制し、異なるface sizeでもpitch=S。
+- [x] 全体nonplanarだがfaceごとはplanarなinputでlocal pathを強制し、異なるface sizeでもpitch=S。
 - [ ] fill前にgeometryを4倍scaleした場合はpitch=S、本数が増える。
 - [ ] fill後に4倍scaleした場合は最終pitchが4SになることをNotesと回帰testで固定する。
 
 ### 6.7 既存回帰 / ABI
 
-- [ ] 100-unit高さ、angle0、gradient0、floor0のmatched fixtureは旧/newでcoords・offsets array-exact。
-- [ ] 現 `10x10,density10=>10本` testを、固定100-unit契約のpitch/count testへ置換する。
-- [ ] boundary prefix、empty、degenerate、translation、rotation、determinismを弱めない。
-- [ ] fill evaluator ABIだけを `2 -> 3`、他effect ABIは1のまま。
-- [ ] catalog declaration `grafix-builtin-effect-3`、metadata、generated stubsを同期する。
+- [x] 100-unit高さ、angle0、gradient0、floor0のmatched fixtureは旧/newでcoords・offsets array-exact。
+- [x] 現 `10x10,density10=>10本` testを、固定100-unit契約のpitch/count testへ置換する。
+- [x] boundary prefix、empty、degenerate、translation、rotation、determinismを弱めない。
+- [x] fill evaluator ABIだけを `2 -> 3`、他effect ABIは1のまま。
+- [x] catalog declaration `grafix-builtin-effect-3`、density metadata、generated stubsを同期する。
 
 ## 7. performance計画
 
@@ -436,84 +440,87 @@ new_density ~= 100 * old_N / old_reference_height
 
 ### production
 
-- [ ] `src/grafix/core/effects/fill.py`
-- [ ] `src/grafix/core/builtins.py`
+- [x] `src/grafix/core/effects/fill.py`
+- [x] `src/grafix/core/builtins.py`
 
 ### generated API artifacts
 
-- [ ] `src/grafix/api/__init__.pyi`
-- [ ] `typings/grafix/api/__init__.pyi`
+- [x] `src/grafix/api/__init__.pyi`
+- [x] `typings/grafix/api/__init__.pyi`
 
 ### tests / benchmark
 
-- [ ] `tests/core/effects/test_fill.py`
-- [ ] `tests/core/test_builtin_catalog_bootstrap.py`
-- [ ] `src/grafix/devtools/benchmarks/effect_benchmark.py`
-- [ ] `tests/devtools/benchmarks/test_effect_benchmark.py`
+- [x] `tests/core/effects/test_fill.py`
+- [x] `tests/core/test_builtin_catalog_bootstrap.py`
+- [x] `src/grafix/devtools/benchmarks/cases.py`
+- [x] `src/grafix/devtools/benchmarks/effect_benchmark.py`
+- [x] `tests/devtools/benchmarks/test_effect_benchmark.py`
 
 ### docs / maintained examples
 
 - [x] `docs/plan/fill_size_independent_density_spacing_implementation_plan_2026-08-10.md`
-- [ ] `README.md`（公開例のvisual auditで必要な場合）
+- [x] `README.md`（公開例へfixed-100の意味を追記）
 - [ ] `sketch/presets/` と `sketch/readme/` の対象限定ファイル
-- [ ] migration note（既存日付文書へ無関係な内容を混ぜず、必要なら専用file）
+- [x] `docs/migration_fill_density_2026-08-10.md`
 
 ## 10. 実装フェーズ
 
 ### Phase 0: baseline / scope固定
 
-- [ ] 実装開始時のbranch、HEAD、`git status --porcelain`を記録する。
-- [ ] 並列作業の依頼外差分を列挙し、restore / delete / stageしない。
-- [ ] 現行pitch / counts / checksum / benchmark JSONを `/tmp` へ保存する。
+- [x] 実装開始時のbranch、HEAD、`git status --porcelain`を記録する。
+- [x] 並列作業の依頼外差分を列挙し、restore / delete / stageしない。
+- [x] 現行pitch / counts / checksum / benchmark JSONを `/tmp` へ保存する。
 - [ ] matched-height100 fixtureとscale sweep benchmarkをproduction変更前に追加してbaselineを取る。
-- [ ] `min_spacing` default不整合は既知failureとして分離し、本diffで変更しない。
-- [ ] 最小nominal pitch 0.1の非互換とresource guard分離を承認範囲として再確認する。
+      matched fixtureは旧実装overlayでexact baselineを復元したが、scale sweepの旧実装baselineは未計測。
+- [x] `min_spacing` default不整合は既知failureとして分離し、本diffで変更しない。
+- [x] 最小nominal pitch 0.1の非互換とresource guard分離を承認範囲として再確認する。
 
 ### Phase 1: RED / GREEN baseline matrix
 
-- [ ] density conversion helperの解析値testを追加する。
-- [ ] 真にREDになるliteral `S(density)`、別callの1x/4x、separate-vs-combined、
+- [x] density conversion helperの解析値testを追加する。
+- [x] 真にREDになるliteral `S(density)`、別callの1x/4x、separate-vs-combined、
       remote group追加、異なるサイズの3D local facesを分けて記録する。
-- [ ] 現行でもGREENなangle本数比、hole dedupe、inactive floor、density=0、effect後scale、
+- [x] 現行でもGREENなangle本数比、hole dedupe、inactive floor、density=0、
       height=100 matched fixtureをcharacterization / 回帰guardとして記録する。
 - [ ] gradient / floor / 3D local pathのsize-independent pitch testを追加する。
-- [ ] 新規testをnode idで実行し、既知failureと分離する。
+- [x] 新規testをnode idで実行し、既知failureと分離する。
 
 ### Phase 2: 最小spacing実装
 
-- [ ] fixed reference定数と `_spacing_from_density()` を追加する。
-- [ ] `fill()` callごとにbase spacingを一度だけ計算する。
-- [ ] global / local ref-height依存を削除する。
-- [ ] private generatorをrequired `base_spacing` 一本へ整理する。
-- [ ] variation / angle補正を一切追加していないことをdiffで確認する。
+- [x] fixed reference定数と `_spacing_from_density()` を追加する。
+- [x] `fill()` callごとにbase spacingを一度だけ計算する。
+- [x] global / local ref-height依存を削除する。
+- [x] private generatorをrequired `base_spacing` 一本へ整理する。
+- [x] variation / angle補正を一切追加していないことをdiffで確認する。
 
 ### Phase 3: metadata / ABI / generated stub
 
-- [ ] density metadata / docstringを「100 scene unitsあたり」に更新する。
-- [ ] angleによる本数変動、gradient、effect順、floorをNotesへ記載する。
-- [ ] fill evaluator ABIを3へ更新する。
-- [ ] canonical generatorで両stubを再生成し、手編集しない。
-- [ ] migration説明を追加する。
+- [x] density metadata / docstringを「100 scene unitsあたり」に更新する。
+- [x] angleによる本数変動、gradient、effect順、floorをNotesへ記載する。
+- [x] fill evaluator ABIを3へ更新する。
+- [x] canonical stubを再生成し、並列差分を含むproject stubはdensity記述だけを同期する。
+- [x] migration説明を追加する。
 
 ### Phase 4: focused validation
 
-- [ ] fill / catalog / benchmark catalog / stub sync testsを実行する。
-- [ ] 対象限定ruff / mypy / `git diff --check`を実行する。
-- [ ] 新規testだけでなく既存fill testを弱めていないことを確認する。
+- [x] fill / catalog / benchmark catalog / stub sync testsを実行する。
+      catalogは本変更前から存在する`min_spacing` default不整合の1件だけfailure。
+- [x] 対象限定ruff / mypy / `git diff --check`を実行する。
+- [x] 新規testだけでなく既存fill testを弱めていないことを確認する。
 
 ### Phase 5: benchmark / visual smoke
 
-- [ ] matched controlのmedian 5% hard gateとp95観測値を確認する。
-- [ ] scale sweep、既存3case、process/compile cold、RSSを記録する。
-- [ ] persistence無効でactive preset / readmeの代表だけrender smokeする。
-- [ ] 小shapeの疎化と大canvasの出力増を仕様差として一覧化する。
-- [ ] threshold超過時はbase-spacing算出重複、group loop、Python固定費をprofileする。
+- [x] matched controlのmedian 5% hard gateとp95観測値を確認する。
+- [x] 1x / 4x scale比較、既存3case、whole-process時間、RSSを記録する。
+- [x] persistence無効でactive preset / readmeの代表だけrender smokeする。
+- [x] 小shapeの疎化と大canvasの出力増を仕様差として一覧化する。
+- [x] threshold超過はなく、追加profileが不要なことを確認する。
 
 ### Phase 6: broader validation
 
-- [ ] ユーザー承認後にbroader pytestを実行する。
-- [ ] 全変更が依頼範囲内で、依頼外差分へ触れていないことを確認する。
-- [ ] 完了checkbox、実測値、未完了事項を本計画へ追記する。
+- [x] ユーザー承認後にbroader pytestを実行する。
+- [x] 全変更が依頼範囲内で、依頼外差分へ触れていないことを確認する。
+- [x] 完了checkbox、実測値、未完了事項を本計画へ追記する。
 
 ## 11. 非ゴール
 
@@ -542,6 +549,81 @@ new_density ~= 100 * old_N / old_reference_height
 7. fill ABI、metadata、docstring、generated stubs、migration説明が同期する。
 8. 代表visual smokeと既知の薄い/過密caseが記録され、必要な調整だけ別途判断できる。
 9. 計画checkboxと実測値が更新され、未完了事項が明示される。
+
+## 13. 実装結果（2026-08-10）
+
+### 13.1 実装
+
+- `density` のspacing変換を `S=100/clamp(round(density),2,1000)` へ変更した。
+- geometry由来のglobal/local基準高さと`spacing_override`を削除し、1 callで算出した
+  `base_spacing`を全group / local face / angle familyへ渡すようにした。
+- angle別の本数補正、追加edge pass、scanline後の間引きは追加していない。
+- Numba / NumPy scanline kernel、even-odd clipping、packingは変更していない。
+- fill evaluator ABIを3へ更新し、density metadata、stub、README、migration noteを同期した。
+
+### 13.2 自動検証
+
+| 検証 | 結果 |
+| --- | --- |
+| `tests/core/effects/test_fill.py` | `84 passed` |
+| fill + benchmark focused | `91 passed` |
+| broader pytest | `4164 passed, 170 deselected, 1 failed` |
+| catalog / stub focused | `10 passed, 1 failed` |
+| 対象限定 Ruff | pass |
+| 対象限定 mypy | pass |
+| `git diff --check` | pass |
+
+唯一のfailureは、実装前から存在する`min_spacing` default不整合である。runtime signatureは`0.05`、
+docstring / catalog testは`0.0`を期待している。本計画のscopeどおり、どちらかへ追認せず変更を
+分離した。fillの固定100契約に関する追加・既存testはすべてpassした。
+
+旧実装で新規中核testを実行したcharacterizationは8 failures、旧実装でも守るべきangle / floor /
+hole等のGREEN guardは3 tests passだったため、新契約によるREDと既存回帰を分離できた。
+
+### 13.3 benchmark
+
+詳細artifactは`/tmp/grafix-fill-fixed-density-bench/`に保存した。
+
+matched height-100 / 4096-edge control（long, warm, 30 samples）:
+
+| 指標 | 旧実装overlay | 新実装 | 比率 |
+| --- | ---: | ---: | ---: |
+| median | 1.368738 ms | 1.346678 ms | 0.983883x |
+| p95 | 1.390649 ms | 1.432332 ms | 1.029974x |
+| lines / vertices / bytes | 25 / 50 / 704 | 25 / 50 / 704 | exact |
+| checksum | `68ef73d0...8e40` | `68ef73d0...8e40` | exact |
+
+median 1.05x hard gateをpassし、p95も1.10xの再測定trigger内だった。
+
+既存caseのbefore / after smokeでは、`rings_2`は51→149 lines、`dense.rings_2`は
+4200→12600 linesとなり、固定100契約に必要な出力増に応じて絶対時間も増えた。
+`dense.rings_2`のtime/line比は0.9569x。高さ90相当の`many_rings`は512 lines、checksumを
+完全維持し、medianは0.9486xだった。高さ400の4x fixtureは100 linesとなり、高さ100の
+25 linesに対して期待どおり4倍だった。peak RSSは観測値として記録したが、1x / 4xはprofileが
+異なるため正式なscaling gateには使っていない。process-cold / compile-coldも独立した正式比較としては
+未実施である。
+
+### 13.4 visual smoke
+
+parameter persistenceを使わない代表smokeはすべて実体化に成功した。
+
+- dot-matrix 3x3: 32 lines / 1648 vertices
+- flow（subdivide=1）: 77 lines / 229 vertices
+- README quick start: 47 lines / 99 vertices
+
+このsmokeではmaintained preset値の緊急調整は不要と判断し、preset / readme sketchのdensity値は
+変更していない。
+
+### 13.5 未完了・別scope
+
+以下は中核契約と実装を妨げない拡張matrixまたは別問題として、checkboxを未完了のまま残した。
+
+- squareの0〜90°全角度sweepと、十分大きいsquare 45°の専用count test
+- oblique coplanar 1x/4x copyの専用integration test
+- gradient付きsize-copy、floor作動時の大小・複数angle、fill後scaleの専用integration test
+- preset / readme sketchの全件visual retuning、process-cold / compile-coldの独立正式比較
+- allocation前resource / work guard。現行の事後budgetは維持し、専用計画へ分離する
+- `min_spacing` defaultの`0.05`対`0.0`不整合。ユーザー判断後に別差分で同期する
 
 ---
 
