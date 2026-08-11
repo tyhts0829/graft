@@ -102,6 +102,45 @@ def test_stub_cli_defaults_to_project_local_output_and_includes_user_ops(
     assert '"_P" has no attribute "onboarding_local_presett"' in checked.stdout
     assert '"_P" has no attribute "onboarding_local_preset"' not in checked.stdout
 
+    canvas_probe = project / "canvas_size_typing_probe.py"
+    canvas_probe.write_text(
+        "from typing import assert_type\n"
+        "from grafix import (\n"
+        "    A2, A2_LANDSCAPE, A3, A3_LANDSCAPE, A4, A4_LANDSCAPE,\n"
+        "    A5, A5_LANDSCAPE, A6, A6_LANDSCAPE, RenderOptions, SQUARE,\n"
+        ")\n"
+        "assert_type(A2, tuple[int, int])\n"
+        "assert_type(A2_LANDSCAPE, tuple[int, int])\n"
+        "assert_type(A3, tuple[int, int])\n"
+        "assert_type(A3_LANDSCAPE, tuple[int, int])\n"
+        "assert_type(A4, tuple[int, int])\n"
+        "assert_type(A4_LANDSCAPE, tuple[int, int])\n"
+        "assert_type(A5, tuple[int, int])\n"
+        "assert_type(A5_LANDSCAPE, tuple[int, int])\n"
+        "assert_type(A6, tuple[int, int])\n"
+        "assert_type(A6_LANDSCAPE, tuple[int, int])\n"
+        "assert_type(SQUARE, tuple[int, int])\n"
+        "RenderOptions(canvas_size=SQUARE)\n",
+        encoding="utf-8",
+    )
+    canvas_checked = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "mypy",
+            "--no-incremental",
+            "--cache-dir",
+            str(tmp_path / "canvas-mypy-cache"),
+            str(canvas_probe),
+        ],
+        cwd=project,
+        env={**os.environ, "MYPYPATH": str(project / "typings")},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert canvas_checked.returncode == 0, canvas_checked.stdout + canvas_checked.stderr
+
     # 同一 process での再生成でも module を二重登録せず正常に更新できる。
     assert grafix_main(["stub", "--project", str(project)]) == 0
 

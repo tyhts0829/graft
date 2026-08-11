@@ -161,6 +161,16 @@ def test_api_package_does_not_reexport_application_callables() -> None:
 
 def test_root_and_api_all_are_explicit_public_contracts() -> None:
     expected_root = {
+        "A2",
+        "A2_LANDSCAPE",
+        "A3",
+        "A3_LANDSCAPE",
+        "A4",
+        "A4_LANDSCAPE",
+        "A5",
+        "A5_LANDSCAPE",
+        "A6",
+        "A6_LANDSCAPE",
         "CaptureProvenance",
         "CcView",
         "Color",
@@ -189,6 +199,7 @@ def test_root_and_api_all_are_explicit_public_contracts() -> None:
         "RuntimeConfig",
         "RuntimeLimitProfiles",
         "RuntimeLimits",
+        "SQUARE",
         "SessionProvenance",
         "VariationBatchResult",
         "VariationRenderResult",

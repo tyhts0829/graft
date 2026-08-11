@@ -47,6 +47,41 @@ print(json.dumps({name: name in sys.modules for name in watched}))
     }
 
 
+def test_canvas_size_import_only_loads_its_pure_core_module() -> None:
+    result = _run_isolated(
+        r'''
+import json
+import sys
+
+from grafix import A4, SQUARE
+from grafix.core import canvas_sizes
+
+print(json.dumps({
+    "a4_identity": A4 is canvas_sizes.A4,
+    "square_identity": SQUARE is canvas_sizes.SQUARE,
+    "canvas_sizes_loaded": "grafix.core.canvas_sizes" in sys.modules,
+    "api_loaded": "grafix.api" in sys.modules,
+    "export_loaded": "grafix.export" in sys.modules,
+    "pyglet_loaded": "pyglet" in sys.modules,
+    "interactive_loaded": any(
+        name == "grafix.interactive" or name.startswith("grafix.interactive.")
+        for name in sys.modules
+    ),
+}))
+'''
+    )
+
+    assert result == {
+        "a4_identity": True,
+        "square_identity": True,
+        "canvas_sizes_loaded": True,
+        "api_loaded": False,
+        "export_loaded": False,
+        "pyglet_loaded": False,
+        "interactive_loaded": False,
+    }
+
+
 def test_root_facade_has_stable_identity_and_defers_interactive_runtime() -> None:
     result = _run_isolated(
         r'''

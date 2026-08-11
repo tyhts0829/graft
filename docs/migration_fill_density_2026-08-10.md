@@ -50,6 +50,5 @@ legacy mode、bbox換算flag、compatibility wrapperは追加しない。
 
 ## `min_spacing` default
 
-runtime signatureの `0.05` と既存doc/testの `0.0` には、この変更以前から不整合がある。
-本density変更ではどちらも書き換えず、すべての新規契約testで `min_spacing` を明示する。
-defaultの統一は別の判断・別差分で行う。
+`min_spacing` の既定値は `0.05` scene unitsである。引数省略は `min_spacing=0.05` の明示と
+同じ結果になり、下限floorを無効にする場合は `min_spacing=0.0` を明示する。

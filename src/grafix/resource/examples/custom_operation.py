@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from grafix import primitive, run
+from grafix import SQUARE, primitive, run
 from grafix.api import G
 from grafix.core.realized_geometry import GeomTuple
 from grafix.core.scene import SceneItem
@@ -58,4 +58,4 @@ def draw(t: float) -> SceneItem:
 
 
 if __name__ == "__main__":
-    run(draw, canvas_size=(300, 300))
+    run(draw, canvas_size=SQUARE)

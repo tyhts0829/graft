@@ -42,6 +42,19 @@ if TYPE_CHECKING:
     )
     from grafix.api.runner import run
     from grafix.api.variation_batch import render_variation_batch
+    from grafix.core.canvas_sizes import (
+        A2,
+        A2_LANDSCAPE,
+        A3,
+        A3_LANDSCAPE,
+        A4,
+        A4_LANDSCAPE,
+        A5,
+        A5_LANDSCAPE,
+        A6,
+        A6_LANDSCAPE,
+        SQUARE,
+    )
     from grafix.export.variation_batch import (
         VariationBatchResult,
         VariationRenderResult,
@@ -52,6 +65,16 @@ if TYPE_CHECKING:
     from grafix.core.runtime_limits import RuntimeLimitProfiles, RuntimeLimits
 
 __all__ = [
+    "A2",
+    "A2_LANDSCAPE",
+    "A3",
+    "A3_LANDSCAPE",
+    "A4",
+    "A4_LANDSCAPE",
+    "A5",
+    "A5_LANDSCAPE",
+    "A6",
+    "A6_LANDSCAPE",
     "CaptureProvenance",
     "CcView",
     "Color",
@@ -80,6 +103,7 @@ __all__ = [
     "RuntimeConfig",
     "RuntimeLimitProfiles",
     "RuntimeLimits",
+    "SQUARE",
     "SessionProvenance",
     "VariationBatchResult",
     "VariationRenderResult",
@@ -95,6 +119,16 @@ __all__ = [
 ]
 
 _PUBLIC_NAMES: dict[str, tuple[str, str]] = {
+    "A2": ("grafix.core.canvas_sizes", "A2"),
+    "A2_LANDSCAPE": ("grafix.core.canvas_sizes", "A2_LANDSCAPE"),
+    "A3": ("grafix.core.canvas_sizes", "A3"),
+    "A3_LANDSCAPE": ("grafix.core.canvas_sizes", "A3_LANDSCAPE"),
+    "A4": ("grafix.core.canvas_sizes", "A4"),
+    "A4_LANDSCAPE": ("grafix.core.canvas_sizes", "A4_LANDSCAPE"),
+    "A5": ("grafix.core.canvas_sizes", "A5"),
+    "A5_LANDSCAPE": ("grafix.core.canvas_sizes", "A5_LANDSCAPE"),
+    "A6": ("grafix.core.canvas_sizes", "A6"),
+    "A6_LANDSCAPE": ("grafix.core.canvas_sizes", "A6_LANDSCAPE"),
     "CaptureProvenance": ("grafix.core.capture_provenance", "CaptureProvenance"),
     "CcView": ("grafix.api.cc", "CcView"),
     "Color": ("grafix.core.render_options", "Color"),
@@ -129,6 +163,7 @@ _PUBLIC_NAMES: dict[str, tuple[str, str]] = {
         "RuntimeLimitProfiles",
     ),
     "RuntimeLimits": ("grafix.core.runtime_limits", "RuntimeLimits"),
+    "SQUARE": ("grafix.core.canvas_sizes", "SQUARE"),
     "SessionProvenance": ("grafix.core.capture_provenance", "SessionProvenance"),
     "VariationBatchResult": (
         "grafix.export.variation_batch",

@@ -54,9 +54,7 @@ class BundledExample:
 
 _SKETCH_MAIN = '''"""Grafix の最小スケッチ。"""
 
-from grafix import G, run
-
-CANVAS_SIZE = (300, 300)
+from grafix import G, SQUARE, run
 
 
 def draw(t: float):
@@ -67,7 +65,7 @@ def draw(t: float):
 
 
 if __name__ == "__main__":
-    run(draw, canvas_size=CANVAS_SIZE)
+    run(draw, canvas_size=SQUARE)
 '''
 
 _CONFIG = """version: 1

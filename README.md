@@ -31,9 +31,7 @@ for the first preview or for SVG and G-code export.
 Save this as `sketch.py`:
 
 ```python
-from grafix import E, G, run
-
-CANVAS_SIZE = (300, 300)
+from grafix import E, G, SQUARE, run
 
 
 def draw(t: float):
@@ -50,7 +48,7 @@ def draw(t: float):
 
 
 if __name__ == "__main__":
-    run(draw, canvas_size=CANVAS_SIZE)
+    run(draw, canvas_size=SQUARE)
 ```
 
 Run it:
@@ -86,6 +84,25 @@ python -m grafix list
 python -m grafix describe effect fill
 ```
 
+## Canvas sizes
+
+Grafix provides common canvas sizes as `(width, height)` integer tuples. Short A-series
+names are portrait; the `_LANDSCAPE` variants swap width and height.
+
+| Canvas | Portrait constant and value | Landscape constant and value |
+| ------ | --------------------------- | ---------------------------- |
+| Square | `SQUARE = (300, 300)`       | —                            |
+| ISO A2 | `A2 = (420, 594)`           | `A2_LANDSCAPE = (594, 420)`  |
+| ISO A3 | `A3 = (297, 420)`           | `A3_LANDSCAPE = (420, 297)`  |
+| ISO A4 | `A4 = (210, 297)`           | `A4_LANDSCAPE = (297, 210)`  |
+| ISO A5 | `A5 = (148, 210)`           | `A5_LANDSCAPE = (210, 148)`  |
+| ISO A6 | `A6 = (105, 148)`           | `A6_LANDSCAPE = (148, 105)`  |
+
+The A-series values are the nominal ISO 216 dimensions in millimetres, but `canvas_size`
+remains a logical coordinate tuple for preview, SVG, PNG, and video. Only G-code interprets
+the same numbers as millimetres. `SQUARE` is a convenient 300 × 300 logical canvas, not a
+paper standard. Omitting `canvas_size` keeps the existing `(800, 800)` default.
+
 ## Export
 
 With the preview focused:
@@ -116,6 +133,9 @@ python -m grafix export \
   --format svg \
   --out art.svg
 ```
+
+The CLI accepts numeric dimensions, so `--canvas 300 300` is the command-line equivalent
+of the Python `SQUARE` constant.
 
 ## Examples
 

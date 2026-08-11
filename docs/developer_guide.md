@@ -19,7 +19,8 @@
 ### 公開 API（スケッチ作者が触る層）
 
 - `src/grafix/__init__.py`（標準 PEP 562 root facade:
-  `G/E/L/P/run/render/save/render_variation_batch/cc` と共通公開型）
+  `G/E/L/P/run/render/save/render_variation_batch/cc`、canvas size 定数
+  `SQUARE/A2..A6` と各 `_LANDSCAPE`、共通公開型）
 - `src/grafix/api/__init__.py`（authoring DSL と公開 value type。application callable は re-export しない）
 - `src/grafix/api/primitives.py`（`G.*`）
 - `src/grafix/api/effects.py`（`E.*`）
@@ -35,6 +36,7 @@
 ### コア（変更の中心になる層）
 
 - `src/grafix/core/geometry.py`（Geometry: レシピ DAG / 署名）
+- `src/grafix/core/canvas_sizes.py`（root 公開する論理 canvas size の不変 tuple 定数）
 - `src/grafix/core/operation_authoring.py` / `src/grafix/core/operation_declaration.py`（decorator / immutable declaration）
 - `src/grafix/core/authoring_definitions.py` / `authoring_recipe.py`（registration target / immutable recipe・snapshot）
 - `src/grafix/authoring_loader.py`（config authoring source の filesystem capture / candidate catalog）
@@ -60,6 +62,8 @@
   callable/module の dual behavior は追加しない。
 - root は公開名から定義 module/attribute への PEP 562 mapping だけを持つ。`grafix.export` は package、
   `grafix.api.export` は module、保存 callable は `grafix.save` / `grafix.api.export.save` である。
+- canvas size 定数の正規入口は `from grafix import SQUARE, A4, A4_LANDSCAPE` とし、
+  `grafix.api` 直下へ重複公開しない。
 - `grafix.api.render` / `grafix.api.export` / `grafix.api.runner` / `grafix.api.cc` は通常 module である。
   application callable は root または各定義 module から取得し、`grafix.api` 直下に re-export しない。
 - `run` の参照や signature inspection は GUI/runtime を load せず、call 時に
@@ -186,6 +190,7 @@ output path helper は ambient config を探索しない。すべて composition
 `RuntimeConfig` を渡す。
 
 ```python
+from grafix import SQUARE
 from grafix.export.image import default_png_output_path
 from grafix.export.output_paths import default_param_store_path, output_path_for_draw
 from grafix.runtime_config_loader import load_runtime_config
@@ -201,7 +206,7 @@ parameter_path = default_param_store_path(draw, config=config)
 png_path = default_png_output_path(
     draw,
     scale=3.0,
-    canvas_size=(300, 300),
+    canvas_size=SQUARE,
     config=config,
 )
 ```

@@ -824,7 +824,7 @@ def fill(
         100 scene units あたりのnominal scanline数。
         正値は`round(density)`を2〜1000にclampした値を`N`とし、
         nominal pitchを`100 / N` scene unitsとする。0では塗り線を生成しない。
-    min_spacing : float, default 0.0
+    min_spacing : float, default 0.05
         同一方向の隣接ハッチ走査線に適用する最小ピッチ。
         fill 評価時の作業平面上の scene 座標単位で指定し、0.0 で無効になる。
         標準的な 2D plot では、scene 座標単位は通常 mm と一致する。

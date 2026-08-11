@@ -76,7 +76,7 @@ def test_fill_evaluator_abi_is_the_only_effect_abi_bumped() -> None:
 
     fill = builtin_operation_catalog().resolve("effect", "fill")
     assert fill.declaration.evaluator_abi == "grafix-builtin-effect-3"
-    assert fill.schema.defaults["min_spacing"] == 0.0
+    assert fill.schema.defaults["min_spacing"] == 0.05
     assert fill.schema.param_order.index("min_spacing") == (
         fill.schema.param_order.index("density") + 1
     )

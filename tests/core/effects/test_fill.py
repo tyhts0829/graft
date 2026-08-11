@@ -1068,7 +1068,7 @@ def test_fill_min_spacing_bounds_rotated_gradient_family(
         ),
     ],
 )
-def test_fill_omitted_and_explicit_zero_min_spacing_are_array_exact(
+def test_fill_omitted_and_explicit_default_min_spacing_are_array_exact(
     source_name: str,
     fill_kwargs: dict[str, int | float | bool],
 ) -> None:
@@ -1079,10 +1079,30 @@ def test_fill_omitted_and_explicit_zero_min_spacing_are_array_exact(
     }
     source = sources[source_name]()
     omitted = realize(E.fill(**fill_kwargs)(source))
-    explicit = realize(E.fill(min_spacing=0.0, **fill_kwargs)(source))
+    explicit = realize(E.fill(min_spacing=0.05, **fill_kwargs)(source))
 
     np.testing.assert_array_equal(explicit.coords, omitted.coords)
     np.testing.assert_array_equal(explicit.offsets, omitted.offsets)
+
+
+def test_fill_default_min_spacing_is_observable_for_dense_gradient() -> None:
+    source = G.fill_test_square()
+    fill_kwargs = {
+        "angle_sets": 1,
+        "angle": 37.0,
+        "density": 1000.0,
+        "spacing_gradient": 4.0,
+        "remove_boundary": True,
+    }
+
+    omitted = realize(E.fill(**fill_kwargs)(source))
+    explicit_default = realize(E.fill(min_spacing=0.05, **fill_kwargs)(source))
+    disabled_floor = realize(E.fill(min_spacing=0.0, **fill_kwargs)(source))
+
+    np.testing.assert_array_equal(explicit_default.coords, omitted.coords)
+    np.testing.assert_array_equal(explicit_default.offsets, omitted.offsets)
+    assert not np.array_equal(disabled_floor.coords, omitted.coords)
+    assert not np.array_equal(disabled_floor.offsets, omitted.offsets)
 
 
 def test_fill_inactive_positive_min_spacing_preserves_public_output() -> None:

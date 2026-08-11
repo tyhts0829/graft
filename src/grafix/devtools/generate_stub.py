@@ -1193,6 +1193,7 @@ from grafix.api.preset import preset as preset
 from grafix.api.render import Frame as Frame, RenderSession as RenderSession, RenderSessionMetadata as RenderSessionMetadata, render as render
 from grafix.api.runner import run as run
 from grafix.api.variation_batch import render_variation_batch as render_variation_batch
+from grafix.core.canvas_sizes import A2 as A2, A2_LANDSCAPE as A2_LANDSCAPE, A3 as A3, A3_LANDSCAPE as A3_LANDSCAPE, A4 as A4, A4_LANDSCAPE as A4_LANDSCAPE, A5 as A5, A5_LANDSCAPE as A5_LANDSCAPE, A6 as A6, A6_LANDSCAPE as A6_LANDSCAPE, SQUARE as SQUARE
 from grafix.core.capture_provenance import CaptureProvenance as CaptureProvenance, SessionProvenance as SessionProvenance
 from grafix.core.export_format import ExportFormat as ExportFormat
 from grafix.core.export_result import ExportResult as ExportResult
@@ -1208,6 +1209,16 @@ from grafix.core.runtime_limits import RuntimeLimitProfiles as RuntimeLimitProfi
 from grafix.export.variation_batch import VariationBatchResult as VariationBatchResult, VariationRenderResult as VariationRenderResult, VariationRenderStatus as VariationRenderStatus
 
 __all__ = [
+    "A2",
+    "A2_LANDSCAPE",
+    "A3",
+    "A3_LANDSCAPE",
+    "A4",
+    "A4_LANDSCAPE",
+    "A5",
+    "A5_LANDSCAPE",
+    "A6",
+    "A6_LANDSCAPE",
     "CaptureProvenance",
     "CcView",
     "Color",
@@ -1236,6 +1247,7 @@ __all__ = [
     "RuntimeConfig",
     "RuntimeLimitProfiles",
     "RuntimeLimits",
+    "SQUARE",
     "SessionProvenance",
     "VariationBatchResult",
     "VariationRenderResult",

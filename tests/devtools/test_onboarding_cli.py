@@ -26,6 +26,10 @@ def test_init_creates_minimal_project_without_clobbering_existing_files(
     assert first.existing == ()
     assert 'name = "my-creative-project"' in (project / "pyproject.toml").read_text()
     assert 'sketch_dir: "../sketch"' in (project / ".grafix/config.yaml").read_text()
+    generated_sketch = (project / "sketch/main.py").read_text(encoding="utf-8")
+    assert "from grafix import G, SQUARE, run" in generated_sketch
+    assert "run(draw, canvas_size=SQUARE)" in generated_sketch
+    assert "(300, 300)" not in generated_sketch
 
     sketch_path = project / "sketch/main.py"
     sketch_path.write_text("# keep me\n", encoding="utf-8")
@@ -119,6 +123,7 @@ def test_examples_lists_and_copies_without_clobbering(
     )
     original = destination.read_text(encoding="utf-8")
     assert "G.circle" in original
+    assert "run(draw, canvas_size=SQUARE)" in original
 
     assert (
         grafix_main(

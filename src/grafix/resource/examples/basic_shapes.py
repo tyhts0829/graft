@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from grafix import G, run
+from grafix import G, SQUARE, run
 from grafix.core.scene import SceneItem
-
-CANVAS_SIZE = (300, 300)
 
 
 def draw(t: float) -> SceneItem:
@@ -18,4 +16,4 @@ def draw(t: float) -> SceneItem:
 
 
 if __name__ == "__main__":
-    run(draw, canvas_size=CANVAS_SIZE)
+    run(draw, canvas_size=SQUARE)
