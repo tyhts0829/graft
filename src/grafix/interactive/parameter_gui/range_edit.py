@@ -1,6 +1,12 @@
-# どこで: `src/grafix/interactive/parameter_gui/range_edit.py`。
-# 何を: ui_min/ui_max（レンジ）編集の純粋ロジックを提供する。
-# なぜ: GUI / MIDI 入力の配線から切り離し、テスト可能に保つため。
+"""
+Purpose:
+    MIDI-linked parameter rangeの未commit previewと、一括commit用domain operationを定義する。
+Use when:
+    range shift/min/max計算、対象selection、またはhistory transactionを変更する場合。
+Constraints:
+    - previewはParamStoreを変更せず、originalとpending rangeをimmutable sessionに保持する。
+    - commit時にcurrent metadata kindを再確認し、差分のある対象だけを一つの履歴単位で更新する。
+"""
 
 from __future__ import annotations
 

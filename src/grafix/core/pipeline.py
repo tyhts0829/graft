@@ -1,7 +1,14 @@
 """
-どこで: `src/grafix/core/pipeline.py`。
-何を: user_draw が生成するシーンを正規化・スタイル解決・realize し、描画/出力に使える “最終形” を返す。
-なぜ: interactive（GL 描画）と export（ヘッドレス出力）で共通のパイプラインを共有し、依存方向を単純化するため。
+Purpose:
+    user draw の scene を正規化し、style/parameter を解決して Geometry を評価する interactive/headless 共通境界を提供する。
+Use when:
+    draw scope の束縛、scene normalization、Layer realization、scene-wide resource/cache transaction を変更・調査する場合。
+Constraints:
+    - full runtime config と operation/preset catalog は draw/authoring 区間だけに束縛し、evaluator には quality と ``EvaluationConfig`` だけを見せる。
+    - scene aggregate の resource 検査が完了するまで新しい cache entry を commit しない。
+    - 明示 ``RealizeSession`` は借用し、省略時に作った session だけをこの境界で close する。
+See:
+    architecture.md §7
 """
 
 from __future__ import annotations

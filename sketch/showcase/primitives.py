@@ -1,4 +1,14 @@
-"""組み込みprimitiveを名前付きの4列×6行で一覧表示するスケッチ。"""
+"""
+Purpose:
+    現在の全built-in primitiveを名前と代表形状が対応する一枚の静的showcaseとして示す。
+Use when:
+    primitive追加・変更後にregistry網羅性、代表出力、相対的な見え方を確認するとき。
+Constraints:
+    - PRIMITIVE_NAMESをbuilt-in manifestと重複なく完全一致させる。
+    - sampleの返却順をPRIMITIVE_NAMESと一致させ、各primitiveを明示的に一度以上呼ぶ。
+    - seedを含む入力を固定し、drawを時刻非依存かつ決定的に保つ。
+    - sampleとlabelを対応するcell内へ収め、import時にruntimeを起動しない。
+"""
 
 from __future__ import annotations
 

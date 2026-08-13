@@ -1,4 +1,13 @@
-"""重複する無向線分を除去し、連続する線分をポリラインへ再構成する effect。"""
+"""
+Purpose:
+    重複する無向XYZ線分を一つにし、必要なら非分岐chainへ決定的に再構成する。
+Use when:
+    重複edge除去、端点同一視、またはplot用segment chainの正規化を扱う場合。
+Constraints:
+    - 同向・逆向きを同一edgeとし、座標と向きは入力で最初に現れたものを維持する。
+    - 正のtoleranceは成分ごとの量子化gridであり、Euclidean距離や部分overlapを意味しない。
+    - 交点分割を行わず、出力頂点・line数を確保前にbudget検査する。
+"""
 
 from __future__ import annotations
 

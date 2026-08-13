@@ -1,6 +1,16 @@
-# どこで: `src/grafix/interactive/runtime/recording_system.py`。
-# 何を: V キー録画の開始/停止/フレーム書き込みを担当する。
-# なぜ: DrawWindowSystem の状態変数群を分離し、責務を明確化するため。
+"""
+Purpose:
+    fixed-fps録画clock、encoder、frame/error統計をcompleted stagingへまとめる。
+Use when:
+    録画state machine、frame drop方針、RecordingManifest生成を変更するとき。
+Constraints:
+    - 録画clockはRGB frameのencoder書き込み成功後だけ進める。
+    - stale/失敗frameはpauseとして記録し、重複frameで時間を埋めない。
+    - stopはencoderをstateから切り離して必ず統計をresetし、公開前のstagingだけを返す。
+    - manifestは同じ録画sessionの寸法、clock、error統計から確定する。
+Side effects:
+    ffmpeg recorderを起動・終了し、完成した一時動画を呼び出し側へ移譲する。
+"""
 
 from __future__ import annotations
 

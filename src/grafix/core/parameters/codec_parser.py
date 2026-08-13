@@ -1,4 +1,13 @@
-"""ParamStore の現行 schema を一度だけ検証・正規化する parser。"""
+"""
+Purpose:
+    現行ParamStore payloadを一度だけ検証し、detachedなcanonical復元表現へ変換する。
+Use when:
+    永続schemaの厳密性、部分破損の診断、またはdecode入力契約を変更する場合。
+Constraints:
+    - schema versionとtop-level契約の不整合は拒否し、future schemaを推測しない。
+    - writer定義外のfieldや暗黙の型coercionを許さず、entry局所の問題は診断へ残す。
+    - parse中にliveなParamStoreや入力payloadを変更しない。
+"""
 
 from __future__ import annotations
 

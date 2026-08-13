@@ -1,7 +1,15 @@
 """
-どこで: `src/grafix/export/gcode.py`。
-何を: realize 済みシーンを G-code として保存する関数を提供する。
-なぜ: ペンプロッタ向け出力を interactive 依存なしで追加できるようにするため。
+Purpose:
+    realized layerをplotterの物理座標・移動規則に従う決定的なG-codeへ変換する。
+Use when:
+    用紙配置、座標系、clip、stroke順序、pen-up移動の意味を変更するとき。
+Constraints:
+    - canvas左上座標をpaper_bottom_right_mmへ対応させ、y_downはY方向だけを反転する。
+    - 並べ替え、反転、bridgeはlayer境界を越えず、gcode_optimize=Falseなら全て無効にする。
+    - bed範囲は実際に出力する量子化後の機械座標で検証する。
+    - 同じ入力から固定小数桁・同じ順序の出力を維持する。
+Side effects:
+    検証済みG-codeを対象pathへatomicに書き込む。
 """
 
 from __future__ import annotations

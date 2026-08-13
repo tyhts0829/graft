@@ -1,6 +1,14 @@
-# どこで: `src/grafix/interactive/parameter_gui/pyglet_backend.py`。
-# 何を: pyglet + imgui の backend（window 生成 / renderer 作成 / IO 同期）を提供する。
-# なぜ: GUI の描画ループ（ParameterGUI）から、backend 固有の処理を分離するため。
+"""
+Purpose:
+    Parameter GUIのpyglet window、ImGui context、renderer、IO同期をbackend境界へ隔離する。
+Use when:
+    GUI window生成、DPI/input同期、font texture、frame begin/render、またはcloseを変更する場合。
+Constraints:
+    - frame順を`IO sync -> new_frame -> render`に保つ。
+    - renderer/font/ImGui resourceを所有window contextが生存中に解放する。
+Side effects:
+    native window、ImGui context、clipboard callback、GL resourceを操作する。
+"""
 
 from __future__ import annotations
 

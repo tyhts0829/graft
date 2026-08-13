@@ -1,4 +1,13 @@
-"""Polyline境界のraster化と距離変換の数値kernel。"""
+"""
+Purpose:
+    planar ring群のoccupancy、境界、Euclidean距離場を共有raster規約で構築する。
+Use when:
+    closed regionのmask、hole、SDF、または境界距離を使うeffectを実装する場合。
+Constraints:
+    - 複数ringの内外判定はeven-odd規則とし、holeを独立した塗り領域へ変えない。
+    - ringは閉じたlocal XY境界として扱い、origin、pitch、row/column axisを一貫させる。
+    - grid budgetは呼び出し側で確定し、このkernel内で無制限な解像度を選ばない。
+"""
 
 from __future__ import annotations
 

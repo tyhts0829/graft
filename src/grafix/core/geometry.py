@@ -1,6 +1,15 @@
-# src/grafix/core/geometry.py
-# Grafix コアの Geometry ノード定義。
-# 幾何レシピ DAG の中核モデルと署名生成を実装する。
+"""
+Purpose:
+    配列ではなく、operation・入力・canonical args・exact version を固定した immutable Geometry recipe DAG を表す。
+Use when:
+    authoring が作る node、GeometryId、DAG serialization、catalog mismatch を変更・調査する場合。
+Constraints:
+    - GeometryId は exact operation ref、入力 ID、canonical args から推移的に決め、object/process/path identity に依存させない。
+    - node 作成後の同名 operation 置換で参照先を変えず、fingerprint 不一致を fallback で隠さない。
+    - style と G-code policy を recipe や geometry cache identity に混ぜない。
+See:
+    architecture.md §4
+"""
 
 from __future__ import annotations
 

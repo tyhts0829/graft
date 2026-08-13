@@ -1,4 +1,17 @@
-"""動画録画の application session と resource lifecycle を所有する。"""
+"""
+Purpose:
+    録画中のtransport、window制約、encoder staging、capture公開を一つのsessionとして所有する。
+Use when:
+    録画開始停止、frame時刻、resize防止、完成動画のpublish/recoveryを変更するとき。
+Constraints:
+    - 録画開始時にwindow寸法とtransportを固定し、失敗・停止時にも必ず復元を試みる。
+    - freshかつ表示済みのframeだけを書き、失敗/stale frameでは録画clockを進めない。
+    - provenanceは実際に書き込めた最初のfresh frameから録画世代へ固定する。
+    - encode完了後のstagingを再encodeせず公開し、publish失敗時は回収可能なstagingを残す。
+    - transportの不連続epochは開始成功時と終了復元時にだけ進める。
+Side effects:
+    window制約、transport、ffmpeg、filesystem上の動画世代を変更する。
+"""
 
 from __future__ import annotations
 

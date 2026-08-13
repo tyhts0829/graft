@@ -1,6 +1,15 @@
-# どこで: `src/grafix/core/parameters/store.py`。
-# 何を: ParamStore（永続データの核）を定義する。
-# なぜ: God-object 化を避け、周辺ロジック（ordinal/reconcile/永続化など）を別モジュールへ分離するため。
+"""
+Purpose:
+    parameterの論理state、revision、history連携、cache、transient rollbackを所有するaggregate境界である。
+Use when:
+    parameter domainの表現、query/command境界、commit lifecycle、またはrollbackを変更する場合。
+Constraints:
+    - queryはcopyまたはfrozen viewだけを返し、mutable containerをstore外へ漏らさない。
+    - sibling commandはread上でvalidate・allocate・planし、完成済みreplacementだけをmutation portへ渡す。
+    - commit中はexpected revision確認、参照swap、revision/history/cache確定だけを行い、no-opでは進めない。
+    - transient rollbackはowner-boundかつone-shotで、論理stateとcounterを通知なしにexact restoreする。
+    - filesystem policyとload provenanceをこのaggregateへ持ち込まない。
+"""
 
 from __future__ import annotations
 

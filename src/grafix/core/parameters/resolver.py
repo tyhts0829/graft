@@ -1,6 +1,13 @@
-# どこで: `src/grafix/core/parameters/resolver.py`。
-# 何を: CODE/UI/MIDI から最終値を決定し、frame_params に記録する。
-# なぜ: Geometry 生成時点で決定値を一意にし、GUI と署名を整合させるため。
+"""
+Purpose:
+    code、GUI、MIDIから一frameのcanonical effective parameter値とsourceを決定する。
+Use when:
+    parameter優先順位、override、量子化、またはGeometry recipeへ渡す値を変更する場合。
+Constraints:
+    - 優先順位をMIDI、UI、CODEの順に保ち、frame固定snapshotだけを参照する。
+    - 数値量子化はこの境界で一度だけ行い、Geometry側で再量子化しない。
+    - DAG identityと実評価へ同じresolved valueを渡し、観測recordにもそのsourceを残す。
+"""
 
 from __future__ import annotations
 

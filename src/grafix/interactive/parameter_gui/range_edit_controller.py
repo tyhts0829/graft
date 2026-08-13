@@ -1,6 +1,12 @@
-# どこで: `src/grafix/interactive/parameter_gui/range_edit_controller.py`。
-# 何を: MIDI Range Edit の transaction と入力追跡を所有する。
-# なぜ: ImGui の描画・key handling から store mutation と履歴単位を分離するため。
+"""
+Purpose:
+    MIDI Range Editのbegin/preview/commit/cancelと入力change追跡を所有する。
+Use when:
+    Range Edit mode遷移、CC delta処理、またはcommitの発火条件を変更する場合。
+Constraints:
+    - 同じMIDI changeを複数frameで再適用しない。
+    - preview中はstoreを変更せず、明示commit時だけdomain operationへ渡す。
+"""
 
 from __future__ import annotations
 

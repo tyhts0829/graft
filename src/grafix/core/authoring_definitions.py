@@ -1,4 +1,14 @@
-"""decorator declaration の登録先と default authoring snapshot を管理する。"""
+"""
+Purpose:
+    operation/preset decorator の登録先と、両者を同時点で固定する immutable authoring snapshot を定義する。
+Use when:
+    custom authoring の登録経路、candidate isolation、session が採用する定義 snapshot を変更・調査する場合。
+Constraints:
+    - process-level default store は authoring convenience に限り、evaluation state や resource を保持させない。
+    - scoped registration は candidate target だけを変更し、session には mutable builder ではなく snapshot を渡す。
+See:
+    architecture.md §3
+"""
 
 from __future__ import annotations
 

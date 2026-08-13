@@ -1,4 +1,15 @@
-"""immutable evaluation context による Geometry DAG 評価を提供する。"""
+"""
+Purpose:
+    immutable evaluation context で Geometry DAG を RealizedGeometry へ評価し、typed cache・concurrent inflight・resource lifecycle を統括する。
+Use when:
+    evaluator dispatch、cache identity/transaction、catalog mismatch、``RealizeSession`` の ownership/close を変更・調査する場合。
+Constraints:
+    - cache key は GeometryId、quality/evaluation config、lookup 時 external dependency、必要な uncached generation だけで構成する。
+    - Geometry が固定した operation ref と catalog が異なる場合は失敗し、同名の最新 evaluator へ fallback しない。
+    - 明示注入 dependency は borrowed、省略 dependency は owned とし、active caller 中の owned close を最後の caller まで遅延する。
+Side effects:
+    evaluator/external hook を実行し、成功した transaction で bounded CPU cache を更新する。
+"""
 
 from __future__ import annotations
 

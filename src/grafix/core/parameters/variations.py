@@ -1,6 +1,14 @@
-# どこで: `src/grafix/core/parameters/variations.py`。
-# 何を: 名前付き parameter variation と、その編集・差分・復元操作を定義する。
-# なぜ: 良い調整状態を失わず、再起動後も比較・再利用できるようにするため。
+"""
+Purpose:
+    名前付きparameter調整と、比較・復元・randomize・morphによる探索操作を所有する。
+Use when:
+    variation lifecycle、thumbnail連携、lock付き探索、または再現可能な調整生成を変更する場合。
+Constraints:
+    - variationはGUI-owned adjustmentを保存し、復元時は現在のcode-owned構造へmergeする。
+    - parameter lockはstore-level状態に保ち、variation snapshotへ混入させない。
+    - 外部capture前にdraftを固定し、commit時にstore ownership、revision、名前重複を再確認する。
+    - randomizeはseedとParameterKeyから決定的にし、lock対象を変更しない。
+"""
 
 from __future__ import annotations
 

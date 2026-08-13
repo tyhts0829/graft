@@ -1,5 +1,17 @@
 #!/usr/bin/env python3
-"""参照画像再現 Sketch を固定契約どおりに描画して PNG 保存する。"""
+"""
+Purpose:
+    参照画像再現workflowの単一Sketchを固定されたA5・layer契約で検証してPNG保存するCLI。
+Use when:
+    sketch.agent_art配下の再現Sketchを比較用PNGへrenderし、提出前の契約を検査するとき。
+Constraints:
+    - moduleはsketch.agent_art配下に限定し、canvasをA5 portraitへ固定する。
+    - module定数とrender後の全layerでline thickness 0.001を維持する。
+    - layerを空にせず、layer数と一意な線色数を一致させる。
+    - code parameter sourceでrenderし、指定されたoverwrite policyをsave境界へ渡す。
+Side effects:
+    対象Sketch moduleをimport・実行し、検証成功時だけPNG captureを保存する。
+"""
 
 from __future__ import annotations
 

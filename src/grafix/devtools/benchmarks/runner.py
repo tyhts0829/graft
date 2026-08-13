@@ -1,4 +1,15 @@
-"""Benchmark catalog と process executor の実行 composition。"""
+"""
+Purpose:
+    benchmark catalog と process executor を接続し、fresh child が case ID を解決できる最小の composition/entrypoint を提供する。
+Use when:
+    public isolated-run API、parent/child command 配線、child 側の case 解決を変更・調査する場合。
+Constraints:
+    - 公開 surface は ``run_case_isolated`` だけとする。
+    - workload、metrics、measurement/process supervision の実装を runner へ戻さない。
+    - 旧 runner private symbol の alias/re-export shim を作らない。
+See:
+    architecture.md §12
+"""
 
 from __future__ import annotations
 

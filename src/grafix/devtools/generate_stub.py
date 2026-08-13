@@ -1,20 +1,14 @@
 """
-どこで: `src/grafix/devtools/generate_stub.py`。
-何を: `grafix.api` の IDE 補完用スタブを project-local に自動生成する。
-なぜ: `G`/`E` が動的名前空間のため、静的解析が公開 API を把握できる形を用意するため。
-
-主な流れ（読む順）:
-- `generate_stubs_str()` が immutable catalog snapshot から primitive/effect/preset を集計する。
-- 集計した名前から `_render_*_protocol()` で `Protocol` ベースの API（`G/E/L/P`）を文字列として生成する。
-- `main()` が project の `typings/grafix/api/__init__.pyi` へ書き出す。
-
-副作用:
-- `generate_stubs_str()` は provenance 解決に必要な module import だけを行う。
-- `main()` は `__init__.pyi` をファイル出力する。
-
-補足:
-- effect の public param の型アノテーションは「stub 側で解決可能な名前」だけを書く（自動 import 収集はしない）。
-- `ParamMeta.kind == "vec3"` の場合、`tuple[float, float, float]` アノテーションでも stub は `Vec3` 表現を優先する。
+Purpose:
+    dynamic な ``G/E/L/P`` authoring surface を immutable catalog snapshot から project-local な静的型 stub へ投影する。
+Use when:
+    ``grafix stub``、IDE 補完、公開 DSL signature/docstring、project operation/preset の stub 収録規則を変更・調査する場合。
+Constraints:
+    - 一度固定した operation/preset catalog を source of truth とし、public な builtin と選択 project source だけを安定順で出力する。
+    - generated annotation は stub 内で解決可能に保ち、user module の unknown type を import 無しで漏らさない。
+    - installed package を書き換えず、既定出力は project の ``typings/`` に限定する。
+Side effects:
+    project/config authoring module を import し、生成した ``.pyi`` を atomic に書き込む。
 """
 
 from __future__ import annotations

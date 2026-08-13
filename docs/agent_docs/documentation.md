@@ -10,7 +10,23 @@
 
 - What/How はコードと型で表現し、Why/Trade-off はコメントに残す。
 - 明確で単純な説明を優先し、直感的でないロジックにはコメントを書く。
-- 各ファイル先頭に簡潔なヘッダ（どこで・何を・なぜ）を書く。
+- routing価値の高いPythonファイルには、次のmodule docstringを5〜15行で置く。
+
+```python
+"""
+Purpose:
+    このmoduleが担う意味的責務。
+Use when:
+    agentがこのmoduleを読むべき変更・調査。
+Constraints:
+    - 変更時に維持する局所的なinvariant。
+"""
+```
+
+- keyは英語、本文は日本語とする。必要な場合だけ`Side effects`と`See`を追加する。
+- 関数一覧、引数、戻り値、処理手順など、コードやASTから得られる情報はheaderへ重複させない。
+- trivial `__init__.py`、単純定数、generated/vendor、名前だけでroutingできるleafへ機械的に追加しない。
+- PurposeやConstraintsを確信できないファイルは推測して埋めない。
 
 ## 公開 API の docstring
 

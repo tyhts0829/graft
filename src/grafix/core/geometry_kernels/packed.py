@@ -1,4 +1,13 @@
-"""Polyline列とpacked geometry表現を相互変換する。"""
+"""
+Purpose:
+    polyline列をcoreが共有するcanonical packed geometry表現へ集約する。
+Use when:
+    effectやprimitiveのline列をRealizedGeometry互換bufferへ変換する場合。
+Constraints:
+    - coordsをfloat32の(N, 3)、offsetsをint32で表し、先頭0・末尾Nを保つ。
+    - 入力line順と空lineを含む境界をoffsetsへそのまま保持する。
+    - int32頂点上限を確保前に拒否し、出力bufferを入力arrayのmutable aliasにしない。
+"""
 
 from __future__ import annotations
 

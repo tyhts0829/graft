@@ -1,4 +1,15 @@
-"""operation の authoring declaration と DAG が保持する参照型を定義する。"""
+"""
+Purpose:
+    operation の authoring metadata、評価 spec、Geometry/effect step が固定する typed reference を immutable contract として定義する。
+Use when:
+    operation identity、arity、cache policy、external dependency hook、DAG が保持する version を変更・調査する場合。
+Constraints:
+    - evaluation/schema fingerprint は declaration 作成時に一度だけ確定し、catalog 構築時に再発行しない。
+    - delayed effect step は evaluator と schema の両 fingerprint を固定し、旧 schema と新 evaluator を混ぜない。
+    - ``cache_policy="none"`` の動的 operation には明示 version を必須とする。
+See:
+    grafix.core.definition_fingerprint
+"""
 
 from __future__ import annotations
 

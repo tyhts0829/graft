@@ -1,6 +1,12 @@
-# どこで: `src/grafix/api/layers.py`。
-# 何を: Geometry を Layer 化する公開名前空間 L を提供する。
-# なぜ: `G/E/P` と同じ “namespace + label” 体験で Layer を扱えるようにするため。
+"""
+Purpose:
+    Geometryを描画styleとG-code policyを持つLayerへ束ねる公開名前空間Lを提供する。
+Use when:
+    layer生成、label/site identity、style指定、または複数Geometryのlayer化を変更する場合。
+Constraints:
+    - styleと`gcode_optimize`をGeometry DAGおよびgeometry cache identityから分離する。
+    - parameter用site identityをGeometry内容の変化から独立させる。
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,13 @@
-"""Parameter metadata、UI value、MIDI assignment の正規契約。"""
+"""
+Purpose:
+    parameter metadata、canonical UI value、MIDI assignmentが共有する値契約を一元化する。
+Use when:
+    parameter kind、UI range、choice、RGB、またはCC割当のschemaを変更する場合。
+Constraints:
+    - boolを数値へ扱うなどの暗黙coercionを避け、exact typeとfinite値を要求する。
+    - kind、choices、range、value、CC shapeの整合を全consumerで共通に保つ。
+    - RGBは0..255の三成分とし、style系operationへMIDI割当を許可しない。
+"""
 
 from __future__ import annotations
 

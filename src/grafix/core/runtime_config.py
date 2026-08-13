@@ -1,4 +1,15 @@
-"""実行時設定の immutable value、binding、pure mapping validation。"""
+"""
+Purpose:
+    application 全体の effective runtime config・provenance report を immutable value にし、解決済み mapping を I/O なしで厳密検証する。
+Use when:
+    config schema/value、authoring scope の config binding、G-code/UI/MIDI/path 設定の domain validation を変更・調査する場合。
+Constraints:
+    - YAML/package resource/CWD/HOME 探索、merge、filesystem path 解決は ``runtime_config_loader`` に留める。
+    - full ``RuntimeConfig`` は application/authoring 境界に留め、Geometry evaluator へは渡さない。
+    - ambient fallback を作らず、authoring が読むときは明示的に束縛された immutable config を使う。
+See:
+    grafix.runtime_config_loader
+"""
 
 from __future__ import annotations
 

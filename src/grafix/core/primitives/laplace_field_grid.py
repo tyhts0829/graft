@@ -1,7 +1,12 @@
 """
-どこで: `src/grafix/core/primitives/laplace_field_grid.py`。共形写像ベースの直交格子プリミティブ。
-何を: W=u+iv 平面の直交格子を、解析写像 z=f(W) で z 平面へ写してポリライン列として返す。
-なぜ: ラプラス場に由来する “等ポテンシャル線 / 流線” 風の直交網を、安定に生成できるようにするため。
+Purpose:
+    複素解析写像で直交座標線を変形し、等potential線・streamline風の平面gridを生成する。
+Use when:
+    通常の直交gridではなく、cylinder・Möbius・exponential mappingを扱う場合。
+Constraints:
+    - u一定線とv一定線を同じdomain・mapper・座標変換で対になるfamilyとして保つ。
+    - 特異点や非有限写像値をまたいでlineを接続せず、有効な連続区間へ分割する。
+    - optional clipは範囲外sampleを落として区間分割する契約で、境界交点補間へ変えない。
 """
 
 from __future__ import annotations

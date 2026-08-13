@@ -1,6 +1,14 @@
-# どこで: `sketch/gcode_test/alignment_A5.py`。
-# 何を: A5 用のアライメント確認図形を生成する。
-# なぜ: 紙面上でスケール/原点/回転のずれを素早く確認するため。
+"""
+Purpose:
+    A5用紙のG-code変換・plotter配置を実出力で校正するための基準Sketch。
+Use when:
+    A5のcanvas-to-machine変換、右下anchor、Y反転、scaleや原点ずれを確認するとき。
+Constraints:
+    - canvas寸法を148×210 mmに保ち、基準markを紙端から5 mm内側へ維持する。
+    - center dot、円、corner/edge mark、labelの位置関係を校正基準として維持する。
+    - X非反転・Y反転の判別に必要な非同一軸の情報を対称化して失わせない。
+    - import時にpreviewを起動せず、runはmain guard内に限定する。
+"""
 
 from grafix import E, G, run
 

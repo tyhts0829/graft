@@ -1,4 +1,13 @@
-"""複数のGaussian焦点から地形等高線を生成するPrimitive。"""
+"""
+Purpose:
+    seed付きGaussian地形fieldから、open・closedの等高線群を新規生成する。
+Use when:
+    既存maskのisocontourではなく、procedural terrainの焦点・level・warpを扱う場合。
+Constraints:
+    - 同じseedと引数から同じfieldを作り、focus_countを増やしても既存focusのprefixを保つ。
+    - Marching Squaresの決定的なpath順とopen/closed状態を維持する。
+    - grid、focus評価、level抽出、scratch、最大出力を配列確保前にbudget検査する。
+"""
 
 from __future__ import annotations
 

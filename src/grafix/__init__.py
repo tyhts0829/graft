@@ -1,7 +1,13 @@
-"""Grafix の公開 facade。
-
-公開名は定義 module へ直接対応付け、PEP 562 で必要になるまで import しない。
-submodule と callable に同じ dotted name は割り当てない。
+"""
+Purpose:
+    Grafixの公開名を、定義moduleへ遅延接続するroot facadeとして固定する。
+Use when:
+    root公開API、遅延import、または標準namespaceの意味を変更する場合。
+Constraints:
+    - 各公開名を一つの定義module/attributeに対応させる。
+    - submoduleとcallableへ同じdotted nameを割り当てず、`import grafix`を軽量に保つ。
+See:
+    `architecture.md` §2.1。
 """
 
 from __future__ import annotations

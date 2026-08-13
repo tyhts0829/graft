@@ -1,4 +1,15 @@
-"""mutable operation builder と immutable catalog snapshot を分離する。"""
+"""
+Purpose:
+    operation declaration を組み立てる mutable builder と、一 generation の評価契約を固定する immutable catalog を分離する。
+Use when:
+    operation の登録・合成・解決、generation scope の catalog binding、exact ref 検証を変更・調査する場合。
+Constraints:
+    - draw/evaluation に mutable builder を渡さず、defensive copy された snapshot だけを束縛する。
+    - ``EvaluationOpRef`` は kind/name だけでなく fingerprint まで exact に一致させ、同名の最新 entry へ fallback しない。
+    - evaluator を持つ catalog entry をそのまま公開 inspection/GUI 型として漏らさない。
+See:
+    architecture.md §3–4
+"""
 
 from __future__ import annotations
 

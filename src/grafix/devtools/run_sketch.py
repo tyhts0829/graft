@@ -1,4 +1,15 @@
-"""sketch sourceを直接起動し、任意でtransactional watch reloadするCLI。"""
+"""
+Purpose:
+    sketch source を interactive application へ配線し、必要な場合だけ transactional watch reload を有効にする CLI 境界を提供する。
+Use when:
+    ``python -m grafix run`` の引数、source reload 接続、worker/MIDI/GUI 起動・終了 code を変更・調査する場合。
+Constraints:
+    - watch candidate は全体の構築に成功したときだけ live generation へ採用し、失敗時は last-good を保つ。
+    - MIDI 無効化 token は exact ``--midi-port none`` とし、``--workers 0`` の同期評価と混同しない。
+    - config は CLI 入口で一度解決し、reload や application 内で ambient 再探索しない。
+Side effects:
+    sketch を import/exec し、filesystem watch、window、MIDI、draw worker を起動することがある。
+"""
 
 from __future__ import annotations
 

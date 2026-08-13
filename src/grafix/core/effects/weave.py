@@ -1,8 +1,12 @@
-"""閉曲線にウェブ（糸）状の線分ネットワークを生成する effect。
-
-入力ポリラインを一度 XY 平面へ整列し、境界上の 2 点をランダムに結ぶ候補線を繰り返し追加する。
-各候補線は境界エッジを交点で分割し、交点同士をエッジで接続することでグラフとして構築する。
-最後に簡易な弾性緩和（Laplacian 的な平滑化）で内部点を調整し、元の 3D 姿勢へ復元する。
+"""
+Purpose:
+    平面閉polylineの内部へ決定的な糸状networkを張り、緩和したweb表現へ置き換える。
+Use when:
+    closed boundaryからのnetwork生成、候補線、またはweb relaxationを変更する場合。
+Constraints:
+    - closedかつplanarなlineだけを処理し、open・退化・非平面lineは入力のまま残す。
+    - ambient乱数に依存せず、同じ入力と引数から同じ候補networkを生成する。
+    - iteration・step・候補数のclampを診断し、元の3D PlanarFrameへ結果を戻す。
 """
 
 from __future__ import annotations

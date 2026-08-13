@@ -1,13 +1,12 @@
 """
-被切り抜きポリライン列を、閉曲線マスクの内側/外側だけにクリップする effect。
-
-入力:
-- base: 被切り抜き（開いたポリライン列を想定）
-- mask: マスク（閉ループ列）
-
-処理:
-- マスクの全点から姿勢（平面）を推定し、両入力を XY 平面へ整列して 2D クリップする。
-- 結果のポリラインを元の姿勢へ戻して出力する。
+Purpose:
+    baseの開polylineを、別入力の平面閉領域の内側または外側へ切り分ける。
+Use when:
+    二入力clip、maskの穴、coplanarity、またはoutline追加の挙動を変更する場合。
+Constraints:
+    - 第1入力を被clip線、第2入力をframeとeven-odd領域を定めるmaskとして扱い、役割を逆転しない。
+    - baseとmaskが同一平面にない、または有効な閉maskを得られない場合はbaseを変更しない。
+    - clip結果はopen pathとして保ち、draw_outlineだけが閉mask輪郭を追加する。
 """
 
 from __future__ import annotations

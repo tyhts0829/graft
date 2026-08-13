@@ -1,4 +1,13 @@
-"""ポリラインを XYZ 弧長に沿ったほぼ等間隔の頂点列へ再標本化する effect。"""
+"""
+Purpose:
+    polylineをXYZ弧長に沿ったほぼ等間隔の頂点列へ再標本化する。
+Use when:
+    smoothingではなく標本密度だけを正規化する、またはopen/closed判定を変更する場合。
+Constraints:
+    - open線の両端を保ち、closed線は末尾を先頭のexact copyとして閉じる。
+    - stepは目標間隔であり、open線の最終区間がstep未満になることを許す。
+    - 出力頂点数をplanしてbudget検査してから一度だけ確保し、step 0とexact copyは入力を再利用する。
+"""
 
 from __future__ import annotations
 

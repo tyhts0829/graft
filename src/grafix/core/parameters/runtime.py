@@ -1,6 +1,13 @@
-# どこで: `src/grafix/core/parameters/runtime.py`。
-# 何を: ParamStore の実行時情報（loaded/observed/reconcile-applied）を保持する。
-# なぜ: 永続データと混ぜずに、reconcile/prune の判断材料を分離するため。
+"""
+Purpose:
+    parameterのloaded/observed状態とeffective値を追うruntime値、およびload/capture metadataを定義する。
+Use when:
+    reconcile可視性、effective source cache、またはparameter provenanceの受渡しを変更する場合。
+Constraints:
+    - runtime観測を永続adjustmentから分離し、outer layerには時点固定のParamRuntimeViewだけを渡す。
+    - persistent revision、effective revision、visibility revisionの役割を混同しない。
+    - load provenanceとdiagnosticsをParamStoreRuntimeへ格納せず、session側のvalueとして保つ。
+"""
 
 from __future__ import annotations
 

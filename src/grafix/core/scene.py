@@ -1,7 +1,14 @@
 """
-どこで: `src/grafix/core/scene.py`。
-何を: user_draw の戻り値を `list[Layer]` に正規化するヘルパを提供する。
-なぜ: 描画・エクスポートの全経路で共通のシーン表現を使えるようにするため。
+Purpose:
+    user draw の Geometry/Layer/ネスト container を、共通 pipeline が扱う順序付き Layer 列へ正規化する。
+Use when:
+    draw 戻り値の受理型、flatten 順、暗黙 Layer の parameter identity を変更・調査する場合。
+Constraints:
+    - 再帰 container として受理するのは list/tuple だけとし、generator・set・任意 ``Sequence`` を暗黙に展開しない。
+    - input の描画順を維持する。
+    - bare Geometry の implicit ``site_id`` は出現順で安定化し、GeometryId の変化に連動させない。
+See:
+    grafix.core.pipeline
 """
 
 from __future__ import annotations

@@ -1,4 +1,16 @@
-"""sketch/run ごとの window workspace 状態を versioned JSON で保存する。"""
+"""
+Purpose:
+    preview/Inspectorの配置・visibility・UI scaleをversioned workspace stateとして永続化する。
+Use when:
+    workspace schema、fallback診断、multi-screen clamp、保存pathを変更するとき。
+Constraints:
+    - missing/corrupt/old/future dataは部分採用せず、明示fallbackを返す。
+    - future schemaを現行schemaとして解釈せず、version statusを診断へ残す。
+    - 復元rectは現在screen boundsへ収め、正のlogical sizeを維持する。
+    - 保存は一つのversioned JSONをatomicに置き換える。
+Side effects:
+    workspace JSONを読み、保存時にfilesystemへatomic writeする。
+"""
 
 from __future__ import annotations
 

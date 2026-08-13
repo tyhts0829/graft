@@ -1,4 +1,17 @@
-"""sketch source を immutable authoring generation として隔離 load する。"""
+"""
+Purpose:
+    sketch source一式をbytes snapshot化し、rollback可能なimmutable authoring generationとしてloadする。
+Use when:
+    file watch、relative helper import、reload採否、旧module cleanupを変更するとき。
+Constraints:
+    - entryと静的に到達可能なpackage-relative依存を全てsnapshot・検証してから実行する。
+    - local absolute importやsnapshot外のlocal helper参照をgenerationへ混入させない。
+    - callerの検証中は直前generationをrollback可能に保ち、accept後だけ旧moduleを解放する。
+    - accept/rollback対象は現在のgeneration番号とexactに一致しなければならない。
+    - candidate失敗時は最後に成功したdraw/definitionsを維持する。
+Side effects:
+    source fileを読み、隔離moduleを実行し、一時的にprocess-global import stateを変更する。
+"""
 
 from __future__ import annotations
 

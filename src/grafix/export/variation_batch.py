@@ -1,4 +1,16 @@
-"""Named variation batch の codec、staging、publish transaction。"""
+"""
+Purpose:
+    variation一式を、個別成果物と索引metadataを含む一つのdirectory世代として公開する。
+Use when:
+    batch capture、contact sheet、portable命名、directory単位の公開・rollbackを変更するとき。
+Constraints:
+    - encode中はprivate workspaceだけを変更し、完成後にdirectory世代として公開する。
+    - manifest内のpathは公開先へrelocateし、workspace pathを永続metadataへ漏らさない。
+    - 個別item失敗は結果へ記録し、世代全体の構造・公開失敗とは区別する。
+    - no-clobber衝突は再encodeせず別世代名で再試行し、overwrite失敗時は旧世代を復元する。
+Side effects:
+    temporary directory、画像、JSON/CSV/HTMLを作成し、filesystem上の世代を置換し得る。
+"""
 
 from __future__ import annotations
 

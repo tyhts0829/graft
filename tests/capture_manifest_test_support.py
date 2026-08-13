@@ -1,3 +1,14 @@
+"""
+Purpose:
+    capture manifest系テストへrepositoryやsource fileに依存しないprovenance fixtureを提供する。
+Use when:
+    export/publish/manifestのテストで、内容が安定した有効なCaptureProvenanceが必要なとき。
+Constraints:
+    - sourceとGitは意図的にunavailableとして表し、実repositoryを探索しない。
+    - 時刻以外の値を決定的に保ち、テスト対象外の環境差をmanifestへ混入させない。
+    - quality、origin、parameter revisionは完成captureを表す固定値を維持する。
+"""
+
 from __future__ import annotations
 
 from grafix.core.capture_provenance import (

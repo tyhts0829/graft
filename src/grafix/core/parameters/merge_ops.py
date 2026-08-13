@@ -1,6 +1,13 @@
-# どこで: `src/grafix/core/parameters/merge_ops.py`。
-# 何を: フレーム内で観測したパラメータレコードを ParamStore にマージする。
-# なぜ: 書き込み経路を ops に固定し、不変条件の知識を 1 箇所へ寄せるため。
+"""
+Purpose:
+    成功frameのparameter観測から構造・runtime差分とreconcileを計画し、storeへ確定する。
+Use when:
+    parameter発見、metadata追従、effective source更新、またはframe merge性能を変更する場合。
+Constraints:
+    - live storeから独立してplanを完成させ、失敗時にstate、history、cacheを部分更新しない。
+    - persistentな複数変更は一commitへまとめ、no-opではrevisionを進めない。
+    - effective/sourceだけの変更はsparse commitとし、persistent revisionとruntime identityを保つ。
+"""
 
 from __future__ import annotations
 

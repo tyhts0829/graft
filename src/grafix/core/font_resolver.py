@@ -1,4 +1,15 @@
-"""EvaluationConfig に基づくフォント探索と owner-local resolver を提供する。"""
+"""
+Purpose:
+    logical な font 指定を EvaluationConfig と package asset から実 path へ解決し、GUI 用候補も同じ探索意味で作る。
+Use when:
+    font 探索順、basename/相対 path 解決、tree 変更検知、GUI 候補を変更・調査する場合。
+Constraints:
+    - resolver snapshot は evaluation owner の局所 state とし、process-global cache にしない。
+    - search root・directory membership・font 候補 symlink の identity 変化を陳腐化した tree で隠さない。
+    - direct path と search-root-relative path は呼び出し時点の filesystem で確認する。
+Side effects:
+    font directory tree の列挙と file/symlink stat を行う。
+"""
 
 from __future__ import annotations
 

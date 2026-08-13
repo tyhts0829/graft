@@ -1,6 +1,14 @@
-# どこで: `src/grafix/interactive/parameter_gui/table.py`。
-# 何を: ParameterRow を 4 列テーブルとして描画し、更新後の行モデルを返す。
-# なぜ: テーブルの UI レイアウトを 1 箇所に閉じ込め、store 反映や backend と分離するため。
+"""
+Purpose:
+    immutable table inputをImGuiへ描画し、store非依存の編集intentとして返す。
+Use when:
+    parameter tableの列、group、widget、MIDI learn、またはeffect-order操作UIを変更する場合。
+Constraints:
+    - renderer内でParamStoreを変更せず、全mutationを`TableEdits`へ集約する。
+    - model rowとvisible layoutのidentity/orderを保持したまま編集結果を返す。
+Side effects:
+    current ImGui frameへUIを描画する。
+"""
 
 from __future__ import annotations
 

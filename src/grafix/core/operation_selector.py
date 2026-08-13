@@ -1,4 +1,15 @@
-"""immutable operation catalog から selector schema だけを合成する。"""
+"""
+Purpose:
+    immutable operation catalog から ``G.select``/``E.select`` 用の evaluator-free parameter schema と安定 identity を合成する。
+Use when:
+    selector 候補、arity 別 effect 選択、target 引数の namespace、GUI/help 表示を変更・調査する場合。
+Constraints:
+    - selector を架空の evaluator として evaluation catalog へ登録しない。
+    - 候補は public operation と exact effect arity で絞り、target ごとの schema fingerprint を固定する。
+    - encoded parameter key は target/argument 境界を曖昧にせず、search/help で内部 namespace を漏らさない。
+See:
+    grafix.core.operation_schema
+"""
 
 from __future__ import annotations
 

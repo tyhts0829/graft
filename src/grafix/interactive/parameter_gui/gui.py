@@ -1,6 +1,14 @@
-# どこで: `src/grafix/interactive/parameter_gui/gui.py`。
-# 何を: Parameter GUI の backend、controller、panel を一フレームへ合成する。
-# なぜ: 描画順序だけをここで読み取れ、編集 transaction と frame 間 state を各 owner に保つため。
+"""
+Purpose:
+    Parameter GUI backend、session state、controller、panelを一frameのInspectorへ合成する。
+Use when:
+    GUI frame順、toolbar/panel配線、catalog交換、またはInspector resource lifetimeを変更する場合。
+Constraints:
+    - store mutationとdomain transactionを各controller/table commitへ委譲する。
+    - catalog/cache/widget stateをGUI instanceに閉じ、close時にGL contextが生存中の順で解放する。
+Side effects:
+    ImGui/pyglet windowを描画し、user intentに応じてcontrollerを呼び出す。
+"""
 
 from __future__ import annotations
 

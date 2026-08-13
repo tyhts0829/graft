@@ -1,4 +1,16 @@
-"""Capture artifact と manifest の atomic publish infrastructure。"""
+"""
+Purpose:
+    encode済みartifact familyとmanifestを公開し、所有世代だけを破棄できる境界を提供する。
+Use when:
+    no-clobber、overwrite、rollback、durability、複数成果物の公開規則を変更するとき。
+Constraints:
+    - 入力はfinal pathと同じfilesystem上の完成済みregular stagingでなければならない。
+    - manifestが列挙するartifact pathと実際に公開するfamilyを一致させる。
+    - rollback/discardは取得時とidentityが一致するregular fileだけを削除する。
+    - 複数pathの可視化は同時ではなく、失敗時rollbackはbest-effortでcrash journalを持たない。
+Side effects:
+    hard link、replace、unlink、file/directory fsyncによってfilesystem世代を変更する。
+"""
 
 from __future__ import annotations
 

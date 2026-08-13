@@ -1,10 +1,12 @@
-"""閉曲線マスクの内側で差分成長を走らせ、「内側の襞」の線を生成する effect。
-
-入力のマスク（閉曲線リング）内に複数の小さな閉ループを種として配置し、
-点追加（目標間隔への再分割）+ 隣接スプリング + 近接反発を反復する。
-
-境界付近では、外向き成分を取り除く（slide）/反射する（bounce）ことで、
-マスク境界に沿った折れ・流れが出るようにする。
+"""
+Purpose:
+    平面閉maskの内側で差分成長させた襞状の閉曲線群を生成する。
+Use when:
+    seed配置、mask境界応答、成長simulation、またはpreview budgetを変更する場合。
+Constraints:
+    - maskをeven-oddの閉ring領域として扱い、非平面・ringなしの入力ではemptyを返す。
+    - 同じseedと引数から同じ初期配置を作り、出力ringを明示的に閉じる。
+    - gridとpoint workを確保前に制限し、draftでのcoarsen・capは診断してfinalの要求値へ持ち込まない。
 """
 
 from __future__ import annotations

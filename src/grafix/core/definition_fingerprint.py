@@ -1,4 +1,15 @@
-"""operation 定義から process 非依存の fingerprint を構築する。"""
+"""
+Purpose:
+    operation の evaluation contract と parameter schema を、process を跨いで比較できる canonical fingerprint にする。
+Use when:
+    declaration identity、geometry cache invalidation、source reload の catalog 一致判定を変更・調査する場合。
+Constraints:
+    - process counter、object identity、absolute path、import 順を identity に使わない。
+    - evaluation fingerprint と schema fingerprint を分離し、schema-only 変更で geometry cache を失効させない。
+    - canonical 化できない定義は弱い fallback identity に逃げず明示的に拒否する。
+See:
+    architecture.md §4
+"""
 
 from __future__ import annotations
 

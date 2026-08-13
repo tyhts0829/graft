@@ -1,5 +1,17 @@
 #!/usr/bin/env python3
-"""Grafix Art Loop の候補画像から contact sheet を生成する。"""
+"""
+Purpose:
+    Grafix Art Loopの成功候補を、選定用の一枚のcontact sheetへ集約するCLI。
+Use when:
+    候補render後にvNN順の画像を同時比較し、winner選定へ渡すとき。
+Constraints:
+    - 入力はrun_dir直下のcandidates/vNN/out.pngだけをvariant番号順に扱う。
+    - 元画像を拡大せずaspect ratioを保ち、出力長辺だけを指定上限へ縮小する。
+    - 出力先はdata/output/png/codex_generated配下に限定する。
+    - 候補が一件もない場合は空のsheetを生成せず失敗する。
+Side effects:
+    候補PNGを読み、選定用PNGをcodex_generated directoryへ保存する。
+"""
 
 from __future__ import annotations
 

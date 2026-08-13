@@ -1,4 +1,15 @@
-"""builtin operation manifest と immutable catalog bootstrap を提供する。"""
+"""
+Purpose:
+    builtin operation の列挙・locator・evaluator ABI の正本と、それから作る immutable catalog を提供する。
+Use when:
+    builtin の追加・削除、bootstrap、または builtin identity の差を調査する場合。
+Constraints:
+    - direct import、bootstrap、stub generation の順序で catalog の意味を変えない。
+    - builtin decorator は declaration を callable に付与するだけで、default authoring store へ登録しない。
+    - manifest locator と回収した declaration の kind/name は exact に一致させる。
+Side effects:
+    catalog bootstrap 時に manifest の module を import し、完成 snapshot を process 内で cache する。
+"""
 
 from __future__ import annotations
 

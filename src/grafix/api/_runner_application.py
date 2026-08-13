@@ -1,4 +1,14 @@
-"""interactive runner の private application composition。"""
+"""
+Purpose:
+    config、authoring、parameter、MIDI、window/runtimeを一つのinteractive sessionへ配線する。
+Use when:
+    `run()`のheavy construction、subsystem ownership、またはapplication cleanup順を変更する場合。
+Constraints:
+    - 一度確定したdefinitions/configをsession内の全subsystemへ共有する。
+    - 部分構築を含めowned resourceを逆順に閉じ、cleanup errorより最初のerrorを優先する。
+Side effects:
+    GUI window、MIDI接続、filesystem-backed session、event loopを起動する。
+"""
 
 from __future__ import annotations
 

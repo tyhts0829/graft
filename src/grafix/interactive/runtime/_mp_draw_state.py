@@ -1,4 +1,14 @@
-"""mp-draw 親側の I/O を持たない state transitions。"""
+"""
+Purpose:
+    mp-draw親側のACK、latest-wins、epoch/generation判定を純粋なstate遷移として保持する。
+Use when:
+    Queue混雑時の置換、snapshot伝播、stale result、last-good選択を検討するとき。
+Constraints:
+    - process、Queue、thread、clock、closeなどのI/O・resource lifecycleを持ち込まない。
+    - epochまたはgenerationが古い結果を現在の表示候補へ昇格させない。
+    - latest receivedとlatest successfulを分離し、後続失敗でlast-goodを失わない。
+    - pending task/updateはboundedなlatest slotとして扱い、無制限履歴にしない。
+"""
 
 from __future__ import annotations
 

@@ -1,7 +1,13 @@
 """
-どこで: `src/grafix/interactive/gl/line_mesh.py`。
-何を: VBO/IBO/VAO の確保・更新・解放を担当し、描画可能な LineMesh を管理。
-なぜ: GPU 転送の詳細を Renderer から切り離し、再確保や VAO の張り直しを一元化するため。
+Purpose:
+    line描画のVBO/IBO/VAOを一つのGPU allocation ownerとして管理する。
+Use when:
+    geometry upload、buffer growth/reuse、primitive restart、またはmesh releaseを変更する場合。
+Constraints:
+    - vertex/index capacityを必要時だけ拡張し、同じcontext内のresourceとして扱う。
+    - polyline間は固定restart indexで分離し、入力indexの意味を変えない。
+Side effects:
+    GPU bufferとvertex arrayを確保・更新・解放する。
 """
 
 from __future__ import annotations

@@ -1,6 +1,13 @@
-# どこで: `src/grafix/core/parameters/history.py`。
-# 何を: ParamStore 用の bounded Undo/Redo と A/B スナップショットを提供する。
-# なぜ: 試行錯誤を壊さず、調整案を安心して比較できるようにするため。
+"""
+Purpose:
+    ParamStoreのGUI-owned調整に対するbounded Undo/RedoとA/B比較snapshotを所有する。
+Use when:
+    UI操作を一履歴単位へまとめる、連続操作をcoalesceする、または調整案を比較する場合。
+Constraints:
+    - historyとslotは所属する一つのstoreのimmutable adjustment snapshotだけを扱う。
+    - 未記録のstore変更を操作前に同期し、code-owned変更やno-opだけでUndoを増やさない。
+    - transaction内の複数変更を一操作として記録し、live ParamStateを履歴へ保持しない。
+"""
 
 from __future__ import annotations
 

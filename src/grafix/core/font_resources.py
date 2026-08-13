@@ -1,4 +1,15 @@
-"""Font asset identity と session-owned outline resource を提供する。"""
+"""
+Purpose:
+    font file の内容 identity と同じ bytes の evaluation lease、TTFont/glyph outline の bounded owner を提供する。
+Use when:
+    text primitive の external dependency、font/glyph cache、font resource の clear/close を変更・調査する場合。
+Constraints:
+    - fingerprint と evaluator は同じ read で得た exact bytes を共有し、renderer から path を再 open しない。
+    - asset、open font、glyph は entry/byte 上限内で所有し、eviction/clear/close で解放する。
+    - resource state は evaluation owner ごとに隔離し、process-global cache にしない。
+Side effects:
+    font file を読み込み、TTFont と memory cache を開閉する。
+"""
 
 from __future__ import annotations
 

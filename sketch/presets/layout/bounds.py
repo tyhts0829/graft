@@ -1,7 +1,15 @@
 """
-どこで: `sketch/presets/layout/bounds.py`。
-何を: canvas / margin(safe) / trim の外周線を描く preset。
-なぜ: グリッド類と “外枠” を分離して合成しやすくするため。
+Purpose:
+    canvas、safe margin、trimの外周を他のlayout guideと合成できるpresetとして提供する。
+Use when:
+    紙面境界、余白、安全領域、trim位置を可視化するガイドが必要なとき。
+Constraints:
+    - canvas、safe、trimはcommon helperと同じ左上基準rect・offset座標を使う。
+    - axes指定を各outlineとcenter lineへ一貫して適用する。
+    - marginが非zeroならshow_margin=Falseでもsafe boundaryを失わない。
+    - trim boundaryはshow_trimが明示された場合だけ追加する。
+See:
+    sketch/presets/layout/common.py
 """
 
 from __future__ import annotations

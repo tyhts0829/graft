@@ -1,4 +1,14 @@
-"""正式パスを部分書き込みから守る atomic file writer。"""
+"""
+Purpose:
+    正式pathへ部分書き込みを見せない、小さなatomic file writing primitiveを提供する。
+Use when:
+    textまたは外部writerの成果物を、成功時だけ正式pathへ確定する場合。
+Constraints:
+    - work fileをtargetと同じdirectoryに置き、失敗時は正式pathを変更しない。
+    - no-clobber経路は既存entryを上書きしない。
+Side effects:
+    sibling temporary fileを作成し、fsync後に正式pathへ公開する。
+"""
 
 from __future__ import annotations
 

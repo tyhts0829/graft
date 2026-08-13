@@ -1,4 +1,13 @@
-"""Marching Squaresによる等値線抽出とpath縫合の数値kernel。"""
+"""
+Purpose:
+    scalar gridの等値線を共有Marching Squares規約で抽出し、連続pathへ決定的に縫合する。
+Use when:
+    isocontour、SDF、simulationなどからopen chainまたはclosed loopを生成する場合。
+Constraints:
+    - grid edge identityに基づく安定した出力順を維持する。
+    - open chainをclosed loopより先に返し、closed loopは始点と終点を一致させる。
+    - field、mask、sample fieldのgrid shapeとorigin/pitch規約を混同しない。
+"""
 
 from __future__ import annotations
 

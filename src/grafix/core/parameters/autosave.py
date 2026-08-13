@@ -1,6 +1,14 @@
-# どこで: `src/grafix/core/parameters/autosave.py`。
-# 何を: debounce と最大保存間隔を持つ ParamStore autosave を提供する。
-# なぜ: 書き込み回数を抑えつつ、連続操作中も recovery を定期確定するため。
+"""
+Purpose:
+    ParamStoreのrevisionを監視し、操作中の同期保存を避けながらautosave時機を調停する。
+Use when:
+    interactive sessionのrecovery保存をdebounceと最大待機時間で制御する場合。
+Constraints:
+    - suspended中は保存せず、解除後にdebounce境界を取り直す。
+    - 保存失敗後もdirty状態を維持し、毎frameの即時retry loopを作らない。
+Side effects:
+    注入されたsave callbackを呼び出し、callback側でfilesystem更新が起こり得る。
+"""
 
 from __future__ import annotations
 

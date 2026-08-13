@@ -1,6 +1,14 @@
-# どこで: `sketch/presets/layout/common.py`。
-# 何を: layout 系 preset の共通ユーティリティ（rect 計算 / 線生成 / 分割アルゴリズム）。
-# なぜ: composable なガイド preset 群で重複を避けるため。
+"""
+Purpose:
+    composableなlayout guide preset群で共有する矩形・軸・分割規則を一つの幾何契約へ集約する。
+Use when:
+    複数layout presetにまたがるmargin、axes、grid、ratio lineの意味を変更するとき。
+Constraints:
+    - 全helperはcanvas左上基準の同じrect表現とoffsetを共有する。
+    - axes指定はvertical/horizontal出力だけを制御し、非選択方向へ線を追加しない。
+    - marginや分割が退化してもrect端の順序を反転させず、空出力は零長geometryで表す。
+    - META_COMMONのkeyと意味を利用する全layout presetで同期させる。
+"""
 
 from __future__ import annotations
 

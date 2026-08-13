@@ -1,6 +1,12 @@
-# どこで: `src/grafix/interactive/parameter_gui/reconcile_panel.py`。
-# 何を: ambiguous parameter reconcile orphan を明示的な 1:1 選択肢へ変換して描画する。
-# なぜ: 自動選択で調整値を誤移行せず、ユーザーが旧 group を確認して再リンクできるようにするため。
+"""
+Purpose:
+    ambiguous parameter orphanを、明示的な1対1migration候補としてInspectorへ提示する。
+Use when:
+    reconcile候補model、理由表示、manual migration、またはその履歴境界を変更する場合。
+Constraints:
+    - 曖昧な旧groupを自動選択せず、userが選んだexact pairだけを移行する。
+    - panel model生成とstore mutationを分離する。
+"""
 
 from __future__ import annotations
 

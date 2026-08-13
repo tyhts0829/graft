@@ -1,4 +1,14 @@
-"""YAML と探索 policy から RuntimeConfig を構築する application loader。"""
+"""
+Purpose:
+    package既定値とYAML探索結果から、application用のeffective RuntimeConfigを構築する。
+Use when:
+    config discovery、fallback、path解決、またはYAML overrideの入口を変更する場合。
+Constraints:
+    - ambient CWD/HOME探索はこのouter loaderに留め、core evaluatorやexport helperへ移さない。
+    - 読み込んだmappingはcoreのstrict validationを通し、無効値を暗黙補正しない。
+Side effects:
+    package resourceとfilesystem上の設定候補を読み取る。
+"""
 
 from __future__ import annotations
 

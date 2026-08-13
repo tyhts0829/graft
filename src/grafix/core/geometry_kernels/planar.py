@@ -1,4 +1,13 @@
-"""3D geometryの平面化とring抽出に使う数値kernel。"""
+"""
+Purpose:
+    3D geometryと局所XY平面の変換、および閉ring抽出をplanar effect間で共有する。
+Use when:
+    平面性判定、3D姿勢の復元、ring領域処理、またはcanonical frameが必要な場合。
+Constraints:
+    - world座標とlocal座標を混同せず、同じPlanarFrameでproject/liftを対にする。
+    - canonical_planar_frameのwinding、seam、line順に依存しないidentityを維持する。
+    - region処理へ渡すringは明示的に閉じ、open curveを暗黙の領域として扱わない。
+"""
 
 from __future__ import annotations
 

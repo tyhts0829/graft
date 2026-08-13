@@ -1,3 +1,16 @@
+"""
+Purpose:
+    interactive GUIテストへ独立したRuntimeConfig、catalog cache、headless ParameterGUIを供給する。
+Use when:
+    GL windowを開かずにParameterGUIのconstructor後の挙動とcleanupを検証するとき。
+Constraints:
+    - 各fixtureでmutable store/cacheを共有せず、test間stateを隔離する。
+    - GUIは通常constructorを通し、renderer/fontの外部resourceだけをheadless fakeへ差し替える。
+    - teardownではtest中のfake差し替えを外し、constructorが所有した元resourceをproduction closeで解放する。
+Side effects:
+    pytest monkeypatchでpyglet optionとGUI resource factoryを一時的に差し替える。
+"""
+
 from __future__ import annotations
 
 from collections.abc import Iterator

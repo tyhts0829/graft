@@ -1,6 +1,14 @@
-# どこで: `src/grafix/interactive/parameter_gui/variation_controller.py`。
-# 何を: named variation popup の状態と command 実行を所有する。
-# なぜ: ImGui 描画から store mutation、history、transport、thumbnail 境界を分離するため。
+"""
+Purpose:
+    named variationのGUI command、popup state、history、thumbnail ownershipを調整する。
+Use when:
+    variation保存/復元/rename/morph、scope、またはthumbnail failure処理を変更する場合。
+Constraints:
+    - 保存は`prepare -> capture -> commit`とし、commit失敗時だけ今回のartifactをdiscardする。
+    - capture callbackは同期中にstoreを変更せず、thumbnail失敗でparameter snapshotを失わない。
+Side effects:
+    store/historyを更新し、注入callback経由でthumbnailを作成・破棄し得る。
+"""
 
 from __future__ import annotations
 

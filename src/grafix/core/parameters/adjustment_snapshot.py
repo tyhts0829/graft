@@ -1,4 +1,12 @@
-"""GUI-owned parameter adjustments の immutable snapshot。"""
+"""
+Purpose:
+    履歴・A/B比較・variationが共有するGUI-owned調整状態の不変境界を定義する。
+Use when:
+    liveなParamStoreから独立して調整を保存、比較、または再適用する処理を扱う場合。
+Constraints:
+    - mutableなParamStateやmappingを保持せず、canonicalなfrozen valueだけを所有する。
+    - 完全なstore snapshotとして扱わず、適用時は現在のcode-owned構造へmergeする。
+"""
 
 from __future__ import annotations
 

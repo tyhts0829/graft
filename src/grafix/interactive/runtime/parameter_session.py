@@ -1,4 +1,17 @@
-"""Parameter store の load、recovery、history、autosave、finalize session。"""
+"""
+Purpose:
+    一interactive sessionのparameter load、履歴、recovery、autosave、終了時確定を所有する。
+Use when:
+    parameter永続化、reload後schema採用、capture source、shutdown semanticsを変更するとき。
+Constraints:
+    - failed authoring generationのschemaを採用せず、最後に成功したcatalogを確定に使う。
+    - captureのsourceとload provenanceは同じload-state sampleから導出する。
+    - recovery判断の採用はlive ParamStore identityを保ったまま内容とload stateを一緒に進める。
+    - primaryへの昇格はclean shutdownだけに限定し、異常終了時はrecoveryを残す。
+    - 終了時はprimary確定より先にlive recoveryをflushする。
+Side effects:
+    parameter/recovery fileを読み書きし、診断actionから外部file viewerを起動し得る。
+"""
 
 from __future__ import annotations
 

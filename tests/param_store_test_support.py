@@ -1,3 +1,15 @@
+"""
+Purpose:
+    ParamStoreのprivate mutation seamを、revision契約を保ったままテストから操作するhelper群。
+Use when:
+    public commandでは作れないruntime/state/lock/favorite/variation条件をfixtureへ設定するとき。
+Constraints:
+    - mutationは読取時のbase revisionをexpected revisionとしてcommitする。
+    - runtime値変更ではeffective valueとsourceの差からvalue_keysを正確に通知する。
+    - live ParamStore identityを置換せず、productionと同じcommit境界を通す。
+    - production codeからimportせず、private API変更時はこの集約点と関連テストを同時に直す。
+"""
+
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable

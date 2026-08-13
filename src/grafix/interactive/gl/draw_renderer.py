@@ -1,6 +1,14 @@
-# どこで: `src/grafix/interactive/gl/draw_renderer.py`。
-# 何を: ライブ描画用の ModernGL レンダラーをカプセル化する。
-# なぜ: コンテキスト生成・シェーダ設定・メッシュ転送を `run` から分離し、責務を明確にするため。
+"""
+Purpose:
+    ModernGL context、framebuffer、line mesh、GPU cacheを所有するpreview rendererを提供する。
+Use when:
+    GL描画、viewport/readback、GPU cache、またはrenderer resource lifetimeを変更する場合。
+Constraints:
+    - CPU realizationと同じ`GeometryCacheKey`でGPU entryを区別する。
+    - GL resourceは所有contextが生存中に解放し、runtimeへraw contextを公開しない。
+Side effects:
+    GPU resourceを確保・更新・描画・解放する。
+"""
 
 from __future__ import annotations
 

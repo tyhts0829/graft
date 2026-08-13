@@ -1,4 +1,12 @@
-"""公開 inspection 用の evaluator-free operation 情報。"""
+"""
+Purpose:
+    operation catalogを安全に列挙・説明するための公開immutable metadataを定義する。
+Use when:
+    `G/E.catalog()`、`describe()`、CLI inspectionの公開情報を変更する場合。
+Constraints:
+    - evaluator、catalog、declarationなどの実行capabilityを保持しない。
+    - nested metadataをimmutable化し、catalog交換後もsnapshotとして安定させる。
+"""
 
 from __future__ import annotations
 

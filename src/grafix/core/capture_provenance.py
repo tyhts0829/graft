@@ -1,4 +1,15 @@
-"""Capture provenance の immutable domain value と canonical codec。"""
+"""
+Purpose:
+    session、parameter snapshot、評価済み frame の provenance を immutable value と canonical JSON identity で固定する。
+Use when:
+    capture の source/config/parameter/frame identity、hash、manifest section を変更・調査する場合。
+Constraints:
+    - canonical JSON は strict な有限 JSON value だけを受理し、key 順や process に依存させない。
+    - capture worker には確定済み snapshot を渡し、source・Git・config を再探索させない。
+    - filesystem/Git/package の収集は export/application 層に留める。
+See:
+    architecture.md §9
+"""
 
 from __future__ import annotations
 

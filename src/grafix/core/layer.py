@@ -1,7 +1,12 @@
 """
-どこで: `src/grafix/core/layer.py`。
-何を: Layer モデルとスタイル既定値適用のユーティリティを定義する。
-なぜ: Geometry と描画スタイルを分離し、interactive/export のどちらでも共通のシーン表現を扱うため。
+Purpose:
+    Geometry を変えずに描画 style、parameter site identity、レイヤ単位の G-code policy を束ねる。
+Use when:
+    scene の色・線幅の既定値解決、Layer parameter、G-code 最適化の境界を変更・調査する場合。
+Constraints:
+    - ``site_id`` は Geometry 内容と独立した安定 authoring/parameter identity として扱う。
+    - style と ``gcode_optimize`` は Geometry DAG や geometry cache identity へ含めない。
+    - ``gcode_optimize=False`` は G-code の並べ替え・反転・bridge をすべて停止し、他形式の描画には影響させない。
 """
 
 from __future__ import annotations

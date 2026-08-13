@@ -1,8 +1,12 @@
-"""閉曲線マスク（距離場）で、入力線を局所的に変形する effect。
-
-`mode` により挙動を切り替える。
-- "lens": マスク近傍だけ座標変換をブレンドして歪ませる（レンズ）
-- "attract": マスク境界（または bias レベル）へ吸着/反発させる（距離場変位）
+"""
+Purpose:
+    平面閉maskのsigned distanceを使い、base線へlens変換または境界方向の変位を与える。
+Use when:
+    二入力の局所warp、inside profile、境界へのattract・repelを変更する場合。
+Constraints:
+    - 第1入力を変形対象、第2入力をframeとeven-odd距離場を定めるmaskとして扱う。
+    - baseとmaskが同一平面にない、または閉ringを得られない場合はbaseを変更しない。
+    - baseのpolyline境界を保ち、show_maskとkeep_originalは変形結果への追加出力に限定する。
 """
 
 from __future__ import annotations

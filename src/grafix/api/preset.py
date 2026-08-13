@@ -1,6 +1,12 @@
-# どこで: `src/grafix/api/preset.py`。
-# 何を: `@preset` デコレータ（公開引数だけを Parameter GUI に出し、関数本体は自動で mute）を提供する。
-# なぜ: 作り込んだ形状を関数として再利用しつつ、GUI を “公開パラメータ” だけに保つため。
+"""
+Purpose:
+    再利用するscene callableを、公開parameter schema付きpreset declarationとして登録する。
+Use when:
+    `@preset`のsignature、parameter公開範囲、activation、またはregistrationを変更する場合。
+Constraints:
+    - preset本体の内部operation観測をmuteし、GUIにはpresetの公開引数だけを出す。
+    - declarationとinvokerが同じschema/identity snapshotを共有する。
+"""
 
 from __future__ import annotations
 

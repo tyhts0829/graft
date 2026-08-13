@@ -1,7 +1,13 @@
 """
-どこで: `src/grafix/interactive/gl/shader.py`。
-何を: 線の太さをジオメトリシェーダで表現する最小頂点/ジオメトリ/フラグメントのセットを提供。
-なぜ: 単純なラインを太さ付き四角形に展開し、視認性を高めるため。
+Purpose:
+    previewのline stripを画面上の太さ付きgeometryへ展開するshader programを所有する。
+Use when:
+    line renderingのuniform、shader stage契約、またはprogram lifetimeを変更する場合。
+Constraints:
+    - `DrawRenderer`が期待するattribute/uniform名と座標変換契約を維持する。
+    - programは作成したGL contextのresourceとして解放する。
+Side effects:
+    GPU shader programをcompile・link・releaseする。
 """
 
 from typing import Protocol, runtime_checkable

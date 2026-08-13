@@ -1,4 +1,15 @@
-"""preset declaration と immutable catalog snapshot を定義する。"""
+"""
+Purpose:
+    preset callable/schema/identity の declaration と、session/generation ごとの immutable preset catalog を定義する。
+Use when:
+    ``P`` の lookup・parameter identity、preset decorator の declaration 付与、catalog binding を変更・調査する場合。
+Constraints:
+    - mutable builder は snapshot 作成前に限り、draw には immutable catalog だけを束縛する。
+    - 同じ target 内の同名 preset は拒否し、operation のような overwrite を許可しない。
+    - config-scoped preset を draw scope 外の default catalog へ暗黙に流入させない。
+See:
+    architecture.md §3
+"""
 
 from __future__ import annotations
 

@@ -1,6 +1,16 @@
-# どこで: `src/grafix/export/output_paths.py`。
-# 何を: draw 定義元（例: sketch/）に基づき、出力ファイルの保存先パスを決める。
-# なぜ: `output/{kind}/` 配下で、ユーザースクリプトのディレクトリ構造をミラーして整理するため。
+"""
+Purpose:
+    sketch identityに基づく出力配置と、一session内で重複しない候補名を決定する。
+Use when:
+    既定output layout、run ID、version suffix、複数artifactの衝突判定を変更するとき。
+Constraints:
+    - 解決済みRuntimeConfigを明示的に受け取り、この層でambient configを再探索しない。
+    - path予約は同じallocator instance内だけの予約であり、process間publication lockではない。
+    - 予約時にplaceholderを作らず、最終no-clobber保証はpublish境界に委ねる。
+    - split出力はmanifestを含むartifact family全体で空きを判定する。
+Side effects:
+    source位置、cwd、filesystem上の既存pathを参照するが、成果物は書き込まない。
+"""
 
 from __future__ import annotations
 

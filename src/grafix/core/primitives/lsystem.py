@@ -1,7 +1,14 @@
 """
-どこで: `src/grafix/core/primitives/lsystem.py`。L-system（植物/回路）プリミティブの実体生成。
-何を: 文字列規則の展開（L-system）とタートル解釈で、枝ポリライン列を生成する。
-なぜ: 記号的な枝分かれ線（植物/回路）を、少ないパラメータで安定して得るため。
+Purpose:
+    L-systemの記号規則から、植物・回路風の分岐した開polylineを再現可能に生成する。
+Use when:
+    preset/custom規則、turtle記号、branch stack、またはseed付きjitterを変更する場合。
+Constraints:
+    - 同じprogram・seed・引数から同じjitter列を生成し、出力をopen stroke群として保つ。
+    - 展開文字数のhard limitを越える前に拒否し、無制限な世代展開を許さない。
+    - 壊れたcustom rule行やbracketは可能な範囲で解釈し、既存のwarning fallbackを維持する。
+Side effects:
+    不正なcustom規則またはstack不整合をPython warningとして通知する。
 """
 
 from __future__ import annotations

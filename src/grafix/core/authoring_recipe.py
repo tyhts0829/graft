@@ -1,4 +1,14 @@
-"""config authoring source を process 間で再実行する immutable recipe。"""
+"""
+Purpose:
+    config authoring source の確定済み bytes を、別 process でも同じ candidate として再構築できる immutable recipe にする。
+Use when:
+    worker replay、source capture、config authoring の process 境界を変更・調査する場合。
+Constraints:
+    - captured bytes を source of truth とし、replay 時に live filesystem の内容へ置き換えない。
+    - module source は相対 path の重複なし・決定的順序を維持する。
+See:
+    grafix.authoring_loader
+"""
 
 from __future__ import annotations
 

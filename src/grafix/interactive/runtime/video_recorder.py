@@ -1,6 +1,17 @@
-# どこで: `src/grafix/interactive/runtime/video_recorder.py`。
-# 何を: ffmpeg に raw RGB フレームを流し、動画として保存する最小録画器を提供する。
-# なぜ: interactive プレビューを滑らかな動画として残せるようにするため。
+"""
+Purpose:
+    RGB24 frame列をffmpegへ送り、公開可能なfsync済み動画stagingへ確定する。
+Use when:
+    ffmpeg invocation、frame寸法、finish timeout、process/temp cleanupを変更するとき。
+Constraints:
+    - ffmpegにfinal pathを直接開かせず、完成stagingのpublishは上位capture境界へ委ねる。
+    - 入力frameは開始時のframebuffer寸法とexact byte lengthを維持する。
+    - finishはdeadline内で終了を待ち、timeout/error時もterminate/kill/reapを試みる。
+    - 正常終了とfile fsyncの後だけstaging ownershipを呼び出し側へ移す。
+    - abortは未確定tempを公開せず、processとpipeを冪等に回収する。
+Side effects:
+    ffmpeg subprocessと同一directory上のprivate一時動画を作成・削除する。
+"""
 
 from __future__ import annotations
 

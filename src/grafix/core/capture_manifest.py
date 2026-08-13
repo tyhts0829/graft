@@ -1,4 +1,15 @@
-"""Capture manifest の immutable domain value。"""
+"""
+Purpose:
+    capture artifact、frame provenance、recording 統計を安定した JSON manifest として表す immutable domain value を定義する。
+Use when:
+    export manifest の schema、version、artifact family の検証契約を変更・調査する場合。
+Constraints:
+    - manifest の ``t`` は provenance が固定した frame 時刻と一致させる。
+    - JSON payload の互換性を崩す変更では schema version を更新する。
+    - path allocation、file I/O、publish/rollback policy を core value へ持ち込まない。
+See:
+    architecture.md §9
+"""
 
 from __future__ import annotations
 

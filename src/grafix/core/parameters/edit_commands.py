@@ -1,4 +1,13 @@
-"""Parameter GUI などから渡された immutable edit command を適用する。"""
+"""
+Purpose:
+    GUIなどのimmutableなparameter edit intentを一つのatomic store commandへ変換する。
+Use when:
+    UI value、override、MIDI割当、favoriteをまとめて確定する入口が必要な場合。
+Constraints:
+    - 一command内でkeyを重複させず、validationとreplacement計画をcommit前に完了する。
+    - 実差分だけを一度のrevision/history更新へ集約し、no-opでは何も進めない。
+    - live containerを直接変更せず、ParamStoreのmutation portを通す。
+"""
 
 from __future__ import annotations
 

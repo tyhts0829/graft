@@ -1,6 +1,12 @@
-# どこで: `src/grafix/api/_param_resolution.py`。
-# 何を: API 層（G/E）で共通の param 解決と label 設定を提供する。
-# なぜ: primitive/effect での重複を減らし、仕様変更時の修正漏れを防ぐため。
+"""
+Purpose:
+    G/Eが共有するparameter解決とauthoring label記録の境界を提供する。
+Use when:
+    CODE/UI/MIDI解決の呼び出し方、明示引数、またはlabel観測を変更する場合。
+Constraints:
+    - parameter recordingがmuteされた区間ではstore/frame observationを追加しない。
+    - labelを受けた場合、利用可能なstoreまたはframe bufferへ記録し、無言で破棄しない。
+"""
 
 from __future__ import annotations
 

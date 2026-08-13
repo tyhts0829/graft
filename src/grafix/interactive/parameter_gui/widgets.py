@@ -1,6 +1,14 @@
-# どこで: `src/grafix/interactive/parameter_gui/widgets.py`。
-# 何を: ParameterRow.kind を pyimgui の値ウィジェットへ対応付けて描画する。
-# なぜ: kind ごとの UI 実装を閉じ込め、テーブル描画から分離するため。
+"""
+Purpose:
+    ParameterRow kindを対応するImGui value editorへ写し、candidate値だけを返す。
+Use when:
+    scalar/vector/color/string/font/choice widget、filter、またはvalue validationを変更する場合。
+Constraints:
+    - ParamStoreを直接変更せず、変更有無とcanonical candidate値だけをcallerへ返す。
+    - font/choice検索stateを注入されたGUI sessionへ保持し、module-global cacheを作らない。
+Side effects:
+    current ImGui frameへwidgetを描画し、font一覧を明示open/refresh時に読み得る。
+"""
 
 from __future__ import annotations
 

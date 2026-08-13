@@ -1,6 +1,12 @@
-# どこで: `src/grafix/api/presets.py`。
-# 何を: preset を `P.<name>(...)` で呼び出す公開名前空間 P を提供する。
-# なぜ: `@preset` で登録した「再利用単位」を、G/E と同じ感覚で呼び出せるようにするため。
+"""
+Purpose:
+    登録済みpresetをstable identity付きで呼び出す公開名前空間Pを提供する。
+Use when:
+    preset lookup、label/key identity、またはsession catalogへの束縛を変更する場合。
+Constraints:
+    - session内ではそのgenerationのcatalog、外側ではdefault authoring snapshotだけを参照する。
+    - config-scoped presetをdrawの外側から暗黙loadしない。
+"""
 
 from __future__ import annotations
 

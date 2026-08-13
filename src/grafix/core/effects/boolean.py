@@ -1,4 +1,13 @@
-"""二つの閉曲線群を平面領域として結合・交差・差分・排他的論理和する effect。"""
+"""
+Purpose:
+    二つの平面閉領域へunion・intersection・difference・xorの集合演算を適用する。
+Use when:
+    複数ringの領域合成、穴の扱い、または二入力Booleanの意味を変更する場合。
+Constraints:
+    - 両入力を同一の有限平面上に置き、各ringを明示閉鎖かつ3個以上の固有頂点で表す。
+    - windingに依存せず各入力をeven-odd領域として扱い、differenceは第1入力から第2入力を引く。
+    - 出力ringのclosureと決定的な親子・並び順を維持する。
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,15 @@
-"""Geometry 評価だけが観測する最小の immutable 設定を定義する。"""
+"""
+Purpose:
+    Geometry 評価の結果または external dependency 解決に必要な最小の immutable 設定を固定する。
+Use when:
+    evaluator が観測する設定、または evaluation scope の束縛を変更・調査する場合。
+Constraints:
+    - UI、MIDI、output path など full ``RuntimeConfig`` の application policy を含めない。
+    - 変更可能な font file の内容は埋め込まず、lookup 時の external dependency identity に分ける。
+    - binding は execution context に限定し、mutable global config にしない。
+See:
+    grafix.core.evaluation_context
+"""
 
 from __future__ import annotations
 

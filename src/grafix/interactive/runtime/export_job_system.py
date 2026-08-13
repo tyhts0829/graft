@@ -1,7 +1,16 @@
 """
-どこで: `src/grafix/interactive/runtime/export_job_system.py`。
-何を: PNG/G-code 書き出しを 1 本の長寿命 worker へ委譲する bounded job system。
-なぜ: 重い export 中も描画ループを止めず、連打時の process・snapshot 増殖を防ぐため。
+Purpose:
+    重いPNG/G-code captureをboundedな長寿命workerへ委譲し、親側で公開を確定する。
+Use when:
+    export FIFO、memory admission、worker timeout/restart、staging commitを変更するとき。
+Constraints:
+    - accepted jobは置換せずFIFOで処理し、countとaggregate snapshot bytesを越えた入力は拒否する。
+    - workerはprivate stagingへのencodeだけを行い、artifact familyとmanifestのpublishは親が行う。
+    - provenance必須のimmutable snapshotをprocess境界の単位とする。
+    - timeout、死亡、cancel時はworker/Queueを回収し、対応stagingと保持snapshotを解放する。
+    - 同じimmutable snapshotの共有を保持量の二重計上で破らない。
+Side effects:
+    spawn processとQueueを所有し、staging作成、encode、filesystem publishを行う。
 """
 
 from __future__ import annotations

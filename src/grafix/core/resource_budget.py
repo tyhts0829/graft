@@ -1,4 +1,13 @@
-"""Geometry の配列確保を事前検査する session 共通 resource budget。"""
+"""
+Purpose:
+    Geometry の大規模配列を確保する前と、評価後の実測 aggregate で共通 resource 上限を強制する。
+Use when:
+    allocation-heavy operation、scene aggregate limit、packed geometry の int32/byte 容量検査を追加・変更する場合。
+Constraints:
+    - NumPy 配列を確保する前に Python int で見積もり、scratch 必要量も明示する。
+    - UI slider からの値だけでなく、code から直接渡された引数にも同じ上限を適用する。
+    - coords/offsets の packed contract が持つ int32 容量を runtime budget と独立に越えさせない。
+"""
 
 from __future__ import annotations
 

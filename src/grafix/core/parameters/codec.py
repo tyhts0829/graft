@@ -1,4 +1,13 @@
-"""ParamStore の現行 schema に限定した JSON codec。"""
+"""
+Purpose:
+    ParamStoreと現行versionのJSON payloadを往復するcodec境界を提供する。
+Use when:
+    parameter永続形式のwriter、reader、または部分復元結果を変更する場合。
+Constraints:
+    - 現行schemaだけを扱い、future schemaやmigrationを暗黙に受理しない。
+    - validationとcanonicalizationはcodec_parserに集約し、decode中に重ねて解釈しない。
+    - filesystemのread、recovery、atomic commit policyを持ち込まない。
+"""
 
 from __future__ import annotations
 

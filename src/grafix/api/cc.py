@@ -1,6 +1,12 @@
-# どこで: `src/grafix/api/cc.py`。
-# 何を: `from grafix import cc` で参照できる CC 辞書ビューを提供する。
-# なぜ: mp-draw でもフレーム内の CC 値を `cc[1]` の形で読めるようにするため。
+"""
+Purpose:
+    authoring codeへ、現在のframeに固定されたMIDI CC値のread-only viewを公開する。
+Use when:
+    `cc[...]`のlookup、未設定値、またはframe snapshotとの接続を変更する場合。
+Constraints:
+    - live controllerやprocess-global mutable stateではなく、current contextのsnapshotだけを読む。
+    - CC番号を0..127に限定し、未設定値は0.0として扱う。
+"""
 
 from __future__ import annotations
 

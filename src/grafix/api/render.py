@@ -1,9 +1,13 @@
-"""ヘッドレス描画の共通データ型と長寿命セッションを提供する。
-
-``RenderSession`` は 1 回の ``draw(t)`` ではなく、作品を評価する期間を所有する。
-そのため、複数フレームで ParamStore、style 解決器、設定スナップショット、
-Geometry の realize cache を再利用できる。ファイルへの保存はこのモジュールの責務に
-含めず、描画結果を immutable な ``Frame`` として返すところで止める。
+"""
+Purpose:
+    headless作品評価のsession ownerと、保存前のimmutable Frameを公開する。
+Use when:
+    複数frameのcache/resource再利用、parameter source、またはrender metadataを変更する場合。
+Constraints:
+    - config、authoring definitions、load state、final-quality evaluationをsession開始時に固定する。
+    - mutable child ownerを公開せず、render自体はartifactを書き込まない。
+Side effects:
+    session構築時にconfigとparameter fileを読み得る。
 """
 
 from __future__ import annotations

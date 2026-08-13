@@ -1,6 +1,14 @@
-# どこで: `src/grafix/interactive/draw_window.py`。
-# 何を: ライブ描画用の pyglet ウィンドウ生成を行う。
-# なぜ: interactive 依存をこの層に閉じ込め、core/export をヘッドレスに保つため。
+"""
+Purpose:
+    interactive preview用のresizableなpyglet/GL windowを生成するleaf factoryを提供する。
+Use when:
+    previewの初期size、MSAA、minimum size、またはwindow生成失敗時cleanupを変更する場合。
+Constraints:
+    - canvasの論理sizeとpreview pixel sizeをrender scaleでのみ接続する。
+    - 部分構築に失敗したwindowを同じlifecycle helperで閉じる。
+Side effects:
+    native windowとGL contextを作成する。
+"""
 
 from __future__ import annotations
 

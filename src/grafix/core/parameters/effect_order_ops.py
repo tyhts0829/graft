@@ -1,4 +1,13 @@
-"""effect chain topologyとGUI-owned適用順のstore操作を提供する。"""
+"""
+Purpose:
+    effect chainの観測topologyとGUI-owned適用順をParamStoreへ問い合わせ・更新する。
+Use when:
+    effectの並べ替え、reset、frame観測merge、またはsource generation交換を扱う場合。
+Constraints:
+    - order overrideは現在topologyの完全なpermutationとし、multi-input stepを先頭に保つ。
+    - generation交換後のcanonical topologyは最初の完全な成功観測でのみ確定する。
+    - 失敗観測やno-opから既存chain、revision、collapse状態を不用意に変えない。
+"""
 
 from __future__ import annotations
 

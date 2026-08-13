@@ -1,4 +1,15 @@
-"""表示フレームと capture provenance の同一寿命 state を管理する。"""
+"""
+Purpose:
+    評価結果が実際に表示された境界で、frame metadataとcapture provenanceを同時に確定する。
+Use when:
+    last-good表示、renderer admission、capture/recordingへのframe bindingを変更するとき。
+Constraints:
+    - prepareは副作用なしとし、publishはrendererが同じpresentationを描画した後だけ呼ぶ。
+    - 表示metadata、preview snapshot、provenance tokenは一つのfresh frameとして同時に進める。
+    - tokenは同じParamStore identityとstore/effective revisionに一致する間だけmaterializeできる。
+    - stale tokenを現在parameterのprovenanceで補って過去geometryへ結び付けない。
+    - freshでない表示はscene serialやcapture bindingを新規発行しない。
+"""
 
 from __future__ import annotations
 

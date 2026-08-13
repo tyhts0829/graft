@@ -1,4 +1,12 @@
-"""snapshot source が安全に相対 import できる lexical scope を検証する。"""
+"""
+Purpose:
+    snapshot sourceの相対importを、再実行可能なmodule lexical scopeへ制限する。
+Use when:
+    config authoringとsource reloadで共有するsource preflight規則を変更する場合。
+Constraints:
+    - function、async function、class内のdeferred relative importを実行前に拒否する。
+    - errorにはsource path、line、禁止scopeを保持する。
+"""
 
 from __future__ import annotations
 

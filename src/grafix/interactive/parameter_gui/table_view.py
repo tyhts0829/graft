@@ -1,4 +1,12 @@
-"""ParamStore snapshot から immutable ParameterTableView を構築する。"""
+"""
+Purpose:
+    static table modelへcurrent値・visibility・filter・favoritesを合成したimmutable viewを構築する。
+Use when:
+    Parameter GUIのquery、表示順、検索、visibility、またはview cache invalidationを変更する場合。
+Constraints:
+    - query/cacheはParamStore mutation commandへ依存しない。
+    - cacheをGUI sessionから明示注入し、module-globalなdefault cacheを作らない。
+"""
 
 from __future__ import annotations
 

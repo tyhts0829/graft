@@ -1,6 +1,12 @@
-# どこで: `src/grafix/interactive/transport.py`。
-# 何を: `draw(t)` に渡すフレーム時刻 `t` の生成規則を提供する。
-# なぜ: 「通常は操作可能な実時間」「録画中は固定 fps」を分離するため。
+"""
+Purpose:
+    preview操作用timelineと固定fps recording timelineの`draw(t)`規則を定義する。
+Use when:
+    play/pause、seek、speed、bookmark、frame step、または録画時刻を変更する場合。
+Constraints:
+    - previewの実時間clockとrecordingの決定的frame clockを混同しない。
+    - snapshotは一時点のtransport stateとしてimmutableに渡す。
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,15 @@
-"""schema v4 run を offline HTML/SVG report にまとめる。"""
+"""
+Purpose:
+    蓄積した schema v4 run を互換 cohort ごとの履歴として読み、offline HTML/SVG と warning audit にまとめる。
+Use when:
+    benchmark history の load・cohort visualization・warning 分類・offline report artifact 生成を変更・調査する場合。
+Constraints:
+    - strict な base/head 判定は ``compare.py`` に任せ、report は互換性の異なる観測を1本の trend へ接続しない。
+    - 壊れた JSON、unsupported schema、duplicate run ID、contract failure を黙って捨てず warning/audit artifact へ残す。
+    - HTML は chart spec/runtime を inline 化し、表示時の CDN/network へ依存させない。
+Side effects:
+    ``runs/*.json`` と optional chart module を読み、HTML・SVG・warnings JSON を atomic に書き込む。
+"""
 
 from __future__ import annotations
 

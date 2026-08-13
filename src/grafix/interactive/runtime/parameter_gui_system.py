@@ -1,6 +1,16 @@
-# どこで: `src/grafix/interactive/runtime/parameter_gui_system.py`。
-# 何を: Parameter GUI を「1フレーム描画できるサブシステム」として提供する。
-# なぜ: `src/grafix/api/runner.py` の `run()` から GUI 初期化/描画/後始末を分離し、肥大化を防ぐため。
+"""
+Purpose:
+    Inspector windowとParameter GUIをinteractive runtimeの一frame taskとして配線する。
+Use when:
+    GUI window lifecycle、catalog reload、autosave tick、parameter revision通知を変更するとき。
+Constraints:
+    - draw_frameはback bufferだけを更新し、flipは共通window loopへ委ねる。
+    - ParameterGUIは構築時からwindowを所有するため、system側で二重にcloseしない。
+    - revision通知は値が実際に変わったframeだけを、style/geometry domainへ分類して送る。
+    - parameter編集中はautosave debounceを尊重し、保存失敗でpreviewを停止しない。
+Side effects:
+    GUI window、parameter store、autosave、monitor通知を更新する。
+"""
 
 from __future__ import annotations
 

@@ -1,7 +1,15 @@
 """
-どこで: tests/manual/_runner.py。
-何を: pyglet + pyimgui の手動 GUI テスト用の共通ランナー。
-なぜ: 初期化・ループ・Retina 対応の重複を減らすため。
+Purpose:
+    pygletとpyimguiの手動GUI検証へ、Retina対応を含む共通window loopとcleanup境界を提供する。
+Use when:
+    自動testでは判断しにくいinteractive widget、入力、描画を単一windowで目視確認するとき。
+Constraints:
+    - UI callbackはnew_frame後かつrender前に呼び、framebuffer scaleを毎frame反映する。
+    - display利用不能時は曖昧に継続せず、明示的にmanual runを終了する。
+    - rendererはactive GL context内で閉じ、ImGui context、windowの順で全resource cleanupを試みる。
+    - cleanup失敗で元の実行例外を失わず、CleanupErrorsへ集約する。
+Side effects:
+    sys.pathをrepository srcへ向け、native window/GL/ImGui contextとevent loopを操作する。
 """
 
 from __future__ import annotations

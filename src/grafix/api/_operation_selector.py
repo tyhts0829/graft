@@ -1,4 +1,12 @@
-"""selector schema discovery と exact catalog runtime dispatch を接続する。"""
+"""
+Purpose:
+    selector用schema snapshotと、選択されたexact operationへのruntime dispatchを接続する。
+Use when:
+    primitive/effect selectorのtarget、target別引数、またはcatalog照合を変更する場合。
+Constraints:
+    - selectorとtarget parametersを同じimmutable catalog snapshotへ固定する。
+    - synthetic selectorをevaluation catalogへ登録せず、実operationのdeclarationで検証する。
+"""
 
 from __future__ import annotations
 

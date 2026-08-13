@@ -1,4 +1,13 @@
-"""`text` と `asemic` が共有する文字列レイアウト計算。"""
+"""
+Purpose:
+    font textとasemic textが共有するem単位の改行・行揃え・box配置契約を定義する。
+Use when:
+    二つのtext primitiveでwrap、advance、alignment、またはbounding boxを揃える場合。
+Constraints:
+    - layoutはgeometry生成やfont resourceから独立したem座標で計算する。
+    - 行幅、配置原点、boxのalignment基準をtextとasemicで一致させる。
+    - wrap後の行順を保ち、新しい行の先頭へ空白を持ち越さない。
+"""
 
 from __future__ import annotations
 

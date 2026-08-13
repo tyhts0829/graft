@@ -1,4 +1,16 @@
-"""DrawWindowSystem を実初期化する headless test factory。"""
+"""
+Purpose:
+    DrawWindowSystemの実constructorを通しつつ、外部window/GL/process/recording resourceだけをfake化する。
+Use when:
+    frame配線、capture安全性、diagnostic、shutdownをproduction ownership境界のままテストするとき。
+Constraints:
+    - DrawWindowSystem自体をstub化せず、置換は外部resource constructorに限定する。
+    - fakeは利用側Protocolの最小contractとresource lifecycleを満たす。
+    - patch context終了後も返却systemが参照するfake instanceの寿命を維持する。
+    - fake recordingもpublish経路が回収できるcompleted stagingを作る。
+Side effects:
+    constructor実行中だけmodule symbolをpatchし、一時capture fileを作成し得る。
+"""
 
 from __future__ import annotations
 

@@ -1,6 +1,13 @@
-# どこで: `src/grafix/core/parameters/effects.py`。
-# 何を: effect chain の code topology と GUI-owned order override を管理する。
-# なぜ: コード記述順を失わず、GUI が選んだ実効順を描画・表示・永続化で共有するため。
+"""
+Purpose:
+    code-ownedなeffect chain topologyとGUI-ownedな実効順を分離して表現する。
+Use when:
+    effect step identity、chain互換性、並べ替え制約、またはindex状態を扱う場合。
+Constraints:
+    - step identityはchain内で一意な(op, site_id)とし、code topologyをGUI順で上書きしない。
+    - overrideはstep集合の完全なpermutationでなければならない。
+    - 複数入力effectは実効chainの先頭から移動させない。
+"""
 
 from __future__ import annotations
 

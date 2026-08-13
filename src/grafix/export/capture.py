@@ -1,4 +1,15 @@
-"""render 済み frame snapshot の encode と安全な公開を一つにまとめる。"""
+"""
+Purpose:
+    完成したフレームを形式別の書き出しへ渡し、成果物とmanifestを一つのcapture世代として公開する。
+Use when:
+    headless/interactive共通の保存契約、形式選択、分割G-code、公開時の衝突処理を変更するとき。
+Constraints:
+    - encodeはprivate stagingだけを変更し、final pathを公開しない。
+    - artifact familyとmanifestは同じframe/provenance snapshotから確定する。
+    - 公開時のlate collisionは完成済みstagingを再利用し、再encodeで解決しない。
+Side effects:
+    一時領域を作成し、encoderを実行してfilesystemへcapture世代を公開する。
+"""
 
 from __future__ import annotations
 

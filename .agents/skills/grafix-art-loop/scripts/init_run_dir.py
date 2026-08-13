@@ -1,5 +1,17 @@
 #!/usr/bin/env python3
-"""Grafix Art Loop の run ディレクトリ骨格を生成する補助 CLI。"""
+"""
+Purpose:
+    Grafix Art Loopの一runに必要なflat workspaceと唯一の管理JSONを初期化するCLI。
+Use when:
+    候補制作を始める前にrun ID、candidate directory、run.jsonの骨格を確定するとき。
+Constraints:
+    - rootはsketch/agent_loop/runs配下に限定し、既存run directoryを再利用・上書きしない。
+    - run IDのcandidate数と--nを一致させ、candidate IDを連番で一意にする。
+    - run.json以外のrole別管理JSONや旧来の多段directoryを生成しない。
+    - latest pointer更新は明示opt-inとし、dry-runではfilesystemを変更しない。
+Side effects:
+    run workspaceとrun.jsonを作成し、opt-in時のみlatest pointer fileを更新する。
+"""
 
 from __future__ import annotations
 

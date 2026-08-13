@@ -1,4 +1,15 @@
-"""Geometry evaluation の immutable context と resource owner を定義する。"""
+"""
+Purpose:
+    一 generation の evaluation contract と、external dependency を preflight する bounded resource owner を定義する。
+Use when:
+    evaluation/cache identity、quality/config isolation、external asset lease、resource lifetime を変更・調査する場合。
+Constraints:
+    - ``EvaluationContext`` は immutable で close 対象でなく、``EvaluationResources`` と lifecycle を混ぜない。
+    - cache identity は参照した operation、quality/config、lookup 時の external dependency に限り、catalog 全体の revision を入れない。
+    - preflight fingerprint と evaluator resource は同じ lease に束ね、evaluator が path を再解決・再 open しない。
+Side effects:
+    preflight は operation の external hook を実行し、owner-local resource を構築・再利用することがある。
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,12 @@
-"""Parameter table renderer の edit を ParamStore command へ commit する。"""
+"""
+Purpose:
+    table rendererのimmutable edit intentを、ParamStore commandと履歴transactionへcommitする。
+Use when:
+    row編集、MIDI割当、collapse、effect order、またはUndo単位を変更する場合。
+Constraints:
+    - 描画に使ったtable viewと返却rowsの対応を検証してからmutationする。
+    - 責務の異なるeditを適切なhistory境界へ分け、store private stateを直接変更しない。
+"""
 
 from __future__ import annotations
 

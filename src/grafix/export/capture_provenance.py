@@ -1,4 +1,15 @@
-"""Filesystem/Git/parameter state から capture provenance を収集する。"""
+"""
+Purpose:
+    source、Git、設定、parameter状態をcaptureに結び付ける再現性metadataを構築する。
+Use when:
+    capture provenanceの入力、取得時点、parameter状態との整合性を検討するとき。
+Constraints:
+    - source/Git/configの発見はbuilder構築時に固定し、frame生成ごとに再探索しない。
+    - parameterのsourceとload provenanceは同じprovider sampleから導出する。
+    - parameter hashはeffective値と保存対象storeをrevision情報ごと同一snapshotに束縛する。
+Side effects:
+    builder構築時にsourceとpackage metadataを読み、期限付きGit subprocessを呼び出し得る。
+"""
 
 from __future__ import annotations
 

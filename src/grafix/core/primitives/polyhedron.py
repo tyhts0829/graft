@@ -1,7 +1,14 @@
 """
-どこで: `src/grafix/core/primitives/polyhedron.py`。多面体（正多面体 + アルキメデス立体）プリミティブの実体生成。
-何を: `grafix/resource/regular_polyhedron/*_vertices_list.npz`（同梱データ）から面ポリライン列を読み込み、選択して返す。
-なぜ: 多面体データを primitive として提供し、プレビューとエクスポートで再利用するため。
+Purpose:
+    同梱assetで定義された正多面体・半正多面体を、面ごとの閉polylineとして提供する。
+Use when:
+    polyhedron種別、package resource、face topology、またはasset cacheを変更する場合。
+Constraints:
+    - assetのfloat32 packed face境界を正本とし、各faceのclosureを維持する。
+    - process cacheはread-onlyに保ち、呼び出しごとにfreshなwritable出力を返す。
+    - asset欠落や不正schemaを別形状へfallbackせず明示的に拒否する。
+Side effects:
+    kindを初めて使う際にpackage resourceを読み、process-local cacheへ保持する。
 """
 
 from __future__ import annotations

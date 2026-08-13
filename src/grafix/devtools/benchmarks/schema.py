@@ -1,4 +1,15 @@
-"""Benchmark schema v4 の型、統計、厳格な JSON codec。"""
+"""
+Purpose:
+    benchmark schema v4 の immutable value・compatibility identity・statistics・contract と strict JSON/child protocol codec の正本を定義する。
+Use when:
+    persisted run/child payload、schema version、case/environment compatibility、sample/metric/contract validation を変更・調査する場合。
+Constraints:
+    - unknown/missing field・非有限値・不整合な status/statistics/contract を拒否し、legacy payload を推測で v4 に接続しない。
+    - source identity と比較互換性を分け、case/environment key は対応する identity field から再計算して照合する。
+    - raw sample、metric、contract を source of truth とし、保存済み要約/passed flag の改ざんを検知する。
+Side effects:
+    run JSON を読み込み、新規 run は atomic no-clobber で書き込む。
+"""
 
 from __future__ import annotations
 

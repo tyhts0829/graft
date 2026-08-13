@@ -1,22 +1,12 @@
 """
-どこで: `src/grafix/core/parameters/layer_style.py`。
-何を: Layer ごとの line_thickness/line_color を ParamStore で表現するキーと観測レコード生成ヘルパを定義する。
-なぜ: Layer style も primitive/effect と同じく「観測→フレーム終端でマージ」の流れに統合するため。
-
-概要
-----
-Layer の見た目（線幅・線色）も、他のパラメータと同様に ParamStore のキー体系で扱うための薄い層。
-`observe_and_apply_layer_style()` は以下をまとめて行う:
-
-- 適用: GUI 側で `override=True` のときだけ、UI 値を描画値へ反映する
-- 観測: 最終値とその source を含む `FrameParamRecord` を `FrameParamsBuffer` へ積む
-- ラベル: `Layer.name` を (op, site_id) の group ラベルとして保存する（可能なら store へ、無ければ buffer へ）
-
-I/O と型
---------
-- 描画側は `color_rgb01`（0..1 float）を扱うが、GUI/ストア側は `RGB255`（0..255 int）で扱う。
-  そのため record 生成時と override 適用時に変換が入る。
-- `explicit_*` は「コード側が値を明示指定したか」を表し、フレーム境界の merge で初期 override 方針に影響する。
+Purpose:
+    Layer固有の線幅・線色を通常parameterと同じ観測・override lifecycleへ接続する。
+Use when:
+    layer styleのGUI制御、ParameterKey identity、またはstyle値の表現境界を変更する場合。
+Constraints:
+    - 描画側のRGB01とstore/GUI側のRGB255を混同しない。
+    - GUI値はoverrideが有効な場合だけ適用し、code側のexplicit指定情報を観測へ残す。
+    - layer_site_idをgroup identityとして安定させ、frame終端のmerge経路を迂回しない。
 """
 
 from __future__ import annotations

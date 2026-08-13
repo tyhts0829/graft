@@ -1,4 +1,12 @@
-"""interactive preview を起動する軽量な公開 API。"""
+"""
+Purpose:
+    interactive previewの正規signatureを持つ、import負荷の小さい公開wrapperを提供する。
+Use when:
+    `run()`の公開引数、default、またはheavy applicationへの委譲を変更する場合。
+Constraints:
+    - module importやsignature inspectionではGUI/runtimeを初期化しない。
+    - heavy `_runner_application`は`run()`呼び出し時にだけimportする。
+"""
 
 from __future__ import annotations
 

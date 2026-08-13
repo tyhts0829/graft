@@ -1,4 +1,12 @@
-"""revision 単位で再利用する Parameter GUI の静的テーブルモデル。"""
+"""
+Purpose:
+    ParamStore構造とGUI catalogから、revision単位で再利用できる静的table modelを構築する。
+Use when:
+    row順、group layout、effect chain可動性、またはmodel cache keyを変更する場合。
+Constraints:
+    - modelはstoreのtable revisionとimmutable catalog内でのみ再利用する。
+    - multi-input effectをchain先頭に保ち、不完全・filtered topologyを並べ替え可能にしない。
+"""
 
 from __future__ import annotations
 

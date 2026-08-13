@@ -1,4 +1,12 @@
-"""内部 catalog entry を公開 OperationInfo へ射影する。"""
+"""
+Purpose:
+    内部catalog entryを、実行capabilityのない公開inspection valueへ射影する。
+Use when:
+    `G/E.catalog()`や`describe()`が公開するmetadata境界を変更する場合。
+Constraints:
+    - evaluator、declaration owner、catalogへの参照を`OperationInfo`へ漏らさない。
+    - 公開説明はentryのimmutable snapshotだけから構築する。
+"""
 
 from __future__ import annotations
 

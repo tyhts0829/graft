@@ -1,4 +1,15 @@
-"""Capture staging と late-collision retry の共通 lifecycle。"""
+"""
+Purpose:
+    capture backendへfinal出力から隔離した同一filesystem上のprivate作業領域を貸し出す。
+Use when:
+    encode/publish分離、artifact family検証、公開衝突後のpath再選択を扱うとき。
+Constraints:
+    - backendが返す成果物は割り当てたstaging directory内のregular fileに限定する。
+    - 出力候補はartifact familyとmanifestを一組として空いている必要がある。
+    - late collision時は完成済み成果物を保持したまま候補名だけを変更する。
+Side effects:
+    final出力の隣にprivate directoryを作成し、終了時に再帰削除する。
+"""
 
 from __future__ import annotations
 

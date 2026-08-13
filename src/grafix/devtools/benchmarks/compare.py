@@ -1,4 +1,15 @@
-"""schema v4 benchmark run の互換性検査と比較。"""
+"""
+Purpose:
+    2つの schema v4 run を厳格な before/after として比べ、timingーchecksumーtyped metric・contract の差を機械可読にする。
+Use when:
+    特定 base/head の回帰判定、comparison compatibility、metric/contract 対応付けを変更・調査する場合。
+Constraints:
+    - source revision の差は比較目的上許すが、environment・mode・measurement settings・case compatibility の差は既定で拒否する。
+    - ``allow_incompatible`` は warning 付き調査に限り、正式な比較で不一致を隠すために使わない。
+    - metric は name/phase/scope/kind/unit、contract は ID と定義、checksum は kind と digest が対応する場合だけ比べる。
+Side effects:
+    file 入口では2つの run JSON を読み込む。
+"""
 
 from __future__ import annotations
 

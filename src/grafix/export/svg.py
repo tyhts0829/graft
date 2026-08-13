@@ -1,7 +1,14 @@
 """
-どこで: `src/grafix/export/svg.py`。
-何を: realize 済みシーンを SVG として保存する関数を提供する。
-なぜ: interactive 依存なしの最小 headless export（SVG）を用意し、反復可能にするため。
+Purpose:
+    realized layerを論理canvas座標のportableなvector captureとして保存する。
+Use when:
+    SVGの座標、layer/style境界、後段PNG変換の中間表現を変更するとき。
+Constraints:
+    - geometryを物理用紙座標へ変換せず、canvas座標と寸法を維持する。
+    - layer、polyline、pathの順序と境界を暗黙に組み替えない。
+    - styleはcapture時に解決済みのlayer値を反映し、未解決parameterへ戻らない。
+Side effects:
+    完成したSVG textを対象pathへatomicに書き込む。
 """
 
 from __future__ import annotations

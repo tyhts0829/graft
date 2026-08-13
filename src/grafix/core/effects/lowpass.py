@@ -1,4 +1,13 @@
-"""ポリラインを弧長で再サンプルし、ガウス畳み込みで高周波成分を落とす effect。"""
+"""
+Purpose:
+    polylineの高周波な揺れを抑え、弧長基準で滑らかな形状へ整える。
+Use when:
+    smoothing scale、再sampling密度、またはopen/closed境界条件を変更する場合。
+Constraints:
+    - open線は反射境界、closed線は周期境界で扱い、closed出力の末尾を先頭とexactに一致させる。
+    - stepを弧長sampling、sigma/stepをfilter scaleとしてhighpassと共通に保つ。
+    - resample計画が頂点上限を超える場合は入力を変更しない。
+"""
 
 from __future__ import annotations
 

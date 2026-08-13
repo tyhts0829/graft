@@ -1,6 +1,12 @@
-# どこで: `src/grafix/api/primitives.py`。
-# 何を: primitive Geometry ノードを生成する公開名前空間 G を提供する。
-# なぜ: primitive 専用のファサードに分離し、責務を明確化するため。
+"""
+Purpose:
+    公開名前空間Gで、catalogに固定されたprimitiveのGeometry recipeを構築する。
+Use when:
+    primitive lookup、selector、引数解決、site identity、またはcatalog inspectionを変更する場合。
+Constraints:
+    - node作成時のexact operation refを固定し、ここではGeometryを評価しない。
+    - selectorと通常primitiveの双方を同じparameter観測・validation契約へ通す。
+"""
 
 from __future__ import annotations
 

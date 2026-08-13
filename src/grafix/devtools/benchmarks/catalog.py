@@ -1,4 +1,15 @@
-"""Builtin benchmark case provider の収集と選択。"""
+"""
+Purpose:
+    packaged benchmark provider を一つの catalog へ収集し、suite または explicit case ID から実行対象を決定する。
+Use when:
+    workload provider の追加、case ID 重複、stable listing、suite/case selection を変更・調査する場合。
+Constraints:
+    - provider 列の正本をここに限定し、provider 側から catalog/executor/runner へ逆依存させない。
+    - duplicate case ID と unknown suite/ID を拒否し、全件/suite 選択は case ID 順の決定的結果にする。
+    - explicit case ID 選択では caller の要求順を保つ。
+Side effects:
+    catalog import 時に packaged workload provider module を import する。
+"""
 
 from __future__ import annotations
 

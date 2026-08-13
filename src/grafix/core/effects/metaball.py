@@ -1,4 +1,13 @@
-"""閉曲線群を距離場でブレンドし、等値線（輪郭）を生成する effect。"""
+"""
+Purpose:
+    平面閉領域群を距離fieldで滑らかにつなぎ、新しい外周・穴の輪郭を生成する。
+Use when:
+    region同士のmetaball結合、field threshold、exterior抽出、またはpreview品質を変更する場合。
+Constraints:
+    - closed ringだけをeven-odd領域として使い、open線は無視する。
+    - 非平面・ringなし・final grid拒否では入力を変更せず、生成輪郭はclosed loopとして戻す。
+    - draftのgrid coarsen・ring samplingは診断し、final評価のring detailへ持ち込まない。
+"""
 
 from __future__ import annotations
 

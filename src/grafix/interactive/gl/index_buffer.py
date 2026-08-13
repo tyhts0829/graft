@@ -1,6 +1,12 @@
-# どこで: `src/grafix/interactive/gl/index_buffer.py`。
-# 何を: RealizedGeometry.offsets から GL_LINE_STRIP 用インデックス配列を生成する。
-# なぜ: インデックス生成を純粋関数として切り出し、テストしやすくするため。
+"""
+Purpose:
+    packed polyline境界を、GL line-strip用indexと描画統計へ変換するpure adapterを提供する。
+Use when:
+    RealizedGeometry offsetsとprimitive-restart indexの対応を変更する場合。
+Constraints:
+    - polyline境界と頂点順を保持し、空lineを描画対象へ数えない。
+    - GPU resourceを所有せず、CPU上のcanonical indexだけを返す。
+"""
 
 from __future__ import annotations
 

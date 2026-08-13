@@ -1,4 +1,15 @@
-"""Benchmark case の immutable 定義と source fingerprint contract。"""
+"""
+Purpose:
+    benchmark workload の metadata・callback・frozen parameter・source identity を、process 間で case ID から復元できる immutable definition に束ねる。
+Use when:
+    benchmark case の追加、CaseSpec compatibility、scaled fixture、workload/support source fingerprint を変更・調査する場合。
+Constraints:
+    - parameter tree は strict JSON value として freeze し、setup ごとに独立した mutable copy を渡す。
+    - setup/workload/postprocess/measurement context と明示 support source を source identity に含め、意味変更を compatibility key から漏らさない。
+    - execution・retry・catalog selection を definition に持ち込まない。
+Side effects:
+    CaseSpec 作成時に callable source と明示 support file を読み込む。
+"""
 
 from __future__ import annotations
 

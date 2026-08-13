@@ -1,4 +1,12 @@
-"""評価 callable を含まない Parameter GUI 用 catalog projection。"""
+"""
+Purpose:
+    operation/preset catalogを、evaluatorを持たないParameter GUI用schema snapshotへ射影する。
+Use when:
+    GUIのoperation分類、selector表示、parameter metadata、またはcatalog交換を変更する場合。
+Constraints:
+    - 同じgenerationのoperation/preset schemaから一度にcaptureする。
+    - evaluatorやmutable catalog ownerをGUI entryへ含めない。
+"""
 
 from __future__ import annotations
 

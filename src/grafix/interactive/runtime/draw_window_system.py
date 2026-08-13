@@ -1,27 +1,16 @@
-# どこで: `src/grafix/interactive/runtime/draw_window_system.py`。
-# 何を: `draw(t)` が返すシーンを描画ウィンドウへ描画するサブシステムを提供する。
-# なぜ: `src/grafix/api/runner.py` の `run()` を「配線」に寄せ、描画責務を独立させるため。
-
 """
-描画ウィンドウ（pyglet + ModernGL）に対して、1 フレームの「入力 → scene 実行 → GL 描画 →
-書き出し/録画」を束ねるサブシステム。
-
-このモジュールは window / GL / scene のフレーム順を組み立てる。表示済み frame と
-provenance の寿命は `PresentedFrameState`、書き出しの FIFO、backpressure、worker
-lifecycle、通知は `CaptureQueue` へ委譲する。
-
-読む順番（主要な入口）
-----------------------
-1. `DrawWindowSystem.__init__()` : window/renderer と各種サブシステムの組み立て
-2. `DrawWindowSystem.draw_frame()` : 1 フレーム分の処理（※ flip は呼ばない）
-3. `DrawWindowSystem.close()` : teardown（GL コンテキストが生きているうちに release する）
-
-副作用の一覧（把握しておくと読みやすい）
---------------------------------------
-- ウィンドウ生成: `create_draw_window()`（pyglet）
-- GPU 描画: `DrawRenderer`（ModernGL）
-- ファイル書き出し: `CaptureQueue` / 録画 subsystem へ frame を渡す
-- 別プロセス: `CaptureQueue` が PNG/G-code worker を所有する
+Purpose:
+    draw windowの一frame順序を組み、評価・表示・capture・recordingを同じframe境界へ接続する。
+Use when:
+    previewのframe ordering、source reload配線、GL teardown、保存・録画連携を変更するとき。
+Constraints:
+    - draw_frameはback bufferまでを扱い、window flipは共通event loopに委ねる。
+    - captureとrecordingへ渡すのは描画成功後にpublishされた同一PresentedFrameだけとする。
+    - provenance、parameter revision、frame identityを別時点の評価結果から組み合わせない。
+    - rendererなどGL resourceはwindow contextが生きている間に解放する。
+    - queue、recording、scene generationのownershipを各subsystemと重複させない。
+Side effects:
+    window/GPU、worker process、source reload、capture、動画録画を駆動する。
 """
 
 from __future__ import annotations

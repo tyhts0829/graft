@@ -1,6 +1,16 @@
-# どこで: `src/grafix/interactive/runtime/window_loop.py`。
-# 何を: pyglet の複数ウィンドウを 1 つの app loop（`pyglet.app.run()`）で回すための最小ランナーを提供する。
-# なぜ: OS 依存のイベント配送を pyglet に任せ、手動 `dispatch_events()` 由来の入力取りこぼしを避けるため。
+"""
+Purpose:
+    previewとInspectorを一つのpyglet app loopで順序付けてpresentする。
+Use when:
+    multi-window event配送、frame scheduling、flip、close requestの意味を変更するとき。
+Constraints:
+    - taskのdraw_frameはback bufferだけを描き、switch/on_draw/refresh/flipはWindow.drawへ委ねる。
+    - close requestはtask固有handlerで処理し、default handlerに先行してcontextを破棄させない。
+    - 非表示または閉じたwindowを描画対象に含めない。
+    - 登録したschedule callbackはloop終了時に必ずunscheduleする。
+Side effects:
+    pygletのglobal event loop、clock callback、window event handlerを操作する。
+"""
 
 from __future__ import annotations
 

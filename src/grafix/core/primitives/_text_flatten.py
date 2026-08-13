@@ -1,4 +1,13 @@
-"""fontTools pen の曲線コマンドを線分列へ平坦化する。"""
+"""
+Purpose:
+    font outlineの曲線contourを、text geometryが扱う直線segment列へ変換する。
+Use when:
+    glyph曲線のsampling品質、輪郭closure、またはfontTools pen境界を変更する場合。
+Constraints:
+    - move・end・closeによるcontour境界を保ち、closed contourの終点を始点へ戻す。
+    - quadraticとcubicの終点をexactに残し、同じ品質指定から決定的なsegment列を作る。
+    - font-spaceの近似segment長という契約をtext側のquality変換と一致させる。
+"""
 
 from __future__ import annotations
 

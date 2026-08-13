@@ -1,4 +1,14 @@
-"""Benchmark output の checksum と typed metric 集約。"""
+"""
+Purpose:
+    benchmark output の semantic checksum と typed metric/contract を、warm/cold measurement 間で比較可能な結果へ集約する。
+Use when:
+    output correctness identity、metric helper、warm sample validation、cold process の結果統合を変更・調査する場合。
+Constraints:
+    - Geometry/array checksum は semantic order・dtype・shape・bytes を保持し、object dtype や非決定的な値を曖昧に hash しない。
+    - canonical JSON checksum は finite な strict value だけを受理する。
+    - warm sample 間で metric/contract definition を変えず、途中の contract failure を最後の success で隠さない。
+    - cold sample の checksum が一致しない場合は timing 結果として統合しない。
+"""
 
 from __future__ import annotations
 

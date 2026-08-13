@@ -1,5 +1,13 @@
-# src/core/realized_geometry.py
-# Geometry 評価結果である RealizedGeometry 配列のモデルと検証ロジック。
+"""
+Purpose:
+    Geometry 評価結果を packed polyline 配列の immutable snapshot として固定する境界を定義する。
+Use when:
+    custom operation の I/O、kernel と evaluator の境界、geometry 連結、CPU/GPU/export が共有する配列契約を変更・調査する場合。
+Constraints:
+    - coords は exact float32/C-contiguous/finite ``(N, 3)``、offsets は exact int32/C-contiguous の1次元配列とする。
+    - offsets は 0 で始まり N で終わる単調非減少とし、packed polyline 境界を壊さない。
+    - caller-owned mutable array を alias せず、後から writeable に戻せない bytes-backed snapshot だけを安全に共有する。
+"""
 
 from __future__ import annotations
 

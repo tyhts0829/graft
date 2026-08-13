@@ -1,4 +1,13 @@
-"""Polylineの開・閉境界を保つ再サンプリングkernel。"""
+"""
+Purpose:
+    polylineのopen/closed topologyを保ちながら弧長標本密度を揃える共有kernelを提供する。
+Use when:
+    effectが頂点間隔を正規化する、または後段処理用のbounded resampleを必要とする場合。
+Constraints:
+    - open curveの両端を保持し、closed curveは出力の始点と終点をexactに一致させる。
+    - 全lineの出力頂点数をplanで検査してから、packed出力を一度だけ確保する。
+    - closed判定とduplicate seam除去を混同せず、line境界と入力順を維持する。
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,14 @@
-"""MIDI controller、frozen値、接続状態を一つのruntime sessionへまとめる。"""
+"""
+Purpose:
+    MIDI controller、frozen CC値、接続診断を一つのruntime lifetimeへまとめる。
+Use when:
+    live/frozen/disabled遷移、再接続、frame snapshot、または終了時保存を変更する場合。
+Constraints:
+    - 接続失敗時も利用可能なlast-good frozen snapshotを明示stateとして保持する。
+    - controller交換とdiagnostic更新をsession内で一貫させ、callerへmutable controller stateを渡さない。
+Side effects:
+    reconnect/close時にMIDI portとsnapshot persistenceを操作する。
+"""
 
 from __future__ import annotations
 

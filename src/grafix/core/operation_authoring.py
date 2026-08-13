@@ -1,4 +1,15 @@
-"""primitive/effect の公開 decorator と authoring adapter を定義する。"""
+"""
+Purpose:
+    user callable を primitive/effect の immutable declaration、parameter schema、RealizedGeometry 評価 adapter へ変換する公開 decorator を定義する。
+Use when:
+    ``@primitive``/``@effect`` の signature、metadata、wrapper 予約引数、source ownership、登録動作を変更・調査する場合。
+Constraints:
+    - callable/schema/cache contract を検証した後に一つの declaration を作り、元 callable に付与する。
+    - custom declaration は active registration target へ単一経路で登録し、builtin は default store に登録しない。
+    - user callable の source owner と実際の evaluation adapter を混同せず fingerprint に反映する。
+Side effects:
+    decorator 実行時に declaration を callable に付与し、custom operation を現在の authoring target へ登録する。
+"""
 
 from __future__ import annotations
 

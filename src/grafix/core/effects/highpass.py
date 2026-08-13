@@ -1,4 +1,13 @@
-"""ポリラインを弧長で再サンプルし、unsharp mask で高周波成分を強調する effect。"""
+"""
+Purpose:
+    polylineの低周波形状を基準に、細部となる高周波成分を強調する。
+Use when:
+    detail強調、sampling scale、gain、またはopen/closed境界条件を変更する場合。
+Constraints:
+    - open線は反射境界、closed線は周期境界で扱い、closed出力の末尾を先頭とexactに一致させる。
+    - stepを弧長sampling、sigma/stepをfilter scaleとしてlowpassと共通に保つ。
+    - resample計画が頂点上限を超える場合は入力を変更しない。
+"""
 
 from __future__ import annotations
 

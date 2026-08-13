@@ -1,6 +1,17 @@
-# どこで: `src/grafix/interactive/runtime/scene_runner.py`。
-# 何を: parameter_context + (sync / mp-draw) で `realize_scene()` を実行し realized_layers を返す。
-# なぜ: draw の実行戦略（mp/sync/録画中の例外）を 1 箇所に固定するため。
+"""
+Purpose:
+    sync/mpのdraw評価をrealizeへ接続し、採用中authoring generationのlast-good sceneを供給する。
+Use when:
+    評価戦略、source reload世代交換、draft/final resource、失敗時の表示継続を変更するとき。
+Constraints:
+    - replacement generationは全context/resource/workerを構築してから一括swapする。
+    - replacement構築失敗では現世代を変えず、成功後に旧世代の子resourceを閉じる。
+    - RealizeCacheStoreとParamStoreの寿命はdraw generation交換を越えて維持する。
+    - mp workerはdraw/normalizeまでとし、realizeとresource budget適用は親側で行う。
+    - 評価失敗や結果待ちでlast-good geometryを失わず、fresh成功時だけframe metadataを進める。
+Side effects:
+    evaluation resource/cacheと必要時のmp-draw worker generationを所有する。
+"""
 
 from __future__ import annotations
 

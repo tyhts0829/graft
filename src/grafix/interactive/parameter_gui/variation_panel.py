@@ -1,6 +1,12 @@
-# どこで: `src/grafix/interactive/parameter_gui/variation_panel.py`。
-# 何を: named variation と探索 scope を Inspector 用の immutable model へ整形する。
-# なぜ: popup 描画と ParamStore 操作を分離し、一覧・差分・scope を単体テスト可能にするため。
+"""
+Purpose:
+    named variationsとparameter scopeを、Inspector用のimmutable view modelへ射影する。
+Use when:
+    variation一覧、selection、filtered/favorites scope、またはthumbnail表示契約を変更する場合。
+Constraints:
+    - model構築でParamStoreを変更せず、command executionをcontrollerへ残す。
+    - thumbnailはexact pathと`discard()`だけのprotocolとし、export serviceへ依存しない。
+"""
 
 from __future__ import annotations
 

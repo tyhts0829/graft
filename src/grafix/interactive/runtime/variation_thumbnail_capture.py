@@ -1,4 +1,15 @@
-"""variation thumbnail の capture policy を runtime service へ適合する。"""
+"""
+Purpose:
+    Variation GUIのthumbnail要求を、rollback ownership付きのruntime captureへ適合する。
+Use when:
+    variation名からの出力path、thumbnail寸法、現在frame取得境界を変更するとき。
+Constraints:
+    - frameはcapture呼び出し時に取得し、以前のpreview frameをclosureへ保持しない。
+    - publish層が返すownership tokenを包み替えず、そのまま呼び出し側へ返す。
+    - PNGはno-clobberで保存し、元canvasのaspect ratioを維持する。
+Side effects:
+    注入されたcapture callbackを通じてthumbnail generationをfilesystemへ公開する。
+"""
 
 from __future__ import annotations
 

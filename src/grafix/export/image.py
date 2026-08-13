@@ -1,7 +1,14 @@
 """
-どこで: `src/grafix/export/image.py`。
-何を: SVG を中間表現として外部ラスタライザ（resvg）で PNG に変換する関数を提供する。
-なぜ: ベクター描画と同じ形状を、指定解像度の PNG として安全に保存するため。
+Purpose:
+    SVG captureを外部rasterizer境界へ渡し、pixel寸法を持つPNG成果物へ変換する。
+Use when:
+    PNGの解像度規則、resvg連携、timeout、失敗時の出力保証を変更するとき。
+Constraints:
+    - logical canvas寸法とraster output sizeを混同しない。
+    - resvg成功前にfinal pathを公開せず、失敗時に部分PNGを残さない。
+    - subprocessの実行時間と回収は指定deadline内に収める。
+Side effects:
+    一時SVG/PNGを作成し、外部resvg processを実行してPNGをatomicに配置する。
 """
 
 from __future__ import annotations

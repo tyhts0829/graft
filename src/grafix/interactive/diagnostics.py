@@ -1,4 +1,12 @@
-"""Interactive subsystem 共通の user-facing 診断イベントを集約する。"""
+"""
+Purpose:
+    interactive subsystemの失敗・警告・復旧actionを共通のbounded event streamへ集約する。
+Use when:
+    user-facing diagnostic、dedupe、保持上限、またはaction dispatchを変更する場合。
+Constraints:
+    - eventをimmutable valueとして渡し、同じidentityの再発はcountへ集約する。
+    - action失敗をcenter自身の診断へ変換し、登録済みevent streamを壊さない。
+"""
 
 from __future__ import annotations
 

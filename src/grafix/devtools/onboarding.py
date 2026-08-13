@@ -1,4 +1,15 @@
-"""Grafix project の初期化と同梱 example のコピーを提供する。"""
+"""
+Purpose:
+    最小 Grafix project の初期化と、package に同梱した example の一覧・安全なコピーを提供する。
+Use when:
+    ``grafix init``/``grafix examples``、project template、packaged example の discovery/copy policy を変更・調査する場合。
+Constraints:
+    - project template と example は既存 file を上書きせず、新規 file だけを排他的に作成する。
+    - example の正本は package resource に留め、一覧 description は各 source の module docstring 先頭行から取得する。
+    - 初期化結果は created/existing を区別し、既存 project を暗黙に migration しない。
+Side effects:
+    directory と template/example file を作成し、package resource を読み込む。
+"""
 
 from __future__ import annotations
 

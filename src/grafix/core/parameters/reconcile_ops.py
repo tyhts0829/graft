@@ -1,6 +1,13 @@
-# どこで: `src/grafix/core/parameters/reconcile_ops.py`。
-# 何を: loaded/observed の差分を再リンクし、グループの migrate を適用する。
-# なぜ: site_id の揺れを吸収し、GUI の増殖と調整値の喪失を抑えるため。
+"""
+Purpose:
+    loaded/observed groupの再リンク計画をdetached stateへ適用し、ParamStoreへatomicに確定する。
+Use when:
+    自動reconcile、手動orphan migration、またはgroup identity変更の引継ぎを扱う場合。
+Constraints:
+    - migrationは同じoperation内に限定し、互換kindを持たないargumentへ値を移さない。
+    - 曖昧な候補や旧groupを削除せず、manual selectionまでorphanとして保持する。
+    - read-plan-commitとexpected revisionを守り、live containerを途中状態にしない。
+"""
 
 from __future__ import annotations
 

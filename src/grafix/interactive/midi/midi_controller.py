@@ -1,6 +1,14 @@
-# どこで: `src/grafix/interactive/midi/midi_controller.py`。
-# 何を: MIDI 入力から CC 値を `dict[int, float]` として管理・永続化する。
-# なぜ: Parameter 解決で使う `cc_snapshot` を、外部デバイス入力から供給するため。
+"""
+Purpose:
+    live MIDI portから正規化CC値を取得し、同じpathのfrozen snapshotとともに所有する。
+Use when:
+    MIDI message処理、snapshot schema、port lifecycle、またはload/save/discardを変更する場合。
+Constraints:
+    - CC番号を0..127、値を0.0..1.0へ正規化してframe snapshotへ渡す。
+    - live load/save、fallback、discardの全経路でconstructorのexact `snapshot_path`を使う。
+Side effects:
+    MIDI input portを操作し、CC snapshot fileを読み書き・削除する。
+"""
 
 from __future__ import annotations
 

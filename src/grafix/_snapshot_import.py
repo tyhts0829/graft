@@ -1,8 +1,13 @@
-"""確定済み Python source bytes を一時 package として import する。
-
-この module は authoring candidate と sketch source reload が共有する、
-``sys.meta_path`` / ``sys.modules`` 変更の狭い process-global primitive だけを持つ。
-source の発見、catalog registration、generation の accept/rollback は caller の責務とする。
+"""
+Purpose:
+    確定済みPython source bytesを隔離namespaceで実行する共有import transactionを提供する。
+Use when:
+    config authoringまたはsource reloadの一時package importとcleanupを変更する場合。
+Constraints:
+    - `sys.meta_path`と`sys.modules`の変更を一つのreentrant lockで直列化する。
+    - `BaseException`でも未採用moduleとfinderを除去し、generation採否はcallerに残す。
+Side effects:
+    transaction中だけprocess-global import stateを変更する。
 """
 
 from __future__ import annotations

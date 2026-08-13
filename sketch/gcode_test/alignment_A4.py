@@ -1,3 +1,15 @@
+"""
+Purpose:
+    A4用紙のG-code変換・plotter配置を実出力で校正するための基準Sketch。
+Use when:
+    A4のcanvas-to-machine変換、右下anchor、Y反転、scaleや原点ずれを確認するとき。
+Constraints:
+    - canvas寸法を210×297 mmに保ち、基準markを紙端から5 mm内側へ維持する。
+    - 既存G-codeとの差分検証に使うため、基準geometryの点数・順序・位置を不用意に変えない。
+    - X非反転・Y反転の判別に必要なcorner、center、edge markを対称化して意味を失わせない。
+    - import時にpreviewを起動せず、runはmain guard内に限定する。
+"""
+
 from grafix import E, G, run
 
 # A4

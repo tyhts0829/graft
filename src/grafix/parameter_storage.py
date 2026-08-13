@@ -1,4 +1,14 @@
-"""ParamStore の file read、atomic write、quarantine、session recovery を所有する。"""
+"""
+Purpose:
+    ParamStoreの非変更read、明示recovery、atomic commitをfilesystem境界で所有する。
+Use when:
+    parameter fileのload-state、quarantine、recovery、または永続化方針を変更する場合。
+Constraints:
+    - 通常readは原本を変更せず、破損fileの移動は明示recovery経路だけで行う。
+    - load provenance/diagnosticsをstoreへ埋め込まず、`ParamStoreLoadResult`に保持する。
+Side effects:
+    recoveryとwriteはparameter fileの作成、移動、置換を行い得る。
+"""
 
 from __future__ import annotations
 

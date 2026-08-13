@@ -1,4 +1,15 @@
-"""``python -m grafix variations`` の headless batch CLI。"""
+"""
+Purpose:
+    named variation を一つの headless render session から thumbnail/contact sheet/summary の batch generation として出力する CLI を提供する。
+Use when:
+    ``python -m grafix variations`` の選択・thumbnail・parameter source・partial failure と process exit の配線を変更・調査する場合。
+Constraints:
+    - request 順・unknown variation・item ごとの rollback/partial failure は API owner、workspace/publish transaction は export owner に留める。
+    - batch 内では同じ ``RenderSession`` の config/catalog/resource を再利用する。
+    - item failure を隠さず summary と stderr に残し、1件でも失敗した batch は非0で終了する。
+Side effects:
+    config/parameter を読み、target module を import し、batch directory generation を書き込む。
+"""
 
 from __future__ import annotations
 

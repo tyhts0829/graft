@@ -1,7 +1,14 @@
 """
-どこで: `src/grafix/core/primitives/text.py`。テキストプリミティブの実体生成。
-何を: 同梱フォントと `config.yaml` の `font_dirs` を用い、フォントアウトラインからテキストのポリライン列を生成する。
-なぜ: PyPI インストール環境でも確実に動く最小フォント経路を用意しつつ、外部フォントも扱えるようにするため。
+Purpose:
+    generation固定のfont assetからglyph outlineを得て、em基準layoutのtext geometryを生成する。
+Use when:
+    font解決・cache identity、glyph flattening、wrap・alignment、またはtext配置を変更する場合。
+Constraints:
+    - cache lookup前に解決したResolvedFontLeaseだけを評価で使い、pathを再探索・再openしない。
+    - font fingerprintを作った同じbytes/resource ownershipからglyphを生成する。
+    - 共有layoutを1em座標で確定してからscaleとcenterを適用し、asemicとの配置契約を保つ。
+Side effects:
+    external dependency hookがresource ownerを通じてfont assetを解決し得る。
 """
 
 from __future__ import annotations

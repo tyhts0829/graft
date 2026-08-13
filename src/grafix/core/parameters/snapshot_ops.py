@@ -1,6 +1,13 @@
-# どこで: `src/grafix/core/parameters/snapshot_ops.py`。
-# 何を: ParamStore の “pure snapshot”（副作用なし）生成を提供する。
-# なぜ: 「読むつもりが書く」を排除し、不変条件の管理を ops に寄せるため。
+"""
+Purpose:
+    ParamStoreをframe、GUI、workerが安全に読むためのimmutable ParamSnapshotへ固定する。
+Use when:
+    snapshot構築、incremental cache、worker転送、またはmaterializationを変更する場合。
+Constraints:
+    - liveなParamStateやmutable mappingへの参照を返さず、後続store変更を既存snapshotへ漏らさない。
+    - overlayは完全materializationと同じmapping意味を保つ。
+    - incremental rebuildやcacheは最適化に留め、revision時点の内容を変えない。
+"""
 
 from __future__ import annotations
 

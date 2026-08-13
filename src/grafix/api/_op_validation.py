@@ -1,4 +1,12 @@
-"""G/E の operation 引数を DAG 作成前に検証する。"""
+"""
+Purpose:
+    公開G/E引数を、operation schemaに対するcanonical DAG引数へ検証する。
+Use when:
+    operation引数の型、未知key、required/default、またはerror policyを変更する場合。
+Constraints:
+    - validationをGeometry作成前に完了し、暗黙coercionで不正な公開入力を隠さない。
+    - evaluatorではなく、declarationに固定されたschemaとarityを正本にする。
+"""
 
 from __future__ import annotations
 

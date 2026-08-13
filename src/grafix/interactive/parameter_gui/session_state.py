@@ -1,6 +1,12 @@
-# どこで: `src/grafix/interactive/parameter_gui/session_state.py`。
-# 何を: Parameter GUI の frame 間 UI state を一つの lifetime owner にまとめる。
-# なぜ: ParameterGUI 本体を描画順序と controller 配線へ集中させるため。
+"""
+Purpose:
+    Parameter GUI instance固有のtable cache、widget state、frame間selectionを所有する。
+Use when:
+    GUI cache lifetime、catalog交換、font/choice state、またはtable invalidationを変更する場合。
+Constraints:
+    - mutable UI/cache stateをmodule-globalにせず、一つのGUI sessionへ閉じる。
+    - catalog交換とcloseでは、そのsessionのderived table/widget stateだけを破棄する。
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,15 @@
-"""Benchmark case の process 隔離、計測、calibration。"""
+"""
+Purpose:
+    解決済み benchmark definition の in-process/fresh-process 計測、calibration、timeout、child lifecycle を所有する。
+Use when:
+    measurement boundary、warm/cold sampling、child request/result protocol、timeout/kill/reap、RSS 計測を変更・調査する場合。
+Constraints:
+    - executor は catalog/workload provider を import せず、caller が解決した ``CaseDefinition`` だけを実行する。
+    - timed loop と semantic postprocess/checksum を分け、child 結果の CaseSpec が parent request と exact に一致することを検証する。
+    - timeout に限らずあらゆる ``BaseException`` で process group の kill/reap を試み、cleanup error で primary error を置き換えない。
+Side effects:
+    temporary request/result file を作り、fresh process group を起動・強制終了することがある。
+"""
 
 from __future__ import annotations
 

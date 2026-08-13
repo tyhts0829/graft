@@ -1,6 +1,12 @@
-# どこで: `src/grafix/__main__.py`。
-# 何を: `python -m grafix ...` の CLI エントリポイントを提供する。
-# なぜ: 開発用コマンド（ベンチ/スタブ生成）を短い導線で実行できるようにするため。
+"""
+Purpose:
+    `python -m grafix`のsubcommandを各devtoolへ遅延dispatchする。
+Use when:
+    package CLIのcommand追加、削除、または子parserへの引数委譲を変更する場合。
+Constraints:
+    - subcommand実装は選択後にだけimportし、未使用のGUIやtool依存を初期化しない。
+    - 親子parser境界の`--`を除き、残りの引数を子CLIへそのまま渡す。
+"""
 
 from __future__ import annotations
 

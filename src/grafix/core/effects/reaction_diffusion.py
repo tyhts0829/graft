@@ -1,4 +1,13 @@
-"""閉曲線マスク内で Gray-Scott 反応拡散を回し、等値線（閉ループ）をポリライン化する effect。"""
+"""
+Purpose:
+    平面閉mask内でGray-Scott反応拡散を進め、濃度等値線を閉曲線として生成する。
+Use when:
+    simulation初期条件、mask境界条件、contour抽出、またはpreview workを変更する場合。
+Constraints:
+    - mask ring群をeven-odd領域として扱い、非平面・空領域・grid拒否ではemptyを返す。
+    - 初期noiseをseedで決定し、出力contourのclosureと元のPlanarFrameを維持する。
+    - draftのgrid coarsen・step capは診断し、final評価の要求pitch・stepsへ持ち込まない。
+"""
 
 from __future__ import annotations
 

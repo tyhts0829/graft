@@ -1,4 +1,15 @@
-"""G-code 設定と encoder が共有する canonical parameter 型。"""
+"""
+Purpose:
+    runtime config と G-code encoder が共有する machine placement・安全範囲・stroke optimization の immutable policy を定義する。
+Use when:
+    G-code 座標変換、紙の anchor、ベッド制約、stroke 順最適化の設定を変更・調査する場合。
+Constraints:
+    - ``paper_bottom_right_mm`` を紙の右下 anchor の正本とし、実 canvas size と独立した旧 origin/height policy を戻さない。
+    - X は反転せず、``y_down`` は canvas Y と machine Y の向きだけを切り替える。
+    - stroke 最適化設定は ``Layer.gcode_optimize=True`` のレイヤだけに適用し、Geometry/cache identity へ入れない。
+See:
+    architecture.md 「G-code の canvas/machine 座標 contract」
+"""
 
 from __future__ import annotations
 

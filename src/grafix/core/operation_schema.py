@@ -1,4 +1,13 @@
-"""operation の parameter schema を evaluator から独立して表現する。"""
+"""
+Purpose:
+    operation の parameter metadata・default・表示順・UI visibility を evaluator から切り離した immutable schema にする。
+Use when:
+    decorator schema validation、Parameter GUI catalog、selector schema、schema fingerprint を変更・調査する場合。
+Constraints:
+    - meta/default は同じ argument 集合を持ち、``param_order`` はそれを過不足なく含める。
+    - 入力 mapping は copy して固定し、evaluation catalog や mutable builder へ逆参照しない。
+    - ``ui_visible`` predicate 自体の state ownership は登録側に留める。
+"""
 
 from __future__ import annotations
 

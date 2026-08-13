@@ -1,9 +1,12 @@
 """
-どこで: `src/grafix/core/primitives/asemic.py`。擬似文字（asemic）プリミティブの実体生成。
-何を:
-- ノード配置 → Relative Neighborhood Graph → ランダムウォークで、文字ごとの複数ストロークを生成する
-- `text.py` 風の改行/折り返し/揃え/スペーシングでレイアウトし、文章として出力する
-なぜ: 手描きっぽい「字形の骨格」を、決定的かつ軽量に生成し、文章として使える primitive にするため。
+Purpose:
+    外部fontを使わず、再現可能な擬似glyphを通常textと同じlayoutで文章化する。
+Use when:
+    asemic字形生成、seed identity、stroke style、またはtext互換layoutを変更する場合。
+Constraints:
+    - glyph seedを安定hashから導き、Pythonのprocess依存hashやambient乱数へ依存しない。
+    - 同じ文字と生成引数には同じ字形を使い、cached glyph arrayを変更可能な出力として漏らさない。
+    - 1em layoutを共有helperで確定してからscaleとcenterを適用する。
 """
 
 from __future__ import annotations

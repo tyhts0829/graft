@@ -1,4 +1,15 @@
-"""Grafix の実行環境を副作用の小さい probe で診断する。"""
+"""
+Purpose:
+    Grafix の GL・external command・MIDI・font・output path を小さな probe で検査し、human/JSON 共通の structured report にする。
+Use when:
+    ``grafix doctor`` の診断項目、severity、環境 probe の isolation/cleanup、exit status を変更・調査する場合。
+Constraints:
+    - optional な resvg/ffmpeg/MIDI の不在は warning とし、core 実行不能を表す error と混同しない。
+    - abort し得る MIDI backend query は短命 subprocess へ隔離する。
+    - output write probe は一時 file だけを作り必ず削除し、対象 output directory 自体を作らない。
+Side effects:
+    config/font/filesystem を読み、MIDI subprocess と一時 write probe を実行する。
+"""
 
 from __future__ import annotations
 

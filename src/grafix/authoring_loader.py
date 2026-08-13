@@ -1,4 +1,14 @@
-"""runtime config が指定する authoring module を candidate catalog へ読み込む。"""
+"""
+Purpose:
+    config指定のauthoring sourceを捕捉し、session用のimmutable definitionsへ変換する。
+Use when:
+    preset module探索、worker recipe、またはconfig-scoped catalog構築を変更する場合。
+Constraints:
+    - 全candidateをpreflightしてから実行し、失敗時はdefault definitionsを変更しない。
+    - source発見とbytes captureをcore valueから分離し、採用snapshotだけをcallerへ返す。
+Side effects:
+    authoring sourceを読み、一時import transaction内で実行する。
+"""
 
 from __future__ import annotations
 

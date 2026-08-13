@@ -1,4 +1,14 @@
-"""pyglet window が所有する GL / Cocoa resource の最終解放。"""
+"""
+Purpose:
+    pyglet window固有のGL/Cocoa参照を、native window close前に安全に解放する。
+Use when:
+    interactive windowのteardown、context activation、またはplatform固有resource leakを扱う場合。
+Constraints:
+    - GL objectは所有windowのcontextがcurrentな場合だけ明示deleteする。
+    - cleanupを最後まで試し、最初のerrorを保持したままwindowを必ずcloseする。
+Side effects:
+    GL resource、ctypes cache、Cocoa text-input参照、native windowを変更する。
+"""
 
 from __future__ import annotations
 

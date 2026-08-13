@@ -1,6 +1,13 @@
-# どこで: `src/grafix/core/parameters/frame_params.py`。
-# 何を: フレーム内で観測・解決したパラメータを貯めるバッファを定義する。
-# なぜ: ParamStore へのマージをフレーム境界でまとめ、スレッド安全に扱うため。
+"""
+Purpose:
+    parameter、label、effect topologyの一frame分の観測をcanonical recordとして受け渡す。
+Use when:
+    DSLやworkerからframe終端のParamStore mergeへ新しい観測情報を運ぶ場合。
+Constraints:
+    - recordはprocess間で渡せるimmutableかつcanonicalな値だけを保持する。
+    - bufferはframe-localとし、producerからlive storeを直接変更しない。
+    - 途中までのbufferは失敗frameでmergeせず、成功境界でまとめて確定する。
+"""
 
 from __future__ import annotations
 

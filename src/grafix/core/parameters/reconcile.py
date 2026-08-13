@@ -1,6 +1,13 @@
-# どこで: `src/grafix/core/parameters/reconcile.py`。
-# 何を: ParamStore の「グループ（op, site_id）同士」の再リンク候補を作る純粋関数を提供する。
-# なぜ: site_id が編集で揺れても、誤マッチを避けつつ GUI 調整値を可能な範囲で引き継ぐため。
+"""
+Purpose:
+    保存済みgroupと新たに観測したgroupの安全な再リンク候補を副作用なしで計画する。
+Use when:
+    source編集でsite_idが変わったparameter調整の自動対応やorphan判定を扱う場合。
+Constraints:
+    - 異なるoperation間を対応させず、一対一で十分な根拠があるmatchだけを自動採用する。
+    - 同点や同じ旧groupへの競合は推測で解決せず、候補付きorphanとして残す。
+    - live storeを変更せず、mappingの適用はreconcile_opsへ委ねる。
+"""
 
 from __future__ import annotations
 

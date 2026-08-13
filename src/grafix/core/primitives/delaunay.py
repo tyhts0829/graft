@@ -1,4 +1,13 @@
-"""仮想点群から閉じたDelaunay三角形領域を生成するPrimitive。"""
+"""
+Purpose:
+    seed付き仮想siteから、互いに独立した閉Delaunay三角形領域を生成する。
+Use when:
+    入力領域のpartitionではなく、proceduralな三角形face集合を新規生成する場合。
+Constraints:
+    - siteを出力と同じfloat32座標へ量子化してからtriangulateし、faceを決定的に正規化する。
+    - 各faceをCCWの[a, b, c, a]とし、隣接faceの共有edgeを各faceに保持する。
+    - seed付きsite列とcanonical face順の決定性を保ち、候補work・scratch・最大出力を確保前に検査する。
+"""
 
 from __future__ import annotations
 

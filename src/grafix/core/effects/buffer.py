@@ -1,4 +1,13 @@
-"""ポリライン列を推定平面へ射影し、Shapely の buffer で輪郭を生成する effect。"""
+"""
+Purpose:
+    平面へ写したpolylineの周囲から、指定距離に対応するbuffer輪郭を生成する。
+Use when:
+    線の太らせ・内側輪郭、join形状、複数lineのunion bufferを扱う場合。
+Constraints:
+    - union時は全lineで一つのcanonical frameを共有し、非union時はlineごとのframeを使う。
+    - linear入力には決定的な補助平面を与え、有限なrank 2/3入力はbest-fit planeで扱う。
+    - 距離0はno-opとし、keep_originalなしで輪郭を作れない正距離は入力、負距離はemptyへfallbackする。
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,13 @@
-"""parameter finalization が参照する既知 operation schema の不変 snapshot。"""
+"""
+Purpose:
+    parameter finalizationが参照するoperation別argument集合をgeneration単位で固定する。
+Use when:
+    session終了時のpruneをcurrent catalog/reload generationへ結び付ける場合。
+Constraints:
+    - snapshotはimmutableに保ち、finalizationへ明示注入する。
+    - operation moduleの探索やlive catalogへのfallbackをこの層へ持ち込まない。
+    - 未知operationと、argumentを持たない既知operationを区別する。
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,13 @@
-"""headless と interactive が共有する描画設定と色型。"""
+"""
+Purpose:
+    headless と interactive が共有する logical canvas、背景、Layer の既定 style を immutable value に正規化する。
+Use when:
+    render session の canvas/style 契約、色入力の正規化、preview/export の共通既定値を変更・調査する場合。
+Constraints:
+    - ``canvas_size`` は logical 座標であり、G-code の machine placement/anchor policy をここに混ぜない。
+    - line thickness は canvas 短辺に対する比率として扱う。
+    - named color は固定した基本色集合で解決し、OS/外部 color database に依存させない。
+"""
 
 from __future__ import annotations
 

@@ -1,6 +1,13 @@
-# どこで: `src/grafix/core/parameters/context.py`。
-# 何を: フレーム単位で param_snapshot / frame_params / cc_snapshot を固定するコンテキストマネージャを提供する。
-# なぜ: draw 中の値解決を決定的にし、並列実行でも状態が漏れないようにするため。
+"""
+Purpose:
+    一つのdraw frameで参照するparameter、effect順、MIDI値と観測bufferを固定する。
+Use when:
+    draw評価またはworker評価にparameter解決・観測のframe境界を設ける場合。
+Constraints:
+    - frame中はentry時のsnapshotだけを読み、live storeの後続変更を観測しない。
+    - store-backed contextは成功frameだけをmergeし、失敗時の部分観測をcommitしない。
+    - worker用snapshot contextはstoreへcommitせず、ContextVarを終了時に必ず復元する。
+"""
 
 from __future__ import annotations
 

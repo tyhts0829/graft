@@ -1,30 +1,16 @@
 """
-どこで: `src/grafix/interactive/runtime/mp_draw.py`。
-何を: `draw(t)` を別プロセスで実行し、結果（Layer/観測レコード）を Queue 経由で受け渡す。
-なぜ: draw が支配的なスケッチでも、メイン（イベント処理 + GL）を詰まらせずに描画を継続するため。
-
-メインフロー
-------------
-1. メインプロセスが `submit()` でタスク（t と snapshot revision）を enqueue する。
-   - task queue は有限なので、詰まったら古いタスクを捨てて「最新優先」にする。
-   - snapshot 本体は revision 変更時だけ worker 別 control queue へ broadcast する。
-   - worker の revision 適用を未確認なら task 自体にも snapshot を同梱し、ACK 待ちを
-     draw 開始の barrier にしない。
-2. worker プロセスが task と同じ revision の snapshot を固定して `draw(t)` を実行する。
-3. worker が `DrawResult` を返し、メインは `poll_latest()` で最も新しい結果だけを採用する。
-4. メインは受け取った `layers` を描画パイプライン（例: `realize_scene()`）へ渡して表示/出力する。
-   - worker は draw/normalize までで、realize は行わない（mp-draw は realize の並列化ではない）。
-
-設計上のポイント
-----------------
-- multiprocessing は `"spawn"` を使うため、worker は「空の Python」から起動する。
-  そのため `draw` は picklable（通常はモジュールトップレベル定義）である必要がある。
-- `draw` の通常例外は traceback 文字列を `DrawResult.error` に載せて返す。
-- worker は初期化後に ready message を返す。`SystemExit`、native crash など process 自体の
-  異常終了は submit/poll 共通の health check が `MpDrawWorkerError` として通知する。
-- evaluation timeout は hung worker 世代を terminate/restart し、直近の成功結果を保持する。
-- parameter 観測（FrameParamRecord/FrameLabelRecord）は worker で収集して返し、
-  メイン側で当該フレームの `FrameParamsBuffer` にマージして使う（例: SceneRunner）。
+Purpose:
+    user drawをspawn worker群で非同期評価し、UIを塞がず最新の利用可能な結果を保持する。
+Use when:
+    draw taskのbackpressure、snapshot broadcast、timeout/restart、stale result処理を変更するとき。
+Constraints:
+    - taskとresultはlatest-winsとし、混雑時に古いframeを待たせない。
+    - epoch、worker generation、snapshot revisionを別々に検証し、旧世代の結果を採用しない。
+    - 後続評価が失敗してもlatest successful resultを保持する。
+    - workerはdraw/normalizeだけを行い、realizeは親側SceneRunnerに残す。
+    - restartはprocessとQueue endpointを世代ごと交換し、closeで全所有resourceを回収する。
+Side effects:
+    spawn worker、multiprocessing Queue、user draw実行のlifecycleを所有する。
 """
 
 from __future__ import annotations

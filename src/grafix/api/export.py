@@ -1,4 +1,14 @@
-"""render 済み ``Frame`` を安全に保存する公開関数を提供する。"""
+"""
+Purpose:
+    render済みのimmutable Frameを、公開save APIからcapture transactionへ渡す。
+Use when:
+    headless保存形式、overwrite policy、またはFrameとexport serviceの境界を変更する場合。
+Constraints:
+    - renderと保存を分離し、同じFrameを複数形式へ出力可能に保つ。
+    - Frameに固定されたeffective configを使い、ambient configを再探索しない。
+Side effects:
+    artifactとcapture manifestをno-clobberまたは明示overwriteで公開する。
+"""
 
 from __future__ import annotations
 

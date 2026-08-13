@@ -1,8 +1,12 @@
 """
-ハッチ塗りつぶし effect。
-
-閉領域（外周＋穴）に対して偶奇規則で内部を判定し、指定角度のハッチ線分を生成する。
-3D 入力は一度 XY 平面へ整列して 2D で処理し、生成した線分を元の姿勢へ戻す。
+Purpose:
+    平面閉領域へscene座標基準のhatch線を生成し、必要なら入力境界も残す。
+Use when:
+    hatch密度・方向、外周と穴、3D平面姿勢、またはboundary fallbackを変更する場合。
+Constraints:
+    - coplanarな複数ringはwinding非依存のeven-odd領域として扱い、同じframeでworld座標へ戻す。
+    - nominal pitchを入力bboxに依存させず、densityを100 scene units当たりの基準へ保つ。
+    - 閉領域を確立できない入力では、既存のboundary-only/no-op fallbackと診断を維持する。
 """
 
 from __future__ import annotations

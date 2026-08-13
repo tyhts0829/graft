@@ -1,4 +1,13 @@
-"""3D 空間での放射状ミラー（くさび + 回転 / 多面体対称）を作る effect。"""
+"""
+Purpose:
+    3D polylineを基本領域から軸周りまたは多面体群の対称配置へ複製する。
+Use when:
+    planar mirrorではなく、azimuth wedge・equator反射・T/O/I対称群を扱う場合。
+Constraints:
+    - azimuth modeは指定軸を含むwedgeをsourceとし、任意の非ゼロaxis周りで複製する。
+    - polyhedral modeはcenter相対のT/O/I回転群を使い、reflection追加と回転群を区別する。
+    - 対称面上で重なる同一lineを重複出力せず、最初に生成したlineの向きと順を保つ。
+"""
 
 from __future__ import annotations
 

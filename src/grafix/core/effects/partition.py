@@ -1,4 +1,13 @@
-"""閉ループ群を Voronoi 図で分割し、部分領域の閉ループ群を返す effect。"""
+"""
+Purpose:
+    平面閉領域をseed付きVoronoi cellの閉loop群へ分割する。
+Use when:
+    領域分割、site密度、またはmerge・group・ring各modeの境界意味を変更する場合。
+Constraints:
+    - mergeは全ring、groupはeven-oddの外周と穴、ringは各ring独立という領域単位を混同しない。
+    - 同じseedと入力から同じsite配置を作り、出力cellをclosed loopとして保つ。
+    - 非平面・linear・有効領域なし・cell生成なしでは入力を変更しない。
+"""
 
 from __future__ import annotations
 

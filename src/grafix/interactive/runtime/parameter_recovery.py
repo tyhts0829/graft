@@ -1,4 +1,16 @@
-"""ParamStore session recovery を診断 action から解決する。"""
+"""
+Purpose:
+    未完了parameter sessionをkeep/discard/compareできる診断actionへ変換する。
+Use when:
+    recovery journalの採否、primaryへの確定、復元診断の意味を変更するとき。
+Constraints:
+    - keepは現在採用済みschemaでdetached copyをprimaryへ確定する。
+    - discardはprimaryをdetached resultとして読んでからrecovery journalを破棄する。
+    - callerが結果をlive storeへ採用するまで、そのstore identityを置き換えない。
+    - compareはprimaryとrecovered stateを変更しない。
+Side effects:
+    parameter fileを読み、keep/discard時にはprimaryまたはrecovery journalを変更する。
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,15 @@
-"""operation 評価中の silent degradation を小さな immutable payload で記録する。"""
+"""
+Purpose:
+    operation 評価が要求値を clamp・縮小・省略した事実を、silent にせず小さな immutable diagnostic として残す。
+Use when:
+    operation の graceful degradation、frame 診断の dedupe、worker からの診断 merge を変更・調査する場合。
+Constraints:
+    - payload は bounded な scalar/小 tuple に限り、geometry や mutable object を保持させない。
+    - buffer は evaluation context ごとに隔離し、安定 identity で insertion order を保ったまま dedupe する。
+    - context 外の emit は process-global state を蓄積しない。
+Side effects:
+    active な evaluation-local buffer がある場合だけ diagnostic を追記する。
+"""
 
 from __future__ import annotations
 

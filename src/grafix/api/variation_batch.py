@@ -1,4 +1,14 @@
-"""Named variation を headless batch capture する公開 composition API。"""
+"""
+Purpose:
+    RenderSession内のnamed variationsを順に評価し、batch exportへ渡す公開compositionを担う。
+Use when:
+    variation選択、item単位rollback、render callback、またはpartial failureを変更する場合。
+Constraints:
+    - 各itemを呼び出し前のexact store stateから評価し、終了時にsession状態を復元する。
+    - staging、publish、contact sheet codecはexport transactionへ委譲する。
+Side effects:
+    export側を通じてbatch directoryとartifactを公開する。
+"""
 
 from __future__ import annotations
 

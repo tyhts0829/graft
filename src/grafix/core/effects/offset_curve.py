@@ -1,4 +1,13 @@
-"""入力方向を基準にポリラインの左側・右側へ平行曲線を生成する effect。"""
+"""
+Purpose:
+    平面polylineの進行方向を基準に、左右へ一定距離の平行曲線群を生成する。
+Use when:
+    line bufferではなく片側offset、複数level、またはopen/closed joinを扱う場合。
+Constraints:
+    - left/rightを入力方向で定義し、closed ringではwindingとの関係を維持する。
+    - 全入力を同一の有限平面に置き、linear入力には決定的なprincipal planeを使う。
+    - open/closed状態を出力へ保ち、反復GEOS処理と出力量を確保前にbudget検査する。
+"""
 
 from __future__ import annotations
 

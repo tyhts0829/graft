@@ -1,4 +1,13 @@
-"""線分ネットワークをグラフとして扱い、簡易な弾性緩和で形を整える effect。"""
+"""
+Purpose:
+    polyline集合を共有nodeの無向graphとして緩和し、線networkの形を整える。
+Use when:
+    junctionを共有するnetwork smoothing、固定node、またはiteration制限を変更する場合。
+Constraints:
+    - exactに同じ座標を同一nodeとし、polyline topologyとoffset境界を変更しない。
+    - endpoint・junctionと各連結成分の座標extremaを固定してnetworkの骨格を保つ。
+    - iterationとstepのclampを診断し、edgeを作れない入力は変更しない。
+"""
 
 from __future__ import annotations
 

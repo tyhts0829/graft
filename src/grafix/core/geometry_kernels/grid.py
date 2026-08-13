@@ -1,4 +1,13 @@
-"""等間隔2Dグリッドの座標演算と副作用のない確保計画。"""
+"""
+Purpose:
+    raster・SDF系処理が使う等間隔2D gridを、巨大配列の確保前に安全に計画する。
+Use when:
+    bounding boxとpitchからbounded gridを構築するeffectや数値kernelを実装する場合。
+Constraints:
+    - point_countとmax_pointsを実確保前に評価し、overflow policyを迂回しない。
+    - coarseningまたはrejectの結果を診断valueとして返し、この層からemitしない。
+    - origin、pitch、X/Y axisの規約を下流raster kernelと一致させる。
+"""
 
 from __future__ import annotations
 

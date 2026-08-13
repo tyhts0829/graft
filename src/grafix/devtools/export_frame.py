@@ -1,4 +1,15 @@
-"""``python -m grafix export`` の共通 render/capture CLI。"""
+"""
+Purpose:
+    import 可能な draw callable を一つの headless ``RenderSession`` で評価し、1・複数時刻の artifact と manifest を保存する CLI を提供する。
+Use when:
+    ``python -m grafix export`` の format/path、parameter source、multi-frame naming、render/save 配線を変更・調査する場合。
+Constraints:
+    - parameter source の既定は code とし、saved/recovery file を暗黙に読まない。
+    - 複数時刻では session の immutable config/catalog/resource を再利用し、explicit ``--out`` は1 frame だけに限る。
+    - 表示・後続処理には要求 path ではなく no-clobber publish が確定した ``ExportResult`` の path を使う。
+Side effects:
+    config/parameter を読み、target module を import し、artifact と manifest を書き込む。
+"""
 
 from __future__ import annotations
 

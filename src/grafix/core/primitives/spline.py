@@ -1,4 +1,13 @@
-"""多点を補間するcentripetal Catmull–Rom spline primitive。"""
+"""
+Purpose:
+    入力anchorを通る単一のcentripetal Catmull–Rom曲線をopenまたはclosedで生成する。
+Use when:
+    arbitrary point列の補間、端点接線、tension、またはcurve samplingを変更する場合。
+Constraints:
+    - anchor順を保ち、連続重複だけを除いて各anchorを補間結果へexactに残す。
+    - open曲線は両端を保持し、closed曲線は循環接線と末尾のexact closureを維持する。
+    - finite float32座標と出力頂点数を確保前に検査する。
+"""
 
 from __future__ import annotations
 

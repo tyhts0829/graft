@@ -1,22 +1,12 @@
-"""閉曲線群から符号付き距離場を作り、複数レベルの等高線（等値線）をポリライン化する effect。
-
-この実装は「オフセット曲線を 1 本ずつ抽出する」代わりに、
-一度 SDF（Signed Distance Field: 符号付き距離場）を評価し、そこから複数レベルをまとめて取り出す。
-
-処理の全体像（読む順）
-----------------------
-1. 入力ポリライン群を近似的に XY 平面へ整列し、平面性をチェックする
-2. 閉曲線（リング）だけを抽出し、SDF 評価用に詰め直す
-3. グリッド上で SDF を評価する（内側が負、外側が正）
-4. `sin(pi*(SDF-phase)/spacing)` の 0 等値線を Marching Squares で抽出する
-   - `sin()` を使うことで、`SDF = phase + k*spacing`（k は整数）の全レベルを 1 回の抽出で得る
-5. 抽出した線分群をスナップしながら縫合し、閉ループ（ポリライン）に復元する
-6. 元の 3D 座標系へ戻し、(coords, offsets) に詰めて返す
-
-注意
-----
-- 入力が平面から外れている、または閉曲線が取れない場合は空ジオメトリを返す。
-- 入力の「外周＋穴」は even-odd（奇偶）規則で内外判定する（ネストした穴も扱える）。
+"""
+Purpose:
+    平面閉領域のsigned distanceから、指定間隔の内側・外側等値線群を生成する。
+Use when:
+    mask由来の反復offset表現、SDF level範囲、またはcontour samplingを変更する場合。
+Constraints:
+    - maskの閉ringだけをeven-odd領域として使い、open線は無視する。
+    - 非平面・ringなし・grid上限超過ではemptyを返し、入力を別の平面へ推測投影しない。
+    - 生成contourは元のPlanarFrameへ戻し、明示的なclosed loopとして保つ。
 """
 
 from __future__ import annotations

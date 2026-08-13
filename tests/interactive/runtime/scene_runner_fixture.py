@@ -1,4 +1,13 @@
-"""SceneRunner の internal MpDraw factory seam 用 test fixture。"""
+"""
+Purpose:
+    SceneRunnerのinternal MpDraw factory seamへ、世代ごとのclientまたは起動失敗を決定的に注入する。
+Use when:
+    draw generation交換、worker startup rollback、perf callback配線をテストするとき。
+Constraints:
+    - outcomeはgeneration client構築要求ごとにFIFOで一度だけ消費する。
+    - 全factory引数をcall recordへ保存し、definitions/config/callback identityを検証可能にする。
+    - 予定外の追加構築は暗黙にfakeを再利用せず即座に失敗させる。
+"""
 
 from __future__ import annotations
 

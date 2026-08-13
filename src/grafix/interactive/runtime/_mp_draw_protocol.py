@@ -1,7 +1,13 @@
-"""mp-draw の pickle DTO、wire validation、result/error value。
-
-この module の private DTO は同じ ``MpDraw`` lifetime 内の process 間通信専用であり、
-永続化形式や外部 wire contract ではない。したがって module path 自体も互換対象にしない。
+"""
+Purpose:
+    mp-drawのprocess境界を通るprivate messageと、そのwire validation契約を定義する。
+Use when:
+    task/result schema、snapshot ACK、stale判定用identifier、worker error表現を変更するとき。
+Constraints:
+    - messageは一つのMpDraw lifetime内専用で、永続形式やpublic互換契約にしない。
+    - process境界では暗黙変換を避け、containerと値のexact typeを検証する。
+    - frame_id、epoch、generation、snapshot_revisionの意味を統合しない。
+    - error resultは成功時のdomain payloadを保持しない。
 """
 
 from __future__ import annotations

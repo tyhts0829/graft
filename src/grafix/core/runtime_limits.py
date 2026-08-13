@@ -1,4 +1,15 @@
-"""runtime 全体の既存 resource 上限を小さな immutable profile に束ねる。"""
+"""
+Purpose:
+    operation・scene・CPU/GPU cache・capture queue の resource 上限を quality 別の immutable runtime profile に束ねる。
+Use when:
+    preview/final の resource policy、cache 容量、capture admission 上限の配線を変更・調査する場合。
+Constraints:
+    - draft preview と final capture の profile を独立に選択できる状態を維持する。
+    - ここは limit value の正本に限定し、allocation・cache・queue それぞれの enforcement は対応 owner に留める。
+    - profile は mutable runtime state や使用量 counter を保持しない。
+See:
+    grafix.core.resource_budget
+"""
 
 from __future__ import annotations
 

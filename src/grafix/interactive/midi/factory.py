@@ -1,25 +1,13 @@
-# どこで: `src/grafix/interactive/midi/factory.py`。
-# 何を: port_name/mode に従って MidiController を生成する。
-# なぜ: `src/grafix/api/runner.py` を配線に寄せ、MIDI 依存ロジックを interactive 側に閉じ込めるため。
-
-"""MIDI 設定を `MidiController` の生成に落とす factory。
-
-このモジュールは「Runner/CLI から渡される MIDI 設定値」を受け取り、状況に応じて
-`MidiController` を生成するか、MIDI を無効化（`None` を返す）します。
-
-設計意図
---------
-- `mido` は required dependency であり、import/backend error は接続不能へ読み替えず伝播する。
-
-主な入口
---------
-- `create_midi_controller()`
-- `create_midi_session()`
-
-副作用
-------
-- `mido.get_input_names()` により OS の MIDI 入力ポート一覧を取得する。
-- `MidiController` を生成した場合、入力ポートの open と CC スナップショットの load（ファイル I/O）が起きる。
+"""
+Purpose:
+    runnerのMIDI設定を、live/frozen/disabled状態を持つMidiSession構築へ接続する。
+Use when:
+    port自動選択、MIDI mode、再接続factory、またはsnapshot path注入を変更する場合。
+Constraints:
+    - load/save/reconnectで使うexact snapshot pathをcallerから受け、ambient configで再構築しない。
+    - backend/import errorを単なる未接続へ読み替えない。
+Side effects:
+    OSのMIDI portを列挙・openし、CC snapshotを読み得る。
 """
 
 from __future__ import annotations

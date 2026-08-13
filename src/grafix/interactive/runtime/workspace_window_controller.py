@@ -1,4 +1,17 @@
-"""Workspace window の配置、visibility、永続化を所有する controller。"""
+"""
+Purpose:
+    一sessionのpreview/Inspector配置、visibility、focus、workspace永続化policyを所有する。
+Use when:
+    起動時layout、screen変更対応、Inspectorのhide/show、shutdown保存を変更するとき。
+Constraints:
+    - 保存状態は現在のusable screenへclampし、適用不能ならconfig由来layoutへfallbackする。
+    - preview sizeを復元するかどうかは呼び出し側policyを尊重する。
+    - Inspectorのcloseはsession終了ではなくhideとして扱い、shortcutを両windowで一貫させる。
+    - windowのGL teardownを所有せず、配置・visibility stateの境界に留まる。
+    - 永続化時は接続済みwindowの現在値から一つのWorkspaceStateを作る。
+Side effects:
+    windowの位置・寸法・visibility・focusを変更し、workspace JSONを保存する。
+"""
 
 from __future__ import annotations
 

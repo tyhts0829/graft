@@ -1,4 +1,12 @@
-"""Interactive UI が参照する immutable telemetry 契約。"""
+"""
+Purpose:
+    interactive runtimeからUIへ渡すperformance/monitor telemetryのimmutable契約を定義する。
+Use when:
+    profiler表示、runtime monitor、または複数subsystemの観測snapshotを変更する場合。
+Constraints:
+    - UIからcollectorやresource ownerへ到達させず、時点固定のvalueだけを公開する。
+    - 同一表示単位では一度取得したsnapshotを使い、scalar値を別時点から混在させない。
+"""
 
 from __future__ import annotations
 

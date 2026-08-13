@@ -1,4 +1,14 @@
-"""Grafix の authoring API と公開 value type。"""
+"""
+Purpose:
+    Grafixのauthoring DSLと公開value typeを、標準package namespaceへまとめる。
+Use when:
+    `grafix.api`の公開面、遅延型export、またはG/E/L/P decorator導線を変更する場合。
+Constraints:
+    - application callableは各定義moduleまたはrootから取得し、package直下へ再公開しない。
+    - submodule名の意味をcallableと兼用せず、通常のModuleTypeを維持する。
+See:
+    `architecture.md` §2.1。
+"""
 
 from __future__ import annotations
 

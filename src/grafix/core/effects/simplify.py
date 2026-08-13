@@ -1,4 +1,13 @@
-"""ポリラインの形を許容誤差内で保ちながら冗長な頂点を削減する effect。"""
+"""
+Purpose:
+    polyline形状を許容誤差内に保ちながら、既存頂点から冗長な標本を削減する。
+Use when:
+    resampleではなく頂点削減、RDP誤差、またはopen/closed topologyを変更する場合。
+Constraints:
+    - open線の両端を保持し、closed線は3個以上の固有頂点とexact closureを維持する。
+    - 新しい補間点を作らず、入力頂点の部分列として出力する。
+    - scratchと出力量を大規模配列の確保前にbudget検査する。
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,17 @@
-"""Interactive capture の intent、admission、worker lifecycle、通知を所有する。"""
+"""
+Purpose:
+    明示capture intentを表示済みframeへ束縛し、bounded FIFOと完了通知を一元管理する。
+Use when:
+    保存shortcut、first-frame binding、backpressure、shutdown drainを変更するとき。
+Constraints:
+    - 初回表示前のintentだけをboundedに保留し、同じ最初の表示frameへ束縛する。
+    - 表示後のrequestはその時点のimmutable final snapshotを固定し、後のlive stateを参照しない。
+    - accepted requestを暗黙置換せず、count/byte上限超過は明示的に拒否する。
+    - provenance materializationと形式別保存はintentのFIFO順序を維持する。
+    - closeは一つのdeadlineでdrainし、期限後だけ残件をcancelする。
+Side effects:
+    export worker、同期SVG保存、console/diagnostic/monitor通知を駆動する。
+"""
 
 from __future__ import annotations
 

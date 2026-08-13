@@ -1,4 +1,16 @@
-"""mp-draw の spawn worker entrypoint と worker-side evaluation。"""
+"""
+Purpose:
+    spawn worker内で固定snapshotを使ってuser drawを評価し、親へ正規化済み結果を返す。
+Use when:
+    worker側のsnapshot適用、task拒否、authoring generation、終了処理を変更するとき。
+Constraints:
+    - entrypointはspawn可能なmodule top-levelに保ち、親のlive ParamStoreへ触れない。
+    - parameter snapshotとeffect-order snapshotは同じrevisionの一組として適用する。
+    - requested revisionがcurrentでないtaskはTaskStarted前に拒否する。
+    - workerはdraw/normalizeまでを担当し、realize、render、publishを所有しない。
+Side effects:
+    子processでuser codeを実行し、専用Queue endpointを読み書きして終了時に閉じる。
+"""
 
 from __future__ import annotations
 

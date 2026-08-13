@@ -1,6 +1,12 @@
-# どこで: `src/grafix/api/effects.py`。
-# 何を: effect 適用パイプラインを組み立てる公開名前空間 E を提供する。
-# なぜ: effect 専用のファサードに分離し、責務を明確化するため。
+"""
+Purpose:
+    公開名前空間Eで、parameter-awareなeffect chainをimmutable Geometry DAGへ組み立てる。
+Use when:
+    effect chaining、selector lowering、site identity、またはGUI-owned適用順を変更する場合。
+Constraints:
+    - step作成時のexact declarationとschema fingerprintを固定し、後の同名operationへ置換しない。
+    - code topologyを観測した上で、有効なGUI orderだけを適用する。
+"""
 
 from __future__ import annotations
 
