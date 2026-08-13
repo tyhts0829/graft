@@ -37,6 +37,7 @@ description: "与えられたPNG・JPEGなどの参照画像を、構図、余�
 - すべての `L(...).layer(..., thickness=LINE_THICKNESS)` と `run(..., line_thickness=LINE_THICKNESS)` に同じ定数を渡す。Layerごとに線幅を変えない。
 - module直下に `draw`、`CANVAS_SIZE`、`BACKGROUND_COLOR`、`LINE_THICKNESS` を公開する。previewでも同じcanvas、背景、線幅、seedを使う。
 - preview用の `run()` は必ず `if __name__ == "__main__":` の内側で呼び、rendererがmoduleを安全にimportできるようにする。
+- preview用の `run()` では `run_id` を指定しない。同じ `<unique_id>` を渡すと既定出力名のstemと重複するため、追加識別が必要な場合だけ短いsuffixを指定する。
 - `RealizedGeometry` を直接importしない。
 - このworkflowから `grafix-art-loop` を呼ばない。
 

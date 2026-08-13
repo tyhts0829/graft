@@ -6,8 +6,9 @@ CANVAS_HEIGHT = 210
 
 
 def draw(t: float):
-    g = G.text()
-    return L.layer(g)
+    g = G.polygon()
+    e = E.select().select().select().select().select().select()
+    return e(g)
 
 
 if __name__ == "__main__":

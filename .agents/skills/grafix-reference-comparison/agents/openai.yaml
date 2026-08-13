@@ -1,0 +1,4 @@
+interface:
+  display_name: "Grafix Reference Comparison"
+  short_description: "参照画像とGrafix出力の位置・形状差を色分け比較"
+  default_prompt: "Use $grafix-reference-comparison to create a color overlay and clearly analyze differences between a reference image and the current Grafix render."
