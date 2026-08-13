@@ -27,6 +27,12 @@
 - `tools/`: 開発補助 CLI
 - `typings/`: 型スタブ/補助
 
+## Source discovery
+
+- 広範囲の source を読む前に、`python3 tools/semantic_index.py <対象 directory>` で候補を絞る。
+- manifest の `Purpose` / `Use when` / `Constraints` を確認してから、必要な source 本文だけを開く。
+- symbol 名が明確な場合は `rg` を優先し、semantic header がない file も探索対象から除外しない。
+
 ## Build
 
 - src レイアウト: 本体パッケージは `src/grafix/`（import 名は `grafix`）
