@@ -12,7 +12,7 @@ from grafix import E, G, L, primitive, run
 # than being stretched.  Crop is deliberately zero so every registration mark
 # in the source remains visible.
 CANVAS_SIZE = (148, 210)
-BACKGROUND_COLOR = (243 / 255, 242 / 255, 240 / 255)
+BACKGROUND_COLOR = (233 / 255, 229 / 255, 218 / 255)
 LINE_THICKNESS = 0.001
 SEED = 240517
 LINE_COLORS = {"ink": (8 / 255, 8 / 255, 8 / 255)}

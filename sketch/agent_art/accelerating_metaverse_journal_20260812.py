@@ -10,7 +10,7 @@ from grafix import A4, E, G, L, primitive, run
 # Reference-reproduction adjustment block.  The photographed page is already
 # A5-proportioned; the surrounding phone viewer is intentionally excluded.
 CANVAS_SIZE = A4
-BACKGROUND_COLOR = (252 / 255, 250 / 255, 246 / 255)
+BACKGROUND_COLOR = (233 / 255, 229 / 255, 218 / 255)
 LINE_THICKNESS = 0.001
 SEED = 120826
 LINE_COLORS = {"ink": (35 / 255, 30 / 255, 31 / 255)}
