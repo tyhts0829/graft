@@ -170,6 +170,11 @@ of the Python `SQUARE` constant.
     <td><a href="https://github.com/tyhts0829/grafix/blob/main/sketch/readme/grn/17.py"><img src="https://raw.githubusercontent.com/tyhts0829/grafix/main/docs/readme/grn/17.png" width="280" alt="Wireframe cube study" /></a></td>
     <td><a href="https://github.com/tyhts0829/grafix/blob/main/sketch/readme/grn/18.py"><img src="https://raw.githubusercontent.com/tyhts0829/grafix/main/docs/readme/grn/18.png" width="280" alt="Lissajous texture study" /></a></td>
   </tr>
+  <tr>
+    <td><a href="https://github.com/tyhts0829/grafix/blob/main/sketch/agent_art/accelerating_metaverse_journal_20260812.py"><img src="https://raw.githubusercontent.com/tyhts0829/grafix/main/docs/readme/agent_art/accelerating_metaverse_journal_20260812.png" width="280" alt="Accelerating Metaverse Journal" /></a></td>
+    <td><a href="https://github.com/tyhts0829/grafix/blob/main/sketch/agent_art/information_infrastructure_manual_20260810.py"><img src="https://raw.githubusercontent.com/tyhts0829/grafix/main/docs/readme/agent_art/information_infrastructure_manual_20260810.png" width="280" alt="Information Infrastructure Manual" /></a></td>
+    <td><a href="https://github.com/tyhts0829/grafix/blob/main/sketch/agent_art/isolation_integration_report_20260810.py"><img src="https://raw.githubusercontent.com/tyhts0829/grafix/main/docs/readme/agent_art/isolation_integration_report_20260810.png" width="280" alt="Isolation Integration Report" /></a></td>
+  </tr>
 </table>
 
 Click a study to open its source. Grafix also includes small, copyable examples:
